@@ -144,6 +144,8 @@ export class EnvDescriptorHostConnector {
     if (baseUrl == null || baseUrl.length === 0) throw new SandBoxHostConnectError(`${GATEWAY_URL_ENV} is not set`);
     return buildConnection(baseUrl, this.env[GATEWAY_TOKEN_ENV]?.trim() ?? "", this.env[GATEWAY_NETWORK_TOKEN_ENV]?.trim() ?? "");
   }
+  async issueLocalExecDaemonCredential(): Promise<undefined> { return undefined; }
+  async issueInferenceCredential(): Promise<undefined> { return undefined; }
 }
 
 export function createRemoteHostConnector(deps: BrokerDeps, env: NodeJS.ProcessEnv = process.env, updateSink?: { noteBackendUpdateRequirement(required: boolean): void }, descriptorFastPath?: { store: GatewayDescriptorStore; getAccountScope(): string | undefined }): SandRemoteHostConnector {

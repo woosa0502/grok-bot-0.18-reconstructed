@@ -31,13 +31,21 @@ function hasUsableCodexLogin(path: string): boolean {
   try {
     const stat = lstatSync(path);
     if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) return false;
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, any>;
-    return parsed.auth_mode === "chatgpt"
-      && typeof parsed.tokens?.access_token === "string" && parsed.tokens.access_token.length > 0
-      && typeof parsed.tokens?.refresh_token === "string" && parsed.tokens.refresh_token.length > 0
-      && typeof parsed.tokens?.id_token === "string" && parsed.tokens.id_token.length > 0
-      && typeof parsed.tokens?.account_id === "string" && parsed.tokens.account_id.length > 0;
+    return isUsableCodexChatGptAuthDocument(JSON.parse(readFileSync(path, "utf8")));
   } catch { return false; }
+}
+
+export function isUsableCodexChatGptAuthDocument(raw: unknown): boolean {
+  if (typeof raw !== "object" || raw == null || Array.isArray(raw)) return false;
+  const parsed = raw as Record<string, any>;
+  const authMode = parsed.auth_mode;
+  const hasApiKey = typeof parsed.OPENAI_API_KEY === "string" && parsed.OPENAI_API_KEY.length > 0;
+  const isChatGptMode = authMode === "chatgpt" || (authMode == null && !hasApiKey);
+  return isChatGptMode
+    && typeof parsed.tokens?.access_token === "string" && parsed.tokens.access_token.length > 0
+    && typeof parsed.tokens?.refresh_token === "string" && parsed.tokens.refresh_token.length > 0
+    && typeof parsed.tokens?.id_token === "string" && parsed.tokens.id_token.length > 0
+    && typeof parsed.tokens?.account_id === "string" && parsed.tokens.account_id.length > 0;
 }
 
 export function getLocalInferenceCliStatus(): { readonly codex: LocalInferenceCliStatus; readonly "claude-code": LocalInferenceCliStatus } {

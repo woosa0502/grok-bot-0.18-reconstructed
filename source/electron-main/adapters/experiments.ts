@@ -3,6 +3,7 @@ import type { ElectronProductionAdapterBindings } from "../production-adapters.j
 import type { ProductionServiceContext } from "../main-production-services.js";
 import { SandExperimentService } from "../../shared/node/experiments/cursor-experiments.js";
 import { startSandRpcTraceWindow } from "../../shared/node/cursor-backend/rpc-tracing.js";
+import { createLocalExperimentSnapshot } from "./local-codex-mode.js";
 import { requireFunction } from "./provider-guards.js";
 
 export interface ProductionExperimentsPorts {
@@ -20,6 +21,27 @@ export function createProductionExperimentsAdapter(
   requireFunction(ports?.reportEdgeFailure, "experiments.reportEdgeFailure");
   return {
     async create(context) {
+      if (context.env.SAND_LOCAL_CODEX_MODE === "1") {
+        const snapshot = createLocalExperimentSnapshot();
+        let disposed = false;
+        return {
+          async ensureService() {
+            if (disposed) throw new Error("Belmont local Codex experiments adapter is disposed.");
+            return { getSnapshot: () => snapshot, applyFeatureFlagOverrideCommand: () => {}, refreshNow: async () => {} };
+          },
+          isTelemetryDisabled: () => true,
+          startRpcTraceWindow: () => false,
+          getComputerUseModelOverride: () => undefined,
+          subscribe: () => () => {},
+          getSnapshot: () => snapshot,
+          getFeatureFlagOverridesRecord: () => ({}),
+          checkFeatureGate: (name: string) => snapshot.featureGates[name] ?? false,
+          getDynamicConfig: (name: string) => snapshot.dynamicConfigs[name] ?? {},
+          hasLiveStatsigBootstrap: () => false,
+          getFlagsAgeMs: () => undefined,
+          async dispose() { disposed = true; },
+        };
+      }
       const runtime = createExperimentsRuntime({
         ensureCursorAuthService: async () => await ports.getAuthService(context),
         getMachineId: async () => context.machineId,

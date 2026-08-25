@@ -1,9 +1,40 @@
 import { createCursorAuthWiring, type AuthServicePort } from "../account/cursor-auth-wiring.js";
 import type { ElectronProductionAdapterBindings } from "../production-adapters.js";
 import type { ProductionAccountService, ProductionServiceContext } from "../main-production-services.js";
+import { LOCAL_CODEX_STATUS } from "./local-codex-mode.js";
 import { requireFunction, requireObject } from "./provider-guards.js";
 
 type CursorAuthWiringDeps = Parameters<typeof createCursorAuthWiring>[0];
+
+function createLocalCodexAuthService(): AuthServicePort {
+  return {
+    subscribe: () => () => {},
+    getStatus: async () => LOCAL_CODEX_STATUS,
+    getValidAccessToken: async () => { throw new Error("Cursor access tokens are unavailable in Belmont local Codex mode."); },
+    revokeForAccountRefusal: async () => ({ kind: "completed", status: LOCAL_CODEX_STATUS }),
+    login: async () => LOCAL_CODEX_STATUS,
+    cancelLogin: async () => LOCAL_CODEX_STATUS,
+    logout: async () => LOCAL_CODEX_STATUS,
+    updateDisplayName: async () => LOCAL_CODEX_STATUS,
+  };
+}
+
+function createLocalCodexAccountService(): ProductionAccountService {
+  const service = createLocalCodexAuthService();
+  let disposed = false;
+  const assertActive = () => {
+    if (disposed) throw new Error("Belmont local Codex account adapter is disposed.");
+  };
+  return {
+    async getStatus() { assertActive(); return LOCAL_CODEX_STATUS; },
+    currentAuthStatusFreshness: () => 0,
+    deliverCursorAuthStatus() { assertActive(); },
+    async getAuthService() { assertActive(); return service; },
+    async revokeForAccountRefusal() { assertActive(); return { kind: "completed", status: LOCAL_CODEX_STATUS }; },
+    subscribe() { assertActive(); return () => {}; },
+    async dispose() { disposed = true; },
+  };
+}
 
 export interface ProductionAccountOAuthPorts {
   readonly resolveWiringDeps?: (context: ProductionServiceContext) => CursorAuthWiringDeps;
@@ -56,6 +87,7 @@ export function createProductionAccountOAuthAdapter(
 ): ElectronProductionAdapterBindings["accountOAuth"] {
   return {
     async create(context): Promise<ProductionAccountService> {
+      if (context.env.SAND_LOCAL_CODEX_MODE === "1") return createLocalCodexAccountService();
       const wiring = createCursorAuthWiring((ports?.resolveWiringDeps ?? defaultWiringDeps)(context));
       const service = validateAuthService(await wiring.ensureCursorAuthService());
       const subscriptions = new Set<() => void>();
