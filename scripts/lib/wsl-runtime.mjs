@@ -25,6 +25,47 @@ export function assertWslGuiRuntime(options = {}) {
   }
 }
 
+export function wslRuntimeEnvironment(env = process.env) {
+  return {
+    ...env,
+    SAND_ATTACH_PROD_BOX: "0",
+    SAND_DISABLE_UPDATES: "1",
+    SAND_DISABLE_TELEMETRY: "1",
+    SAND_DISABLE_SENTRY: "1",
+    SAND_LOCAL_CODEX_MODE: "1",
+  };
+}
+
+export function wslDataRoot(profileDir) {
+  return path.join(path.resolve(profileDir), "sand-data");
+}
+
+export function wslHostEnvironment({ profileDir, env = process.env }) {
+  return {
+    ...wslRuntimeEnvironment(env),
+    SAND_DATA_ROOT: wslDataRoot(profileDir),
+    SAND_GATEWAY_BIND_HOST: "127.0.0.1",
+    SAND_HOST_PORT: "0",
+  };
+}
+
+export function gatewayUrlFromDiscovery(discovery, expectedPid) {
+  if (discovery == null || typeof discovery !== "object" || discovery.pid !== expectedPid) return null;
+  if (!Number.isInteger(discovery.port) || discovery.port < 1 || discovery.port > 65535) return null;
+  const host = typeof discovery.host === "string" && discovery.host.length > 0 ? discovery.host : "127.0.0.1";
+  if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1" && host !== "[::1]") return null;
+  const scheme = discovery.scheme === "https" ? "https" : "http";
+  return `${scheme}://${host.includes(":") && !host.startsWith("[") ? `[${host}]` : host}:${discovery.port}`;
+}
+
+export function initialLocalSettingsUpdate(raw) {
+  const settings = typeof raw === "object" && raw != null && !Array.isArray(raw) ? raw : {};
+  return {
+    ...(typeof settings.inferenceProvider === "string" ? {} : { inferenceProvider: "codex" }),
+    ...(typeof settings.hasSeenOnboarding === "boolean" ? {} : { hasSeenOnboarding: true }),
+  };
+}
+
 export function parseDebugPort(raw) {
   if (raw == null || raw.trim() === "") return null;
   if (!/^\d+$/u.test(raw)) throw new Error(`${BELMONT_WSL_DEBUG_PORT_ENV} must be an integer port.`);

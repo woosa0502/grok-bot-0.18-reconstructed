@@ -7,8 +7,13 @@ import {
   assertSupportedNodeRuntime,
   assertWslGuiRuntime,
   assertWslPlatform,
+  gatewayUrlFromDiscovery,
+  initialLocalSettingsUpdate,
   parseDebugPort,
+  wslDataRoot,
   wslElectronArgs,
+  wslHostEnvironment,
+  wslRuntimeEnvironment,
 } from "../scripts/lib/wsl-runtime.mjs";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
@@ -47,4 +52,26 @@ test("WSL runtime validates Node and loopback-only debug arguments", () => {
   assert.ok(args.includes("--remote-debugging-address=127.0.0.1"));
   assert.ok(args.includes("--remote-debugging-port=9333"));
   assert.equal(args.some(value => /docker/iu.test(value)), false);
+});
+
+test("WSL runtime owns an isolated local Codex host", () => {
+  const profileDir = path.resolve("profile");
+  const environment = wslRuntimeEnvironment({ KEEP: "yes", SAND_ATTACH_PROD_BOX: "1" });
+  assert.equal(environment.SAND_LOCAL_CODEX_MODE, "1");
+  assert.equal(environment.SAND_ATTACH_PROD_BOX, "0");
+  assert.equal(environment.SAND_DISABLE_UPDATES, "1");
+  assert.equal(environment.KEEP, "yes");
+  const host = wslHostEnvironment({ profileDir, env: { KEEP: "yes" } });
+  assert.equal(host.SAND_DATA_ROOT, wslDataRoot(profileDir));
+  assert.equal(host.SAND_GATEWAY_BIND_HOST, "127.0.0.1");
+  assert.equal(host.SAND_HOST_PORT, "0");
+  assert.equal(gatewayUrlFromDiscovery({ pid: 42, port: 15432, host: "127.0.0.1" }, 42), "http://127.0.0.1:15432");
+  assert.equal(gatewayUrlFromDiscovery({ pid: 41, port: 15432 }, 42), null);
+  assert.equal(gatewayUrlFromDiscovery({ pid: 42, port: 15432, host: "0.0.0.0" }, 42), null);
+});
+
+test("local settings initialize missing values without overwriting persisted choices", () => {
+  assert.deepEqual(initialLocalSettingsUpdate(null), { inferenceProvider: "codex", hasSeenOnboarding: true });
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "claude-code", hasSeenOnboarding: false }), {});
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex" }), { hasSeenOnboarding: true });
 });
