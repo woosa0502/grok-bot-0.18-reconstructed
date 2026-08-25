@@ -241,6 +241,42 @@ test("click and hover steps reject unknown modifier names", () => {
   );
 });
 
+test("drag step presses, moves in interpolated steps, and releases at the target delta", async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), "belmont-cdp-drag-"));
+  const client = new FakeClient();
+  try {
+    const record = await observeBelmontPlan({
+      client,
+      plan: { schemaVersion: 1, caseId: "DRAG-RESIZE", steps: [{ action: "drag", locator: { role: "button", name: "Row" }, deltaX: 40, deltaY: -8, steps: 4 }] },
+      runDir,
+      runtimeLineage: runtimeLineage(),
+    });
+    assert.equal(record.executionStatus, "ACTION_COMPLETE");
+    const events = client.sent.filter(call => call.method === "Input.dispatchMouseEvent");
+    assert.equal(events[0].params.type, "mouseMoved");
+    assert.equal(events[1].params.type, "mousePressed");
+    const moves = events.filter(call => call.params.type === "mouseMoved");
+    assert.equal(moves.length, 5, "one settle move plus 4 interpolated drag moves");
+    const released = events.at(-1);
+    assert.equal(released.params.type, "mouseReleased");
+    assert.equal(released.params.x, 6 + 40);
+    assert.equal(released.params.y, 6 - 8);
+  } finally {
+    await rm(runDir, { recursive: true, force: true });
+  }
+});
+
+test("drag plans reject a missing or oversized delta", () => {
+  assert.throws(
+    () => validateBelmontCdpPlan({ schemaVersion: 1, caseId: "BAD-DRAG", steps: [{ action: "drag", locator: { role: "button", name: "Row" } }] }),
+    BelmontCdpError,
+  );
+  assert.throws(
+    () => validateBelmontCdpPlan({ schemaVersion: 1, caseId: "BAD-DRAG-2", steps: [{ action: "drag", locator: { role: "button", name: "Row" }, deltaX: 5000 }] }),
+    BelmontCdpError,
+  );
+});
+
 test("observer uploads explicit regular files through a hidden file input", async () => {
   const runDir = await mkdtemp(path.join(os.tmpdir(), "belmont-cdp-upload-"));
   const fixture = path.join(runDir, "fixture.txt");

@@ -3,7 +3,7 @@ import { appendFile, mkdir, readFile, realpath, rename, stat, writeFile } from "
 import path from "node:path";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:9347";
-const ALLOWED_ACTIONS = new Set(["assert", "click", "fill", "hover", "press", "screenshot", "scroll", "snapshot", "upload", "wait"]);
+const ALLOWED_ACTIONS = new Set(["assert", "click", "drag", "fill", "hover", "press", "screenshot", "scroll", "snapshot", "upload", "wait"]);
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$/u;
 
 export class BelmontCdpError extends Error {
@@ -275,7 +275,13 @@ export function validateBelmontCdpPlan(raw) {
   if (!Array.isArray(raw.steps) || raw.steps.length === 0 || raw.steps.length > 100) throw new BelmontCdpError("INVALID_PLAN", "Plan needs 1 to 100 steps.");
   raw.steps.forEach((step, index) => {
     if (typeof step !== "object" || step == null || !ALLOWED_ACTIONS.has(step.action)) throw new BelmontCdpError("INVALID_PLAN", `Unsupported step ${index + 1}.`);
-    if (new Set(["assert", "click", "fill", "hover"]).has(step.action)) assertLocator(step.locator);
+    if (new Set(["assert", "click", "drag", "fill", "hover"]).has(step.action)) assertLocator(step.locator);
+    if (step.action === "drag") {
+      if (!Number.isFinite(step.deltaX) && !Number.isFinite(step.deltaY)) throw new BelmontCdpError("INVALID_PLAN", `drag step ${index + 1} needs a finite deltaX and/or deltaY.`);
+      for (const key of ["deltaX", "deltaY"]) {
+        if (step[key] != null && (!Number.isFinite(step[key]) || Math.abs(step[key]) > 4000)) throw new BelmontCdpError("INVALID_PLAN", `drag step ${index + 1} ${key} must be a finite number with magnitude <= 4000.`);
+      }
+    }
     if (new Set(["click", "hover"]).has(step.action) && step.modifiers != null) {
       const validModifiers = new Set(["ALT", "CTRL", "META", "SHIFT"]);
       if (!Array.isArray(step.modifiers) || step.modifiers.some(value => !validModifiers.has(String(value).toUpperCase()))) {
@@ -323,6 +329,21 @@ async function hover(client, locator, modifiers = []) {
   await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.max(0, point.x - 2), y: Math.max(0, point.y - 2), modifiers: mask });
   await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point, modifiers: mask });
   return target;
+}
+
+async function drag(client, locator, deltaX = 0, deltaY = 0, steps = 8) {
+  const target = await locate(client, locator);
+  const from = pointOf(target);
+  await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...from });
+  await client.send("Input.dispatchMouseEvent", { type: "mousePressed", ...from, button: "left", clickCount: 1 });
+  const stepCount = Math.max(1, Math.min(Math.trunc(steps) || 8, 40));
+  let to = from;
+  for (let index = 1; index <= stepCount; index += 1) {
+    to = { x: from.x + (deltaX * index) / stepCount, y: from.y + (deltaY * index) / stepCount };
+    await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...to, button: "left" });
+  }
+  await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...to, button: "left", clickCount: 1 });
+  return { from, to };
 }
 
 async function click(client, locator, button = "left", clickCount = 1, modifiers = []) {
@@ -432,6 +453,7 @@ async function executeStep(client, step, evidenceDir) {
   if (step.action === "hover") return await hover(client, step.locator, step.modifiers ?? []);
   if (step.action === "fill") return await fill(client, step.locator, step.text);
   if (step.action === "upload") return await upload(client, step.locator, step.files);
+  if (step.action === "drag") return await drag(client, step.locator, Number(step.deltaX) || 0, Number(step.deltaY) || 0, step.steps);
   if (step.action === "press") {
     if (step.locator != null) { assertLocator(step.locator); await click(client, step.locator); }
     await press(client, step.key, step.modifiers ?? []);
