@@ -40,7 +40,7 @@ test("preserved 0.18.0 installers match the exact public release inventory", asy
   }
 });
 
-test("bootstrap prefers the hash-pinned local archive before the network", async () => {
+test("bootstrap prefers the hash-pinned local archive and supports Linux extraction", async () => {
   const [attributes, config, bootstrap] = await Promise.all([
     readFile(path.join(repositoryRoot, ".gitattributes"), "utf8"),
     readFile(path.join(repositoryRoot, "scripts", "lib", "config.mjs"), "utf8"),
@@ -49,8 +49,15 @@ test("bootstrap prefers the hash-pinned local archive before the network", async
   assert.match(attributes, /research-archives\/original\/\*\*\/\*\.dmg filter=lfs diff=lfs merge=lfs -text/);
   assert.match(attributes, /research-archives\/original\/\*\*\/\*\.exe filter=lfs diff=lfs merge=lfs -text/);
   assert.match(config, /export const archivedDmg = path\.join\(repoRoot, "research-archives", "original", "0\.18\.0", "macos-arm64", "Grok_Bot_0\.18\.0\.dmg"\)/);
+  assert.match(config, /export const dmgBytes = 155793020/);
+  assert.match(config, /export const dmgLfsBatchUrl = "https:\/\/github\.com\/b-nnett\/grok-bot-0\.18-reconstructed\.git\/info\/lfs\/objects\/batch"/);
   assert.match(bootstrap, /const archivedDigest = await sha256\(archivedDmg\)/);
-  assert.match(bootstrap, /if \(archivedDigest !== dmgSha256\)/);
+  assert.match(bootstrap, /if \(archivedDigest === dmgSha256\)/);
+  assert.match(bootstrap, /async function isGitLfsPointer\(target\)/);
+  assert.match(bootstrap, /async function resolveGitLfsDownload\(\)/);
   assert.match(bootstrap, /await copyFile\(archivedDmg, cachedDmg\)/);
   assert.ok(bootstrap.indexOf("await copyFile(archivedDmg, cachedDmg)") < bootstrap.indexOf("await fetch(dmgUrl"));
+  assert.match(bootstrap, /async function hydrateSourcePayloadOnLinux\(\)/);
+  assert.match(bootstrap, /await hydrateSourcePayloadFromAsar\(archive\)/);
+  assert.match(bootstrap, /process\.platform === "linux"/);
 });
