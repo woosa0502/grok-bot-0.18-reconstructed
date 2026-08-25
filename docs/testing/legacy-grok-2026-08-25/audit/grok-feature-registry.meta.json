@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "status": "PROVISIONAL_ID_BASELINE",
+  "baselineCommit": "0cc05f9",
+  "sourceLedger": "docs/grok-bot-verified-gap-ledger-2026-08-25.md",
+  "sourceFeatureRowsSha256": "08b49263a3481f4641547e01556bc4ddf04ce55ab708123cbc19cd8b52bda6a5",
+  "registrySha256": "d8a62e8e478bf3eb27f7de6acddee9adc16cd66c9464b4d068768252d9c5b7a5",
+  "total": 1500,
+  "counts": {
+    "USER_REACHABLE": 932,
+    "AGENT_REACHABLE": 441,
+    "GATED": 46,
+    "NOT_APPLICABLE": 9,
+    "INTERNAL_ONLY": 72
+  },
+  "idPolicy": "GBF-<route>-<six digits>; assigned once in pinned baseline source order",
+  "updatePolicy": "baseline JSONL is immutable; corrections and split/merge lineage belong in an append-only update ledger",
+  "knownNormalizationGaps": [
+    "legacy 344-feature ledger is not reconciled",
+    "G1707 remains UNJUDGED in verdict-ledger.csv",
+    "eight source references require path correction",
+    "action and observableResult are not normalized yet"
+  ]
+}

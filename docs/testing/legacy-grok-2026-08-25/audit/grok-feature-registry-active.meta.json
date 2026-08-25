@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "status": "PROVISIONAL_ACTIVE_REGISTRY",
+  "total": 1500,
+  "counts": {
+    "USER_REACHABLE": 932,
+    "AGENT_REACHABLE": 441,
+    "GATED": 46,
+    "NOT_APPLICABLE": 9,
+    "INTERNAL_ONLY": 72
+  },
+  "featuresWithAllSourceReferencesResolved": 1500,
+  "patchUpdatesApplied": 16,
+  "auditReconciliations": [
+    {
+      "updateId": "GRU-000017",
+      "operation": "RECONCILE_AUDIT_VERDICT",
+      "candidateId": "G1707",
+      "featureId": "GBF-USR-000932",
+      "verdict": "KEEP",
+      "sourcePriority": "medium",
+      "reason": "The baseline CSV left G1707 UNJUDGED, while the source implements the claimed PR-context serialization and the extracted feature already exists.",
+      "evidenceRefs": [
+        "docs/audit/verdict-ledger.csv:G1707",
+        "source/packages/agent/git-pr-processing.ts:32",
+        "docs/grok-bot-verified-gap-ledger-2026-08-25.md:2432"
+      ],
+      "provenance": "direct_observation",
+      "recordedOn": "2026-08-25"
+    }
+  ],
+  "headingAreas": 546,
+  "headingCountMismatches": 75,
+  "baselineSha256": "d8a62e8e478bf3eb27f7de6acddee9adc16cd66c9464b4d068768252d9c5b7a5",
+  "updatesSha256": "a6a85b1df33b5967cc9eae784ad2b34f43a5344f7f6e34d05338a54d5b35203e",
+  "activeSha256": "063f7f4d10865b809064d7a91e8ee116094d403e11423de7ec38ed26d54a6a7c"
+}

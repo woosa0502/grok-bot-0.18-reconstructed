@@ -158,19 +158,25 @@ mise x node@26.5.0 -- npm run wsl:cdp -- run \
 
 ## 6. 기존 문서와 원장 재사용 범위
 
-입력 원본은 다음 옛 저장소에 있다.
+입력 원본은 Belmont 저장소 안에 불변 legacy snapshot으로 이관했다.
 
 ```text
-/home/hoon/orca/workspaces/MyLife/scup/external/grok-bot-0.18-reconstructed/docs/
+docs/testing/legacy-grok-2026-08-25/
 ├── grok-bot-atomic-feature-ledger-2026-08-25.md
+├── grok-bot-full-feature-user-test-plan-2026-08-25.md
 ├── grok-bot-user-test-standard-2026-08-25.md
 ├── grok-bot-wsl-single-model-test-runbook-2026-08-25.md
+├── grok-bot-wsl-single-model-tester-prompt-2026-08-25.md
 └── audit/
     ├── grok-feature-registry-active.jsonl       # 1,500
     ├── grok-wsl-test-runnable.jsonl             # 1,292
     ├── grok-wsl-test-excluded.jsonl             # 208
     └── grok-wsl-test-queue.meta.json
 ```
+
+[legacy snapshot 안내](testing/legacy-grok-2026-08-25/README.md)에 적힌 것처럼 이
+파일들은 입력·계보 자료다. 옛 prompt와 runbook의 명령을 현재 Belmont에서 그대로
+실행하거나 과거 결과를 현재 결과로 승격하지 않는다.
 
 그대로 재사용:
 
@@ -190,7 +196,12 @@ mise x node@26.5.0 -- npm run wsl:cdp -- run \
 - Cursor/업데이트/단일 인스턴스 제외 사유
 - 과거 수정 코드에만 존재했던 routed agent tool 등의 현재 도달 가능성
 
-과거 PASS/FAIL을 Belmont의 결과로 복사하지 않는다. 기존 1,292개를 현재 HEAD와 대조해 `RETAIN`, `REWORD`, `DEFER_AFTER_PORT`, `EXCLUDE_WITH_REASON` 중 하나로 매핑하고 합계가 다시 1,292가 되는 것을 확인한 뒤 본 실행을 시작한다.
+과거 PASS/FAIL을 Belmont의 결과로 복사하지 않는다. 기존 1,292개를 현재 HEAD와
+대조해 `RETAIN`, `REWORD`, `REQUIRED_ATTEMPT_CURRENT_BUILD` 중 하나로 매핑한다.
+세 disposition 모두 실행 분모에 남으며 합계는 반드시 1,292다. 현재 구현에 없을
+것으로 예상되는 기능도 UI 진입을 실제 시도한 뒤 `UNREACHABLE_CURRENT_BUILD`로
+판정한다. legacy 제외 208개는 별도로 재검토하되, 1,292개를 사전 제외 목록으로
+옮겨 분모를 줄이지 않는다.
 
 ## 7. 증거와 판정
 

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "status": "PROVISIONAL_EXECUTION_FILTER",
+  "sourceRegistry": "docs/audit/grok-feature-registry-active.jsonl",
+  "totalSourceFeatures": 1500,
+  "runnableNow": 1292,
+  "excludedOrDeferred": 208,
+  "excludedTrulyImpossibleOrNotApplicable": 208,
+  "dispositionCounts": {
+    "EXCLUDED_DOCKER": 12,
+    "EXCLUDED_HARDWARE": 10,
+    "EXCLUDED_INTERNAL": 69,
+    "EXCLUDED_NOT_APPLICABLE": 22,
+    "EXCLUDED_PLATFORM": 17,
+    "EXCLUDED_PROFILE_STATE": 22,
+    "EXCLUDED_PROVIDER_AUTH": 56,
+    "RUNNABLE_NOW": 1292
+  },
+  "batchCounts": {
+    "01_WINDOW_NAVIGATION": 81,
+    "02_CHAT_COMPOSER": 41,
+    "03_TRANSCRIPT_RENDERING": 98,
+    "04_BOT_UI": 102,
+    "05_ATTACHMENTS_VIEWERS": 85,
+    "06_SETTINGS_LOCAL": 26,
+    "07_PLUGINS_LOCAL_UI": 24,
+    "08_AUTOMATIONS_LOCAL_UI": 18,
+    "09_OTHER_VISIBLE_UI": 97,
+    "10_AGENT_REACHABLE": 301,
+    "95_EXTERNAL_REMOTE_OS": 36,
+    "96_REPOSITORY_MUTATION": 15,
+    "97_FAULT_RECOVERY_BOUNDARY": 263,
+    "98_GATED_FEATURES": 22,
+    "99_LIFECYCLE_DESTRUCTIVE": 83
+  },
+  "sourceSha256": "063f7f4d10865b809064d7a91e8ee116094d403e11423de7ec38ed26d54a6a7c",
+  "queueSha256": "0d2b19a6096273386dd026df548f18719f3ce87bd2b60cdf79ef4bf4db144103",
+  "runnableSha256": "def55dc8b269e86db6820764e9ca996d6e35bdd245c8b9f562501c1cb377643e",
+  "excludedSha256": "3dc8826fdc2e5ccb9d91a570c14954a025555ceb24c90110b811bd0161e9c0e0",
+  "executionPolicy": "A single tester model runs RUNNABLE_NOW in runnableSequence order against one existing WSL profile and one Electron generation.",
+  "classificationPolicy": "Only intrinsically impossible Apple/mobile, non-Docker scope, direct Cursor identity/billing/usage/access flows removed by Codex Local, app-updater paths disabled by the fixed WSL launcher, unavailable real hardware success paths, absent wallpaper helpers, unpackaged single-instance behavior, unsupported host-only restart continuity, internal-only, not-applicable, and forbidden current-profile first-run behaviors are excluded. Agent, gated, external, fault, repository, destructive, computer-update, and supported restart/recovery behaviors remain mandatory attempts.",
+  "limitation": "A mandatory case may end BLOCKED_EXTERNAL or UNREACHABLE_CURRENT_BUILD only after evidence-backed attempts. It may never be silently skipped or pre-excluded merely because the current build is expected to fail."
+}

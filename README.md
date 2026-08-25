@@ -213,6 +213,8 @@ npm run wsl:cdp -- status # inspect one already-running Belmont WSL renderer
 For the bounded CDP observer, evidence layout, verdict rules, and the 1,292-case
 WSL user-test workflow, see
 [docs/belmont-user-test-method-2026-08-25.md](docs/belmont-user-test-method-2026-08-25.md).
+The preserved legacy queue and the copy-paste prompt for another tester live
+under [docs/testing](docs/testing/).
 
 Generated directories including `.cache`, `.build`, `dist`, `src/app/dist`,
 `recovered`, `recovery`, and local probe roots are ignored.

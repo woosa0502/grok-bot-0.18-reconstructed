@@ -1,0 +1,608 @@
+{
+  "status": "NORMALIZED_REFERENCE",
+  "sourceLedger": "docs/grok-bot-verified-gap-ledger-2026-08-25.md",
+  "checkedAreas": 546,
+  "mismatches": 75,
+  "results": [
+    {
+      "route": "USER_REACHABLE",
+      "area": "Transcript",
+      "sourceLine": 46,
+      "headingRows": 57,
+      "atomicRows": 60,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "정보-아바타",
+      "sourceLine": 111,
+      "headingRows": 21,
+      "atomicRows": 22,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "정보-공유룸",
+      "sourceLine": 185,
+      "headingRows": 14,
+      "atomicRows": 16,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Attachments/Media",
+      "sourceLine": 223,
+      "headingRows": 12,
+      "atomicRows": 14,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Sidebar",
+      "sourceLine": 242,
+      "headingRows": 12,
+      "atomicRows": 13,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Composer/Editor",
+      "sourceLine": 260,
+      "headingRows": 11,
+      "atomicRows": 13,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Command Palette",
+      "sourceLine": 309,
+      "headingRows": 10,
+      "atomicRows": 14,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "PDF viewer",
+      "sourceLine": 328,
+      "headingRows": 9,
+      "atomicRows": 12,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Composer",
+      "sourceLine": 359,
+      "headingRows": 8,
+      "atomicRows": 11,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Spreadsheet viewer",
+      "sourceLine": 388,
+      "headingRows": 8,
+      "atomicRows": 10,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "정보-채널",
+      "sourceLine": 455,
+      "headingRows": 8,
+      "atomicRows": 10,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "정보-멤버",
+      "sourceLine": 482,
+      "headingRows": 7,
+      "atomicRows": 8,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Cursor 계정",
+      "sourceLine": 495,
+      "headingRows": 6,
+      "atomicRows": 8,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Mermaid viewer",
+      "sourceLine": 508,
+      "headingRows": 6,
+      "atomicRows": 11,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Plugins/browser",
+      "sourceLine": 535,
+      "headingRows": 6,
+      "atomicRows": 7,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Conversation outline",
+      "sourceLine": 617,
+      "headingRows": 5,
+      "atomicRows": 7,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "media",
+      "sourceLine": 629,
+      "headingRows": 5,
+      "atomicRows": 13,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "workflows/store",
+      "sourceLine": 647,
+      "headingRows": 5,
+      "atomicRows": 6,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Emoji picker",
+      "sourceLine": 678,
+      "headingRows": 5,
+      "atomicRows": 6,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Navigation shortcuts",
+      "sourceLine": 699,
+      "headingRows": 4,
+      "atomicRows": 8,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "VNC 뷰어",
+      "sourceLine": 712,
+      "headingRows": 4,
+      "atomicRows": 5,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "MCP",
+      "sourceLine": 776,
+      "headingRows": 4,
+      "atomicRows": 5,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Timeline event card",
+      "sourceLine": 936,
+      "headingRows": 3,
+      "atomicRows": 6,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "cloud-agent-review",
+      "sourceLine": 955,
+      "headingRows": 3,
+      "atomicRows": 7,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "도구 승인",
+      "sourceLine": 991,
+      "headingRows": 3,
+      "atomicRows": 6,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Automations/routines",
+      "sourceLine": 1010,
+      "headingRows": 3,
+      "atomicRows": 4,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Connector card",
+      "sourceLine": 1050,
+      "headingRows": 2,
+      "atomicRows": 5,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "WindowChrome/shortcuts",
+      "sourceLine": 1074,
+      "headingRows": 2,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "권한 설정 파일",
+      "sourceLine": 1215,
+      "headingRows": 2,
+      "atomicRows": 4,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "DeepLinks/overlay",
+      "sourceLine": 1336,
+      "headingRows": 2,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Cloud agents",
+      "sourceLine": 1414,
+      "headingRows": 1,
+      "atomicRows": 4,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "egress 터널",
+      "sourceLine": 1447,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "레이아웃 (정보 패널)",
+      "sourceLine": 1496,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "비밀 관리",
+      "sourceLine": 1521,
+      "headingRows": 1,
+      "atomicRows": 4,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "워크플로/멘션",
+      "sourceLine": 1566,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "자동화 트리거 (외부 서비스)",
+      "sourceLine": 1591,
+      "headingRows": 1,
+      "atomicRows": 4,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "창/줌",
+      "sourceLine": 1612,
+      "headingRows": 1,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "MCP (Google Workspace OAuth)",
+      "sourceLine": 1704,
+      "headingRows": 1,
+      "atomicRows": 6,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "MCP 인증",
+      "sourceLine": 1715,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Smart Mode 권한",
+      "sourceLine": 1758,
+      "headingRows": 1,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Timeline",
+      "sourceLine": 1766,
+      "headingRows": 1,
+      "atomicRows": 8,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "UI (모달 대화상자)",
+      "sourceLine": 1779,
+      "headingRows": 1,
+      "atomicRows": 5,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "UI (컨텍스트 메뉴)",
+      "sourceLine": 1789,
+      "headingRows": 1,
+      "atomicRows": 4,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "UI (플로팅 패널 이동)",
+      "sourceLine": 1798,
+      "headingRows": 1,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "계정/전환",
+      "sourceLine": 1896,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "링크/외부",
+      "sourceLine": 1957,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "메뉴",
+      "sourceLine": 1964,
+      "headingRows": 1,
+      "atomicRows": 5,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "봇 삭제",
+      "sourceLine": 1998,
+      "headingRows": 1,
+      "atomicRows": 6,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "설정/보안",
+      "sourceLine": 2033,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "설정/컴퓨터",
+      "sourceLine": 2040,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "자동화 트리거",
+      "sourceLine": 2125,
+      "headingRows": 1,
+      "atomicRows": 6,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "창/단축키",
+      "sourceLine": 2166,
+      "headingRows": 1,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "창/플랫폼 수명주기",
+      "sourceLine": 2180,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "채널/리스너",
+      "sourceLine": 2187,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "테스트/증거",
+      "sourceLine": 2230,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "Account menu",
+      "sourceLine": 2243,
+      "headingRows": 1,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "메시지",
+      "sourceLine": 2395,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "USER_REACHABLE",
+      "area": "업데이트/프롬프트",
+      "sourceLine": 2414,
+      "headingRows": 1,
+      "atomicRows": 5,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "Task/Subagent 도구",
+      "sourceLine": 2472,
+      "headingRows": 15,
+      "atomicRows": 18,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "Cloud agents",
+      "sourceLine": 2530,
+      "headingRows": 11,
+      "atomicRows": 12,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "memory",
+      "sourceLine": 2563,
+      "headingRows": 11,
+      "atomicRows": 13,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "update-state",
+      "sourceLine": 2581,
+      "headingRows": 9,
+      "atomicRows": 12,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "cloud-agents/tool",
+      "sourceLine": 2623,
+      "headingRows": 7,
+      "atomicRows": 12,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "Local exec",
+      "sourceLine": 2687,
+      "headingRows": 6,
+      "atomicRows": 7,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "TodoWrite 도구",
+      "sourceLine": 2710,
+      "headingRows": 5,
+      "atomicRows": 6,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "메모리",
+      "sourceLine": 2741,
+      "headingRows": 5,
+      "atomicRows": 7,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "브라우저 도구",
+      "sourceLine": 2773,
+      "headingRows": 5,
+      "atomicRows": 10,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "컨텍스트 첨부",
+      "sourceLine": 2788,
+      "headingRows": 5,
+      "atomicRows": 7,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "자기 수정",
+      "sourceLine": 2897,
+      "headingRows": 3,
+      "atomicRows": 4,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "MCP 도구 탐색",
+      "sourceLine": 3234,
+      "headingRows": 1,
+      "atomicRows": 4,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "멀티태스크",
+      "sourceLine": 3411,
+      "headingRows": 1,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "자동화 채널",
+      "sourceLine": 3563,
+      "headingRows": 1,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "테스트/서브에이전트",
+      "sourceLine": 3613,
+      "headingRows": 1,
+      "atomicRows": 3,
+      "matches": false
+    },
+    {
+      "route": "AGENT_REACHABLE",
+      "area": "라우터 (Codex 공급자)",
+      "sourceLine": 3705,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    },
+    {
+      "route": "GATED",
+      "area": "설정 위치",
+      "sourceLine": 3934,
+      "headingRows": 1,
+      "atomicRows": 2,
+      "matches": false
+    }
+  ]
+}
