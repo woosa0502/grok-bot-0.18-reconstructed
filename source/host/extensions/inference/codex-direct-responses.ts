@@ -16,6 +16,7 @@ export type CodexDirectTool = {
 
 export type CodexDirectEvent =
   | { readonly type: "text-delta"; readonly delta: string }
+  | { readonly type: "tool-call"; readonly toolCallId: string; readonly toolName: string; readonly args: unknown }
   | { readonly type: "done"; readonly text: string; readonly responseId: string; readonly usage: CodexDirectUsage };
 
 export type CodexDirectOptions = {
@@ -27,6 +28,8 @@ export type CodexDirectOptions = {
   readonly input: readonly Loose[];
   readonly tools?: readonly CodexDirectTool[];
   readonly executeTool?: (tool: CodexDirectTool, args: unknown, toolCallId: string) => Promise<unknown>;
+  /** Leave native tool execution to Belmont's existing turn executor. */
+  readonly delegateToolCalls?: boolean;
   readonly maxSteps?: number;
 };
 
@@ -156,6 +159,16 @@ export async function* streamCodexDirectResponses(options: CodexDirectOptions): 
     const output = Array.isArray(completed.output) && completed.output.length > 0 ? completed.output : observedOutput;
     const calls = toolCalls(output);
     if (calls.length === 0) {
+      yield { type: "done", text, responseId, usage };
+      return;
+    }
+    if (options.delegateToolCalls === true) {
+      for (const call of calls) {
+        let args: unknown = {};
+        try { args = typeof call.arguments === "string" && call.arguments.length > 0 ? JSON.parse(call.arguments) : {}; }
+        catch { args = typeof call.arguments === "string" ? call.arguments : {}; }
+        yield { type: "tool-call", toolCallId: call.call_id, toolName: call.name, args };
+      }
       yield { type: "done", text, responseId, usage };
       return;
     }

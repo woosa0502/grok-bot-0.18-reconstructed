@@ -86,6 +86,34 @@ test("direct Codex Responses transport executes Grok Bot tools and continues wit
   assert.deepEqual(events.at(-1), { type: "done", text: "Subject", responseId: "resp-final", usage: { inputTokens: 28, outputTokens: 6, cacheReadTokens: 6, cacheWriteTokens: 0 } });
 });
 
+test("direct Codex Responses transport can delegate native tool calls to the Belmont agent executor", async () => {
+  const { streamCodexDirectResponses } = await loadModule();
+  const requests = [];
+  const fetch = async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    return sse([
+      { type: "response.output_item.done", item: { type: "function_call", id: "call-item", call_id: "call-native-1", name: "update_state", arguments: "{\"target\":\"routine\",\"action\":\"create\"}" } },
+      { type: "response.completed", response: { id: "resp-tool", output: [], usage: { input_tokens: 20, output_tokens: 5, input_tokens_details: { cached_tokens: 4 } } } }
+    ]);
+  };
+  const events = [];
+  for await (const event of streamCodexDirectResponses({
+    fetch,
+    endpoint: "https://example.invalid/responses",
+    model: "gpt-test",
+    instructions: "Use Belmont native tools",
+    input: [{ role: "user", content: "create a routine" }],
+    tools: [{ name: "update_state", description: "Update Belmont state", parameters: { type: "object" }, source: { name: "update_state" } }],
+    delegateToolCalls: true,
+  })) events.push(event);
+
+  assert.equal(requests.length, 1);
+  assert.deepEqual(events, [
+    { type: "tool-call", toolCallId: "call-native-1", toolName: "update_state", args: { target: "routine", action: "create" } },
+    { type: "done", text: "", responseId: "resp-tool", usage: { inputTokens: 20, outputTokens: 5, cacheReadTokens: 4, cacheWriteTokens: 0 } },
+  ]);
+});
+
 test("direct Codex Responses transport fails closed on a truncated stream", async () => {
   const { streamCodexDirectResponses } = await loadModule();
   await assert.rejects(async () => {

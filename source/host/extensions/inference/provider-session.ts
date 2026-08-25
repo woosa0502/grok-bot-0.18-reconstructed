@@ -58,8 +58,13 @@ function providerPrompt(messages: readonly ProviderMessage[]): string {
 
 function deferred<T>() { return Promise.withResolvers<T>(); }
 
-function response(text: string, id: string, modelId: string) {
-  return { id, modelId, timestamp: new Date(), headers: {}, messages: [{ role: "assistant", content: [{ type: "text", text }] }] };
+type DelegatedToolCall = { readonly toolCallId: string; readonly toolName: string; readonly args: unknown };
+
+function response(text: string, id: string, modelId: string, toolCalls: readonly DelegatedToolCall[] = []) {
+  const content: Loose[] = [];
+  if (text.length > 0) content.push({ type: "text", text });
+  for (const call of toolCalls) content.push({ type: "tool-call", ...call });
+  return { id, modelId, timestamp: new Date(), headers: {}, messages: [{ role: "assistant", content }] };
 }
 
 type CodexCredentials = { accessToken: string; refreshToken: string; idToken: string; accountId: string; path: string; document: Loose };
@@ -174,6 +179,7 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
   const tools = codexTools(definitions);
   const fullStream = (async function* () {
     let text = "";
+    const delegatedToolCalls: DelegatedToolCall[] = [];
     try {
       for await (const event of streamCodexDirectResponses({
         fetch: codexAuthenticatedFetch(credentials),
@@ -184,16 +190,23 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
         input: messages.map(message => ({ role: message.role === "assistant" ? "assistant" : "user", content: typeof message.content === "string" ? message.content : JSON.stringify(message.content) })),
         ...(tools == null ? {} : { tools }),
         ...(executeTool == null ? {} : { executeTool: async (selected, args, toolCallId) => await executeTool(selected.source, args, toolCallId) }),
+        delegateToolCalls: tools != null && executeTool == null,
         maxSteps: tools == null ? 1 : 8,
       })) {
         if (event.type === "text-delta") { text += event.delta; yield { type: "text-delta" as const, textDelta: event.delta }; continue; }
+        if (event.type === "tool-call") {
+          const call = { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args };
+          delegatedToolCalls.push(call);
+          yield { type: "tool-call" as const, ...call };
+          continue;
+        }
         const basic = { promptTokens: event.usage.inputTokens, completionTokens: event.usage.outputTokens, totalTokens: event.usage.inputTokens + event.usage.outputTokens };
         const extended = { ...event.usage, maxTokens: 0 };
         onUsage?.(event.usage);
         usage.resolve(basic);
         extendedUsage.resolve(extended);
         metadata.resolve({ openai: { responseId: event.responseId, direct: true } });
-        resultResponse.resolve(response(text, invocationId, model));
+        resultResponse.resolve(response(text, invocationId, model, delegatedToolCalls));
       }
     } catch (error) { usage.reject(error); extendedUsage.reject(error); metadata.reject(error); resultResponse.reject(error); throw error; }
   })();
