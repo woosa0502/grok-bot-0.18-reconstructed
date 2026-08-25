@@ -276,6 +276,12 @@ export function validateBelmontCdpPlan(raw) {
   raw.steps.forEach((step, index) => {
     if (typeof step !== "object" || step == null || !ALLOWED_ACTIONS.has(step.action)) throw new BelmontCdpError("INVALID_PLAN", `Unsupported step ${index + 1}.`);
     if (new Set(["assert", "click", "fill", "hover"]).has(step.action)) assertLocator(step.locator);
+    if (new Set(["click", "hover"]).has(step.action) && step.modifiers != null) {
+      const validModifiers = new Set(["ALT", "CTRL", "META", "SHIFT"]);
+      if (!Array.isArray(step.modifiers) || step.modifiers.some(value => !validModifiers.has(String(value).toUpperCase()))) {
+        throw new BelmontCdpError("INVALID_PLAN", `${step.action} step ${index + 1} modifiers must be an array of ALT, CTRL, META, SHIFT.`);
+      }
+    }
     if (step.action === "press" && (typeof step.key !== "string" || step.key.length === 0)) throw new BelmontCdpError("INVALID_PLAN", `press step ${index + 1} needs a key.`);
     if (step.action === "fill" && typeof step.text !== "string") throw new BelmontCdpError("INVALID_PLAN", `fill step ${index + 1} needs text.`);
     if (step.action === "upload") {
@@ -301,18 +307,30 @@ function pointOf(result) {
   return { x: x + width / 2, y: y + height / 2 };
 }
 
-async function hover(client, locator) {
+function modifierMask(modifiers = []) {
+  const normalized = modifiers.map(value => String(value).toUpperCase());
+  return (normalized.includes("ALT") ? 1 : 0) | (normalized.includes("CTRL") ? 2 : 0) | (normalized.includes("META") ? 4 : 0) | (normalized.includes("SHIFT") ? 8 : 0);
+}
+
+async function hover(client, locator, modifiers = []) {
   const target = await locate(client, locator);
   const point = pointOf(target);
-  await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+  const mask = modifierMask(modifiers);
+  // A single teleporting mouseMoved does not always register as a pointer
+  // "enter" transition for React onPointerEnter-style handlers, even though
+  // it reliably drives CSS :hover. Dispatch one settling move just outside
+  // the target first so the browser sees a real enter transition onto it.
+  await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.max(0, point.x - 2), y: Math.max(0, point.y - 2), modifiers: mask });
+  await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point, modifiers: mask });
   return target;
 }
 
-async function click(client, locator, button = "left", clickCount = 1) {
-  const target = await hover(client, locator);
+async function click(client, locator, button = "left", clickCount = 1, modifiers = []) {
+  const target = await hover(client, locator, modifiers);
   const point = pointOf(target);
-  await client.send("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button, clickCount });
-  await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button, clickCount });
+  const mask = modifierMask(modifiers);
+  await client.send("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button, clickCount, modifiers: mask });
+  await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button, clickCount, modifiers: mask });
   return target;
 }
 
@@ -326,6 +344,8 @@ const KEY_DEFINITIONS = Object.freeze({
   ":": [":", "Semicolon", 186], "{": ["{", "BracketLeft", 219], "|": ["|", "Backslash", 220], "}": ["}", "BracketRight", 221], "\"": ["\"", "Quote", 222], "~": ["~", "Backquote", 192],
   "!": ["!", "Digit1", 49], "@": ["@", "Digit2", 50], "#": ["#", "Digit3", 51], "$": ["$", "Digit4", 52], "%": ["%", "Digit5", 53],
   "^": ["^", "Digit6", 54], "&": ["&", "Digit7", 55], "*": ["*", "Digit8", 56], "(": ["(", "Digit9", 57], ")": [")", "Digit0", 48],
+  F1: ["F1", "F1", 112], F2: ["F2", "F2", 113], F3: ["F3", "F3", 114], F4: ["F4", "F4", 115], F5: ["F5", "F5", 116], F6: ["F6", "F6", 117],
+  F7: ["F7", "F7", 118], F8: ["F8", "F8", 119], F9: ["F9", "F9", 120], F10: ["F10", "F10", 121], F11: ["F11", "F11", 122], F12: ["F12", "F12", 123],
 });
 
 function keyDefinition(key) {
@@ -338,8 +358,7 @@ function keyDefinition(key) {
 }
 
 async function press(client, key, modifiers = []) {
-  const normalized = modifiers.map(value => String(value).toUpperCase());
-  const mask = (normalized.includes("ALT") ? 1 : 0) | (normalized.includes("CTRL") ? 2 : 0) | (normalized.includes("META") ? 4 : 0) | (normalized.includes("SHIFT") ? 8 : 0);
+  const mask = modifierMask(modifiers);
   const [keyValue, code, virtualKeyCode] = keyDefinition(key);
   const printable = keyValue.length === 1 && (mask & 7) === 0 ? keyValue : "";
   const params = { key: keyValue, code, windowsVirtualKeyCode: virtualKeyCode, nativeVirtualKeyCode: virtualKeyCode, modifiers: mask };
@@ -409,8 +428,8 @@ async function runAssertion(client, step) {
 
 async function executeStep(client, step, evidenceDir) {
   if (step.action === "assert") return await runAssertion(client, step);
-  if (step.action === "click") return await click(client, step.locator, step.button ?? "left", step.clickCount ?? 1);
-  if (step.action === "hover") return await hover(client, step.locator);
+  if (step.action === "click") return await click(client, step.locator, step.button ?? "left", step.clickCount ?? 1, step.modifiers ?? []);
+  if (step.action === "hover") return await hover(client, step.locator, step.modifiers ?? []);
   if (step.action === "fill") return await fill(client, step.locator, step.text);
   if (step.action === "upload") return await upload(client, step.locator, step.files);
   if (step.action === "press") {

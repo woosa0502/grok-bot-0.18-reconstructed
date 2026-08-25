@@ -181,6 +181,66 @@ test("observer sends punctuation shortcuts through CDP instead of rejecting them
   }
 });
 
+test("observer sends function key shortcuts through CDP instead of rejecting them", async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), "belmont-cdp-fkeys-"));
+  const client = new FakeClient();
+  const keys = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"];
+  try {
+    const record = await observeBelmontPlan({
+      client,
+      plan: { schemaVersion: 1, caseId: "FUNCTION-KEY-SHORTCUTS", steps: keys.map(key => ({ action: "press", key, modifiers: ["SHIFT"] })) },
+      runDir,
+      runtimeLineage: runtimeLineage(),
+    });
+    assert.equal(record.executionStatus, "ACTION_COMPLETE");
+    const keyDown = client.sent.filter(call => call.method === "Input.dispatchKeyEvent" && call.params.type === "rawKeyDown");
+    assert.deepEqual(keyDown.map(call => call.params.key), keys);
+    assert.deepEqual(keyDown.map(call => call.params.code), keys);
+    assert.deepEqual(keyDown.map(call => call.params.windowsVirtualKeyCode), [112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123]);
+    assert.ok(keyDown.every(call => call.params.modifiers === 8));
+    assert.ok(keyDown.every(call => call.params.text === ""));
+  } finally {
+    await rm(runDir, { recursive: true, force: true });
+  }
+});
+
+test("click and hover steps forward modifier keys to the dispatched mouse events", async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), "belmont-cdp-click-modifiers-"));
+  const client = new FakeClient();
+  try {
+    const record = await observeBelmontPlan({
+      client,
+      plan: {
+        schemaVersion: 1,
+        caseId: "CLICK-MODIFIERS",
+        steps: [
+          { action: "hover", locator: { role: "button", name: "Row" }, modifiers: ["SHIFT"] },
+          { action: "click", locator: { role: "button", name: "Row" }, modifiers: ["CTRL"] },
+        ],
+      },
+      runDir,
+      runtimeLineage: runtimeLineage(),
+    });
+    assert.equal(record.executionStatus, "ACTION_COMPLETE");
+    const moves = client.sent.filter(call => call.method === "Input.dispatchMouseEvent" && call.params.type === "mouseMoved");
+    assert.ok(moves.length >= 3, "hover settles with a pre-move plus the landing move for both steps");
+    assert.ok(moves.slice(0, 2).every(call => call.params.modifiers === 8), "hover step carries SHIFT (8) on both its settle and landing moves");
+    const pressed = client.sent.find(call => call.method === "Input.dispatchMouseEvent" && call.params.type === "mousePressed");
+    const released = client.sent.find(call => call.method === "Input.dispatchMouseEvent" && call.params.type === "mouseReleased");
+    assert.equal(pressed.params.modifiers, 2, "click step carries CTRL (2)");
+    assert.equal(released.params.modifiers, 2, "click step carries CTRL (2)");
+  } finally {
+    await rm(runDir, { recursive: true, force: true });
+  }
+});
+
+test("click and hover steps reject unknown modifier names", () => {
+  assert.throws(
+    () => validateBelmontCdpPlan({ schemaVersion: 1, caseId: "BAD-MODIFIER", steps: [{ action: "click", locator: { role: "button", name: "Row" }, modifiers: ["OPTION"] }] }),
+    BelmontCdpError,
+  );
+});
+
 test("observer uploads explicit regular files through a hidden file input", async () => {
   const runDir = await mkdtemp(path.join(os.tmpdir(), "belmont-cdp-upload-"));
   const fixture = path.join(runDir, "fixture.txt");
