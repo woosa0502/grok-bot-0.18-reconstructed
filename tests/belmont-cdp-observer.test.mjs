@@ -27,6 +27,8 @@ function plan(caseId = "BELMONT-CDP-TEST") {
 }
 
 function runtimeLineage(runtimeGenerationId = "runtime-a") {
+  const head = "1".repeat(40);
+  const sourceIdentitySha256 = "2".repeat(64);
   return {
     schemaVersion: 1,
     runtimeGenerationId,
@@ -35,13 +37,13 @@ function runtimeLineage(runtimeGenerationId = "runtime-a") {
     appRoot: path.join(repositoryRoot, ".build", "belmont-wsl-runtime"),
     profileDir: path.join(repositoryRoot, ".cache", "belmont-wsl-profile"),
     debugEndpoint: "http://127.0.0.1:9347",
-    git: { head: "1".repeat(40), treeClean: true, treeStatus: [], treeStatusSha256: "0".repeat(64) },
+    git: { head, treeClean: true, treeStatus: [], treeStatusSha256: "0".repeat(64), sourceIdentitySha256 },
     processes: {
       runner: { pid: 101, startedAt: "2026-08-25T00:00:00.000Z" },
       host: { pid: 102, startedAt: "2026-08-25T00:00:01.000Z" },
       electron: { pid: 103, startedAt: "2026-08-25T00:00:02.000Z" },
     },
-    build: {},
+    build: { source: { sourceIdentity: { head, combinedSha256: sourceIdentitySha256 } } },
   };
 }
 

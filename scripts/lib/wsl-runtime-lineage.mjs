@@ -29,6 +29,8 @@ export async function collectWslRuntimeLineage({
   profileDir,
   debugPort,
   processes,
+  buildLineage,
+  sourceIdentity,
   now = () => new Date(),
   executeGit = execFileAsync,
   runtimeGenerationId = randomUUID(),
@@ -39,9 +41,12 @@ export async function collectWslRuntimeLineage({
   const rendererIndexPath = path.join(appRoot, "dist", "renderer", "index.html");
   const rendererProvenancePath = path.join(appRoot, "dist", "renderer-artifact-provenance.json");
   const rendererProvenance = JSON.parse(await readFile(rendererProvenancePath, "utf8"));
-  const treeStatus = await gitOutput(repoRoot, ["status", "--porcelain=v1", "--untracked-files=all"], executeGit);
-  const head = await gitOutput(repoRoot, ["rev-parse", "HEAD"], executeGit);
+  const treeStatus = sourceIdentity == null ? await gitOutput(repoRoot, ["status", "--porcelain=v1", "--untracked-files=all"], executeGit) : null;
+  const head = sourceIdentity?.head ?? await gitOutput(repoRoot, ["rev-parse", "HEAD"], executeGit);
   if (!/^[0-9a-f]{40}$/u.test(head)) throw new Error("Could not capture a full Belmont Git HEAD for runtime lineage.");
+  const resolvedTreeClean = sourceIdentity?.treeClean ?? treeStatus.length === 0;
+  const resolvedStatusSha256 = sourceIdentity?.statusSha256 ?? createHash("sha256").update(treeStatus).digest("hex");
+  if (buildLineage?.sourceIdentity?.combinedSha256 !== sourceIdentity?.combinedSha256) throw new Error("Belmont runtime lineage cannot bind a stale WSL build.");
   return {
     schemaVersion: 1,
     runtimeGenerationId,
@@ -52,12 +57,18 @@ export async function collectWslRuntimeLineage({
     debugEndpoint: debugPort == null ? null : `http://127.0.0.1:${debugPort}`,
     git: {
       head,
-      treeClean: treeStatus.length === 0,
-      treeStatus: treeStatus.length === 0 ? [] : treeStatus.split("\n"),
-      treeStatusSha256: createHash("sha256").update(treeStatus).digest("hex"),
+      treeClean: resolvedTreeClean,
+      treeStatus: treeStatus == null || treeStatus.length === 0 ? [] : treeStatus.split("\n"),
+      treeStatusSha256: resolvedStatusSha256,
+      sourceIdentitySha256: sourceIdentity?.combinedSha256 ?? null,
     },
     processes,
     build: {
+      source: {
+        ...await artifactRecord(repoRoot, path.join(appRoot, "dist", "wsl-build-lineage.json")),
+        builtAt: buildLineage.builtAt,
+        sourceIdentity: buildLineage.sourceIdentity,
+      },
       electronMain: await artifactRecord(repoRoot, electronMainPath),
       host: await artifactRecord(repoRoot, hostPath),
       rendererIndex: await artifactRecord(repoRoot, rendererIndexPath),

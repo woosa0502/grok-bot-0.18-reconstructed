@@ -467,6 +467,10 @@ export function validateBelmontRuntimeLineage(runtimeLineage, client) {
   if (typeof runtimeLineage.profileDir !== "string" || !path.isAbsolute(runtimeLineage.profileDir)) {
     throw new BelmontCdpError("RUN_LINEAGE_INVALID", "The Belmont runtime lineage does not contain an absolute profile path.");
   }
+  if (runtimeLineage.build?.source?.sourceIdentity?.head !== runtimeLineage.git.head
+    || runtimeLineage.build?.source?.sourceIdentity?.combinedSha256 !== runtimeLineage.git.sourceIdentitySha256) {
+    throw new BelmontCdpError("RUN_LINEAGE_INVALID", "The Belmont runtime lineage does not bind the running artifacts to the recorded source identity.");
+  }
   for (const name of ["runner", "host", "electron"]) {
     const processRecord = runtimeLineage.processes?.[name];
     if (!Number.isInteger(processRecord?.pid) || processRecord.pid < 1 || typeof processRecord.startedAt !== "string") {

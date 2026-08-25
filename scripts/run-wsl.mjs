@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { repoRoot } from "./lib/config.mjs";
 import { acquireBelmontRuntimeLock } from "./lib/wsl-runtime-lock.mjs";
+import { assertWslBuildSourceIdentity, captureWslBuildSourceIdentity } from "./lib/wsl-build-lineage.mjs";
 import { collectWslRuntimeLineage, writeWslRuntimeLineage } from "./lib/wsl-runtime-lineage.mjs";
 import {
   assertSupportedNodeRuntime,
@@ -26,6 +27,7 @@ const appRoot = path.join(repoRoot, ".build", "belmont-wsl-runtime");
 const profileDir = process.env.BELMONT_WSL_PROFILE?.trim() || path.join(repoRoot, ".cache", "belmont-wsl-profile");
 const dataRoot = wslDataRoot(profileDir);
 const hostEntry = path.join(appRoot, "dist", "host", "host-main.cjs");
+const buildLineagePath = path.join(appRoot, "dist", "wsl-build-lineage.json");
 const settingsPath = path.join(dataRoot, "settings.json");
 const runtimeLock = await acquireBelmontRuntimeLock({ profileDir });
 const runnerStartedAt = new Date().toISOString();
@@ -35,12 +37,16 @@ try {
     electronBinary,
     path.join(appRoot, "package.json"),
     path.join(appRoot, "dist", "renderer", "index.html"),
+    buildLineagePath,
     hostEntry,
   ]) {
     await access(required).catch(() => {
       throw new Error(`Missing Belmont WSL runtime file: ${required}. Run npm run wsl:setup first.`);
     });
   }
+  const buildLineage = JSON.parse(await readFile(buildLineagePath, "utf8"));
+  const sourceIdentity = await captureWslBuildSourceIdentity({ repoRoot });
+  assertWslBuildSourceIdentity(buildLineage, sourceIdentity);
   await mkdir(dataRoot, { recursive: true });
   const storedSettings = await readFile(settingsPath, "utf8").then(JSON.parse).catch(() => null);
   const initialSettings = initialLocalSettingsUpdate(storedSettings);
@@ -127,6 +133,8 @@ try {
         host: { pid: host.pid, startedAt: hostStartedAt },
         electron: { pid: electron.pid, startedAt: electronStartedAt },
       },
+      buildLineage,
+      sourceIdentity,
     });
     await writeWslRuntimeLineage(path.join(dataRoot, "runtime-lineage.json"), lineage);
   } catch (error) {

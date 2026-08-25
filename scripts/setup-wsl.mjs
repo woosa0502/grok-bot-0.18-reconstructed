@@ -10,6 +10,7 @@ import {
 import { createRendererArtifactProvenance, overlayCleanDistribution } from "./lib/clean-build.mjs";
 import { repoRoot, sourceAppDir } from "./lib/config.mjs";
 import { run } from "./lib/process.mjs";
+import { captureWslBuildSourceIdentity, writeWslBuildLineage } from "./lib/wsl-build-lineage.mjs";
 import { assertSupportedNodeRuntime, assertWslPlatform } from "./lib/wsl-runtime.mjs";
 
 const electronVersion = "42.1.0";
@@ -95,12 +96,18 @@ async function assertFidelityRenderer(built) {
 assertSupportedNodeRuntime();
 assertWslPlatform();
 process.env.npm_config_devdir ??= path.join(repoRoot, ".cache", "node-gyp");
+const sourceIdentityBeforeBuild = await captureWslBuildSourceIdentity({ repoRoot });
 await ensureUpstreamEvidence();
 await ensureLinuxElectron();
 
 const built = await buildFidelityDistribution({ outputRoot: buildRoot });
 await stageFidelityRuntime(built);
 await assertFidelityRenderer(built);
+const sourceIdentityAfterBuild = await captureWslBuildSourceIdentity({ repoRoot });
+if (sourceIdentityAfterBuild.combinedSha256 !== sourceIdentityBeforeBuild.combinedSha256) {
+  throw new Error("Belmont source changed while the WSL runtime was building. Run npm run wsl:setup again from a stable tree.");
+}
+await writeWslBuildLineage(path.join(runtimeRoot, "dist", "wsl-build-lineage.json"), sourceIdentityAfterBuild);
 await writeFile(path.join(runtimeRoot, "package.json"), `${JSON.stringify({
   name: "belmont-wsl",
   productName: "Belmont",

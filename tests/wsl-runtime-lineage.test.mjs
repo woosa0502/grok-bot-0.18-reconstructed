@@ -22,6 +22,9 @@ test("WSL launcher records reproducible Git, process, profile, and build lineage
       inventorySha256: "a".repeat(64),
       sourceArtifactSha256: "b".repeat(64),
     }));
+    const sourceIdentity = { schemaVersion: 1, head: "c".repeat(40), treeClean: false, statusSha256: "e".repeat(64), trackedDiffSha256: "f".repeat(64), untrackedSha256: "0".repeat(64), untrackedPaths: [], combinedSha256: "1".repeat(64) };
+    const buildLineage = { schemaVersion: 1, builtAt: "2026-08-25T00:00:00.000Z", sourceIdentity };
+    await writeFile(path.join(appRoot, "dist", "wsl-build-lineage.json"), JSON.stringify(buildLineage));
     const gitCalls = [];
     const executeGit = async (_command, args) => {
       gitCalls.push(args);
@@ -40,18 +43,21 @@ test("WSL launcher records reproducible Git, process, profile, and build lineage
       now: () => new Date("2026-08-25T00:00:03.000Z"),
       executeGit,
       runtimeGenerationId: "generation-test",
+      buildLineage,
+      sourceIdentity,
     });
     assert.equal(lineage.runtimeGenerationId, "generation-test");
     assert.equal(lineage.debugEndpoint, "http://127.0.0.1:9347");
     assert.equal(lineage.git.head, "c".repeat(40));
     assert.equal(lineage.git.treeClean, false);
-    assert.deepEqual(lineage.git.treeStatus, [" M scripts/run-wsl.mjs"]);
+    assert.deepEqual(lineage.git.treeStatus, []);
+    assert.equal(lineage.git.sourceIdentitySha256, "1".repeat(64));
     assert.equal(lineage.profileDir, profileDir);
     assert.equal(lineage.processes.electron.pid, 12);
     assert.equal(lineage.build.rendererProvenance.mode, "checksum-pinned-artifact-runtime");
     assert.equal(lineage.build.rendererProvenance.inventorySha256, "a".repeat(64));
     assert.match(lineage.build.electronMain.sha256, /^[0-9a-f]{64}$/u);
-    assert.equal(gitCalls.length, 2);
+    assert.equal(gitCalls.length, 0);
     const output = path.join(profileDir, "sand-data", "runtime-lineage.json");
     await writeWslRuntimeLineage(output, lineage);
     assert.deepEqual(JSON.parse(await readFile(output, "utf8")), lineage);
@@ -71,6 +77,9 @@ test("WSL lineage keeps non-CDP product starts valid", async () => {
     await writeFile(path.join(appRoot, "dist", "host", "host-main.cjs"), "host");
     await writeFile(path.join(appRoot, "dist", "renderer", "index.html"), "renderer");
     await writeFile(path.join(appRoot, "dist", "renderer-artifact-provenance.json"), JSON.stringify({}));
+    const sourceIdentity = { schemaVersion: 1, head: "d".repeat(40), treeClean: true, statusSha256: "e".repeat(64), trackedDiffSha256: "f".repeat(64), untrackedSha256: "0".repeat(64), untrackedPaths: [], combinedSha256: "2".repeat(64) };
+    const buildLineage = { schemaVersion: 1, builtAt: "2026-08-25T00:00:00.000Z", sourceIdentity };
+    await writeFile(path.join(appRoot, "dist", "wsl-build-lineage.json"), JSON.stringify(buildLineage));
     const lineage = await collectWslRuntimeLineage({
       repoRoot: root,
       appRoot,
@@ -78,6 +87,8 @@ test("WSL lineage keeps non-CDP product starts valid", async () => {
       debugPort: null,
       processes: { runner: { pid: 1, startedAt: "x" }, host: { pid: 2, startedAt: "x" }, electron: { pid: 3, startedAt: "x" } },
       executeGit: async (_command, args) => ({ stdout: args.includes("rev-parse") ? `${"d".repeat(40)}\n` : "" }),
+      buildLineage,
+      sourceIdentity,
     });
     assert.equal(lineage.debugEndpoint, null);
   } finally {
