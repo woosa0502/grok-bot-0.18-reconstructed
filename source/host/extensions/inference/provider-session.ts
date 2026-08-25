@@ -8,7 +8,7 @@ import { jsonSchema, streamText, tool, type CoreMessage, type LanguageModelV1, t
 
 import { BasePromptBuilder, BasePromptExecutor } from "../../../packages/chat-inference/base.js";
 import type { SandInferenceProvider } from "../../../shared/inference-router.js";
-import { resolveClaudeCodeCliPath } from "../../../shared/node/inference-router-local.js";
+import { isUsableCodexChatGptAuthDocument, resolveClaudeCodeCliPath } from "../../../shared/node/inference-router-local.js";
 import { getSandRootDir } from "../../host-paths.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
@@ -73,7 +73,7 @@ function codexCredentials(): CodexCredentials {
   const refreshToken = parsed?.tokens?.refresh_token;
   const idToken = parsed?.tokens?.id_token;
   const accountId = parsed?.tokens?.account_id;
-  if (parsed?.auth_mode !== "chatgpt" || typeof accessToken !== "string" || accessToken.length === 0 || typeof refreshToken !== "string" || refreshToken.length === 0 || typeof idToken !== "string" || idToken.length === 0 || typeof accountId !== "string" || accountId.length === 0) {
+  if (!isUsableCodexChatGptAuthDocument(parsed)) {
     throw new Error("Codex is not signed in with ChatGPT. Run `codex login`, then reopen Grok Bot.");
   }
   return { accessToken, refreshToken, idToken, accountId, path, document: parsed };

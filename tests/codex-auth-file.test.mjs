@@ -33,3 +33,10 @@ test("Codex auth rejects API-key, foreign-mode, and incomplete documents", async
   assert.equal(isUsableCodexChatGptAuthDocument({ tokens: { ...tokens, refresh_token: "" } }), false);
   assert.equal(isUsableCodexChatGptAuthDocument(null), false);
 });
+
+test("the routed Codex request path uses the same auth-document validator", async () => {
+  const source = await readFile(path.join(repositoryRoot, "source/host/extensions/inference/provider-session.ts"), "utf8");
+  assert.match(source, /import \{ isUsableCodexChatGptAuthDocument, resolveClaudeCodeCliPath \}/);
+  assert.match(source, /if \(!isUsableCodexChatGptAuthDocument\(parsed\)\)/);
+  assert.doesNotMatch(source, /parsed\?\.auth_mode !== "chatgpt"/);
+});
