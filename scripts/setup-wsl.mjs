@@ -5,10 +5,9 @@ import { downloadArtifact } from "@electron/get";
 
 import {
   buildFidelityDistribution,
-  createRendererArtifactProvenance,
-  fidelityRuntimeComposition,
-  overlayCleanDistribution,
-} from "./lib/clean-build.mjs";
+  overlayAuditMetadata,
+} from "./clean-build.mjs";
+import { createRendererArtifactProvenance, overlayCleanDistribution } from "./lib/clean-build.mjs";
 import { repoRoot, sourceAppDir } from "./lib/config.mjs";
 import { run } from "./lib/process.mjs";
 import { assertSupportedNodeRuntime, assertWslPlatform } from "./lib/wsl-runtime.mjs";
@@ -64,8 +63,9 @@ async function stageFidelityRuntime(built) {
   await cp(sourceAppDir, runtimeRoot, { recursive: true, dereference: false, preserveTimestamps: true });
   await overlayCleanDistribution(built.outputRoot, {
     stageRoot: runtimeRoot,
-    composition: fidelityRuntimeComposition,
+    composition: built.buildManifest.runtimeComposition,
   });
+  await overlayAuditMetadata(built, { stageRoot: runtimeRoot });
 }
 
 async function assertFidelityRenderer(built) {
@@ -74,6 +74,9 @@ async function assertFidelityRenderer(built) {
     artifactRoot: path.join(runtimeRoot, "dist", "renderer"),
   });
   if (built.buildManifest.buildKind !== "fidelity-hybrid-reconstruction"
+    || !built.hostActivation.clean
+    || !built.electronMainActivation.clean
+    || built.compositionAudit.summary.blockedFallbacks.length > 0
     || renderer?.mode !== "checksum-pinned-artifact-runtime"
     || renderer?.artifactRoot !== "src/app/dist/renderer"
     || built.renderer?.mode !== "checksum-pinned-artifact-runtime"

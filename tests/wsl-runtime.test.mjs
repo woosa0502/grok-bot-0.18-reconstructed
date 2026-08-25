@@ -18,7 +18,11 @@ test("WSL setup uses the checksum-pinned shipped renderer", async () => {
   assert.match(setup, /buildFidelityDistribution/);
   assert.doesNotMatch(setup, /buildCleanDistribution/);
   assert.match(setup, /overlayCleanDistribution/);
+  assert.match(setup, /overlayAuditMetadata/);
   assert.match(setup, /stageRoot: runtimeRoot/);
+  assert.match(setup, /built\.hostActivation\.clean/);
+  assert.match(setup, /built\.electronMainActivation\.clean/);
+  assert.match(setup, /blockedFallbacks\.length > 0/);
   assert.match(setup, /createRendererArtifactProvenance/);
   assert.match(setup, /stagedRenderer\.inventorySha256 !== built\.renderer\.inventorySha256/);
   assert.match(setup, /checksum-pinned-artifact-runtime/);
