@@ -1,0 +1,117 @@
+import assert from "node:assert/strict";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+
+import {
+  BelmontCdpError,
+  discoverBelmontTarget,
+  observeBelmontPlan,
+  validateBelmontCdpPlan,
+} from "../scripts/lib/belmont-cdp-observer.mjs";
+
+const repositoryRoot = path.resolve(import.meta.dirname, "..");
+
+function plan(caseId = "BELMONT-CDP-TEST") {
+  return {
+    schemaVersion: 1,
+    caseId,
+    expectedBehavior: "The existing Belmont prompt remains visible.",
+    steps: [
+      { action: "assert", locator: { role: "textbox", name: "Prompt" }, expect: { visible: true } },
+      { action: "snapshot", name: "prompt-visible" },
+      { action: "screenshot", name: "prompt-visible" },
+    ],
+  };
+}
+
+class FakeClient {
+  constructor(targetId = "target-a") {
+    this.endpoint = "http://127.0.0.1:9347";
+    this.target = { id: targetId, title: "Grok Bot", url: "file:///workspace/Belmont/.build/belmont-wsl-runtime/dist/renderer/index.html" };
+    this.events = [];
+  }
+
+  clearEvents() { this.events.length = 0; }
+  async send() { return {}; }
+  async screenshot(filePath) { await writeFile(filePath, Buffer.from("fake-png")); }
+  async evaluate(expression) {
+    if (expression.includes('const operation = "snapshot"')) {
+      return { title: "Grok Bot", url: this.target.url, readyState: "complete", bodyText: "", activeElement: null, interactive: [], dimensions: { width: 1040, height: 760, devicePixelRatio: 1 } };
+    }
+    return { matches: 1, selected: { tag: "DIV", role: "textbox", name: "Prompt", text: "", value: null, visible: true, enabled: true, rect: { x: 1, y: 1, width: 10, height: 10 } } };
+  }
+}
+
+test("CDP discovery attaches only to a loopback Belmont page", async () => {
+  const fakeFetch = async (url) => {
+    assert.equal(String(url), "http://127.0.0.1:9347/json/list");
+    return new Response(JSON.stringify([
+    { id: "other", type: "page", title: "Example", url: "https://example.com", webSocketDebuggerUrl: "ws://127.0.0.1:9347/devtools/page/other" },
+    { id: "belmont", type: "page", title: "Grok Bot", url: "file:///workspace/Belmont/index.html", webSocketDebuggerUrl: "ws://127.0.0.1:9347/devtools/page/belmont" },
+    ]), { status: 200 });
+  };
+  const result = await discoverBelmontTarget("http://127.0.0.1:9347", fakeFetch);
+  assert.equal(result.target.id, "belmont");
+  await assert.rejects(() => discoverBelmontTarget("http://192.0.2.1:9347", fakeFetch), error => error instanceof BelmontCdpError && error.code === "NON_LOOPBACK_ENDPOINT");
+  await assert.rejects(
+    () => discoverBelmontTarget("http://127.0.0.1:9347", async () => new Response(JSON.stringify([
+      { id: "belmont-a", type: "page", title: "Grok Bot", url: "file:///Belmont/a.html", webSocketDebuggerUrl: "ws://127.0.0.1/a" },
+      { id: "belmont-b", type: "page", title: "Belmont", url: "file:///Belmont/b.html", webSocketDebuggerUrl: "ws://127.0.0.1/b" },
+    ]), { status: 200 })),
+    error => error instanceof BelmontCdpError && error.code === "MULTIPLE_BELMONT_TARGETS",
+  );
+  await assert.rejects(
+    () => discoverBelmontTarget("http://127.0.0.1:9347", async () => new Response(JSON.stringify([
+      { id: "legacy", type: "page", title: "Grok Bot", url: "file:///old-grok-build/index.html", webSocketDebuggerUrl: "ws://127.0.0.1/legacy" },
+    ]), { status: 200 })),
+    error => error instanceof BelmontCdpError && error.code === "BELMONT_TARGET_NOT_FOUND",
+  );
+});
+
+test("plan validation rejects arbitrary evaluation and unsafe case identifiers", () => {
+  assert.equal(validateBelmontCdpPlan(plan()).caseId, "BELMONT-CDP-TEST");
+  assert.throws(() => validateBelmontCdpPlan({ schemaVersion: 1, caseId: "../escape", steps: [{ action: "wait", ms: 1 }] }), /safe, stable identifier/u);
+  assert.throws(() => validateBelmontCdpPlan({ schemaVersion: 1, caseId: "CASE-1", steps: [{ action: "evaluate", expression: "document.body.remove()" }] }), /Unsupported step/u);
+});
+
+test("observer stores evidence and a provisional result without self-approving product PASS", async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), "belmont-cdp-observer-"));
+  try {
+    const record = await observeBelmontPlan({ client: new FakeClient(), plan: plan(), runDir });
+    assert.equal(record.executionStatus, "ACTION_COMPLETE");
+    assert.equal(record.provisionalVerdict, "PROVISIONAL_PASS");
+    assert.equal(record.finalVerdict, undefined);
+    await access(record.evidence.beforeScreenshot);
+    await access(record.evidence.afterScreenshot);
+    const ledger = (await readFile(path.join(runDir, "observations.jsonl"), "utf8")).trim().split("\n").map(JSON.parse);
+    assert.equal(ledger.length, 1);
+    assert.equal(ledger[0].caseId, "BELMONT-CDP-TEST");
+    const checkpoint = JSON.parse(await readFile(path.join(runDir, "checkpoint.json"), "utf8"));
+    assert.equal(checkpoint.finalVerdictStillRequired, true);
+  } finally {
+    await rm(runDir, { recursive: true, force: true });
+  }
+});
+
+test("observer refuses to mix a different Electron target into one run directory", async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), "belmont-cdp-generation-"));
+  try {
+    await observeBelmontPlan({ client: new FakeClient("target-a"), plan: plan("CASE-A"), runDir });
+    await assert.rejects(
+      () => observeBelmontPlan({ client: new FakeClient("target-b"), plan: plan("CASE-B"), runDir }),
+      error => error instanceof BelmontCdpError && error.code === "RUN_GENERATION_CHANGED",
+    );
+  } finally {
+    await rm(runDir, { recursive: true, force: true });
+  }
+});
+
+test("CDP observer stays independent from Belmont product process ownership", async () => {
+  const cli = await readFile(path.join(repositoryRoot, "scripts", "belmont-cdp.mjs"), "utf8");
+  const observer = await readFile(path.join(repositoryRoot, "scripts", "lib", "belmont-cdp-observer.mjs"), "utf8");
+  assert.doesNotMatch(`${cli}\n${observer}`, /spawn\(|execFile\(|process\.kill|run-wsl|wsl-runtime-lock|BELMONT_WSL_PROFILE/u);
+  assert.match(observer, /loopback endpoints only/u);
+  assert.match(observer, /finalVerdictStillRequired: true/u);
+});

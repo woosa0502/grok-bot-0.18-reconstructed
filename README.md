@@ -207,7 +207,12 @@ npm run package           # build, sign, and verify the macOS app
 npm run verify            # verify an existing packaged app
 npm run smoke             # bounded native smoke check
 npm run publication:check # prove a fresh-history export is lossless
+npm run wsl:cdp -- status # inspect one already-running Belmont WSL renderer
 ```
+
+For the bounded CDP observer, evidence layout, verdict rules, and the 1,292-case
+WSL user-test workflow, see
+[docs/belmont-user-test-method-2026-08-25.md](docs/belmont-user-test-method-2026-08-25.md).
 
 Generated directories including `.cache`, `.build`, `dist`, `src/app/dist`,
 `recovered`, `recovery`, and local probe roots are ignored.

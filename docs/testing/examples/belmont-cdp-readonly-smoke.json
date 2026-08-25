@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "caseId": "BELMONT-CDP-READONLY-SMOKE",
+  "description": "Confirm that the existing Belmont renderer is ready without changing product state.",
+  "expectedBehavior": "The existing Belmont prompt is visible and enabled.",
+  "steps": [
+    {
+      "action": "assert",
+      "locator": { "role": "textbox", "name": "Prompt", "exact": true },
+      "expect": { "visible": true, "enabled": true }
+    },
+    { "action": "wait", "ms": 300 },
+    { "action": "snapshot", "name": "renderer-ready", "maxText": 2000 },
+    { "action": "screenshot", "name": "renderer-ready" }
+  ]
+}

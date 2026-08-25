@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "caseId": "BELMONT-CDP-FILL-CLEAR-SMOKE",
+  "description": "Exercise real prompt focus and keyboard input, then restore the empty draft without sending a message.",
+  "expectedBehavior": "The existing Belmont prompt accepts keyboard input and can be cleared without changing conversations.",
+  "steps": [
+    {
+      "action": "assert",
+      "locator": { "role": "textbox", "name": "Prompt", "exact": true },
+      "expect": { "visible": true, "enabled": true }
+    },
+    {
+      "action": "fill",
+      "locator": { "role": "textbox", "name": "Prompt", "exact": true },
+      "text": "BELMONT_CDP_SMOKE"
+    },
+    {
+      "action": "assert",
+      "locator": { "role": "textbox", "name": "Prompt", "exact": true },
+      "expect": { "textEquals": "BELMONT_CDP_SMOKE" }
+    },
+    {
+      "action": "fill",
+      "locator": { "role": "textbox", "name": "Prompt", "exact": true },
+      "text": ""
+    },
+    {
+      "action": "assert",
+      "locator": { "role": "textbox", "name": "Prompt", "exact": true },
+      "expect": { "textEquals": "" }
+    }
+  ]
+}

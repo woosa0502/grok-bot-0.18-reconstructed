@@ -25,7 +25,8 @@
     "source:typecheck": "tsc --project source/tsconfig.json",
     "verify": "node scripts/verify.mjs",
     "wsl:setup": "node scripts/setup-wsl.mjs",
-    "wsl:start": "node scripts/run-wsl.mjs"
+    "wsl:start": "node scripts/run-wsl.mjs",
+    "wsl:cdp": "node scripts/belmont-cdp.mjs"
   },
   "devDependencies": {
     "@electron/asar": "4.2.1",
