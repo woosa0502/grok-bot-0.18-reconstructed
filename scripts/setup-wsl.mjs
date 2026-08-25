@@ -1,9 +1,14 @@
-import { access, chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { downloadArtifact } from "@electron/get";
 
-import { buildFidelityDistribution } from "./lib/clean-build.mjs";
+import {
+  buildFidelityDistribution,
+  createRendererArtifactProvenance,
+  fidelityRuntimeComposition,
+  overlayCleanDistribution,
+} from "./lib/clean-build.mjs";
 import { repoRoot, sourceAppDir } from "./lib/config.mjs";
 import { run } from "./lib/process.mjs";
 import { assertSupportedNodeRuntime, assertWslPlatform } from "./lib/wsl-runtime.mjs";
@@ -12,6 +17,7 @@ const electronVersion = "42.1.0";
 const electronRoot = path.join(repoRoot, "node_modules", "electron");
 const electronDist = path.join(electronRoot, "dist");
 const electronBinary = path.join(electronDist, "electron");
+const buildRoot = path.join(repoRoot, ".build", "belmont-wsl-build");
 const runtimeRoot = path.join(repoRoot, ".build", "belmont-wsl-runtime");
 const requiredUpstreamInputs = [
   "dist/electron-main/main.cjs",
@@ -53,14 +59,33 @@ async function ensureLinuxElectron() {
   await writeFile(path.join(electronRoot, "path.txt"), "electron");
 }
 
-function assertFidelityRenderer(built) {
+async function stageFidelityRuntime(built) {
+  await rm(runtimeRoot, { recursive: true, force: true });
+  await cp(sourceAppDir, runtimeRoot, { recursive: true, dereference: false, preserveTimestamps: true });
+  await overlayCleanDistribution(built.outputRoot, {
+    stageRoot: runtimeRoot,
+    composition: fidelityRuntimeComposition,
+  });
+}
+
+async function assertFidelityRenderer(built) {
   const renderer = built.buildManifest.runtimeComposition.find(item => item.runtime === "renderer");
+  const stagedRenderer = await createRendererArtifactProvenance({
+    artifactRoot: path.join(runtimeRoot, "dist", "renderer"),
+  });
   if (built.buildManifest.buildKind !== "fidelity-hybrid-reconstruction"
     || renderer?.mode !== "checksum-pinned-artifact-runtime"
     || renderer?.artifactRoot !== "src/app/dist/renderer"
     || built.renderer?.mode !== "checksum-pinned-artifact-runtime"
-    || !built.renderer.files.some(file => file.path === "index.html")) {
+    || !built.renderer.files.some(file => file.path === "index.html")
+    || stagedRenderer.fileCount !== built.renderer.fileCount
+    || stagedRenderer.inventorySha256 !== built.renderer.inventorySha256) {
     throw new Error("Belmont WSL runtime did not preserve the checksum-pinned shipped renderer.");
+  }
+  for (const required of requiredUpstreamInputs) {
+    await access(path.join(runtimeRoot, required)).catch(() => {
+      throw new Error(`Belmont WSL runtime is missing required staged file: ${required}`);
+    });
   }
 }
 
@@ -70,8 +95,9 @@ process.env.npm_config_devdir ??= path.join(repoRoot, ".cache", "node-gyp");
 await ensureUpstreamEvidence();
 await ensureLinuxElectron();
 
-const built = await buildFidelityDistribution({ outputRoot: runtimeRoot });
-assertFidelityRenderer(built);
+const built = await buildFidelityDistribution({ outputRoot: buildRoot });
+await stageFidelityRuntime(built);
+await assertFidelityRenderer(built);
 await writeFile(path.join(runtimeRoot, "package.json"), `${JSON.stringify({
   name: "belmont-wsl",
   productName: "Belmont",
