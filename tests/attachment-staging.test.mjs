@@ -53,3 +53,22 @@ test("attachment staging still rejects non-byte objects", async () => {
   assert.equal(normalizeAttachmentBytes([65]), null);
   assert.equal(normalizeAttachmentBytes("AUTH_OK"), null);
 });
+
+test("attachment staging uses the Node random UUID source when no test UUID is injected", async () => {
+  const { createAttachmentEdgePort } = await loadModule();
+  const stagingDir = await mkdtemp(path.join(os.tmpdir(), "belmont-attachment-stage-default-uuid-"));
+  try {
+    const attachments = createAttachmentEdgePort({
+      onEdgeFailure: () => assert.fail("staging should not report an edge failure"),
+      byteLimitForName: () => 1024,
+      getStagingDir: () => stagingDir,
+      now: () => 456,
+    });
+    const result = await attachments.stageBytes("fixture.txt", new Uint8Array([65]));
+    assert.equal(result.ok, true);
+    assert.match(path.basename(result.path), /^456-[0-9a-f-]{36}\.txt$/u);
+    assert.equal(await readFile(result.path, "utf8"), "A");
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true });
+  }
+});
