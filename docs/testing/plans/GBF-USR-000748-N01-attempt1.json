@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000748-N01-ATTEMPT1",
+  "description": "Cmd/Ctrl - 로 화면 축소 시도 1",
+  "expectedBehavior": "Cmd/Ctrl - 로 화면을 축소한다",
+  "steps": [
+    { "action": "assert", "locator": { "role": "textbox", "name": "Prompt", "exact": true }, "expect": { "visible": true } },
+    { "action": "press", "key": "-", "modifiers": ["CTRL"] },
+    { "action": "wait", "ms": 300 },
+    { "action": "screenshot", "name": "after-zoom-out" }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000210-N01-CLEANUP",
+  "description": "Chat Settings 패널 닫기로 원상 복구",
+  "expectedBehavior": "Close details를 클릭하면 설정 패널이 닫히고 원래 대화 화면으로 복귀한다.",
+  "steps": [
+    { "action": "click", "locator": { "role": "button", "name": "Close details", "exact": true } },
+    { "action": "wait", "ms": 300 },
+    { "action": "assert", "locator": { "role": "button", "name": "Close details", "exact": true }, "expect": { "hidden": true } },
+    { "action": "screenshot", "name": "restored" }
+  ]
+}

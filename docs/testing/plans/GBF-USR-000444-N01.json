@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000444-N01",
+  "description": "이전/다음 에이전트 단축키(Alt+Up/Alt+Down)",
+  "expectedBehavior": "이전/다음 에이전트 단축키를 누르면 인접한 보이는 사이드바 에이전트로 선택이 이동하고 대화가 열린다",
+  "steps": [
+    { "action": "assert", "locator": { "role": "button", "name": "Grok", "exact": true }, "expect": { "visible": true } },
+    { "action": "snapshot", "name": "before-shortcut", "maxText": 1500 },
+    { "action": "press", "key": "ArrowDown", "modifiers": ["ALT"] },
+    { "action": "wait", "ms": 400 },
+    { "action": "snapshot", "name": "after-next-agent", "maxText": 1500 },
+    { "action": "screenshot", "name": "after-next-agent" },
+    { "action": "press", "key": "ArrowUp", "modifiers": ["ALT"] },
+    { "action": "wait", "ms": 400 },
+    { "action": "assert", "locator": { "role": "button", "name": "Grok", "exact": true }, "expect": { "visible": true } },
+    { "action": "snapshot", "name": "after-previous-agent", "maxText": 1500 },
+    { "action": "screenshot", "name": "after-previous-agent" }
+  ]
+}

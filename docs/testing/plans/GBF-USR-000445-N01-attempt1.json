@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000445-N01-ATTEMPT1",
+  "description": "뒤로 내비게이션 단축키(Ctrl+[) 시도 1",
+  "expectedBehavior": "뒤로/앞으로 내비게이션을 실행하면 이전 방문 에이전트 히스토리를 단계별로 이동한다(사라진 것은 건너뜀)",
+  "steps": [
+    { "action": "assert", "locator": { "role": "button", "name": "Grok", "exact": true }, "expect": { "visible": true } },
+    { "action": "press", "key": "[", "modifiers": ["CTRL"] },
+    { "action": "wait", "ms": 300 },
+    { "action": "screenshot", "name": "after-back-shortcut" }
+  ]
+}

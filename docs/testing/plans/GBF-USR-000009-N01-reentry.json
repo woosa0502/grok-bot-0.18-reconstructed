@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000009-N01-REENTRY",
+  "description": "Start a thread 이후 원래 대화로 복귀해 상태 격리 확인",
+  "expectedBehavior": "Back to Grok을 클릭하면 thread 뷰를 벗어나 원래 대화 transcript로 복귀한다.",
+  "steps": [
+    { "action": "assert", "locator": { "role": "button", "name": "Back to Grok", "exact": true }, "expect": { "visible": true } },
+    { "action": "click", "locator": { "role": "button", "name": "Back to Grok", "exact": true } },
+    { "action": "wait", "ms": 400 },
+    { "action": "assert", "locator": { "role": "article" }, "expect": { "count": 4 } },
+    { "action": "snapshot", "name": "reentry-main", "maxText": 2000 },
+    { "action": "screenshot", "name": "reentry-main" }
+  ]
+}

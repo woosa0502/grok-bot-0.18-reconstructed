@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000213-N01-ATTEMPT1",
+  "description": "명령 팔레트 Routines 탭에서 루틴 결과 선택 시도 1",
+  "expectedBehavior": "명령 팔레트에서 루틴 결과를 선택하면 해당 루틴의 에이전트가 열리고 루틴 정보 창이 표시된다",
+  "steps": [
+    { "action": "press", "key": "k", "modifiers": ["CTRL"] },
+    { "action": "assert", "locator": { "role": "dialog", "name": "Search", "exact": true }, "expect": { "visible": true }, "timeoutMs": 2000 },
+    { "action": "click", "locator": { "role": "tab", "name": "Routines", "exact": true } },
+    { "action": "wait", "ms": 1000 },
+    { "action": "snapshot", "name": "routines-tab-empty-query", "maxText": 2000 },
+    { "action": "screenshot", "name": "routines-tab-empty-query" },
+    { "action": "assert", "locator": { "role": "option" }, "expect": { "count": 0 } }
+  ]
+}

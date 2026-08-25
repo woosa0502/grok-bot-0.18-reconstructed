@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000604-N01",
+  "description": "Cmd/Ctrl+K로 명령 팔레트 토글",
+  "expectedBehavior": "Press Cmd/Ctrl+K to toggle the command palette",
+  "steps": [
+    { "action": "assert", "locator": { "role": "dialog", "name": "Search", "exact": true }, "expect": { "hidden": true } },
+    { "action": "press", "key": "k", "modifiers": ["CTRL"] },
+    { "action": "wait", "ms": 300 },
+    { "action": "assert", "locator": { "role": "dialog", "name": "Search", "exact": true }, "expect": { "visible": true }, "timeoutMs": 2000 },
+    { "action": "screenshot", "name": "palette-toggled-open" },
+    { "action": "press", "key": "k", "modifiers": ["CTRL"] },
+    { "action": "wait", "ms": 300 },
+    { "action": "assert", "locator": { "role": "dialog", "name": "Search", "exact": true }, "expect": { "hidden": true }, "timeoutMs": 2000 },
+    { "action": "screenshot", "name": "palette-toggled-closed" }
+  ]
+}

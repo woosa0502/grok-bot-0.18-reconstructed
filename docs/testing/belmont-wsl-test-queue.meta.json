@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "status": "BELMONT_QUEUE_REBASED_PENDING_PILOT",
+  "rebaseHead": "74b146d18e73f48c9d73f507aed1d830e19d4ed4",
+  "legacyImportCommit": "bf66838",
+  "sourceRunnable": "docs/testing/legacy-grok-2026-08-25/audit/grok-wsl-test-runnable.jsonl",
+  "sourceRunnableSha256": "def55dc8b269e86db6820764e9ca996d6e35bdd245c8b9f562501c1cb377643e",
+  "sourceRunnableSha256Expected": "def55dc8b269e86db6820764e9ca996d6e35bdd245c8b9f562501c1cb377643e",
+  "sourceRunnableSha256Match": true,
+  "totalRows": 1292,
+  "expectedTotalRows": 1292,
+  "duplicateFeatureIds": [],
+  "duplicateRunnableSequence": [],
+  "missingRunnableSequence": [],
+  "belmontDispositionCounts": {
+    "RETAIN": 1282,
+    "REWORD": 0,
+    "REQUIRED_ATTEMPT_CURRENT_BUILD": 10
+  },
+  "belmontDispositionBasisCounts": {
+    "SOURCE_REF_UNCHANGED_SINCE_LEGACY_IMPORT": 1282,
+    "SOURCE_REF_MODIFIED_SINCE_LEGACY_IMPORT": 10
+  },
+  "excludedCarriedForwardForReReview": 208,
+  "excludedMergedIntoDenominator": false,
+  "rebaseMethod": "각 row의 sourceRefs 파일 경로가 legacy 코드 최초 이관 커밋(bf66838, Initial reconstructed source import) 이후 현재 rebaseHead까지 수정된 적이 있는지 git diff --name-only로 대조했다. 모든 sourceRefs가 현재 저장소에 그대로 존재함을 먼저 확인했다(누락 0). 수정 이력이 없으면 RETAIN, 있으면 REQUIRED_ATTEMPT_CURRENT_BUILD로 분류했다. expectedBehavior 텍스트에서 Cursor/wsl-profile/launcher 등 이름 정정이 필요한 패턴을 검색했으나 Belmont 고유 리네이밍이 필요한 사례는 발견하지 못해 REWORD는 0건이다.",
+  "rebaseLimitation": "이 rebase는 구조적(소스 파일 diff) 검사이며 1,292개 expectedBehavior 각각을 현재 UI와 사람이 1:1로 육안 대조한 것은 아니다. 파일이 존재하고 미수정이어도 런타임 동작이 다를 수 있다는 잔여 위험이 있다. REQUIRED_ATTEMPT_CURRENT_BUILD 10건은 실제 코드가 바뀐 영역이라 우선 실제 UI 진입으로 판정해야 한다. RETAIN 1,282건도 실제 실행 시 개별 FAIL/UNREACHABLE이 나올 수 있으며 이 disposition은 '실행 대상에서 제외하지 않는다'는 뜻이지 '통과를 예측한다'는 뜻이 아니다.",
+  "queueFile": "docs/testing/belmont-wsl-test-queue.jsonl",
+  "mappingFile": "docs/testing/belmont-wsl-test-mapping.jsonl",
+  "excludedReviewFile": "docs/testing/belmont-wsl-test-excluded-review.jsonl"
+}

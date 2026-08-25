@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000009-N01",
+  "description": "More 매시지 작업 메뉴를 열고 Start a thread를 클릭",
+  "expectedBehavior": "More 메시지 작업 메뉴를 열고 Start a thread를 클릭하면 해당 메시지에 대해 onStartThread가 발생한다",
+  "steps": [
+    { "action": "assert", "locator": { "role": "article" }, "expect": { "visible": true } },
+    { "action": "hover", "locator": { "role": "article", "nth": 0 } },
+    { "action": "wait", "ms": 300 },
+    { "action": "click", "locator": { "role": "button", "name": "More message actions", "nth": 0 } },
+    { "action": "assert", "locator": { "role": "menu", "name": "More message actions", "exact": true }, "expect": { "visible": true }, "timeoutMs": 2000 },
+    { "action": "snapshot", "name": "menu-open", "maxText": 2000 },
+    { "action": "screenshot", "name": "menu-open" },
+    { "action": "click", "locator": { "role": "menuitem", "name": "Start a thread", "exact": true } },
+    { "action": "wait", "ms": 500 },
+    { "action": "snapshot", "name": "after-start-thread", "maxText": 3000 },
+    { "action": "screenshot", "name": "after-start-thread" }
+  ]
+}

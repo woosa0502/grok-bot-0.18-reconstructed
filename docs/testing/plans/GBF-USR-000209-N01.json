@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000209-N01",
+  "description": "명령 팔레트 질의 입력 시 퍼지 점수 순위화 및 숨김 에이전트 후순위 배치",
+  "expectedBehavior": "명령 팔레트에 질의를 입력하면 항목이 퍼지 점수로 순위화되고 숨김 에이전트가 뒤에 붙는다",
+  "steps": [
+    { "action": "press", "key": "k", "modifiers": ["CTRL"] },
+    { "action": "assert", "locator": { "role": "dialog", "name": "Search", "exact": true }, "expect": { "visible": true }, "timeoutMs": 2000 },
+    { "action": "snapshot", "name": "palette-empty", "maxText": 3000 },
+    { "action": "screenshot", "name": "palette-empty" },
+    { "action": "fill", "locator": { "role": "combobox", "name": "Search", "exact": true }, "text": "g" },
+    { "action": "wait", "ms": 400 },
+    { "action": "assert", "locator": { "role": "listbox", "name": "Results", "exact": true }, "expect": { "visible": true }, "timeoutMs": 2000 },
+    { "action": "snapshot", "name": "palette-query-g", "maxText": 4000 },
+    { "action": "screenshot", "name": "palette-query-g" },
+    { "action": "fill", "locator": { "role": "combobox", "name": "Search", "exact": true }, "text": "belmont" },
+    { "action": "wait", "ms": 400 },
+    { "action": "snapshot", "name": "palette-query-belmont", "maxText": 4000 },
+    { "action": "screenshot", "name": "palette-query-belmont" },
+    { "action": "press", "key": "Escape" },
+    { "action": "wait", "ms": 300 },
+    { "action": "assert", "locator": { "role": "dialog", "name": "Search", "exact": true }, "expect": { "hidden": true }, "timeoutMs": 2000 },
+    { "action": "screenshot", "name": "palette-closed" }
+  ]
+}

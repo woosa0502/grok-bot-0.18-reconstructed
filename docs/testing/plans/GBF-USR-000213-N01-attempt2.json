@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "caseId": "GBF-USR-000213-N01-ATTEMPT2",
+  "description": "명령 팔레트 Routines 탭에서 질의 입력 후 루틴 결과 선택 시도 2",
+  "expectedBehavior": "명령 팔레트에서 루틴 결과를 선택하면 해당 루틴의 에이전트가 열리고 루틴 정보 창이 표시된다",
+  "steps": [
+    { "action": "assert", "locator": { "role": "dialog", "name": "Search", "exact": true }, "expect": { "visible": true }, "timeoutMs": 2000 },
+    { "action": "fill", "locator": { "role": "combobox", "name": "Search", "exact": true }, "text": "a" },
+    { "action": "wait", "ms": 800 },
+    { "action": "snapshot", "name": "routines-tab-query-a", "maxText": 2000 },
+    { "action": "screenshot", "name": "routines-tab-query-a" },
+    { "action": "assert", "locator": { "role": "option" }, "expect": { "count": 0 } },
+    { "action": "fill", "locator": { "role": "combobox", "name": "Search", "exact": true }, "text": "" },
+    { "action": "press", "key": "Escape" },
+    { "action": "wait", "ms": 300 },
+    { "action": "assert", "locator": { "role": "dialog", "name": "Search", "exact": true }, "expect": { "hidden": true } }
+  ]
+}
