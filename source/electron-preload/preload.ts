@@ -6,6 +6,7 @@ import {
 } from "./coordinator-port-bridge.js";
 import { MAIN_RPC_CONTRACT_NAME, MAIN_RPC_METHOD_TABLE } from "./main-rpc-runtime.js";
 import { bridgeRpcEdge } from "./rpc-edge-runtime.js";
+import { encodeAttachmentBytesForRpc } from "../shared/attachment-byte-transport.js";
 
 export interface PreloadIpcRenderer {
   invoke(channel: string, payload?: unknown): Promise<any>;
@@ -117,7 +118,7 @@ export function createDesktopPreloadBridge(options: {
     getLinkMetadata: (url: string) => edge("getLinkMetadata", { url }),
     async openExternal(url: string) { await edge("openExternal", { url }); },
     async openCloudAgent(bcId: string) { await edge("openCloudAgent", { bcId }); },
-    stageAttachmentBytes: (filename: string, bytes: Uint8Array) => edge("stageAttachmentBytes", { filename, bytes }),
+    stageAttachmentBytes: (filename: string, bytes: Uint8Array) => edge("stageAttachmentBytes", { filename, bytesBase64: encodeAttachmentBytesForRpc(bytes) }),
     commitStagedAttachments: (paths: readonly string[], filenames: readonly string[]) => edge("commitStagedAttachments", { paths, filenames }),
     async discardStagedAttachment(path: string) { await edge("discardStagedAttachment", { path }); },
     mcp: {
