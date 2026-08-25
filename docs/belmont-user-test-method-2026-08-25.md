@@ -1,9 +1,9 @@
 # Belmont 전체 기능 실사용 검증 방법
 
-- 상태: `TOOLING_PILOT_PROVISIONAL / 1292_QUEUE_REBASE_PENDING`
+- 상태: `PILOT_REMEDIATED_PROVISIONAL / 1292_QUEUE_READY / INDEPENDENT_ACCEPTANCE_PENDING`
 - 기준일: 2026-08-25 KST
 - 제품 기준 저장소: `/home/hoon/_roots/labs/work/Belmont`
-- 제품 기준 HEAD: `ed36511`에서 시작했다. 실제 실행 시점 HEAD는 최종 보고서에 별도로 기록한다. `run.json`은 Git HEAD가 아니라 endpoint와 Electron target ID/URL/title을 고정한다.
+- 제품 코드 기준 HEAD: `f17b324`. 이후 문서 전용 커밋은 별도로 기록한다. `run.json` schema 2는 endpoint와 Electron target뿐 아니라 runtime generation, Git/source 지문, 프로세스와 빌드 해시를 고정한다.
 - 기존 기능 분모: Grok 0.18 원장 1,500개 중 WSL 실행 후보 1,292개
 - 기존 실행 후보 해시: `def55dc8b269e86db6820764e9ca996d6e35bdd245c8b9f562501c1cb377643e`
 - 새 관찰 명령: `npm run wsl:cdp -- ...`
@@ -43,7 +43,10 @@ mise x node@26.5.0 -- npm run wsl:setup
 BELMONT_WSL_DEBUG_PORT=9347 mise x node@26.5.0 -- npm run wsl:start
 ```
 
-제품 실행기는 앱, host, 로컬 프로필과 종료를 소유한다. 테스트 중 임의 재시작하지 않는다.
+제품 실행기는 앱, host, 로컬 프로필과 종료를 소유한다. `wsl:start`는 현재 source
+identity가 마지막 `wsl:setup`의 build identity와 다르면 host/Electron을 띄우기 전에
+중단한다. 코드 또는 문서 커밋 뒤에는 `wsl:setup`을 다시 수행한다. 테스트 중 임의
+재시작하지 않는다.
 
 ### 작은 CDP 관찰 실행기
 
@@ -51,9 +54,9 @@ BELMONT_WSL_DEBUG_PORT=9347 mise x node@26.5.0 -- npm run wsl:start
 
 하는 일:
 
-- `status`: target, URL, 문서 준비 상태와 화면 크기 확인
+- `status`: target, URL, runtime/build lineage, 문서 준비 상태와 화면 크기 확인
 - `snapshot`: 전체 HTML이 아닌 본문 일부와 보이는 상호작용 요소만 확인
-- `run`: JSON plan의 클릭·hover·입력·키·스크롤·대기·assertion을 순서대로 실행
+- `run`: JSON plan의 클릭·hover·입력·키·명시적 파일 선택·스크롤·대기·assertion을 순서대로 실행
 - 모든 case의 자동 전후 PNG와 제한된 JSON snapshot 저장
 - 콘솔 error와 page exception 기록
 - `observations.jsonl` append와 `checkpoint.json` 원자 갱신
@@ -91,8 +94,9 @@ mise x node@26.5.0 -- npm run wsl:cdp -- run \
 ```
 
 다른 포트를 쓸 때만 `--endpoint http://127.0.0.1:PORT`를 추가한다. 원격 endpoint는 거부한다.
-본 실행을 열 때 `git rev-parse HEAD` 결과를 최종 보고서에 먼저 기록한다. 실행기가
-제품 커밋을 자동 추정하지 않으므로 이 단계가 빠진 run은 재현 가능한 최종 증거가 아니다.
+본 실행을 열 때 `git rev-parse HEAD` 결과를 최종 보고서에 먼저 기록한다. 실행기는
+`runtime-lineage.json`과 `wsl-build-lineage.json`을 검증해 source/build/target 세대를
+고정한다. 이 lineage가 빠지거나 일치하지 않는 run은 시작하지 않는다.
 
 ## 4. Plan 형식
 
@@ -118,7 +122,8 @@ mise x node@26.5.0 -- npm run wsl:cdp -- run \
 
 - `click`, `hover`: CSS 또는 role/name/text locator의 화면 중앙에 pointer 이벤트 전송
 - `fill`: 실제 포커스 후 Ctrl+A, Backspace, text 입력
-- `press`: Enter, Escape, Tab, 화살표, Delete, Home/End, 영숫자와 Ctrl/Shift/Alt/Meta 조합
+- `press`: Enter, Escape, Tab, 화살표, Delete, Home/End, 영숫자, 일반 punctuation과 Ctrl/Shift/Alt/Meta 조합
+- `upload`: CSS로 찾은 file input에 1~10개의 절대경로 일반 파일을 선택. native OS chooser는 열지 않고 표준 CDP `DOM.setFileInputFiles` 동작을 사용한다.
 - `scroll`: viewport 중앙에 wheel 이벤트 전송
 - `wait`: 최대 30초 고정 대기
 - `assert`: visible, hidden, enabled, count, textIncludes, textEquals
@@ -281,7 +286,8 @@ data/artifacts/belmont-user-e2e-20260825/<run-id>/
 
 현재 실행기가 직접 처리하지 않는 항목:
 
-- OS 파일 선택창과 외부 앱 창
+- native OS 파일 선택창 자체와 외부 앱 창. 다만 명시적 local fixture를 file input에
+  선택하는 `upload` action은 지원한다.
 - 실제 drag-and-drop data transfer
 - 마이크, Passkey, 하드웨어 입력
 - 외부 브라우저 OAuth
@@ -295,7 +301,12 @@ data/artifacts/belmont-user-e2e-20260825/<run-id>/
 1. 실행기 단위 테스트 통과 — 현재 직접 관찰 기준 통과
 2. 현재 Belmont에서 `status`, `snapshot`, fill→assert→clear pilot 통과 — 현재 직접 관찰 기준 통과
 3. pilot 전후 대화·봇·설정 불변 확인 — draft가 비고 기존 대화가 유지된 화면을 확인
-4. 기존 1,292행 current-HEAD 재분류 완료
-5. 첫 10개 case의 계획과 판정 독립 검토
+4. 기존 1,292행 current-HEAD 재분류 완료 — 1,282 RETAIN / 10 REQUIRED_ATTEMPT
+5. 첫 10개 필수조치 재검증 — 8 PROVISIONAL_PASS / 1 REVIEW_REQUIRED / 1 UNREACHABLE
+6. 첫 10개 case의 계획과 판정 독립 검토
 
-1~3은 아직 독립 검토 전이므로 `PROVISIONAL`이다. 4~5가 남아 있으므로 1,292개 전체 실행은 시작하지 않는다.
+1~5는 실행자 직접 관찰 기준으로 완료했지만 독립 검토 전이므로 `PROVISIONAL`이다.
+`GB-CORE-001` 때문에 Belmont 대화가 full host toolset의 routine/state/subagent 도구에
+도달하지 못한다. UI-only case는 진행 가능하지만 tool-dependent batch는 이 P1을
+해결하고 live parity를 확인한 뒤 재개한다. 근거는
+[pilot 필수조치 결과](testing/belmont-pilot-remediation-2026-08-26.md)에 있다.

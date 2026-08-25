@@ -8,6 +8,12 @@
 처음부터 끝까지 소유한다. 서브에이전트, Playwright, agent-browser, Lightpanda,
 별도 Chrome 또는 새 하네스를 추가하지 말고 저장소의 작은 `wsl:cdp` 실행기만 쓴다.
 
+현재 pilot remediation은 `PROVISIONAL`이다. 먼저
+`docs/testing/belmont-pilot-remediation-2026-08-26.md`를 읽고, 독립 검토자가
+`PILOT_ACCEPTED`를 주기 전에는 11번째 case로 넘어가지 않는다. 로컬 Codex 대화가
+full host toolset의 routine/state/subagent 도구에 도달하지 못하는 `GB-CORE-001`은
+미해결 제품 P1이다.
+
 ## 목표
 
 legacy Grok 0.18의 실행 후보 1,292개를 현재 Belmont HEAD에 맞춰 이름·진입점만
@@ -24,6 +30,7 @@ legacy Grok 0.18의 실행 후보 1,292개를 현재 Belmont HEAD에 맞춰 이�
 - legacy meta: `docs/testing/legacy-grok-2026-08-25/audit/grok-wsl-test-queue.meta.json`
 - legacy 증거 계약: `docs/testing/legacy-grok-2026-08-25/grok-bot-user-test-standard-2026-08-25.md`
 - plan 예제: `docs/testing/examples/`
+- pilot remediation: `docs/testing/belmont-pilot-remediation-2026-08-26.md`
 - 관찰 명령: `npm run wsl:cdp -- ...`
 - CDP endpoint: `http://127.0.0.1:9347`
 - 캠페인 디렉터리: `data/artifacts/belmont-user-e2e-20260825/<HEAD>-single-model/`
@@ -67,6 +74,9 @@ BELMONT_WSL_DEBUG_PORT=9347 mise x node@26.5.0 -- npm run wsl:start
 
 `wsl:start`는 하나의 유지되는 터미널 세션에서 실행한다. 백그라운드 복제품,
 두 번째 profile, 별도 Electron을 만들지 않는다.
+`wsl:start`가 stale build 오류를 내면 우회하지 말고 runtime이 없는 상태에서
+`wsl:setup`을 다시 실행한다. `wsl:cdp status`의 build source identity와 runtime
+identity가 다르면 실행을 시작하지 않는다.
 
 ## 2. 작은 실행기 pilot
 
@@ -149,6 +159,11 @@ case마다 반드시 남길 것:
 
 독립 검토자가 `PILOT_ACCEPTED`라고 확인하기 전에는 11번째 case로 넘어가지 않는다.
 
+현재 재검증 분류는 `PROVISIONAL_PASS 8 / REVIEW_REQUIRED 1 / UNREACHABLE_CURRENT_BUILD 1`이다.
+과거 HARNESS_DEFECT였던 punctuation shortcut은
+해소됐고 파일 input용 `upload` action도 추가됐다. 이 수치를 최종 PASS로 복사하지
+말고 remediation 문서의 observation과 PNG를 독립 대조한다.
+
 ## 5. pilot 승인 후 연속 실행
 
 승인 뒤 같은 모델·같은 run 디렉터리·같은 target 세대에서 11번째부터
@@ -156,6 +171,8 @@ case마다 반드시 남길 것:
 만들고 이전 결과와 섞지 않는다.
 
 - 같은 화면 fixture의 case를 연속 처리해 이동 비용을 줄인다.
+- routine/state/subagent처럼 `GB-CORE-001`에 직접 의존하는 case는 동일 blocker를
+  반복 실행하지 말고 issue를 참조해 중단한다. 내부 API/DB로 fixture를 주입하지 않는다.
 - 모든 case에 전후 증거를 저장하되 직접 시각 검토는 batch 첫 case, 실패 case,
   주관적 UI case와 정기 표본에 집중한다.
 - 공통 결함 하나가 여러 기능을 막아도 case별 진입점은 확인하고 같은 issue ID를

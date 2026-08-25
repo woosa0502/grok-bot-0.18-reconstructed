@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "caseId": "BELMONT-CDP-UPLOAD-SMOKE",
+  "description": "Stage a harmless local fixture through the real composer file input without sending it.",
+  "expectedBehavior": "The composer shows the fixture in its Attachments list and no attachment failure notice.",
+  "steps": [
+    { "action": "upload", "locator": { "css": "input[type=file]", "includeHidden": true }, "files": ["/tmp/belmont-cdp-upload-smoke.txt"] },
+    { "action": "wait", "ms": 500 },
+    { "action": "assert", "locator": { "role": "list", "name": "Attachments", "text": "belmont-cdp-upload-smoke" }, "expect": { "visible": true }, "timeoutMs": 3000 },
+    { "action": "assert", "locator": { "text": "Couldn't attach" }, "expect": { "visible": false } },
+    { "action": "snapshot", "name": "upload-staged", "maxText": 3000 },
+    { "action": "screenshot", "name": "upload-staged" }
+  ]
+}
