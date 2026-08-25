@@ -312,6 +312,12 @@ const KEY_DEFINITIONS = Object.freeze({
   Enter: ["Enter", "Enter", 13], Escape: ["Escape", "Escape", 27], Tab: ["Tab", "Tab", 9], Backspace: ["Backspace", "Backspace", 8],
   ArrowUp: ["ArrowUp", "ArrowUp", 38], ArrowDown: ["ArrowDown", "ArrowDown", 40], ArrowLeft: ["ArrowLeft", "ArrowLeft", 37], ArrowRight: ["ArrowRight", "ArrowRight", 39],
   Space: [" ", "Space", 32], Delete: ["Delete", "Delete", 46], Home: ["Home", "Home", 36], End: ["End", "End", 35],
+  ";": [";", "Semicolon", 186], "=": ["=", "Equal", 187], ",": [",", "Comma", 188], "-": ["-", "Minus", 189], ".": [".", "Period", 190],
+  "/": ["/", "Slash", 191], "`": ["`", "Backquote", 192], "[": ["[", "BracketLeft", 219], "\\": ["\\", "Backslash", 220], "]": ["]", "BracketRight", 221], "'": ["'", "Quote", 222],
+  "+": ["+", "Equal", 187], "_": ["_", "Minus", 189], "<": ["<", "Comma", 188], ">": [">", "Period", 190], "?": ["?", "Slash", 191],
+  ":": [":", "Semicolon", 186], "{": ["{", "BracketLeft", 219], "|": ["|", "Backslash", 220], "}": ["}", "BracketRight", 221], "\"": ["\"", "Quote", 222], "~": ["~", "Backquote", 192],
+  "!": ["!", "Digit1", 49], "@": ["@", "Digit2", 50], "#": ["#", "Digit3", 51], "$": ["$", "Digit4", 52], "%": ["%", "Digit5", 53],
+  "^": ["^", "Digit6", 54], "&": ["&", "Digit7", 55], "*": ["*", "Digit8", 56], "(": ["(", "Digit9", 57], ")": [")", "Digit0", 48],
 });
 
 function keyDefinition(key) {
@@ -408,29 +414,70 @@ async function writeJsonAtomic(filePath, value) {
   await rename(temporary, filePath);
 }
 
-async function ensureRunIdentity(runDir, client, startedAt) {
+export function validateBelmontRuntimeLineage(runtimeLineage, client) {
+  if (typeof runtimeLineage !== "object" || runtimeLineage == null || Array.isArray(runtimeLineage)) {
+    throw new BelmontCdpError("RUN_LINEAGE_REQUIRED", "A runtime-lineage.json from the active Belmont launcher is required for a test run.");
+  }
+  if (runtimeLineage.schemaVersion !== 1 || typeof runtimeLineage.runtimeGenerationId !== "string" || runtimeLineage.runtimeGenerationId.length === 0) {
+    throw new BelmontCdpError("RUN_LINEAGE_INVALID", "The Belmont runtime lineage has an unsupported schema or no generation ID.");
+  }
+  if (runtimeLineage.debugEndpoint !== client.endpoint) {
+    throw new BelmontCdpError("RUN_LINEAGE_MISMATCH", "The Belmont runtime lineage does not describe the connected CDP endpoint.", {
+      lineageEndpoint: runtimeLineage.debugEndpoint,
+      connectedEndpoint: client.endpoint,
+    });
+  }
+  if (typeof runtimeLineage.git?.head !== "string" || !/^[0-9a-f]{40}$/u.test(runtimeLineage.git.head)) {
+    throw new BelmontCdpError("RUN_LINEAGE_INVALID", "The Belmont runtime lineage does not contain a full Git HEAD.");
+  }
+  if (typeof runtimeLineage.profileDir !== "string" || !path.isAbsolute(runtimeLineage.profileDir)) {
+    throw new BelmontCdpError("RUN_LINEAGE_INVALID", "The Belmont runtime lineage does not contain an absolute profile path.");
+  }
+  for (const name of ["runner", "host", "electron"]) {
+    const processRecord = runtimeLineage.processes?.[name];
+    if (!Number.isInteger(processRecord?.pid) || processRecord.pid < 1 || typeof processRecord.startedAt !== "string") {
+      throw new BelmontCdpError("RUN_LINEAGE_INVALID", `The Belmont runtime lineage has no valid ${name} process record.`);
+    }
+  }
+  return runtimeLineage;
+}
+
+async function ensureRunIdentity(runDir, client, startedAt, rawRuntimeLineage) {
   const runPath = path.join(runDir, "run.json");
   const existing = await readFile(runPath, "utf8").then(JSON.parse).catch(error => {
     if (error.code === "ENOENT") return null;
     throw error;
   });
-  const identity = { schemaVersion: 1, startedAt, endpoint: client.endpoint, targetId: client.target.id, targetUrl: client.target.url, targetTitle: client.target.title };
+  const runtimeLineage = validateBelmontRuntimeLineage(rawRuntimeLineage, client);
+  const identity = {
+    schemaVersion: 2,
+    startedAt,
+    endpoint: client.endpoint,
+    targetId: client.target.id,
+    targetUrl: client.target.url,
+    targetTitle: client.target.title,
+    runtimeLineage,
+  };
   if (existing == null) {
     await writeJsonAtomic(runPath, identity);
     return identity;
   }
-  if (existing.endpoint !== identity.endpoint || existing.targetId !== identity.targetId || existing.targetUrl !== identity.targetUrl) {
+  if (existing.schemaVersion !== identity.schemaVersion
+    || existing.endpoint !== identity.endpoint
+    || existing.targetId !== identity.targetId
+    || existing.targetUrl !== identity.targetUrl
+    || existing.runtimeLineage?.runtimeGenerationId !== runtimeLineage.runtimeGenerationId) {
     throw new BelmontCdpError("RUN_GENERATION_CHANGED", "Belmont CDP target changed. Start a new run directory instead of mixing runtime generations.", { existing, current: identity });
   }
   return existing;
 }
 
-export async function observeBelmontPlan({ client, plan: rawPlan, runDir, now = () => new Date() }) {
+export async function observeBelmontPlan({ client, plan: rawPlan, runDir, runtimeLineage, now = () => new Date() }) {
   const plan = validateBelmontCdpPlan(rawPlan);
   const absoluteRunDir = path.resolve(runDir);
   await mkdir(absoluteRunDir, { recursive: true });
   const startedAt = now().toISOString();
-  await ensureRunIdentity(absoluteRunDir, client, startedAt);
+  await ensureRunIdentity(absoluteRunDir, client, startedAt, runtimeLineage);
   const observationId = `OBS-${startedAt.replace(/[-:.TZ]/gu, "")}-${randomUUID().slice(0, 8)}`;
   const evidenceDir = path.join(absoluteRunDir, "evidence", plan.caseId, observationId);
   await mkdir(evidenceDir, { recursive: true });

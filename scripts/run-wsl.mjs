@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { repoRoot } from "./lib/config.mjs";
 import { acquireBelmontRuntimeLock } from "./lib/wsl-runtime-lock.mjs";
+import { collectWslRuntimeLineage, writeWslRuntimeLineage } from "./lib/wsl-runtime-lineage.mjs";
 import {
   assertSupportedNodeRuntime,
   assertWslGuiRuntime,
@@ -27,6 +28,7 @@ const dataRoot = wslDataRoot(profileDir);
 const hostEntry = path.join(appRoot, "dist", "host", "host-main.cjs");
 const settingsPath = path.join(dataRoot, "settings.json");
 const runtimeLock = await acquireBelmontRuntimeLock({ profileDir });
+const runnerStartedAt = new Date().toISOString();
 
 try {
   for (const required of [
@@ -43,6 +45,7 @@ try {
   const storedSettings = await readFile(settingsPath, "utf8").then(JSON.parse).catch(() => null);
   const initialSettings = initialLocalSettingsUpdate(storedSettings);
 
+  const hostStartedAt = new Date().toISOString();
   const host = spawn(process.execPath, [hostEntry], {
     cwd: repoRoot,
     env: wslHostEnvironment({ profileDir }),
@@ -97,6 +100,7 @@ try {
   }
 
   const debugPort = parseDebugPort(process.env[BELMONT_WSL_DEBUG_PORT_ENV]);
+  const electronStartedAt = new Date().toISOString();
   const electron = spawn(electronBinary, wslElectronArgs({ appRoot, profileDir, debugPort }), {
     cwd: repoRoot,
     env: {
@@ -111,6 +115,26 @@ try {
     electron.once("error", reject);
     electron.once("exit", (code, signal) => resolve({ code, signal }));
   });
+
+  try {
+    const lineage = await collectWslRuntimeLineage({
+      repoRoot,
+      appRoot,
+      profileDir,
+      debugPort,
+      processes: {
+        runner: { pid: process.pid, startedAt: runnerStartedAt },
+        host: { pid: host.pid, startedAt: hostStartedAt },
+        electron: { pid: electron.pid, startedAt: electronStartedAt },
+      },
+    });
+    await writeWslRuntimeLineage(path.join(dataRoot, "runtime-lineage.json"), lineage);
+  } catch (error) {
+    if (electron.exitCode == null && electron.signalCode == null) electron.kill("SIGTERM");
+    stopHost();
+    await Promise.allSettled([electronExit, hostExit]);
+    throw error;
+  }
 
   let stopping = false;
   const stopOwnedProcesses = () => {
