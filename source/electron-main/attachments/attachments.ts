@@ -49,6 +49,13 @@ export interface AttachmentEdgeDeps {
 
 export function errorClassOf(error: unknown): string { return error instanceof Error ? error.name || "Error" : typeof error; }
 export function isSafeFilename(value: unknown): value is string { return typeof value === "string" && value.length > 0 && value.length <= 255 && !value.includes("/") && !value.includes("\\") && !value.includes("\0"); }
+export function normalizeAttachmentBytes(value: unknown): Uint8Array | null {
+  if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  if (value instanceof ArrayBuffer || Object.prototype.toString.call(value) === "[object ArrayBuffer]") {
+    try { return new Uint8Array(value as ArrayBuffer); } catch { return null; }
+  }
+  return null;
+}
 export function normalizeAttachmentSource(source: unknown): string | null {
   if (typeof source !== "string" || source.length === 0) return null;
   try { const url = new URL(source); return url.protocol === "file:" ? posixPathFromFileUrl(source) : null; } catch { return source; }
@@ -85,10 +92,11 @@ export function createAttachmentEdgePort(deps: AttachmentEdgeDeps) {
     async readText(source: unknown): Promise<string | null> { const path = normalizeAttachmentSource(source); if (path == null) return null; try { return await deps.legs.readAttachmentText({ path }); } catch (error) { report("read-text", error); return null; } },
     async readBytes(source: unknown, maxBytes?: unknown) { const path = normalizeAttachmentSource(source); if (path == null || !deps.previewKindNeedsBytes(deps.getFilePreviewKind(path))) return null; const cap = typeof maxBytes === "number" && Number.isFinite(maxBytes) && maxBytes > 0 ? Math.min(Math.floor(maxBytes), deps.previewByteCap) : deps.previewByteCap; return await readBoxBytes(path, cap); },
     async stageBytes(filename: unknown, bytes: unknown) {
-      if (!isSafeFilename(filename) || !(bytes instanceof Uint8Array)) return { ok: false as const, reason: "failed" as const };
-      if (bytes.byteLength === 0) return { ok: false as const, reason: "empty" as const };
-      if (bytes.byteLength > deps.byteLimitForName(filename)) return { ok: false as const, reason: "too-large" as const };
-      try { const dir = deps.getStagingDir(); await mkdir(dir, { recursive: true }); const path = join(dir, `${(deps.now ?? Date.now)()}-${(deps.randomUUID ?? crypto.randomUUID)()}${extname(filename)}`); await writeFile(path, bytes); return { ok: true as const, path }; } catch (error) { report("stage", error); return { ok: false as const, reason: "failed" as const }; }
+      const normalized = normalizeAttachmentBytes(bytes);
+      if (!isSafeFilename(filename) || normalized == null) return { ok: false as const, reason: "failed" as const };
+      if (normalized.byteLength === 0) return { ok: false as const, reason: "empty" as const };
+      if (normalized.byteLength > deps.byteLimitForName(filename)) return { ok: false as const, reason: "too-large" as const };
+      try { const dir = deps.getStagingDir(); await mkdir(dir, { recursive: true }); const path = join(dir, `${(deps.now ?? Date.now)()}-${(deps.randomUUID ?? crypto.randomUUID)()}${extname(filename)}`); await writeFile(path, normalized); return { ok: true as const, path }; } catch (error) { report("stage", error); return { ok: false as const, reason: "failed" as const }; }
     },
     async commitStaged(rawPaths: unknown, rawFilenames: unknown): Promise<string[] | null> {
       const paths = Array.isArray(rawPaths) ? rawPaths : []; const filenames = Array.isArray(rawFilenames) ? rawFilenames : []; const committed: string[] = [];

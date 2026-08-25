@@ -54,7 +54,12 @@ class FakeClient {
   }
 
   clearEvents() { this.events.length = 0; }
-  async send(method, params) { this.sent.push({ method, params }); return {}; }
+  async send(method, params) {
+    this.sent.push({ method, params });
+    if (method === "DOM.getDocument") return { root: { nodeId: 7 } };
+    if (method === "DOM.querySelectorAll") return { nodeIds: [11] };
+    return {};
+  }
   async screenshot(filePath) { await writeFile(filePath, Buffer.from("fake-png")); }
   async evaluate(expression) {
     if (expression.includes('const operation = "snapshot"')) {
@@ -169,6 +174,50 @@ test("observer sends punctuation shortcuts through CDP instead of rejecting them
     assert.deepEqual(keyDown.map(call => call.params.key), keys);
     assert.deepEqual(keyDown.map(call => call.params.code), ["BracketLeft", "BracketRight", "Equal", "Minus", "Comma", "Equal", "Semicolon", "Quote", "Backslash", "Slash", "Backquote", "Period", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "Digit0"]);
     assert.ok(keyDown.every(call => call.params.modifiers === 2));
+  } finally {
+    await rm(runDir, { recursive: true, force: true });
+  }
+});
+
+test("observer uploads explicit regular files through a hidden file input", async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), "belmont-cdp-upload-"));
+  const fixture = path.join(runDir, "fixture.txt");
+  const client = new FakeClient();
+  try {
+    await writeFile(fixture, "fixture\n");
+    const record = await observeBelmontPlan({
+      client,
+      plan: {
+        schemaVersion: 1,
+        caseId: "FILE-UPLOAD",
+        steps: [{ action: "upload", locator: { css: "input[type=file]", includeHidden: true }, files: [fixture] }],
+      },
+      runDir,
+      runtimeLineage: runtimeLineage(),
+    });
+    assert.equal(record.executionStatus, "ACTION_COMPLETE");
+    assert.deepEqual(client.sent.find(call => call.method === "DOM.querySelectorAll")?.params, { nodeId: 7, selector: "input[type=file]" });
+    assert.deepEqual(client.sent.find(call => call.method === "DOM.setFileInputFiles")?.params, { files: [fixture], nodeId: 11 });
+  } finally {
+    await rm(runDir, { recursive: true, force: true });
+  }
+});
+
+test("upload plans reject non-absolute paths and missing files", async () => {
+  assert.throws(
+    () => validateBelmontCdpPlan({ schemaVersion: 1, caseId: "BAD-UPLOAD", steps: [{ action: "upload", locator: { css: "input[type=file]" }, files: ["fixture.txt"] }] }),
+    /absolute file paths/u,
+  );
+  const runDir = await mkdtemp(path.join(os.tmpdir(), "belmont-cdp-upload-missing-"));
+  try {
+    const record = await observeBelmontPlan({
+      client: new FakeClient(),
+      plan: { schemaVersion: 1, caseId: "MISSING-UPLOAD", steps: [{ action: "upload", locator: { css: "input[type=file]" }, files: [path.join(runDir, "missing.txt")] }] },
+      runDir,
+      runtimeLineage: runtimeLineage(),
+    });
+    assert.equal(record.executionStatus, "HARNESS_ERROR");
+    assert.equal(record.error.code, "UPLOAD_FILE_UNAVAILABLE");
   } finally {
     await rm(runDir, { recursive: true, force: true });
   }

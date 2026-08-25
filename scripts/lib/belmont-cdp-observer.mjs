@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:9347";
-const ALLOWED_ACTIONS = new Set(["assert", "click", "fill", "hover", "press", "screenshot", "scroll", "snapshot", "wait"]);
+const ALLOWED_ACTIONS = new Set(["assert", "click", "fill", "hover", "press", "screenshot", "scroll", "snapshot", "upload", "wait"]);
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$/u;
 
 export class BelmontCdpError extends Error {
@@ -278,6 +278,14 @@ export function validateBelmontCdpPlan(raw) {
     if (new Set(["assert", "click", "fill", "hover"]).has(step.action)) assertLocator(step.locator);
     if (step.action === "press" && (typeof step.key !== "string" || step.key.length === 0)) throw new BelmontCdpError("INVALID_PLAN", `press step ${index + 1} needs a key.`);
     if (step.action === "fill" && typeof step.text !== "string") throw new BelmontCdpError("INVALID_PLAN", `fill step ${index + 1} needs text.`);
+    if (step.action === "upload") {
+      if (typeof step.locator?.css !== "string" || step.locator.css.length === 0 || Object.keys(step.locator).some(key => !["css", "nth", "includeHidden"].includes(key))) {
+        throw new BelmontCdpError("INVALID_PLAN", `upload step ${index + 1} needs a CSS-only locator.`);
+      }
+      if (!Array.isArray(step.files) || step.files.length === 0 || step.files.length > 10 || step.files.some(file => typeof file !== "string" || !path.isAbsolute(file))) {
+        throw new BelmontCdpError("INVALID_PLAN", `upload step ${index + 1} needs 1 to 10 absolute file paths.`);
+      }
+    }
     if (new Set(["screenshot", "snapshot"]).has(step.action) && (typeof step.name !== "string" || !SAFE_NAME.test(step.name))) throw new BelmontCdpError("INVALID_PLAN", `${step.action} step ${index + 1} needs a safe name.`);
   });
   return raw;
@@ -347,6 +355,31 @@ async function fill(client, locator, text) {
   return await locate(client, locator);
 }
 
+async function upload(client, locator, files) {
+  const resolvedFiles = [];
+  for (const file of files) {
+    let resolved;
+    let metadata;
+    try {
+      resolved = await realpath(file);
+      metadata = await stat(resolved);
+    } catch (error) {
+      throw new BelmontCdpError("UPLOAD_FILE_UNAVAILABLE", `Upload file is unavailable: ${file}`, { cause: error instanceof Error ? error.message : String(error) });
+    }
+    if (!metadata.isFile()) throw new BelmontCdpError("UPLOAD_FILE_INVALID", `Upload path is not a regular file: ${file}`);
+    resolvedFiles.push(resolved);
+  }
+  const document = await client.send("DOM.getDocument", { depth: 1, pierce: true });
+  const rootNodeId = document?.root?.nodeId;
+  if (!Number.isInteger(rootNodeId)) throw new BelmontCdpError("UPLOAD_TARGET_UNAVAILABLE", "CDP did not return a document root for file upload.");
+  const matches = await client.send("DOM.querySelectorAll", { nodeId: rootNodeId, selector: locator.css });
+  const nodeIds = Array.isArray(matches?.nodeIds) ? matches.nodeIds : [];
+  const selected = nodeIds[Number.isInteger(locator.nth) ? locator.nth : 0];
+  if (!Number.isInteger(selected)) throw new BelmontCdpError("LOCATOR_NOT_FOUND", "No file input matched the upload locator.", { matches: nodeIds.length });
+  await client.send("DOM.setFileInputFiles", { files: resolvedFiles, nodeId: selected });
+  return { matches: nodeIds.length, selectedNodeId: selected, files: resolvedFiles.map(file => path.basename(file)) };
+}
+
 function expectationResult(observation, expect) {
   const checks = [];
   if ("visible" in expect) checks.push({ name: "visible", expected: expect.visible, actual: observation.selected?.visible ?? false });
@@ -379,6 +412,7 @@ async function executeStep(client, step, evidenceDir) {
   if (step.action === "click") return await click(client, step.locator, step.button ?? "left", step.clickCount ?? 1);
   if (step.action === "hover") return await hover(client, step.locator);
   if (step.action === "fill") return await fill(client, step.locator, step.text);
+  if (step.action === "upload") return await upload(client, step.locator, step.files);
   if (step.action === "press") {
     if (step.locator != null) { assertLocator(step.locator); await click(client, step.locator); }
     await press(client, step.key, step.modifiers ?? []);
