@@ -175,6 +175,51 @@ function codexTools(definitions: readonly Loose[] | undefined): CodexDirectTool[
   return tools.length === 0 ? undefined : tools;
 }
 
+function codexSafeJson(value: unknown): string {
+  try { return JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item) ?? "null"; }
+  catch { return "null"; }
+}
+
+// Convert Belmont's provider messages into Codex Responses input items. A prior assistant
+// tool call must be sent as a `function_call` item and its result as a `function_call_output`
+// item — NOT as JSON.stringify'd message text. Serialising them as text (the previous
+// behaviour) fed the model examples of tool calls written as text, so it learned to emit new
+// tool calls as plain text too; those never dispatched and showed up as "[{\"type\":\"tool-call\"…}]".
+function codexInputFromMessages(messages: readonly ProviderMessage[]): Loose[] {
+  const items: Loose[] = [];
+  for (const message of messages) {
+    const role = message.role === "assistant" ? "assistant" : "user";
+    if (typeof message.content === "string") {
+      if (message.content.length > 0) items.push({ role, content: message.content });
+      continue;
+    }
+    if (!Array.isArray(message.content)) {
+      items.push({ role, content: codexSafeJson(message.content) });
+      continue;
+    }
+    const textParts: string[] = [];
+    const calls: Loose[] = [];
+    const outputs: Loose[] = [];
+    for (const raw of message.content) {
+      const part = raw as Record<string, unknown>;
+      if (part.type === "text" && typeof part.text === "string") { textParts.push(part.text); continue; }
+      if (part.type === "tool-call" && typeof part.toolCallId === "string" && typeof part.toolName === "string") {
+        calls.push({ type: "function_call", call_id: part.toolCallId, name: part.toolName, arguments: typeof part.args === "string" ? part.args : codexSafeJson(part.args ?? {}) });
+        continue;
+      }
+      if (part.type === "tool-result" && typeof part.toolCallId === "string") {
+        outputs.push({ type: "function_call_output", call_id: part.toolCallId, output: typeof part.result === "string" ? part.result : codexSafeJson(part.result ?? "") });
+        continue;
+      }
+      // reasoning / redacted-reasoning / file parts are not part of the Codex Responses input here.
+    }
+    if (textParts.length > 0) items.push({ role, content: textParts.join("\n") });
+    for (const call of calls) items.push(call);
+    for (const output of outputs) items.push(output);
+  }
+  return items;
+}
+
 function codexExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void) {
   const credentials = codexCredentials();
   const usage = deferred<{ promptTokens: number; completionTokens: number; totalTokens: number }>();
@@ -193,7 +238,7 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
         model,
         ...(configuredCodexReasoningEffort() == null ? {} : { reasoningEffort: configuredCodexReasoningEffort()! }),
         instructions: GROK_ROUTER_SYSTEM_PROMPT,
-        input: messages.map(message => ({ role: message.role === "assistant" ? "assistant" : "user", content: typeof message.content === "string" ? message.content : JSON.stringify(message.content) })),
+        input: codexInputFromMessages(messages),
         ...(tools == null ? {} : { tools }),
         ...(executeTool == null ? {} : { executeTool: async (selected, args, toolCallId) => await executeTool(selected.source, args, toolCallId) }),
         delegateToolCalls: tools != null && executeTool == null,
