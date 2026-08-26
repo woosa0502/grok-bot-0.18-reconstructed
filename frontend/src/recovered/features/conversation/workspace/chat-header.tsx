@@ -16,10 +16,11 @@ export interface ConversationAgentHeaderProps {
   onToggleInfo(): void;
   onToggleSettings?(): void;
   sharedRoomTrigger?: SharedRoomHeaderTriggerProps;
+  thread?: { readonly title: string; readonly onExit: () => void };
   trailing?: ReactNode;
 }
 
-export function ConversationAgentHeader({ agent, isComputerActive, isInfoOpen, onToggleInfo, onToggleSettings, sharedRoomTrigger, trailing }: ConversationAgentHeaderProps) {
+export function ConversationAgentHeader({ agent, isComputerActive, isInfoOpen, onToggleInfo, onToggleSettings, sharedRoomTrigger, thread, trailing }: ConversationAgentHeaderProps) {
   const avatarKind = agent.isSharedRoom === true ? "shared-room" : agent.isGroup === true ? "group" : "agent";
   const identity = <>
     <span className="sand-chat-header__avatar"><AgentAvatar agentId={agent.id} kind={avatarKind} memberIds={agent.memberIds} dataUrl={agent.avatarDataUrl} color={agent.avatarColor} shape={agent.avatarShape} currentActivity={agent.currentActivity} isComposingMessage={agent.isComposingMessage} isRunning={agent.isRunning} awaitingUserResponse={agent.awaitingUserResponse} size="md" /></span>
@@ -27,7 +28,16 @@ export function ConversationAgentHeader({ agent, isComputerActive, isInfoOpen, o
     {agent.isRunning ? <small>Working</small> : null}
   </>;
   return <div aria-labelledby="sand-conversation-heading" className="sand-chat-header" role="group">
-    {onToggleSettings == null
+    {thread != null
+      ? <nav aria-label="Thread breadcrumb" className="sand-chat-header__breadcrumbs">
+          <button aria-label={`Back to ${agent.name}`} className="sand-chat-header__crumb" onClick={thread.onExit} type="button">
+            <span className="sand-chat-header__avatar"><AgentAvatar agentId={agent.id} kind={avatarKind} memberIds={agent.memberIds} dataUrl={agent.avatarDataUrl} color={agent.avatarColor} shape={agent.avatarShape} size="xs" /></span>
+            <span>{agent.name}</span>
+          </button>
+          <span aria-hidden="true" className="sand-chat-header__crumb-sep">›</span>
+          <button aria-controls="sand-conversation-details" aria-expanded={isInfoOpen} aria-label="View conversation details" className="sand-chat-header__crumb" id="sand-conversation-heading" onClick={onToggleInfo} type="button">{thread.title}</button>
+        </nav>
+      : onToggleSettings == null
       ? <div className="sand-chat-header__identity">{identity}</div>
       : <button aria-controls="sand-conversation-details" aria-expanded={isInfoOpen} aria-label="View agent settings" className="sand-chat-header__identity" data-info-row="settings" onClick={onToggleSettings} type="button">{identity}</button>}
     <div className="sand-chat-header__controls">

@@ -31,6 +31,8 @@ import { createFindInChatController, type FindInChatMatch, type FindInChatTransc
 import { FindInChatBar } from "../recovered/features/conversation/workspace/find-in-chat";
 import { SpreadsheetViewer } from "../recovered/features/conversation/workspace/spreadsheet-viewer";
 import { createSpreadsheetViewerProvider, type SpreadsheetViewerMount } from "../recovered/features/conversation/workspace/spreadsheet-viewer-provider";
+import { hasResolvedThreadRoot, projectTranscriptThreads, resolveThreadRootId, threadEntryIds, threadTitleForEntry } from "../recovered/features/conversation/workspace/thread-projection";
+import { documentHasModal, isPlainThreadEscape } from "../recovered/features/conversation/workspace/thread-lifecycle";
 import { createTranscriptCardRootMountContract } from "../recovered/features/conversation/cards/transcript-card/mount-contract";
 import { isTranscriptCardActionEntry, type TranscriptCardInteractionContext } from "../recovered/features/conversation/cards/transcript-card/message-actions";
 import { createTranscriptCardLeafResolver } from "../recovered/features/conversation/cards/transcript-card/resolver";
@@ -289,6 +291,12 @@ function scrollToFindMatch(match: FindInChatMatch): void {
 }
 
 type SettingsComputerActionKind = "update" | "reset";
+
+type OpenThreadTarget = {
+  readonly accountSlot: string | null;
+  readonly agentId: string;
+  readonly rootId: string;
+};
 
 type TranscriptLoadErrorState = {
   readonly agentId: string;
@@ -788,6 +796,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       else focusComposer();
     }
   }));
+  const [openThreadTarget, setOpenThreadTarget] = useState<OpenThreadTarget | null>(null);
   const [findInChatController] = useState(() => createFindInChatController({ onNavigate: scrollToFindMatch }));
   const findInChatLifecycleGenerationRef = useRef(0);
   useEffect(() => {
@@ -1077,8 +1086,14 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     onFailure: (submission, error) => {
       composerDraftStore.recoverDraft(submission.agentId, {
         prompt: submission.prompt,
-        attachments: [...submission.attachments]
+        attachments: [...submission.attachments],
+        ...(submission.richText == null ? {} : { richText: submission.richText }),
+        ...(submission.replyToId == null ? {} : { replyToId: submission.replyToId }),
+        ...(submission.isFork === undefined ? {} : { isFork: submission.isFork }),
       });
+      if (submission.isFork === true && submission.replyToId != null) {
+        setOpenThreadTarget({ accountSlot: acknowledgementScopeRef.current.accountSlot, agentId: submission.agentId, rootId: submission.replyToId });
+      }
       setNotice(error instanceof Error ? error.message : String(error));
       }
     });
@@ -1350,6 +1365,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
   }, [activeAgentId, transcriptAccountSlot, transcriptPaginationController]);
   useEffect(() => {
     replyThreadController.setScope({ accountSlot: transcriptAccountSlot, agentId: activeAgentId.length > 0 ? activeAgentId : null });
+    setOpenThreadTarget(null);
   }, [activeAgentId, replyThreadController, transcriptAccountSlot]);
   useLayoutEffect(() => {
     if (typeof document === "undefined") return;
@@ -1637,13 +1653,47 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       : liveEntries,
     [activeAgentId, liveEntries, transcriptAccountSlot, transcriptPaginationSnapshot.accountSlot, transcriptPaginationSnapshot.agentId, transcriptPaginationSnapshot.entries]
   );
+  const openThreadRootId = openThreadTarget?.accountSlot === transcriptAccountSlot
+    && openThreadTarget.agentId === activeAgentId
+    ? openThreadTarget.rootId
+    : null;
+  const transcriptThreadProjection = useMemo(
+    () => projectTranscriptThreads(entries, { mayHoldOlderHistory: transcriptPaginationSnapshot.hasOlder }),
+    [entries, transcriptPaginationSnapshot.hasOlder],
+  );
+  const openThreadEntryIds = useMemo(
+    () => threadEntryIds(entries, openThreadRootId),
+    [entries, openThreadRootId],
+  );
+  const threadEntries = useMemo(
+    () => openThreadEntryIds == null ? EMPTY_ENTRIES : entries.filter((entry) => openThreadEntryIds.has(entry.id)),
+    [entries, openThreadEntryIds],
+  );
+  const displayedEntries = openThreadRootId == null ? transcriptThreadProjection.visibleEntries : threadEntries;
+  const openThreadTitle = openThreadRootId == null
+    ? null
+    : threadTitleForEntry(entries.find((entry) => entry.id === openThreadRootId));
+  useEffect(() => {
+    if (openThreadRootId != null && !entries.some((entry) => entry.id === openThreadRootId)) setOpenThreadTarget(null);
+  }, [entries, openThreadRootId]);
+  useEffect(() => {
+    if (openThreadRootId == null || typeof document === "undefined") return;
+    const exitThread = (event: KeyboardEvent) => {
+      if (!isPlainThreadEscape(event) || documentHasModal(document)) return;
+      setOpenThreadTarget(null);
+      replyThreadController.clearReply();
+      event.preventDefault();
+    };
+    document.addEventListener("keydown", exitThread);
+    return () => document.removeEventListener("keydown", exitThread);
+  }, [openThreadRootId, replyThreadController]);
   useEffect(() => {
     findInChatController.setScope(transcriptAccountSlot, activeAgentId.length > 0 ? activeAgentId : null);
     if (account?.kind !== "logged-in" || activeAgentId.length === 0) setFindInChatOpen(false);
   }, [account?.kind, activeAgentId, findInChatController, transcriptAccountSlot]);
   useEffect(() => {
-    findInChatController.replaceEntries(entries);
-  }, [entries, findInChatController]);
+    findInChatController.replaceEntries(displayedEntries);
+  }, [displayedEntries, findInChatController]);
   useEffect(() => {
     const scopedAccountKey = account?.kind === "logged-in" && transport === "connected" ? transcriptAccountSlot : null;
     const scopedAgentId = scopedAccountKey == null || activeAgentId.length === 0 ? null : activeAgentId;
@@ -1851,27 +1901,38 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     });
   }, [client, transcriptCardListenerIntegrations, transcriptCardUrlCards]);
   useEffect(() => {
-    replyThreadController.replaceEntries(entries);
-  }, [entries, replyThreadController]);
-  const transcriptCardInteractions = useMemo<TranscriptCardInteractionContext>(() => ({
-    threadRootId: null,
-    isReadOnly: activeAgent == null || activeAgent.isGroup,
-    onReply: (entryId) => { replyThreadController.selectReply(entryId); },
-    onThread: (entryId) => { replyThreadController.navigate(entryId); },
-    getThreadSummary: () => null,
-    openThread: (targetId) => { replyThreadController.navigate(targetId); },
-    resolveEntry: (targetId) => {
-      const entry = entries.find((candidate) => candidate.id === targetId);
-      return entry != null && isTranscriptCardActionEntry(entry) ? entry : null;
-    },
-    scrollToEntry: (targetId) => {
+    replyThreadController.replaceEntries(displayedEntries);
+  }, [displayedEntries, replyThreadController]);
+  const transcriptCardInteractions = useMemo<TranscriptCardInteractionContext>(() => {
+    const scrollToEntry = (targetId: string) => {
       if (typeof document === "undefined") return;
       const row = [...document.querySelectorAll<HTMLElement>("[data-entry-id]")]
         .find((candidate) => candidate.dataset.entryId === targetId);
       row?.scrollIntoView({ block: "center", behavior: "smooth" });
-    },
-    isEntryInScope: (targetId) => replyThreadController.resolve(targetId).isInScope,
-  }), [activeAgent, entries, replyThreadController]);
+    };
+    const openExistingThread = (targetId: string) => {
+      if (!hasResolvedThreadRoot(entries, targetId)) return scrollToEntry(targetId);
+      const rootId = resolveThreadRootId(entries, targetId);
+      const ids = threadEntryIds(entries, rootId);
+      if (ids == null || ids.size <= 1) return scrollToEntry(targetId);
+      replyThreadController.clearReply();
+      setOpenThreadTarget({ accountSlot: transcriptAccountSlot, agentId: activeAgentId, rootId });
+    };
+    return {
+      threadRootId: openThreadRootId,
+      isReadOnly: activeAgent == null || activeAgent.isGroup,
+      onReply: (entryId) => { replyThreadController.selectReply(entryId); },
+      onThread: openExistingThread,
+      getThreadSummary: (entryId) => transcriptThreadProjection.threadSummaries.get(entryId) ?? null,
+      openThread: openExistingThread,
+      resolveEntry: (targetId) => {
+        const entry = displayedEntries.find((candidate) => candidate.id === targetId);
+        return entry != null && isTranscriptCardActionEntry(entry) ? entry : null;
+      },
+      scrollToEntry,
+      isEntryInScope: (targetId) => replyThreadController.resolve(targetId).isInScope,
+    };
+  }, [activeAgent, activeAgentId, displayedEntries, entries, openThreadRootId, replyThreadController, transcriptAccountSlot, transcriptThreadProjection.threadSummaries]);
   const loadOlderTranscript = useCallback(() => transcriptPaginationController.loadOlder(), [transcriptPaginationController]);
   const paletteLinks = useMemo(
     () => commandPaletteLinksFromConversation(commandPaletteOpen ? conversationLinkCandidates(entries) : []),
@@ -1881,7 +1942,10 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     void linkMetadataProvider.setUrls(paletteLinks.map((link) => link.url));
   }, [linkMetadataProvider, paletteLinks]);
   const baseDraft = activeDraftSnapshot.draft ?? activeDraftSnapshot.recovery ?? EMPTY_DRAFT;
-  const draft = replyThreadController.applyReplyToDraft(baseDraft);
+  const replyDraft = replyThreadController.applyReplyToDraft(baseDraft);
+  const draft = openThreadRootId == null
+    ? replyDraft
+    : { ...replyDraft, replyToId: openThreadRootId, isFork: true };
   const clearReplyTarget = useCallback(() => {
     replyThreadController.clearReply();
     if (activeAgentId.length > 0 && activeDraftSnapshot.draft != null) {
@@ -2217,12 +2281,13 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     setTranscriptLoadError((current) => current?.agentId === agentId ? null : current);
     const hasLoadedEntries = entriesByAgentRef.current[agentId] != null;
     transcriptPaginationController.setScope(transcriptAccountSlot, agentId);
+    const hasInstalledTranscriptPage = transcriptPaginationController.getSnapshot().cursor.kind !== "unprobed";
     const shouldOpen = selectionStore.select(agentId);
     setOverlay(null);
     setWorkspaceRoute(null);
     setCommandPaletteOpen(false);
-    if (hasLoadedEntries) selectionStore.settle(agentId);
-    if (!shouldOpen || hasLoadedEntries || client == null) {
+    if (hasLoadedEntries && hasInstalledTranscriptPage) selectionStore.settle(agentId);
+    if (!shouldOpen || (hasLoadedEntries && hasInstalledTranscriptPage) || client == null) {
       if (client == null) selectionStore.settle(agentId);
       return;
     }
@@ -2371,9 +2436,9 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
           delete next[ownerId];
           return next;
         });
+        transcriptPaginationController.invalidateScope(transcriptAccountSlot, ownerId);
         if (activeAgentIdRef.current !== ownerId) return;
         acknowledgementController.reset();
-        transcriptPaginationController.reset();
       },
       onAppended: ({ agentId: ownerId, entry: event }) => {
       if (!isCurrent() || accountRef.current?.kind !== "logged-in") return;
@@ -2938,13 +3003,16 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     if (activeAgent == null || client == null) return;
     const liveDraftSnapshot = activeDraftSnapshotStore.get();
     const liveBaseDraft = liveDraftSnapshot.draft ?? liveDraftSnapshot.recovery ?? EMPTY_DRAFT;
-    const liveDraft = replyThreadController.applyReplyToDraft(liveBaseDraft);
+    const liveReplyDraft = replyThreadController.applyReplyToDraft(liveBaseDraft);
+    const liveDraft = openThreadRootId == null
+      ? liveReplyDraft
+      : { ...liveReplyDraft, replyToId: openThreadRootId, isFork: true };
     const clientNonce = makeClientNonce();
     const enteredAt = Date.now();
     const prompt = liveDraft.prompt.trim();
     const attachments = liveDraft.attachments.map(({ path, name }) => ({ path, name }));
     if (prompt.length === 0 && attachments.length === 0) return;
-    const submission = replyThreadController.projectSubmission({
+    const projectedSubmission = replyThreadController.projectSubmission({
       nonce: clientNonce,
       agentId: activeAgent.id,
       prompt,
@@ -2953,6 +3021,13 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       createdAtMs: enteredAt,
       ...(liveDraft.isFork === undefined ? {} : { isFork: liveDraft.isFork })
     });
+    const submission = openThreadRootId == null
+      ? projectedSubmission
+      : {
+          ...projectedSubmission,
+          replyToId: openThreadRootId,
+          isFork: true,
+        };
     const submissionAccountSlot = acknowledgementScopeRef.current.accountSlot;
     const draftIdentity = composerDraftStore.identifyDraft({ agentId: activeAgent.id, draft: liveBaseDraft });
     replyThreadController.clearReply();
@@ -2965,7 +3040,8 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     });
     setEntriesByAgent((current) => ({ ...current, [activeAgent.id]: [...(current[activeAgent.id] ?? []), {
       kind: "message", id: `pending-${clientNonce}`, role: "user", author: "You", text: prompt, timestampMs: enteredAt, attachments, delivery: "pending", clientNonce,
-      ...(submission.replyToId == null ? {} : { replyToId: submission.replyToId })
+      ...(submission.replyToId == null ? {} : { replyToId: submission.replyToId }),
+      ...(submission.isFork === true ? { branched: true } : {}),
     }] }));
     const queuedSubmission = composerSubmissionQueue.submit(submission);
     void queuedSubmission.completion.then((phase) => {
@@ -3020,12 +3096,14 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
         ? { ...candidate, id: pendingId, clientNonce, delivery: "pending", composedAtMs: undefined }
         : candidate)
     }));
-    const retrySubmission = {
+    const retrySubmission: ComposerSubmission = {
       nonce: clientNonce,
       agentId,
       prompt: entry.text.trim(),
       attachments: retryAttachments,
-      createdAtMs: enteredAt
+      createdAtMs: enteredAt,
+      ...(entry.replyToId == null ? {} : { replyToId: entry.replyToId }),
+      ...(entry.branched === true ? { isFork: true } : {}),
     };
     const retryAccountSlot = acknowledgementScopeRef.current.accountSlot;
     const journaledRetry = sendJournalApprovalLifecycle.resendFailed({ submission: retrySubmission, onJournaled: () => {} });
@@ -3042,8 +3120,14 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       acknowledgementController.removeOptimistic({ accountSlot: acknowledgementScopeRef.current.accountSlot, nonce: entry.clientNonce });
       if (agentId.length > 0) composerDraftStore.recoverDraft(agentId, {
         prompt: entry.text.trim(),
-        attachments: (entry.attachments ?? []).map(({ path, name }) => ({ path, name }))
+        attachments: (entry.attachments ?? []).map(({ path, name }) => ({ path, name })),
+        ...(entry.richText == null ? {} : { richText: entry.richText }),
+        ...(entry.replyToId == null ? {} : { replyToId: entry.replyToId }),
+        ...(entry.branched === true ? { isFork: true } : {}),
       });
+      if (entry.branched === true && entry.replyToId != null && agentId.length > 0) {
+        setOpenThreadTarget({ accountSlot: acknowledgementScopeRef.current.accountSlot, agentId, rootId: entry.replyToId });
+      }
       return;
     }
     removeTranscriptMessage(entry);
@@ -3484,6 +3568,13 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
             isComputerActive={computer.isComputerUseActive}
             isInfoOpen={activeAgent.isGroup ? groupInfoPaneOpen : computerInfoOpen}
             onToggleInfo={() => { setGroupInfoPaneOpen(false); setAgentSettingsOpen(false); setRoutinesInfoPaneOpen(false); setChannelsInfoPaneOpen(false); setManageSharedRoomId(null); setComputerInfoOpen((open) => !open); }}
+            thread={openThreadRootId == null || openThreadTitle == null ? undefined : {
+              title: openThreadTitle,
+              onExit: () => {
+                setOpenThreadTarget(null);
+                replyThreadController.clearReply();
+              },
+            }}
             sharedRoomTrigger={sharedRoomTrigger}
             onToggleSettings={activeAgent.isGroup
               ? groupInfoPaneRoute == null ? undefined : () => { setAgentSettingsOpen(false); setRoutinesInfoPaneOpen(false); setChannelsInfoPaneOpen(false); setComputerInfoOpen(false); setManageSharedRoomId(null); setGroupInfoPaneOpen((open) => !open); }
@@ -3494,17 +3585,20 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
           {showTranscriptLoadError
             ? <TranscriptLoadErrorSurface onRetry={() => void openAgent(activeAgent.id)} />
             : <ConversationTranscript
-                entries={entries}
-                hasOlder={transcriptPaginationSnapshot.hasOlder}
-                isLoadingOlder={transcriptPaginationSnapshot.isLoadingOlder}
+                entries={displayedEntries}
+                hasOlder={openThreadRootId == null && transcriptPaginationSnapshot.hasOlder}
+                isLoadingOlder={openThreadRootId == null && transcriptPaginationSnapshot.isLoadingOlder}
                 isAgentRunning={activeAgent.isRunning}
                 isTransportDown={transport === "down"}
-                loadOlder={loadOlderTranscript}
+                loadOlder={openThreadRootId == null ? loadOlderTranscript : undefined}
                 onCancelQueuedSend={cancelQueuedSend}
                 onDeleteFailedSend={removeTranscriptMessage}
                 onOpenReply={(targetId) => replyThreadController.navigate(targetId)}
                 onReply={(entry) => { replyThreadController.selectReply(entry.id); }}
-                onStartThread={(entry) => { replyThreadController.navigate(entry.id); }}
+                onStartThread={(entry) => {
+                  replyThreadController.clearReply();
+                  setOpenThreadTarget({ accountSlot: transcriptAccountSlot, agentId: activeAgent.id, rootId: entry.id });
+                }}
                 onResendFailedSend={(entry) => void resendFailedSend(entry)}
                 renderMessageReactionActions={renderReactionActions}
                 renderComputerHandoff={(entry) => renderComputerHandoffEntry(entry, computer)}
@@ -3520,6 +3614,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
                 onOpenAutomation={openTimelineAutomation}
                 resolveTranscriptCardInteractions={transcriptCardInteractions}
                 transcriptCards={transcriptCardContract}
+                threadRootId={openThreadRootId}
                 transcriptHandleRef={transcriptHandleRef}
               />}
           </main>

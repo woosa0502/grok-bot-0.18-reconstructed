@@ -4,7 +4,6 @@ import type {
   ConversationTranscriptEntry,
   DraftAttachment,
   TranscriptMessage,
-  TranscriptLocalToolPermission,
   TranscriptPermissionRequest,
   TranscriptThinking,
   TranscriptToolCall
@@ -221,6 +220,7 @@ function projectPermissionRequestEntry(value: Record<string, unknown>, id: strin
     title: message.permission.title,
     timestampMs,
     ...(value.isGroupStart === undefined ? {} : { isGroupStart: value.isGroupStart }),
+    ...transcriptBranchFields(value),
   };
 }
 
@@ -271,16 +271,18 @@ function transcriptReplyToId(entry: Record<string, unknown>): string | undefined
   return typeof targetId === "string" && targetId.length > 0 ? targetId : undefined;
 }
 
+function transcriptBranchFields(entry: Record<string, unknown>): Pick<TranscriptMessage, "replyToId" | "branched"> {
+  const replyToId = transcriptReplyToId(entry);
+  return {
+    ...(replyToId == null ? {} : { replyToId }),
+    ...(entry.branched === true ? { branched: true } : {}),
+  };
+}
+
 function transcriptToolCallStatus(entry: Record<string, unknown>): TranscriptToolCall["status"] {
   const status = entry.status;
   if (status === "pending" || status === "running" || status === "done" || status === "failed" || status === "error" || status === "aborted") return status;
   return "pending";
-}
-
-function transcriptLocalToolPermissionStatus(value: unknown): TranscriptLocalToolPermission["ask"]["status"] | null {
-  return value === "pending" || value === "always" || value === "never" || value === "denied" || value === "expired" || value === "allow-once"
-    ? value
-    : null;
 }
 
 function sentWhileOfflineAtMs(value: unknown, entryId: string): number | undefined {
@@ -349,7 +351,7 @@ export function projectTranscriptEntry(value: unknown, index: number, agentName:
   }
   if (value.kind === "notice") {
     const text = messageText(value);
-    return text == null ? null : { kind: "notice", id, text, timestampMs };
+    return text == null ? null : { kind: "notice", id, text, timestampMs, ...transcriptBranchFields(value) };
   }
   const message = isRecord(value.message) ? value.message : null;
   if (value.kind === "send-message" && message?.type === "permission-request") {
@@ -357,22 +359,6 @@ export function projectTranscriptEntry(value: unknown, index: number, agentName:
   }
   if (value.kind === "send-message" && message?.type === "text") {
     return projectSendMessageTextEntry(value, id, timestampMs);
-  }
-  const ask = message != null && message.type === "local-tool-permission" && isRecord(message.ask) ? message.ask : null;
-  const askStatus = ask == null ? null : transcriptLocalToolPermissionStatus(ask.status);
-  if (value.kind === "send-message" && ask != null && askStatus != null && typeof ask.requestId === "string" && ask.requestId.length > 0) {
-    return {
-      kind: "local-tool-permission",
-      id,
-      entryId: id,
-      agentId: agentId ?? stringValue(value.agentId),
-      ask: { requestId: ask.requestId, status: askStatus, action: ask.action, target: ask.target },
-      ...(typeof value.permissionScope === "string" ? { permissionScope: value.permissionScope } : {}),
-      ...(typeof value.permissionScopeRevision === "number" && Number.isInteger(value.permissionScopeRevision) && value.permissionScopeRevision >= 0
-        ? { permissionScopeRevision: value.permissionScopeRevision }
-        : {}),
-      timestampMs
-    };
   }
   // @evidence src/app/dist/renderer/assets/view-BKPMMMAd.js#byteOffset=4426 (send-message:attachment box branch owns boxRequestId)
   // A send-message attachment is a card entry even when its Computer payload
@@ -384,7 +370,11 @@ export function projectTranscriptEntry(value: unknown, index: number, agentName:
       requestId: value.boxRequestId,
       instruction: typeof value.boxInstruction === "string" ? value.boxInstruction : "",
       resolution: typeof value.boxResolution === "string" ? value.boxResolution : null,
-      timestampMs
+      ...(message?.type === "cursor-agent"
+        ? { threadTitle: typeof message.title === "string" && message.title.trim().length > 0 ? `Cursor agent: ${message.title.trim()}` : "Cursor cloud agent" }
+        : {}),
+      timestampMs,
+      ...transcriptBranchFields(value),
     };
   }
   if (value.kind === "send-message") {
@@ -425,7 +415,7 @@ export function projectTranscriptEntry(value: unknown, index: number, agentName:
       userAttachment: projection,
       delivery: transcriptDelivery(value) ?? "sent",
       ...(projection.clientNonce == null ? {} : { clientNonce: projection.clientNonce }),
-      ...(projection.replyTo == null ? {} : { replyToId: projection.replyTo }),
+      ...transcriptBranchFields(value),
       ...transcriptReactionFields(value)
     };
   }
@@ -436,7 +426,7 @@ export function projectTranscriptEntry(value: unknown, index: number, agentName:
       kind: "message", id, role: "user", author: "You", text: "", timestampMs, attachments: [attachment],
       delivery: transcriptDelivery(value) ?? "sent",
       ...(typeof value.clientNonce === "string" ? { clientNonce: value.clientNonce } : {}),
-      ...(transcriptReplyToId(value) == null ? {} : { replyToId: transcriptReplyToId(value) }),
+      ...transcriptBranchFields(value),
       ...transcriptReactionFields(value)
     };
   }
@@ -455,7 +445,7 @@ export function projectTranscriptEntry(value: unknown, index: number, agentName:
     ...(typeof value.clientNonce === "string" ? { clientNonce: value.clientNonce } : {}),
     ...(composedAtMs == null ? {} : { composedAtMs }),
     ...(transcriptStreaming(value) ? { isStreaming: true } : {}),
-    ...(transcriptReplyToId(value) == null ? {} : { replyToId: transcriptReplyToId(value) }),
+    ...transcriptBranchFields(value),
     ...transcriptReactionFields(value)
   };
 }

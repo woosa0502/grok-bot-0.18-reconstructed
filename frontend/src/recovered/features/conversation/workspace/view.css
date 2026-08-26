@@ -101,8 +101,17 @@
 .sand-chat-header__identity { display: flex; align-items: center; gap: 9px; padding: 5px 7px; }
 .sand-chat-header__avatar { width: 28px; height: 28px; }
 .sand-chat-header__identity small { color: var(--cursor-text-tertiary); }
+.sand-chat-header__breadcrumbs { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--cursor-text-secondary); }
+.sand-chat-header__breadcrumbs .sand-chat-header__avatar { width: 20px; height: 20px; flex: 0 0 auto; }
+.sand-chat-header__crumb { display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: min(38vw, 360px); padding: 5px 7px; overflow: hidden; color: inherit; font: inherit; text-overflow: ellipsis; white-space: nowrap; background: transparent; border: 0; border-radius: var(--cursor-radius-lg); cursor: pointer; }
+.sand-chat-header__crumb:hover { background: var(--cursor-bg-hover); color: var(--cursor-text-primary); }
+.sand-chat-header__crumb-sep { flex: 0 0 auto; color: var(--cursor-text-tertiary); }
 /* @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=4886695 (aSn controls: inline-flex, aligned, gap 2) */
 .sand-chat-header__controls { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.sand-thread-affordance { display: inline-flex; align-items: center; gap: 9px; margin-top: 8px; padding: 0; color: var(--cursor-text-tertiary); font: inherit; font-size: 12px; line-height: 18px; background: transparent; border: 0; cursor: pointer; }
+.sand-thread-affordance:hover { color: var(--cursor-text-secondary); }
+.sand-thread-affordance__count { display: inline-flex; align-items: center; gap: 3px; }
+.sand-thread-affordance__chevron { font-size: 15px; line-height: 1; }
 
 .sand-virtual-transcript { flex: 1 1 0; min-height: 0; overflow: auto; padding: 28px max(30px, calc((100% - 690px) / 2)); outline: none; }
 .sand-chat-stage > .sand-chat-transcript-loading { flex: 1 1 0; min-height: 0; overflow: auto; }

@@ -237,6 +237,7 @@ export interface TranscriptMessage {
   composedAtMs?: number;
   isStreaming?: boolean;
   replyToId?: string;
+  branched?: boolean;
   // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=5083971
   reactions?: readonly import("../cards/transcript-card/reaction-actions").TranscriptReaction[];
   myReactions?: ReadonlySet<string>;
@@ -275,6 +276,8 @@ export interface TranscriptNotice {
   id: string;
   text: string;
   timestampMs: number;
+  replyToId?: string;
+  branched?: boolean;
 }
 
 export interface TranscriptTimelineEvent {
@@ -302,7 +305,11 @@ export interface TranscriptComputerHandoff {
   requestId: string;
   instruction: string;
   resolution: string | null;
+  /** Shipped cursor-agent label retained when the generic Computer shell owns the card. */
+  threadTitle?: string;
   timestampMs: number;
+  replyToId?: string;
+  branched?: boolean;
 }
 
 export type TranscriptLocalToolPermissionAskStatus = "pending" | "always" | "never" | "denied" | "expired" | "allow-once";
@@ -321,6 +328,8 @@ export interface TranscriptLocalToolPermission {
   permissionScope?: string;
   permissionScopeRevision?: number;
   timestampMs: number;
+  replyToId?: string;
+  branched?: boolean;
 }
 
 export interface TranscriptPermissionRequest {
@@ -329,6 +338,8 @@ export interface TranscriptPermissionRequest {
   title: string;
   timestampMs: number;
   isGroupStart?: boolean;
+  replyToId?: string;
+  branched?: boolean;
 }
 
 export type ConversationTranscriptEntry = TranscriptMessage | TranscriptToolCall | TranscriptThinking | TranscriptNotice | TranscriptTimelineEvent | TranscriptTimeSeparator | TranscriptUnreadDivider | TranscriptComputerHandoff | TranscriptLocalToolPermission | TranscriptPermissionRequest | TranscriptCardEntry;

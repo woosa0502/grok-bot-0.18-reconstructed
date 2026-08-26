@@ -15,7 +15,7 @@ import {
 } from "react";
 import type { TranscriptCardEntry } from "./protocol";
 import { classifySendMessageTextUrl } from "./send-message-text";
-import type { TranscriptMessage } from "../../workspace/model";
+import type { TranscriptComputerHandoff, TranscriptMessage, TranscriptPermissionRequest } from "../../workspace/model";
 import type { TranscriptThreadSummary } from "./thread-summary-controller";
 import { ThreadAffordance } from "./thread-affordance";
 
@@ -38,7 +38,11 @@ export interface TranscriptUserAttachmentActionEntry {
  * text is represented as TranscriptMessage by the current production model;
  * the raw card union remains available for the other send-message types.
  */
-export type TranscriptCardActionEntry = TranscriptMessage | TranscriptCardEntry | TranscriptUserAttachmentActionEntry;
+export type TranscriptCardActionEntry = TranscriptMessage
+  | TranscriptCardEntry
+  | TranscriptUserAttachmentActionEntry
+  | TranscriptComputerHandoff
+  | TranscriptPermissionRequest;
 
 /** Shared action contract for ordinary messages, cards, and raw user attachments. */
 export interface TranscriptMessageReactionSlotProps {
@@ -76,7 +80,11 @@ export function useTranscriptCardInteractionContext(): TranscriptCardInteraction
 export function isTranscriptCardActionEntry(value: unknown): value is TranscriptCardActionEntry {
   if (typeof value !== "object" || value == null || Array.isArray(value)) return false;
   const candidate = value as { kind?: unknown; id?: unknown };
-  return (candidate.kind === "message" || candidate.kind === "send-message" || candidate.kind === "user-attachment")
+  return (candidate.kind === "message"
+    || candidate.kind === "send-message"
+    || candidate.kind === "user-attachment"
+    || candidate.kind === "computer-handoff"
+    || candidate.kind === "permission-request")
     && typeof candidate.id === "string"
     && candidate.id.length > 0;
 }

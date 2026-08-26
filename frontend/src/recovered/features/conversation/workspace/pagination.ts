@@ -54,6 +54,7 @@ export interface TranscriptPaginationRootHandoff {
   getSnapshot(): TranscriptPaginationSnapshot;
   subscribe(listener: () => void): () => void;
   setScope(accountSlot: string | null, agentId: string | null): void;
+  invalidateScope(accountSlot: string | null, agentId: string): void;
   installInitialPage(page: TranscriptHistoryPage): boolean;
   loadOlder(): Promise<void>;
   bindViewport(viewport: TranscriptViewport | null): void;
@@ -67,6 +68,12 @@ export interface TranscriptPaginationControllerOptions {
   pageLimit?: number;
   accountSlot?: string | null;
   agentId?: string | null;
+}
+
+interface CachedTranscriptPageState {
+  readonly entries: readonly ConversationTranscriptEntry[];
+  readonly cursor: TranscriptHistoryCursor;
+  readonly olderFailure: unknown | null;
 }
 
 const DEFAULT_PAGE_LIMIT = 200;
@@ -124,6 +131,20 @@ export function createTranscriptPaginationController(
   let viewport: TranscriptViewport | null = null;
   let pendingAnchor: { generation: number; pageGeneration: number; scrollTop: number; scrollHeight: number } | null = null;
   let disposed = false;
+  const pageStateByScope = new Map<string, CachedTranscriptPageState>();
+
+  const scopeKey = (slot: string | null, id: string | null) => JSON.stringify([slot, id]);
+  const cacheCurrentPageState = () => {
+    if (agentId == null) return;
+    pageStateByScope.set(scopeKey(accountSlot, agentId), { entries, cursor, olderFailure });
+  };
+  const restorePageState = () => {
+    const cached = agentId == null ? undefined : pageStateByScope.get(scopeKey(accountSlot, agentId));
+    entries = cached?.entries ?? [];
+    cursor = cached?.cursor ?? EMPTY_CURSOR;
+    olderFailure = cached?.olderFailure ?? null;
+    pendingAnchor = null;
+  };
 
   const buildSnapshot = (): TranscriptPaginationSnapshot => ({
     generation,
@@ -168,11 +189,23 @@ export function createTranscriptPaginationController(
 
     setScope(nextAccountSlot, nextAgentId) {
       if (disposed || (accountSlot === nextAccountSlot && agentId === nextAgentId)) return;
+      cacheCurrentPageState();
       generation += 1;
       pageGeneration += 1;
       requestGeneration += 1;
       accountSlot = nextAccountSlot;
       agentId = nextAgentId;
+      inFlight = null;
+      restorePageState();
+      emit();
+    },
+
+    invalidateScope(invalidatedAccountSlot, invalidatedAgentId) {
+      if (disposed) return;
+      pageStateByScope.delete(scopeKey(invalidatedAccountSlot, invalidatedAgentId));
+      if (accountSlot !== invalidatedAccountSlot || agentId !== invalidatedAgentId) return;
+      pageGeneration += 1;
+      requestGeneration += 1;
       inFlight = null;
       clearPageState();
       emit();
@@ -187,6 +220,7 @@ export function createTranscriptPaginationController(
       cursor = cursorFromNextBeforeSeq(page.nextBeforeSeq);
       olderFailure = null;
       pendingAnchor = null;
+      cacheCurrentPageState();
       emit();
       return true;
     },
@@ -216,6 +250,7 @@ export function createTranscriptPaginationController(
           entries = mergeOlderTranscriptEntries(entries, page.entries);
           cursor = cursorFromNextBeforeSeq(page.nextBeforeSeq);
           olderFailure = null;
+          cacheCurrentPageState();
           emit();
         } catch (error) {
           if (!isCurrentRequest(requestId, requestPageGeneration, requestAgentId)) return;
@@ -223,6 +258,7 @@ export function createTranscriptPaginationController(
             cursor = { kind: "unavailable" };
             olderFailure = null;
           } else olderFailure = error;
+          cacheCurrentPageState();
           pendingAnchor = null;
           emit();
         } finally {
@@ -260,6 +296,7 @@ export function createTranscriptPaginationController(
       requestGeneration += 1;
       inFlight = null;
       clearPageState();
+      pageStateByScope.clear();
       emit();
     },
 
@@ -271,6 +308,7 @@ export function createTranscriptPaginationController(
       requestGeneration += 1;
       inFlight = null;
       clearPageState();
+      pageStateByScope.clear();
       viewport = null;
       listeners.clear();
     }

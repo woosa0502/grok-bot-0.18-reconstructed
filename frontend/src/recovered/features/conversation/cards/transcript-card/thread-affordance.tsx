@@ -27,7 +27,7 @@ export function ThreadAffordance({ summary, onOpen, role, children }: ThreadAffo
       type="button"
     >
       {children ?? <span>View thread</span>}
-      <span aria-hidden="true" className="sand-thread-affordance__count">{countLabel}</span>
+      <span aria-hidden="true" className="sand-thread-affordance__count">{countLabel}<span className="sand-thread-affordance__chevron">›</span></span>
     </button>
   );
 }

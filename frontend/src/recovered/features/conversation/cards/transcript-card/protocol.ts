@@ -137,6 +137,8 @@ export interface AttachmentCardMessage {
   type: "attachment";
   url: string;
   alt?: string;
+  /** Shipped message.file_name, retained for thread titles and file labels. */
+  fileName?: string;
 }
 
 export interface ConnectorsCardMessage {
@@ -187,6 +189,7 @@ export interface TranscriptCardEntryBase {
   id: string;
   message: TranscriptCardMessage;
   replyToId?: string;
+  branched?: boolean;
   respondedValue?: string;
   widgetDismissed?: boolean;
   widgetSkipped?: boolean;
@@ -364,7 +367,13 @@ function projectSecretRequest(value: Record<string, unknown>): SecretRequestCard
 function projectAttachment(value: Record<string, unknown>): AttachmentCardMessage | null {
   if (!nonEmptyString(value.url)) return null;
   if (value.alt !== undefined && typeof value.alt !== "string") return null;
-  return { type: "attachment", url: value.url, ...(value.alt === undefined ? {} : { alt: value.alt }) };
+  if (value.file_name !== undefined && typeof value.file_name !== "string") return null;
+  return {
+    type: "attachment",
+    url: value.url,
+    ...(value.alt === undefined ? {} : { alt: value.alt }),
+    ...(value.file_name === undefined ? {} : { fileName: value.file_name }),
+  };
 }
 
 function projectConnectors(value: Record<string, unknown>): ConnectorsCardMessage | null {
@@ -447,6 +456,7 @@ export function projectTranscriptCardEntry(value: unknown): TranscriptCardEntry 
   if (projectedMessage == null) return null;
   if (value.replyTo !== undefined && typeof value.replyTo !== "string") return null;
   if (value.replyToId !== undefined && typeof value.replyToId !== "string") return null;
+  if (value.branched !== undefined && typeof value.branched !== "boolean") return null;
   if (value.respondedValue !== undefined && typeof value.respondedValue !== "string") return null;
   if (value.widgetDismissed !== undefined && typeof value.widgetDismissed !== "boolean") return null;
   if (value.widgetSkipped !== undefined && typeof value.widgetSkipped !== "boolean") return null;
@@ -471,6 +481,7 @@ export function projectTranscriptCardEntry(value: unknown): TranscriptCardEntry 
     id: value.id,
     message: projectedMessage,
     ...(replyToId === undefined ? {} : { replyToId }),
+    ...(value.branched === undefined ? {} : { branched: value.branched }),
     ...(value.respondedValue === undefined ? {} : { respondedValue: value.respondedValue }),
     ...(value.widgetDismissed === undefined ? {} : { widgetDismissed: value.widgetDismissed }),
     ...(value.widgetSkipped === undefined ? {} : { widgetSkipped: value.widgetSkipped }),

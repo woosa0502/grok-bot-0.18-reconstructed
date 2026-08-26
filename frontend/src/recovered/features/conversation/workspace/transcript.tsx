@@ -29,6 +29,7 @@ import type { FindInChatTranscriptHandle } from "./find-in-chat-controller";
 import type { SendMessageTextImage } from "../cards/transcript-card/send-message-text";
 import { ThreadAffordance } from "../cards/transcript-card/thread-affordance";
 import type { TranscriptThreadSummary } from "../cards/transcript-card/thread-summary-controller";
+import { ProjectedThreadActionEntryFrame, ProjectedThreadSummaryEntryFrame } from "./projected-thread-entry";
 
 function transcriptIds(id: string, hasTimestamp: boolean) {
   const base = `sand-conversation-entry-${encodeURIComponent(id)}`;
@@ -61,9 +62,9 @@ export type RenderTranscriptMessageReactionPills = (props: TranscriptMessageReac
 
 // @evidence recovered/frontend/app/assets/index-UbX-y3il.js#byteOffset=6395536 (immutable mCn action eligibility/copy injection; UTF-8; SHA256 80464803b50f478598080bdc1b91da3996c6b74168e2351ea26f620f2ec62ba5)
 function isOrdinaryMessageActionable(entry: TranscriptMessage, isReadOnly: boolean, onCopy?: (entry: TranscriptMessage) => void | Promise<void>): boolean {
-  const hasCopyContent = entry.text.length > 0;
+  const hasActionContent = entry.text.length > 0 || (entry.attachments?.length ?? 0) > 0;
   const deliveryActionable = entry.delivery !== "failed" && entry.delivery !== "pending" && entry.delivery !== "queued";
-  return hasCopyContent && deliveryActionable && (!isReadOnly || onCopy != null);
+  return hasActionContent && deliveryActionable && (!isReadOnly || (onCopy != null && entry.text.length > 0));
 }
 
 const deliveryActionButtonClass = "sand-y5h43f sand-19ji09o";
@@ -216,7 +217,7 @@ function MessageActionAnchor({ entry, isReadOnly, threadRootId, threadSummary, o
           {!isReadOnly && isThreadActionVisible && onReply != null ? <button className="sand-message-hover-actions__button" onClick={() => { onReply(entry); closeMenu(true); }} role="menuitem" style={{ width: "100%", border: 0, borderRadius: "5px", textAlign: "left" }} type="button"><span aria-hidden="true" data-icon-name={replyActionIconName(entry)} />Reply</button> : null}
           {!isReadOnly && isThreadActionVisible && onStartThread != null ? <button className="sand-message-hover-actions__button" onClick={() => { onStartThread(entry); closeMenu(true); }} role="menuitem" style={{ width: "100%", border: 0, borderRadius: "5px", textAlign: "left" }} type="button"><span aria-hidden="true" data-icon-name="chat-bubbles" />Start a thread</button> : null}
           {/* @evidence recovered/frontend/app/assets/index-UbX-y3il.js#byteOffset=6395536 (immutable Copy item is conditional on injected onCopy; UTF-8; SHA256 80464803b50f478598080bdc1b91da3996c6b74168e2351ea26f620f2ec62ba5) */}
-          {onCopy == null ? null : <button className="sand-message-hover-actions__button" onClick={copy} role="menuitem" style={{ width: "100%", border: 0, borderRadius: "5px", textAlign: "left" }} type="button"><span aria-hidden="true" data-icon-name="copy" style={{ fontFamily: "cursor-icons" }}>{String.fromCodePoint(messageActionIconCodePoint("copy"))}</span>Copy</button>}
+          {onCopy == null || entry.text.length === 0 ? null : <button className="sand-message-hover-actions__button" onClick={copy} role="menuitem" style={{ width: "100%", border: 0, borderRadius: "5px", textAlign: "left" }} type="button"><span aria-hidden="true" data-icon-name="copy" style={{ fontFamily: "cursor-icons" }}>{String.fromCodePoint(messageActionIconCodePoint("copy"))}</span>Copy</button>}
         </div> : null}
       </div>
     </div>
@@ -701,12 +702,12 @@ export function ConversationTranscript({ entries, hasOlder = false, isLoadingOld
         if (entry.kind === "time-separator") return <div className="sand-transcript-time-separator" key={entry.id} role="separator">{entry.label}</div>;
         if (entry.kind === "unread-divider") return <div className="sand-unread-divider" key={entry.id} role="separator"><span className="sand-unread-divider__label">{entry.newMessageCount} new {entry.newMessageCount === 1 ? "message" : "messages"}</span></div>;
         if (entry.kind === "timeline-event") return <TimelineEventRootEntry event={entry.event} id={entry.id} key={entry.id} onOpenAutomation={onOpenAutomation} timestampMs={entry.timestampMs} />;
-        if (entry.kind === "notice") return <TranscriptNoticeCard entry={entry} key={entry.id} />;
-        if (entry.kind === "computer-handoff") return renderComputerHandoff?.(entry) ?? null;
+        if (entry.kind === "notice") return <ProjectedThreadSummaryEntryFrame entryId={entry.id} interactions={resolveTranscriptCardInteractions} isReadOnly={isReadOnly} key={entry.id} threadRootId={threadRootId}><TranscriptNoticeCard entry={entry} /></ProjectedThreadSummaryEntryFrame>;
+        if (entry.kind === "computer-handoff") return <ProjectedThreadActionEntryFrame entry={entry} interactions={resolveTranscriptCardInteractions} isReadOnly={isReadOnly} key={entry.id} threadRootId={threadRootId}>{renderComputerHandoff?.(entry) ?? <div data-entry-id={entry.id} role="article">Computer</div>}</ProjectedThreadActionEntryFrame>;
         if (entry.kind === "thinking") return <TranscriptThinkingRow entry={entry} expanded={expandedThinking.has(entry.id)} key={entry.id} onToggle={toggleThinking} />;
         if (entry.kind === "tool-call") return <TranscriptToolCallRow entry={entry} expanded={expandedToolCalls.has(entry.id)} key={entry.id} onToggle={toggleToolCall} />;
         if (entry.kind === "local-tool-permission") return null;
-        if (entry.kind === "permission-request") return <PermissionRequestLeaf isGroupStart={entry.isGroupStart} key={entry.id} timestampMs={entry.timestampMs} title={entry.title} />;
+        if (entry.kind === "permission-request") return <ProjectedThreadActionEntryFrame entry={entry} interactions={resolveTranscriptCardInteractions} isReadOnly={isReadOnly} key={entry.id} threadRootId={threadRootId}><PermissionRequestLeaf isGroupStart={entry.isGroupStart} timestampMs={entry.timestampMs} title={entry.title} /></ProjectedThreadActionEntryFrame>;
         if (entry.kind === "send-message") {
           if (transcriptCards == null) return null;
           const isKeyboardTarget = transcriptKeyboardWidgetEntryId(entries) === entry.id;
