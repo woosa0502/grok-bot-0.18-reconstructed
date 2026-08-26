@@ -67,19 +67,33 @@ test("GB-CORE-001: cursor mode keeps the existing coordinator fall-through behav
   }
 });
 
-test("GB-CORE-001: auto-review localOverride 'off' disables every tool-surface classifier", async () => {
+test("GB-CORE-001: a disabled auto-review setting turns off every tool-surface classifier", async () => {
   const loaded = await loadModule("source/host/runner/sand-auto-review.ts");
   try {
-    const off = loaded.module.resolveSandAutoReviewModes({ settingsEnabled: true, enforceEnabled: true, localOverride: "off" });
+    // The local build ships auto-review off via the persisted setting (settingsEnabled:false),
+    // not a hard-coded host override, so every surface falls to the local tool-permission gate.
+    const off = loaded.module.resolveSandAutoReviewModes({ settingsEnabled: false, enforceEnabled: true });
     for (const surface of ["hostShell", "boxShell", "mcp", "computer", "cloudAgent", "subagentLaunch"]) {
       assert.equal(off[surface], "off", `${surface} must be off so it falls to the local tool-permission gate`);
     }
-    // Without a local override an enabled gate still enforces (unchanged upstream behavior).
+    // With the setting re-enabled an enabled gate still enforces (unchanged upstream behavior),
+    // so turning review back on in Settings restores the original Cursor-mode behavior.
     const enforce = loaded.module.resolveSandAutoReviewModes({ settingsEnabled: true, enforceEnabled: true });
     assert.equal(enforce.hostShell, "enforce");
   } finally {
     await loaded.dispose();
   }
+});
+
+test("GB-CORE-001: the local first-run seed pre-configures auto-review off but never overrides the user", async () => {
+  const { initialLocalSettingsUpdate } = await import("../scripts/lib/wsl-runtime.mjs");
+  // A fresh profile is seeded with auto-review disabled (and codex inference) up front.
+  const fresh = initialLocalSettingsUpdate(null);
+  assert.equal(fresh.inferenceProvider, "codex");
+  assert.equal(fresh.autoReviewInstructions.isEnabled, false, "fresh local profiles start with auto-review off");
+  // A profile where the user already chose an auto-review setting is left untouched.
+  const chosen = initialLocalSettingsUpdate({ autoReviewInstructions: { isEnabled: true, allowInstructions: [], blockInstructions: [] } });
+  assert.equal("autoReviewInstructions" in chosen, false, "an existing auto-review choice must win over the seed");
 });
 
 test("GB-CORE-001: a disabled journal ignores a stale claim marker and stays on the legacy store", async () => {

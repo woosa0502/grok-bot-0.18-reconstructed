@@ -71,7 +71,10 @@ test("WSL runtime owns an isolated local Codex host", () => {
 });
 
 test("local settings initialize missing values without overwriting persisted choices", () => {
-  assert.deepEqual(initialLocalSettingsUpdate(null), { inferenceProvider: "codex", hasSeenOnboarding: true });
-  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "claude-code", hasSeenOnboarding: false }), {});
-  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex" }), { hasSeenOnboarding: true });
+  const seededReview = { isEnabled: false, allowInstructions: [], blockInstructions: [] };
+  assert.deepEqual(initialLocalSettingsUpdate(null), { inferenceProvider: "codex", hasSeenOnboarding: true, autoReviewInstructions: seededReview });
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "claude-code", hasSeenOnboarding: false }), { autoReviewInstructions: seededReview });
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex" }), { hasSeenOnboarding: true, autoReviewInstructions: seededReview });
+  // A persisted auto-review choice (on or off) is never overwritten by the seed.
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex", hasSeenOnboarding: true, autoReviewInstructions: { isEnabled: true, allowInstructions: [], blockInstructions: [] } }), {});
 });

@@ -63,6 +63,16 @@ export function initialLocalSettingsUpdate(raw) {
   return {
     ...(typeof settings.inferenceProvider === "string" ? {} : { inferenceProvider: "codex" }),
     ...(typeof settings.hasSeenOnboarding === "boolean" ? {} : { hasSeenOnboarding: true }),
+    // Ship the local/codex build pre-configured with Smart-Mode auto-review off, the
+    // same way the app carries any other first-run default: the Cursor-backed risk
+    // classifier has no backend here, so an enabled review fail-closes and blocks every
+    // shell/browser/computer action. Seeding the setting (instead of hard-coding the
+    // mode in the host) leaves host-machine actions gated by "Execution on Local
+    // Computer" and lets the user turn review back on in Settings whenever they want.
+    // Only seeded when the user has not already chosen — their setting always wins.
+    ...(typeof settings.autoReviewInstructions === "object" && settings.autoReviewInstructions != null
+      ? {}
+      : { autoReviewInstructions: { isEnabled: false, allowInstructions: [], blockInstructions: [] } }),
   };
 }
 
