@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -85,15 +85,46 @@ test("GB-CORE-001: a disabled auto-review setting turns off every tool-surface c
   }
 });
 
-test("GB-CORE-001: the local first-run seed pre-configures auto-review off but never overrides the user", async () => {
+test("GB-CORE-001: re-enabling auto-review survives a restart (real settings-store round-trip)", async () => {
   const { initialLocalSettingsUpdate } = await import("../scripts/lib/wsl-runtime.mjs");
-  // A fresh profile is seeded with auto-review disabled (and codex inference) up front.
-  const fresh = initialLocalSettingsUpdate(null);
-  assert.equal(fresh.inferenceProvider, "codex");
-  assert.equal(fresh.autoReviewInstructions.isEnabled, false, "fresh local profiles start with auto-review off");
-  // A profile where the user already chose an auto-review setting is left untouched.
-  const chosen = initialLocalSettingsUpdate({ autoReviewInstructions: { isEnabled: true, allowInstructions: [], blockInstructions: [] } });
-  assert.equal("autoReviewInstructions" in chosen, false, "an existing auto-review choice must win over the seed");
+  const loaded = await loadModule("source/shared/node/settings/sand-settings-store.ts");
+  const dir = await mkdtemp(path.join(os.tmpdir(), "gb-core-001-settings-"));
+  const settingsPath = path.join(dir, "settings.json");
+  // Mimic run-wsl.mjs: read the persisted file, compute the seed delta, and apply it
+  // through the very setters setHostSettings uses — the round-trip the earlier tests skipped.
+  const applyStartupSeed = async () => {
+    const raw = await readFile(settingsPath, "utf8").then(JSON.parse).catch(() => null);
+    const delta = initialLocalSettingsUpdate(raw);
+    const store = new loaded.module.SandSettingsStore(settingsPath);
+    if (delta.inferenceProvider !== undefined) store.setInferenceProvider(delta.inferenceProvider);
+    if (delta.hasSeenOnboarding !== undefined) store.setHasSeenOnboarding(delta.hasSeenOnboarding);
+    if (delta.autoReviewInstructions !== undefined) store.setAutoReviewInstructions(delta.autoReviewInstructions);
+    return store;
+  };
+  try {
+    // First launch on a fresh profile: seed leaves auto-review off.
+    let store = await applyStartupSeed();
+    assert.equal(store.getInferenceProvider(), "codex");
+    assert.equal(store.getAutoReviewInstructions().isEnabled, false, "fresh local profiles start with review off");
+
+    // The user turns review back on. The store persists an enabled+empty review as the
+    // default by dropping the field entirely — there is no "on" marker left on disk.
+    store.setAutoReviewInstructions({ isEnabled: true, allowInstructions: [], blockInstructions: [] });
+    assert.equal(store.getAutoReviewInstructions().isEnabled, true);
+
+    // Restart: the seed runs again against the persisted file. It must NOT re-disable the
+    // user's choice (the bug: an absent field was treated as "unset" and re-seeded off).
+    store = await applyStartupSeed();
+    assert.equal(store.getAutoReviewInstructions().isEnabled, true, "re-enabled review must survive the restart seed");
+
+    // Turning it off persists explicitly and also survives a restart.
+    store.setAutoReviewInstructions({ isEnabled: false, allowInstructions: [], blockInstructions: [] });
+    store = await applyStartupSeed();
+    assert.equal(store.getAutoReviewInstructions().isEnabled, false, "an explicit off must persist across restart");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await loaded.dispose();
+  }
 });
 
 test("GB-CORE-001: a disabled journal ignores a stale claim marker and stays on the legacy store", async () => {
@@ -105,6 +136,72 @@ test("GB-CORE-001: a disabled journal ignores a stale claim marker and stays on 
     };
     const mirror = new loaded.module.RoutedTranscriptMirror(journal, {}, async () => false);
     assert.equal(await mirror.route("agent"), "legacy");
+  } finally {
+    await loaded.dispose();
+  }
+});
+
+test("GB-CORE-001: skipCheckpoint agrees with route() regardless of call order", async () => {
+  const loaded = await loadModule("source/host/transcript-mirror/transcript-mirror-router.ts");
+  try {
+    // Disabled journal, stale marker present, skipCheckpoint reached BEFORE any route() call
+    // (so the route cache is empty and the selected==null branch runs). It must not recover
+    // or skip through the journal it has disowned.
+    const disabledCalls = [];
+    const disabledJournal = {
+      ownsConversation: async () => true,
+      claimConversation: async () => { throw new Error("must not claim when the journal is disabled"); },
+      recover: async () => { disabledCalls.push("recover"); },
+      skipCheckpoint: async () => { disabledCalls.push("skip"); },
+    };
+    const disabledMirror = new loaded.module.RoutedTranscriptMirror(disabledJournal, {}, async () => false);
+    await disabledMirror.skipCheckpoint({}, "agent", {}, {});
+    assert.deepEqual(disabledCalls, [], "a disabled journal must not recover/skip via the journal");
+    assert.equal(await disabledMirror.route("agent"), "legacy", "and route() must still agree it is legacy");
+
+    // Positive control: an enabled journal that owns the conversation still recovers then skips.
+    const enabledCalls = [];
+    const enabledJournal = {
+      ownsConversation: async () => true,
+      claimConversation: async () => {},
+      recover: async () => { enabledCalls.push("recover"); },
+      skipCheckpoint: async () => { enabledCalls.push("skip"); },
+    };
+    const enabledMirror = new loaded.module.RoutedTranscriptMirror(enabledJournal, {}, async () => true);
+    await enabledMirror.skipCheckpoint({}, "agent", {}, {});
+    assert.deepEqual(enabledCalls, ["recover", "skip"], "an enabled owning journal recovers then skips");
+  } finally {
+    await loaded.dispose();
+  }
+});
+
+test("GB-CORE-001: legacy routed transcript history merges into the host read without duplicate rowIds", async () => {
+  const loaded = await loadModule("source/node-agent-coordinator/inference-router.ts");
+  try {
+    // Modelled on the real data: the same agent has an older routed-JSON conversation and a
+    // newer host conversation that both start their turn ids at "t0u".
+    const host = [
+      { kind: "message", id: "t0u", role: "user", content: "new-first", timestampMs: 1787705390410 },
+      { kind: "send-message", id: "t0s0", message: { type: "text", content: "new-reply" }, timestampMs: 1787705397539 },
+    ];
+    const legacy = [
+      { kind: "message", id: "t0u", role: "user", content: "old-first", timestampMs: 1787662208894 },
+      { kind: "send-message", id: "t1787662210106s0", message: { type: "text", content: "old-reply" }, timestampMs: 1787662210106 },
+    ];
+    const merged = loaded.module.mergeRoutedTranscriptEntries(host, legacy);
+    const ids = merged.map((entry) => entry.id);
+    assert.equal(new Set(ids).size, ids.length, "merged transcript must not contain duplicate rowIds");
+    // The host copy of the shared id wins and keeps its own content.
+    assert.equal(merged.find((entry) => entry.id === "t0u").content, "new-first");
+    // The colliding legacy message is preserved (re-keyed), not dropped.
+    assert.ok(merged.some((entry) => entry.content === "old-first"), "the old colliding message must survive");
+    // JSON-only history is restored.
+    assert.ok(merged.some((entry) => entry.id === "t1787662210106s0"), "JSON-only history must be restored");
+    // 2 host + 2 legacy, nothing lost.
+    assert.equal(merged.length, 4);
+    // Ordered by timestamp: older routed history reads before newer host history.
+    const times = merged.map((entry) => entry.timestampMs);
+    assert.deepEqual(times, [...times].sort((a, b) => a - b), "entries must be ordered by timestamp");
   } finally {
     await loaded.dispose();
   }

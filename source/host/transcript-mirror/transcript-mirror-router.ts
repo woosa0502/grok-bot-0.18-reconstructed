@@ -167,7 +167,11 @@ export class RoutedTranscriptMirror<Checkpoint, Store> {
     let recoverOwnedJournal = false;
 
     if (selected == null) {
-      if (!await this.journal.ownsConversation(conversationId)) {
+      // Honour the same disable switch selectRoute() does: when journaling is off a stale
+      // `.journal-mode` claim marker must not pull an unrouted conversation onto the journal
+      // (recover + skip), or this method would diverge from route() purely by call order —
+      // route() returns "legacy" while skipCheckpoint drives the journal it disowned.
+      if (!await this.isJournalEnabled() || !await this.journal.ownsConversation(conversationId)) {
         this.legacyPending.delete(conversationId);
         return;
       }

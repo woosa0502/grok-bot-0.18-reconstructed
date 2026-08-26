@@ -72,9 +72,13 @@ test("WSL runtime owns an isolated local Codex host", () => {
 
 test("local settings initialize missing values without overwriting persisted choices", () => {
   const seededReview = { isEnabled: false, allowInstructions: [], blockInstructions: [] };
+  // First run (no inference provider yet): seed codex + onboarding + auto-review off.
   assert.deepEqual(initialLocalSettingsUpdate(null), { inferenceProvider: "codex", hasSeenOnboarding: true, autoReviewInstructions: seededReview });
-  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "claude-code", hasSeenOnboarding: false }), { autoReviewInstructions: seededReview });
-  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex" }), { hasSeenOnboarding: true, autoReviewInstructions: seededReview });
-  // A persisted auto-review choice (on or off) is never overwritten by the seed.
+  // Once the profile exists (inference provider present), auto-review is NEVER re-seeded,
+  // even when the field is absent — an absent field is how the store records the user's
+  // "enabled" choice, so re-seeding here would silently disable it on the next restart.
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex" }), { hasSeenOnboarding: true });
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "claude-code", hasSeenOnboarding: false }), {});
+  // A persisted auto-review choice is likewise left untouched.
   assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex", hasSeenOnboarding: true, autoReviewInstructions: { isEnabled: true, allowInstructions: [], blockInstructions: [] } }), {});
 });

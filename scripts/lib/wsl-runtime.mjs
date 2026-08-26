@@ -60,19 +60,27 @@ export function gatewayUrlFromDiscovery(discovery, expectedPid) {
 
 export function initialLocalSettingsUpdate(raw) {
   const settings = typeof raw === "object" && raw != null && !Array.isArray(raw) ? raw : {};
+  // A brand-new local profile has no inference provider yet; that is our one-time
+  // first-run signal. inferenceProvider is never cleared once written, so it stays a
+  // stable marker that this profile has already been initialised.
+  const firstRun = typeof settings.inferenceProvider !== "string";
   return {
-    ...(typeof settings.inferenceProvider === "string" ? {} : { inferenceProvider: "codex" }),
+    ...(firstRun ? { inferenceProvider: "codex" } : {}),
     ...(typeof settings.hasSeenOnboarding === "boolean" ? {} : { hasSeenOnboarding: true }),
     // Ship the local/codex build pre-configured with Smart-Mode auto-review off, the
     // same way the app carries any other first-run default: the Cursor-backed risk
     // classifier has no backend here, so an enabled review fail-closes and blocks every
     // shell/browser/computer action. Seeding the setting (instead of hard-coding the
     // mode in the host) leaves host-machine actions gated by "Execution on Local
-    // Computer" and lets the user turn review back on in Settings whenever they want.
-    // Only seeded when the user has not already chosen — their setting always wins.
-    ...(typeof settings.autoReviewInstructions === "object" && settings.autoReviewInstructions != null
-      ? {}
-      : { autoReviewInstructions: { isEnabled: false, allowInstructions: [], blockInstructions: [] } }),
+    // Computer".
+    //
+    // Seed this ONLY on first run, not whenever the field is absent. The settings store
+    // records an enabled review with no custom instructions as "the default" by dropping
+    // the field entirely (setAutoReviewInstructions), so a user who turns review back on
+    // leaves no field behind. Re-seeding on absence would silently disable their choice
+    // on the next restart; gating on firstRun lets an enabled review persist (absent
+    // field -> store default isEnabled:true) while a fresh profile still starts off.
+    ...(firstRun ? { autoReviewInstructions: { isEnabled: false, allowInstructions: [], blockInstructions: [] } } : {}),
   };
 }
 
