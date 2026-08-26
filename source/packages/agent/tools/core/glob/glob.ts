@@ -75,7 +75,9 @@ export function createGlobTool(
       createGlobToolCall(new GlobToolCall({ args: globArgs })),
       meta.toolCallId,
       async ctx => {
-        const command = `rg --files -g ${singleQuote(pattern)} ${singleQuote(dir)} 2>/dev/null || true`;
+        // Search relative to workingDirectory (the box resolves it); do not pass the
+        // virtual /workspace path as an rg argument — it does not exist on the host.
+        const command = `rg --files -g ${singleQuote(pattern)} 2>/dev/null || true`;
         const shellResult = await shellExecutor.execute(ctx, new ShellArgs({ command, workingDirectory: dir, timeout: 30_000, toolCallId: meta.toolCallId }), { execId: meta.toolCallId });
         if (shellResult.result.case !== "success" && shellResult.result.case !== "failure") {
           return new GlobToolResult({ result: { case: "error", value: new GlobToolError({ error: `glob failed (${shellResult.result.case ?? "unknown"})` }) } });
