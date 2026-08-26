@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { appendFile, lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { appendFile, lstat, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -53,6 +53,26 @@ import {
   LsSuccess,
   type LsArgs,
 } from "../packages/proto/generated/agent/v1/ls_exec_pb.js";
+import {
+  DeleteError,
+  DeleteFileNotFound,
+  DeleteNotFile,
+  DeletePermissionDenied,
+  DeleteRejected,
+  DeleteResult,
+  DeleteSuccess,
+  type DeleteArgs,
+} from "../packages/proto/generated/agent/v1/delete_exec_pb.js";
+import {
+  GrepContentMatch,
+  GrepContentResult,
+  GrepError,
+  GrepFileMatch,
+  GrepResult,
+  GrepSuccess,
+  GrepUnionResult,
+  type GrepArgs,
+} from "../packages/proto/generated/agent/v1/grep_exec_pb.js";
 import {
   ShellBackgroundReason,
   ShellFailure,
@@ -242,6 +262,14 @@ class BoxExecRuntime {
           yield client(request.id, request.execId, { case: "lsResult", value: await this.ls(request.message.value) });
           break;
         }
+        case "deleteArgs": {
+          yield client(request.id, request.execId, { case: "deleteResult", value: await this.delete(request.message.value) });
+          break;
+        }
+        case "grepArgs": {
+          yield client(request.id, request.execId, { case: "grepResult", value: await this.grep(request.message.value, signal) });
+          break;
+        }
         case "shellArgs":
         case "miniSweAgentBashArgs": {
           const result = await this.shell(request.message.value, signal);
@@ -350,6 +378,80 @@ class BoxExecRuntime {
     } catch (error) {
       return new LsResult({ result: { case: "error", value: new LsError({ path: args.path, error: errorText(error) }) } });
     }
+  }
+
+  async delete(args: DeleteArgs): Promise<DeleteResult> {
+    let target: string;
+    try {
+      target = this.resolvePath(args.path);
+    } catch (error) {
+      if (error instanceof PathRejectedError) return new DeleteResult({ result: { case: "rejected", value: new DeleteRejected({ path: args.path, reason: error.message }) } });
+      return new DeleteResult({ result: { case: "error", value: new DeleteError({ path: args.path, error: errorText(error) }) } });
+    }
+    try {
+      const info = await lstat(target);
+      if (info.isDirectory()) return new DeleteResult({ result: { case: "notFile", value: new DeleteNotFile({ path: args.path }) } });
+      const fileSize = BigInt(info.size);
+      let prevContent = "";
+      try { prevContent = (await readFile(target)).toString("utf8").slice(0, 100_000); } catch {}
+      await rm(target);
+      return new DeleteResult({ result: { case: "success", value: new DeleteSuccess({ path: args.path, deletedFile: target, fileSize, prevContent }) } });
+    } catch (error) {
+      const code = typeof error === "object" && error != null && "code" in error ? String((error as { code: unknown }).code) : undefined;
+      if (code === "ENOENT" || code === "ENOTDIR") return new DeleteResult({ result: { case: "fileNotFound", value: new DeleteFileNotFound({ path: args.path }) } });
+      if (code === "EACCES" || code === "EPERM") return new DeleteResult({ result: { case: "permissionDenied", value: new DeletePermissionDenied({ path: args.path }) } });
+      return new DeleteResult({ result: { case: "error", value: new DeleteError({ path: args.path, error: errorText(error) }) } });
+    }
+  }
+
+  async grep(args: GrepArgs, signal: AbortSignal): Promise<GrepResult> {
+    let cwd: string;
+    try {
+      cwd = this.resolvePath(args.path !== undefined && args.path.length > 0 ? args.path : "/workspace");
+    } catch (error) {
+      return new GrepResult({ result: { case: "error", value: new GrepError({ error: errorText(error) }) } });
+    }
+    const headLimit = args.headLimit !== undefined && args.headLimit > 0 ? args.headLimit : 200;
+    const rgArgs: string[] = ["--json"];
+    if (args.caseInsensitive === true) rgArgs.push("-i");
+    if (args.multiline === true) rgArgs.push("-U", "--multiline-dotall");
+    if (args.glob !== undefined && args.glob.length > 0) rgArgs.push("-g", args.glob);
+    if (args.type !== undefined && args.type.length > 0) rgArgs.push("-t", args.type);
+    const before = args.contextBefore ?? args.context;
+    const after = args.contextAfter ?? args.context;
+    if (before !== undefined && before > 0) rgArgs.push("-B", String(before));
+    if (after !== undefined && after > 0) rgArgs.push("-A", String(after));
+    rgArgs.push("--", args.pattern, cwd);
+    const stdout = await new Promise<string>((resolve) => {
+      const child = spawn("rg", rgArgs, { cwd, env: this.#environment });
+      let out = "";
+      child.stdout.on("data", data => { out += String(data); });
+      child.stderr.on("data", () => {});
+      const abort = () => this.kill(child);
+      signal.addEventListener("abort", abort, { once: true });
+      child.once("close", () => { signal.removeEventListener("abort", abort); resolve(out); });
+      child.once("error", () => resolve(out));
+    });
+    const byFile = new Map<string, GrepContentMatch[]>();
+    let totalMatchedLines = 0;
+    for (const line of stdout.split("\n")) {
+      if (line.length === 0) continue;
+      let event: { type?: string; data?: { path?: { text?: string }; line_number?: number; lines?: { text?: string } } };
+      try { event = JSON.parse(line); } catch { continue; }
+      if (event.type !== "match") continue;
+      const file = event.data?.path?.text ?? "";
+      const lineNumber = event.data?.line_number ?? 0;
+      const content = (event.data?.lines?.text ?? "").replace(/\n$/, "");
+      const list = byFile.get(file) ?? [];
+      if (list.length === 0) byFile.set(file, list);
+      if (totalMatchedLines < headLimit) {
+        list.push(new GrepContentMatch({ lineNumber, content: content.slice(0, 2000), contentTruncated: content.length > 2000 }));
+        totalMatchedLines += 1;
+      }
+    }
+    const matches = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileMatch({ file, matches: fileMatches }));
+    const union = new GrepUnionResult({ result: { case: "content", value: new GrepContentResult({ matches, totalLines: totalMatchedLines, totalMatchedLines, clientTruncated: totalMatchedLines >= headLimit, ripgrepTruncated: false }) } });
+    return new GrepResult({ result: { case: "success", value: new GrepSuccess({ pattern: args.pattern, path: cwd, outputMode: args.outputMode ?? "content", workspaceResults: { workspace: union } }) } });
   }
 
   async shell(args: ShellArgs, signal: AbortSignal): Promise<ShellResult> {

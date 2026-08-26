@@ -47,6 +47,8 @@ import type {
   TurnAwaitToolFactoryInput,
   TurnCloudAgentToolFactoryInput,
   TurnMcpManagementToolFactoryInput,
+  TurnDeleteToolFactoryInput,
+  TurnGrepToolFactoryInput,
   TurnLsToolFactoryInput,
   TurnReadToolFactoryInput,
   TurnWebFetchToolFactoryInput,
@@ -2118,6 +2120,22 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         }
         return {
           resourceAccessor: turn.remoteBoxResourceAccessor as unknown as TurnLsToolFactoryInput["resourceAccessor"],
+        };
+      },
+      createBoxDeleteToolInputs: (turn, _props): TurnDeleteToolFactoryInput => {
+        if (turn.remoteBoxResourceAccessor === undefined) {
+          throw new TypeError("remote box resource accessor is not bound");
+        }
+        return {
+          resourceAccessor: turn.remoteBoxResourceAccessor as unknown as TurnDeleteToolFactoryInput["resourceAccessor"],
+        };
+      },
+      createBoxGrepToolInputs: (turn, _props): TurnGrepToolFactoryInput => {
+        if (turn.remoteBoxResourceAccessor === undefined) {
+          throw new TypeError("remote box resource accessor is not bound");
+        }
+        return {
+          resourceAccessor: turn.remoteBoxResourceAccessor as unknown as TurnGrepToolFactoryInput["resourceAccessor"],
         };
       },
       ...(turnInputs?.webSearch === undefined

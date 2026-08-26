@@ -2,6 +2,8 @@ import {
   backgroundShellExecutorResource,
 } from "../../packages/agent-exec/background-shell.js";
 import { computerUseExecutorResource } from "../../packages/agent-exec/computer-use.js";
+import { deleteExecutorResource } from "../../packages/agent-exec/delete.js";
+import { grepExecutorResource } from "../../packages/agent-exec/grep.js";
 import { lsExecutorResource } from "../../packages/agent-exec/ls.js";
 import { readExecutorResource } from "../../packages/agent-exec/read.js";
 import {
@@ -25,6 +27,8 @@ import type {
   ComputerUseArgs,
   ComputerUseResult,
 } from "../../packages/proto/generated/agent/v1/computer_use_tool_pb.js";
+import type { DeleteArgs, DeleteResult } from "../../packages/proto/generated/agent/v1/delete_exec_pb.js";
+import type { GrepArgs, GrepResult } from "../../packages/proto/generated/agent/v1/grep_exec_pb.js";
 import type { LsArgs, LsResult } from "../../packages/proto/generated/agent/v1/ls_exec_pb.js";
 import type { ReadArgs, ReadResult } from "../../packages/proto/generated/agent/v1/read_exec_pb.js";
 import type { ShellArgs, ShellResult, ShellStream } from "../../packages/proto/generated/agent/v1/shell_exec_pb.js";
@@ -238,6 +242,34 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
       );
     },
   } satisfies Executor<LsArgs, LsResult>);
+  accessor.register(deleteExecutorResource, {
+    execute: async (
+      context: Context,
+      args: DeleteArgs,
+      options,
+    ): Promise<DeleteResult> => {
+      const connection = await connect(context);
+      return await connection.remoteAccessor.get(deleteExecutorResource).execute(
+        context,
+        args,
+        options,
+      );
+    },
+  } satisfies Executor<DeleteArgs, DeleteResult>);
+  accessor.register(grepExecutorResource, {
+    execute: async (
+      context: Context,
+      args: GrepArgs,
+      options,
+    ): Promise<GrepResult> => {
+      const connection = await connect(context);
+      return await connection.remoteAccessor.get(grepExecutorResource).execute(
+        context,
+        args,
+        options,
+      );
+    },
+  } satisfies Executor<GrepArgs, GrepResult>);
   accessor.register(shellExecutorResource, {
     execute: async (
       context: Context,
