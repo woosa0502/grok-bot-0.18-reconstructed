@@ -45,16 +45,19 @@ import {
   type ReadArgs,
 } from "../packages/proto/generated/agent/v1/read_exec_pb.js";
 import {
+  ShellBackgroundReason,
   ShellFailure,
   ShellResult,
   ShellSpawnError,
   ShellStream,
+  ShellStreamBackgrounded,
   ShellStreamExit,
   ShellStreamStart,
   ShellStreamStderr,
   ShellStreamStdout,
   ShellSuccess,
   ShellTimeout,
+  TimeoutBehavior,
   type ShellArgs,
 } from "../packages/proto/generated/agent/v1/shell_exec_pb.js";
 
@@ -129,7 +132,7 @@ function yamlString(value: string): string {
   return JSON.stringify(value);
 }
 
-function terminalFrontmatter(args: BackgroundShellSpawnArgs, pid: number | undefined, startedAt: number): string {
+function terminalFrontmatter(args: { readonly command: string; readonly workingDirectory: string }, pid: number | undefined, startedAt: number): string {
   return `---\n${pid == null ? "" : `pid: ${pid}\n`}cwd: ${yamlString(args.workingDirectory)}\ncommand: ${yamlString(args.command)}\nstatus: running\nstarted_at: ${new Date(startedAt).toISOString()}\nrunning_for_ms: 0\n---\n`;
 }
 
@@ -324,16 +327,32 @@ class BoxExecRuntime {
     let done = false;
     let exitCode = 1;
     let exitSignal = "";
+    let backgroundRequested = false;
+    let backgrounded = false;
     const notify = () => { wake?.(); wake = undefined; };
-    child.stdout.on("data", data => { events.push({ case: "stdout", data: String(data) }); notify(); });
-    child.stderr.on("data", data => { events.push({ case: "stderr", data: String(data) }); notify(); });
+    const onStdout = (data: unknown) => { events.push({ case: "stdout", data: String(data) }); notify(); };
+    const onStderr = (data: unknown) => { events.push({ case: "stderr", data: String(data) }); notify(); };
+    child.stdout.on("data", onStdout);
+    child.stderr.on("data", onStderr);
     child.once("close", (code, childSignal) => { exitCode = code ?? 1; exitSignal = childSignal ?? ""; done = true; notify(); });
     const abort = () => this.kill(child);
     signal.addEventListener("abort", abort, { once: true });
+    // is_background / block_until_ms: when the tool asks for background behaviour
+    // (timeoutBehavior BACKGROUND) we hand a still-running shell back to the agent
+    // as a background handle (shellId/pid/output file) instead of killing it.
+    // args.timeout is the block window in ms; 0 means background immediately.
+    const backgroundOnTimeout = args.timeoutBehavior === TimeoutBehavior.BACKGROUND;
+    const backgroundAfterMs = args.timeout > 0
+      ? args.timeout
+      : (args.isBackground || backgroundOnTimeout || (args.hardTimeout != null && args.hardTimeout > 0) ? 0 : -1);
     let timer: NodeJS.Timeout | undefined;
-    if (args.timeout > 0) timer = setTimeout(() => this.kill(child), args.timeout);
+    if (backgroundOnTimeout && backgroundAfterMs >= 0) {
+      timer = setTimeout(() => { backgroundRequested = true; notify(); }, backgroundAfterMs);
+    } else if (args.timeout > 0) {
+      timer = setTimeout(() => this.kill(child), args.timeout);
+    }
     try {
-      while (!done || events.length > 0) {
+      while ((!done && !backgroundRequested) || events.length > 0) {
         while (events.length > 0) {
           const event = events.shift()!;
           yield client(request.id, request.execId, {
@@ -343,7 +362,40 @@ class BoxExecRuntime {
               : { case: "stderr", value: new ShellStreamStderr({ data: event.data }) } }),
           });
         }
-        if (!done) await new Promise<void>(resolve => { wake = resolve; });
+        if (!done && !backgroundRequested) await new Promise<void>(resolve => { wake = resolve; });
+      }
+      if (backgroundRequested && !done) {
+        backgrounded = true;
+        child.stdout.off("data", onStdout);
+        child.stderr.off("data", onStderr);
+        await mkdir(this.terminalsDirectory, { recursive: true });
+        const shellId = this.#nextShellId++;
+        const terminalPath = path.join(this.terminalsDirectory, `${shellId}.txt`);
+        const backgroundProcess: BackgroundProcess = {
+          child,
+          terminalPath,
+          startedAt,
+          writeQueue: writeFile(terminalPath, terminalFrontmatter(args, child.pid ?? undefined, startedAt)),
+        };
+        this.#background.set(shellId, backgroundProcess);
+        const queueWrite = (data: string | Uint8Array) => {
+          backgroundProcess.writeQueue = backgroundProcess.writeQueue.then(() => appendFile(terminalPath, data));
+        };
+        for (const buffered of events) queueWrite(buffered.data);
+        events.length = 0;
+        child.stdout.on("data", data => { queueWrite(data); });
+        child.stderr.on("data", data => { queueWrite(data); });
+        child.once("close", code => { this.#background.delete(shellId); queueWrite(terminalFooter(code ?? 1, startedAt)); });
+        this.#foreground.delete(child);
+        yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "backgrounded", value: new ShellStreamBackgrounded({
+          shellId,
+          command: args.command,
+          workingDirectory: args.workingDirectory,
+          ...(child.pid == null ? {} : { pid: child.pid }),
+          msToWait: Date.now() - startedAt,
+          reason: args.isBackground ? ShellBackgroundReason.USER_REQUEST : ShellBackgroundReason.TIMEOUT,
+        }) } }) });
+        return;
       }
       yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "exit", value: new ShellStreamExit({
         code: exitCode,
@@ -355,8 +407,10 @@ class BoxExecRuntime {
     } finally {
       if (timer != null) clearTimeout(timer);
       signal.removeEventListener("abort", abort);
-      this.#foreground.delete(child);
-      if (!done) this.kill(child);
+      if (!backgrounded) {
+        this.#foreground.delete(child);
+        if (!done) this.kill(child);
+      }
     }
   }
 
