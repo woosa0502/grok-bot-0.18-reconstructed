@@ -1,4 +1,4 @@
-import { SubagentType, SubagentTypeCustom } from "../packages/proto/generated/agent/v1/subagents_pb.js";
+import { CustomSubagentPermissionMode, SubagentType, SubagentTypeCustom } from "../packages/proto/generated/agent/v1/subagents_pb.js";
 import { createUpdateTodosTool } from "../packages/agent/tools/core/todo/todo.js";
 
 export const EXECUTOR_SUBAGENT_TYPE = "executor";
@@ -26,6 +26,7 @@ export function createSandExecutorSubagentConfig(): {
   readonly description: string;
   readonly preserveTaskTool: false;
   readonly subagentSource: "builtin";
+  readonly permissionMode: CustomSubagentPermissionMode;
 } {
   return {
     subagent_type: new SubagentType({
@@ -37,6 +38,10 @@ export function createSandExecutorSubagentConfig(): {
     description: EXECUTOR_SUBAGENT_DESCRIPTION,
     preserveTaskTool: false,
     subagentSource: "builtin",
+    // The executor is a full-toolset worker, so it runs in the DEFAULT permission mode
+    // (not READONLY/AGENT_ONLY). Required by TaskSubagentModelConfig; it was omitted in the
+    // reconstruction, which is why the config could not be wired into the turn toolset.
+    permissionMode: CustomSubagentPermissionMode.DEFAULT,
   };
 }
 

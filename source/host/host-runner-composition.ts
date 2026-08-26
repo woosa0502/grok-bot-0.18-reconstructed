@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { createSandExecutorSubagentConfig } from "./sand-multitask.js";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -2308,9 +2309,17 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         cloudAgent: "off",
         subagentLaunch: "off",
       };
+      // Offer the built-in general-purpose ("executor") subagent to the Task tool when
+      // multitask is enabled. The type, its config, and the system-prompt guidance to use it
+      // all exist, but the Task tool's subagent_type enum and config resolution are both
+      // driven by this list. The reconstruction left it hardcoded to [], so the built
+      // configs (buildSubagentConfigsForRun) reached nothing and Task failed with "No
+      // subagent types are available". isMultitaskEnabled is env/gate-driven (SAND_MULTITASK),
+      // matching the toolHost wiring below.
+      const multitaskEnabled = method(experiments, "isMultitaskEnabled")?.() ?? false;
       const baseTurn: TurnToolsetTurnInput = {
         autoReviewModes,
-        subagentConfigs: [],
+        subagentConfigs: multitaskEnabled ? [createSandExecutorSubagentConfig()] : [],
       };
       const staticModelId = process.env.SAND_AGENT_MODEL ?? DEFAULT_SAND_MODEL;
       const lazyToolHost = () => createProductionTurnToolsetHost({
