@@ -65,6 +65,10 @@ test("WSL runtime owns an isolated local Codex host", () => {
   assert.equal(host.SAND_DATA_ROOT, wslDataRoot(profileDir));
   assert.equal(host.SAND_GATEWAY_BIND_HOST, "127.0.0.1");
   assert.equal(host.SAND_HOST_PORT, "0");
+  // Multitask (Task/Subagent + executor) is enabled locally since its Statsig gate has no
+  // backend here; an explicit env value still wins.
+  assert.equal(host.SAND_MULTITASK, "1");
+  assert.equal(wslHostEnvironment({ profileDir, env: { SAND_MULTITASK: "0" } }).SAND_MULTITASK, "0");
   assert.equal(gatewayUrlFromDiscovery({ pid: 42, port: 15432, host: "127.0.0.1" }, 42), "http://127.0.0.1:15432");
   assert.equal(gatewayUrlFromDiscovery({ pid: 41, port: 15432 }, 42), null);
   assert.equal(gatewayUrlFromDiscovery({ pid: 42, port: 15432, host: "0.0.0.0" }, 42), null);

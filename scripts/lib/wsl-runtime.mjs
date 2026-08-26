@@ -46,6 +46,13 @@ export function wslHostEnvironment({ profileDir, env = process.env }) {
     SAND_DATA_ROOT: wslDataRoot(profileDir),
     SAND_GATEWAY_BIND_HOST: "127.0.0.1",
     SAND_HOST_PORT: "0",
+    // Enable multitask locally. The Task/Subagent toolset and the built-in "executor"
+    // subagent type are fully implemented, but the host only offers them when
+    // isMultitaskEnabled() is true — which normally comes from the Cursor-backed
+    // "sand_multitask" Statsig gate. There is no such backend here, so the gate reads
+    // false and Task fails with "No subagent types are available". resolveMultitaskEnabled
+    // honours SAND_MULTITASK ahead of the gate, so set it on for the local build.
+    SAND_MULTITASK: env.SAND_MULTITASK ?? "1",
   };
 }
 
