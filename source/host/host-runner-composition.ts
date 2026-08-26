@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig } from "./sand-multitask.js";
+import { runCodexSubagentProcess } from "./runner/codex-subagent-process.js";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -2490,20 +2491,22 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 const child = deps.buildRunner(childRunnerOptions);
                 bindSessionOwnedRunner(child);
                 ownedRunners.add(child);
+                const subagentAbort = new AbortController();
                 return {
-                  run: async (prompt, options) => {
-                    const result = await child.run(prompt, options);
-                    if (typeof result !== "object" || result == null) {
-                      throw new TypeError("production subagent result is not bound");
-                    }
-                    const text = Reflect.get(result, "text");
-                    const aborted = Reflect.get(result, "aborted");
-                    if (typeof text !== "string" || typeof aborted !== "boolean") {
-                      throw new TypeError("production subagent result is not bound");
-                    }
-                    return { text, aborted };
+                  run: async (prompt, _options) => {
+                    // Run the subagent as a separate `codex exec` process (the pi-subagents /
+                    // OpenMausBot pattern): the spawned process is a full agent with its own
+                    // turn engine and toolset, so we do not depend on an in-process subagent
+                    // turn engine (never wired in this reconstruction). The child's final
+                    // assistant message, captured via `codex exec -o`, is the result.
+                    return runCodexSubagentProcess({
+                      prompt,
+                      cwd: join(getSandRootDir(), "box-workspace"),
+                      signal: subagentAbort.signal,
+                    });
                   },
                   interrupt: reason => {
+                    subagentAbort.abort();
                     child.interrupt(reason);
                   },
                   getResolvedOutline: () => child.getResolvedOutline(),
