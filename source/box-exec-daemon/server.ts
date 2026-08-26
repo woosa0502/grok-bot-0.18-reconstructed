@@ -74,6 +74,13 @@ import {
   type GrepArgs,
 } from "../packages/proto/generated/agent/v1/grep_exec_pb.js";
 import {
+  WriteError,
+  WritePermissionDenied,
+  WriteResult,
+  WriteSuccess,
+  type WriteArgs,
+} from "../packages/proto/generated/agent/v1/write_exec_pb.js";
+import {
   ShellBackgroundReason,
   ShellFailure,
   ShellResult,
@@ -270,6 +277,10 @@ class BoxExecRuntime {
           yield client(request.id, request.execId, { case: "grepResult", value: await this.grep(request.message.value, signal) });
           break;
         }
+        case "writeArgs": {
+          yield client(request.id, request.execId, { case: "writeResult", value: await this.write(request.message.value) });
+          break;
+        }
         case "shellArgs":
         case "miniSweAgentBashArgs": {
           const result = await this.shell(request.message.value, signal);
@@ -452,6 +463,26 @@ class BoxExecRuntime {
     const matches = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileMatch({ file, matches: fileMatches }));
     const union = new GrepUnionResult({ result: { case: "content", value: new GrepContentResult({ matches, totalLines: totalMatchedLines, totalMatchedLines, clientTruncated: totalMatchedLines >= headLimit, ripgrepTruncated: false }) } });
     return new GrepResult({ result: { case: "success", value: new GrepSuccess({ pattern: args.pattern, path: cwd, outputMode: args.outputMode ?? "content", workspaceResults: { workspace: union } }) } });
+  }
+
+  async write(args: WriteArgs): Promise<WriteResult> {
+    let target: string;
+    try {
+      target = this.resolvePath(args.path);
+    } catch (error) {
+      return new WriteResult({ result: { case: "error", value: new WriteError({ path: args.path, error: errorText(error) }) } });
+    }
+    try {
+      await mkdir(path.dirname(target), { recursive: true });
+      const data = args.fileBytes !== undefined && args.fileBytes.length > 0 ? Buffer.from(args.fileBytes) : Buffer.from(args.fileText ?? "", args.encodingHint === "latin1" ? "latin1" : "utf8");
+      await writeFile(target, data);
+      const linesCreated = args.fileText === undefined ? 0 : args.fileText.length === 0 ? 0 : args.fileText.split("\n").length;
+      return new WriteResult({ result: { case: "success", value: new WriteSuccess({ path: args.path, linesCreated }) } });
+    } catch (error) {
+      const code = typeof error === "object" && error != null && "code" in error ? String((error as { code: unknown }).code) : undefined;
+      if (code === "EACCES" || code === "EPERM") return new WriteResult({ result: { case: "permissionDenied", value: new WritePermissionDenied({ path: args.path }) } });
+      return new WriteResult({ result: { case: "error", value: new WriteError({ path: args.path, error: errorText(error) }) } });
+    }
   }
 
   async shell(args: ShellArgs, signal: AbortSignal): Promise<ShellResult> {

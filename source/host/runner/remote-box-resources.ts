@@ -6,6 +6,7 @@ import { deleteExecutorResource } from "../../packages/agent-exec/delete.js";
 import { grepExecutorResource } from "../../packages/agent-exec/grep.js";
 import { lsExecutorResource } from "../../packages/agent-exec/ls.js";
 import { readExecutorResource } from "../../packages/agent-exec/read.js";
+import { writeExecutorResource } from "../../packages/agent-exec/write.js";
 import {
   RegistryResourceAccessor,
   type ResourceAccessor,
@@ -31,6 +32,7 @@ import type { DeleteArgs, DeleteResult } from "../../packages/proto/generated/ag
 import type { GrepArgs, GrepResult } from "../../packages/proto/generated/agent/v1/grep_exec_pb.js";
 import type { LsArgs, LsResult } from "../../packages/proto/generated/agent/v1/ls_exec_pb.js";
 import type { ReadArgs, ReadResult } from "../../packages/proto/generated/agent/v1/read_exec_pb.js";
+import type { WriteArgs, WriteResult } from "../../packages/proto/generated/agent/v1/write_exec_pb.js";
 import type { ShellArgs, ShellResult, ShellStream } from "../../packages/proto/generated/agent/v1/shell_exec_pb.js";
 import type {
   SmartModeClassifierArgs,
@@ -270,6 +272,20 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
       );
     },
   } satisfies Executor<GrepArgs, GrepResult>);
+  accessor.register(writeExecutorResource, {
+    execute: async (
+      context: Context,
+      args: WriteArgs,
+      options,
+    ): Promise<WriteResult> => {
+      const connection = await connect(context);
+      return await connection.remoteAccessor.get(writeExecutorResource).execute(
+        context,
+        args,
+        options,
+      );
+    },
+  } satisfies Executor<WriteArgs, WriteResult>);
   accessor.register(shellExecutorResource, {
     execute: async (
       context: Context,
