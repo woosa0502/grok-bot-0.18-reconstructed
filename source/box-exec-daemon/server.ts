@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { appendFile, lstat, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { appendFile, lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -44,6 +44,15 @@ import {
   ReadSuccess,
   type ReadArgs,
 } from "../packages/proto/generated/agent/v1/read_exec_pb.js";
+import {
+  LsDirectoryTreeNode,
+  LsDirectoryTreeNode_File,
+  LsError,
+  LsRejected,
+  LsResult,
+  LsSuccess,
+  type LsArgs,
+} from "../packages/proto/generated/agent/v1/ls_exec_pb.js";
 import {
   ShellBackgroundReason,
   ShellFailure,
@@ -229,6 +238,10 @@ class BoxExecRuntime {
           yield client(request.id, request.execId, { case: resultCase, value: result } as ExecClientMessage["message"]);
           break;
         }
+        case "lsArgs": {
+          yield client(request.id, request.execId, { case: "lsResult", value: await this.ls(request.message.value) });
+          break;
+        }
         case "shellArgs":
         case "miniSweAgentBashArgs": {
           const result = await this.shell(request.message.value, signal);
@@ -288,6 +301,54 @@ class BoxExecRuntime {
       if (code === "EACCES" || code === "EPERM") return new ReadResult({ result: { case: "permissionDenied", value: new ReadPermissionDenied({ path: args.path }) } });
       if (code === "EISDIR" || code === "EINVAL" || code === "ENAMETOOLONG") return new ReadResult({ result: { case: "invalidFile", value: new ReadInvalidFile({ path: args.path, reason: errorText(error) }) } });
       return new ReadResult({ result: { case: "error", value: new ReadError({ path: args.path, error: errorText(error) }) } });
+    }
+  }
+
+  async ls(args: LsArgs): Promise<LsResult> {
+    const LS_MAX_DEPTH = 4;
+    let budget = 2_000;
+    let root: string;
+    try {
+      root = this.resolvePath(args.path);
+    } catch (error) {
+      if (error instanceof PathRejectedError) return new LsResult({ result: { case: "rejected", value: new LsRejected({ path: args.path, reason: error.message }) } });
+      return new LsResult({ result: { case: "error", value: new LsError({ path: args.path, error: errorText(error) }) } });
+    }
+    try {
+      const info = await stat(root);
+      if (!info.isDirectory()) return new LsResult({ result: { case: "error", value: new LsError({ path: args.path, error: "Path is not a directory" }) } });
+      const ignore = new Set(args.ignore ?? []);
+      const build = async (dir: string, depth: number): Promise<LsDirectoryTreeNode> => {
+        const node = new LsDirectoryTreeNode({ absPath: dir, childrenDirs: [], childrenFiles: [], fullSubtreeExtensionCounts: {}, numFiles: 0, childrenWereProcessed: false });
+        if (depth > LS_MAX_DEPTH || budget <= 0) return node;
+        let entries;
+        try { entries = await readdir(dir, { withFileTypes: true }); }
+        catch { return node; }
+        node.childrenWereProcessed = true;
+        entries.sort((a, b) => a.name.localeCompare(b.name));
+        for (const entry of entries) {
+          if (budget <= 0) break;
+          if (ignore.has(entry.name)) continue;
+          budget -= 1;
+          if (entry.isDirectory()) {
+            const child = await build(path.join(dir, entry.name), depth + 1);
+            node.childrenDirs.push(child);
+            for (const [ext, count] of Object.entries(child.fullSubtreeExtensionCounts)) {
+              node.fullSubtreeExtensionCounts[ext] = (node.fullSubtreeExtensionCounts[ext] ?? 0) + count;
+            }
+          } else {
+            node.childrenFiles.push(new LsDirectoryTreeNode_File({ name: entry.name }));
+            node.numFiles += 1;
+            const ext = path.extname(entry.name) || "(no extension)";
+            node.fullSubtreeExtensionCounts[ext] = (node.fullSubtreeExtensionCounts[ext] ?? 0) + 1;
+          }
+        }
+        return node;
+      };
+      const directoryTreeRoot = await build(root, 0);
+      return new LsResult({ result: { case: "success", value: new LsSuccess({ directoryTreeRoot }) } });
+    } catch (error) {
+      return new LsResult({ result: { case: "error", value: new LsError({ path: args.path, error: errorText(error) }) } });
     }
   }
 

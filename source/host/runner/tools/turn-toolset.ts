@@ -109,6 +109,10 @@ import {
   type CloudAgentToolDeps,
 } from "../../cloud-agents/cloud-agent-tool.js";
 import {
+  createLsTool,
+  type LsResourceAccessor,
+} from "../../../packages/agent/tools/core/ls/ls.js";
+import {
   createReadTool,
   type ReadFormattingOptions,
   type ReadResourceAccessor,
@@ -534,6 +538,7 @@ export interface TurnToolFactories {
   cloudAgent?(): TurnTool;
   boxShell?(): TurnTool | undefined;
   boxRead?(): TurnTool;
+  boxLs?(): TurnTool;
   boxAwait?(): TurnTool;
   fileTransfer?(): readonly TurnTool[];
   computer?(): TurnTool;
@@ -628,6 +633,11 @@ export interface TurnReadToolFactoryInput {
   readonly options?: ReadToolOptions;
 }
 
+export interface TurnLsToolFactoryInput {
+  readonly resourceAccessor: LsResourceAccessor;
+  readonly toolName?: string;
+}
+
 export interface TurnSendMessageToolFactoryInput {
   readonly dependencies: SendMessageDependencies<Context>;
 }
@@ -682,6 +692,7 @@ export interface TurnToolsetFactoryInputs {
   readonly externalRead?: TurnReadToolFactoryInput;
   readonly boxShell?: TurnShellToolFactoryInput;
   readonly boxRead?: TurnReadToolFactoryInput;
+  readonly boxLs?: TurnLsToolFactoryInput;
   readonly sendMessage?: TurnSendMessageToolFactoryInput;
   readonly sendToAgent?: TurnSendToAgentToolFactoryInput;
   readonly reaction?: TurnReactionToolFactoryInput;
@@ -763,6 +774,10 @@ export interface TurnToolsetHostFactoryProvider {
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
   ) => TurnReadToolFactoryInput | undefined;
+  readonly createBoxLsToolInputs?: (
+    turn: TurnToolsetTurnInput,
+    props: TurnToolsetBuildProps,
+  ) => TurnLsToolFactoryInput | undefined;
   readonly createSendMessageToolInputs?: (
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
@@ -983,6 +998,12 @@ export function createTurnReadToolFactory(
   ));
 }
 
+export function createTurnLsToolFactory(
+  input: TurnLsToolFactoryInput,
+): () => TurnTool {
+  return () => asTurnTool(createLsTool(input.resourceAccessor, input.toolName));
+}
+
 export function createTurnSendMessageToolFactory(
   input: TurnSendMessageToolFactoryInput,
 ): () => TurnTool {
@@ -1057,7 +1078,7 @@ export function createTurnToolsetFactories(
   TurnToolFactories,
   "task" | "mcpMeta" | "computer" | "browser" | "screenshot"
   | "fileTransfer" | "requestBoxHelp" | "generateImage" | "webSearch" | "webFetch" | "externalAwait"
-  | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead"
+  | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead" | "boxLs"
   | "sendMessage" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState"
   | "subagentManagement"
   | "mcpManagement" | "cloudAgent"
@@ -1114,6 +1135,9 @@ export function createTurnToolsetFactories(
     ...(input.boxRead === undefined
       ? {}
       : { boxRead: createTurnReadToolFactory(input.boxRead) }),
+    ...(input.boxLs === undefined
+      ? {}
+      : { boxLs: createTurnLsToolFactory(input.boxLs) }),
     ...(input.sendMessage === undefined
       ? {}
       : { sendMessage: createTurnSendMessageToolFactory(input.sendMessage) }),
@@ -1159,6 +1183,7 @@ export function createTurnToolsetFactoriesForTurn(
   const externalRead = provider.createExternalReadToolInputs?.(turn, props);
   const boxShell = provider.createBoxShellToolInputs?.(turn, props);
   const boxRead = provider.createBoxReadToolInputs?.(turn, props);
+  const boxLs = provider.createBoxLsToolInputs?.(turn, props);
   return createTurnToolsetFactories({
     ...(provider.createTaskToolInputs === undefined
       ? {}
@@ -1211,6 +1236,9 @@ export function createTurnToolsetFactoriesForTurn(
     ...(provider.createBoxReadToolInputs === undefined
       ? {}
       : boxRead === undefined ? {} : { boxRead }),
+    ...(provider.createBoxLsToolInputs === undefined
+      ? {}
+      : boxLs === undefined ? {} : { boxLs }),
     ...(provider.createSendMessageToolInputs === undefined
       ? {}
       : { sendMessage: provider.createSendMessageToolInputs(turn, props) }),
@@ -1435,6 +1463,8 @@ export function buildTurnTools(
     if (boxShell !== undefined) tools.push(boxShell);
     const boxRead = scoped(factories.boxRead?.());
     if (boxRead !== undefined) tools.push(boxRead);
+    const boxLs = scoped(factories.boxLs?.());
+    if (boxLs !== undefined) tools.push(boxLs);
     if (!host.isBoxScopedSubagent) {
       const boxAwait = scoped(factories.boxAwait?.());
       if (boxAwait !== undefined) tools.push(boxAwait);

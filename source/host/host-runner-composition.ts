@@ -47,6 +47,7 @@ import type {
   TurnAwaitToolFactoryInput,
   TurnCloudAgentToolFactoryInput,
   TurnMcpManagementToolFactoryInput,
+  TurnLsToolFactoryInput,
   TurnReadToolFactoryInput,
   TurnWebFetchToolFactoryInput,
   TurnWebSearchToolFactoryInput,
@@ -2109,6 +2110,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             toolIdentifier: "READ",
             toolDescription: SAND_BOX_READ_TOOL_DESCRIPTION,
           },
+        };
+      },
+      createBoxLsToolInputs: (turn, _props): TurnLsToolFactoryInput => {
+        if (turn.remoteBoxResourceAccessor === undefined) {
+          throw new TypeError("remote box resource accessor is not bound");
+        }
+        return {
+          resourceAccessor: turn.remoteBoxResourceAccessor as unknown as TurnLsToolFactoryInput["resourceAccessor"],
         };
       },
       ...(turnInputs?.webSearch === undefined

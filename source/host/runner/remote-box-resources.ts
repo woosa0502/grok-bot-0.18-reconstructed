@@ -2,6 +2,7 @@ import {
   backgroundShellExecutorResource,
 } from "../../packages/agent-exec/background-shell.js";
 import { computerUseExecutorResource } from "../../packages/agent-exec/computer-use.js";
+import { lsExecutorResource } from "../../packages/agent-exec/ls.js";
 import { readExecutorResource } from "../../packages/agent-exec/read.js";
 import {
   RegistryResourceAccessor,
@@ -24,6 +25,7 @@ import type {
   ComputerUseArgs,
   ComputerUseResult,
 } from "../../packages/proto/generated/agent/v1/computer_use_tool_pb.js";
+import type { LsArgs, LsResult } from "../../packages/proto/generated/agent/v1/ls_exec_pb.js";
 import type { ReadArgs, ReadResult } from "../../packages/proto/generated/agent/v1/read_exec_pb.js";
 import type { ShellArgs, ShellResult, ShellStream } from "../../packages/proto/generated/agent/v1/shell_exec_pb.js";
 import type {
@@ -222,6 +224,20 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
       );
     },
   } satisfies Executor<ReadArgs, ReadResult>);
+  accessor.register(lsExecutorResource, {
+    execute: async (
+      context: Context,
+      args: LsArgs,
+      options,
+    ): Promise<LsResult> => {
+      const connection = await connect(context);
+      return await connection.remoteAccessor.get(lsExecutorResource).execute(
+        context,
+        args,
+        options,
+      );
+    },
+  } satisfies Executor<LsArgs, LsResult>);
   accessor.register(shellExecutorResource, {
     execute: async (
       context: Context,
