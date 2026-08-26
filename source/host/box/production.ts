@@ -64,6 +64,7 @@ export interface ProductionBoxProviderOptions<
   readonly generated: ProductionBoxGeneratedPorts<Transport, Accessor>;
   readonly telemetry: LoopbackTelemetry;
   readonly protectedBoxPaths: readonly string[];
+  readonly allowedBoxPaths?: readonly string[];
   readonly host?: string;
   readonly authToken?: string;
   /**
@@ -164,6 +165,7 @@ export function createProductionBoxInner<
     ...(options.authToken === undefined ? {} : { authToken: options.authToken }),
     telemetry: options.telemetry,
     protectedBoxPaths: options.protectedBoxPaths,
+    ...(options.allowedBoxPaths === undefined ? {} : { allowedBoxPaths: options.allowedBoxPaths }),
     operations: {
       async ping(ctx, endpoint): Promise<PingResult> {
         const result = await pingBoxTransportClassified(

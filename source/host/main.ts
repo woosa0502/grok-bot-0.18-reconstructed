@@ -4,7 +4,7 @@ import { startGatewayServer } from "./gateway-server.js";
 import { clearGatewayDiscovery, writeGatewayDiscovery } from "./host-discovery.js";
 import { pinHostDiagnosticsReporter } from "./host-diagnostics.js";
 import { acquireHostLock } from "./host-lock.js";
-import { getSandRootDir } from "./host-paths.js";
+import { getBoxTerminalsDir, getBoxWorkspaceDir, getSandRootDir } from "./host-paths.js";
 import path from "node:path";
 import { installProcessCrashGuards } from "./process-crash-guard.js";
 import {
@@ -136,8 +136,8 @@ export function createProductionHostMainDependencies(
     ...(useExistingBoxExecDaemon ? {} : { startBoxExecDaemon: () => startBoxExecDaemonProcess({
         entryPath: resolveBoxExecDaemonEntry(),
         generated: ports.extensionHost.boxGenerated,
-        workspaceRoot: path.join(getSandRootDir(), "box-workspace"),
-        terminalsDirectory: path.join(getSandRootDir(), "box-terminals"),
+        workspaceRoot: getBoxWorkspaceDir(),
+        terminalsDirectory: getBoxTerminalsDir(),
         ...(ports.log === undefined ? {} : { log: ports.log }),
       }) }),
     getSandRootDir,

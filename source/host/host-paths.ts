@@ -82,6 +82,9 @@ export function reanchorSandPath(storedPath: string): string {
   return join(root, ...segments);
 }
 
+export function getBoxWorkspaceDir(homeDir = homedir()): string { return join(getSandRootDir(homeDir), "box-workspace"); }
+export function getBoxTerminalsDir(homeDir = homedir()): string { return join(getSandRootDir(homeDir), "box-terminals"); }
+
 export function getGatewayDiscoveryPath(homeDir = homedir()): string { return join(getSandRootDir(homeDir), "gateway.json"); }
 export function getHostLockPath(homeDir = homedir()): string { return join(getSandRootDir(homeDir), "host.lock"); }
 export function getHostSecretsPath(homeDir = homedir()): string { return join(getSandRootDir(homeDir), "host-secrets.json"); }
