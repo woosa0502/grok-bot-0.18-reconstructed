@@ -3,6 +3,18 @@ import { createUpdateTodosTool } from "../packages/agent/tools/core/todo/todo.js
 
 export const EXECUTOR_SUBAGENT_TYPE = "executor";
 
+// Prepended to a subagent's dispatch prompt (the pi-subagents "<subagent-boundary>" idea).
+// The child already runs on its own fresh, isolated conversation, so this is a role primer
+// rather than a context divider: it tells the model it is a delegated worker, must not spawn
+// further subagents, and that its final message is returned verbatim to the caller.
+export const SAND_SUBAGENT_BOUNDARY_PROMPT = [
+  "<subagent-boundary>",
+  "You are running as a delegated child subagent, not the main assistant, and you start with no prior conversation — everything you need is in the task below.",
+  "Complete that task yourself using your own tools; do not delegate to or spawn further subagents.",
+  "Your final assistant message is returned verbatim to the agent that dispatched you, so make it the complete, self-contained result of the task.",
+  "</subagent-boundary>",
+].join("\n");
+
 export function resolveMultitaskEnabled(
   envOverride: string | undefined,
   checkStatsigGate: () => boolean,

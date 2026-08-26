@@ -1,5 +1,5 @@
 import { dirname, join } from "node:path";
-import { createSandExecutorSubagentConfig } from "./sand-multitask.js";
+import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -2488,7 +2488,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 ownedRunners.add(child);
                 return {
                   run: async (prompt, options) => {
-                    const result = await child.run(prompt, {
+                    const boundedPrompt = `${SAND_SUBAGENT_BOUNDARY_PROMPT}\n\n${prompt}`;
+                    const result = await child.run(boundedPrompt, {
                       ...options,
                       conversationId: agentId,
                     } as Parameters<typeof child.run>[1]);
