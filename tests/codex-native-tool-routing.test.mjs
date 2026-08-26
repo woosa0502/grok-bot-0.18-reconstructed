@@ -49,6 +49,13 @@ test("Codex provider delegates native Belmont tool calls to the turn executor", 
     globalThis.fetch = async (_url, init) => {
       const request = JSON.parse(init.body);
       assert.equal(request.tools[0].name, "update_state");
+      assert.deepEqual(request.tools[0].parameters, {
+        type: "object",
+        properties: {
+          target: { type: "string" },
+          action: { type: "string" },
+        },
+      });
       return sse([
         {
           type: "response.output_item.done",
@@ -76,7 +83,17 @@ test("Codex provider delegates native Belmont tool calls to the turn executor", 
     const result = executor.stream({}, "inv-1", [{
       name: "update_state",
       description: "Update Belmont state",
-      inputSchema: { type: "object" },
+      // Real Belmont tools carry the JSON schema inside the AI SDK Schema
+      // wrapper produced by jsonSchema(...), rather than as a bare object.
+      parameters: {
+        jsonSchema: {
+          type: "object",
+          properties: {
+            target: { type: "string" },
+            action: { type: "string" },
+          },
+        },
+      },
     }]);
     const events = [];
     for await (const event of result.fullStream) events.push(event);

@@ -158,7 +158,13 @@ function configuredCodexReasoningEffort(): "minimal" | "low" | "medium" | "high"
 function codexTools(definitions: readonly Loose[] | undefined): CodexDirectTool[] | undefined {
   if (definitions == null) return undefined;
   const tools = definitions.flatMap((source): CodexDirectTool[] => {
-    const parameters = source.inputSchema ?? source.parameters;
+    const wrappedParameters = source.inputSchema ?? source.parameters;
+    const parameters = typeof wrappedParameters === "object"
+      && wrappedParameters != null
+      && !Array.isArray(wrappedParameters)
+      && "jsonSchema" in wrappedParameters
+      ? wrappedParameters.jsonSchema
+      : wrappedParameters;
     return typeof source.name === "string" && source.name.length > 0 && parameters != null ? [{
       name: source.name,
       ...(typeof source.description === "string" ? { description: source.description } : {}),
