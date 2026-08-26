@@ -125,6 +125,10 @@ import {
   type EditResourceAccessor,
 } from "../../../packages/agent/tools/core/edit/edit.js";
 import {
+  createGlobTool,
+  type GlobResourceAccessor,
+} from "../../../packages/agent/tools/core/glob/glob.js";
+import {
   createReadTool,
   type ReadFormattingOptions,
   type ReadResourceAccessor,
@@ -554,6 +558,7 @@ export interface TurnToolFactories {
   boxDelete?(): TurnTool;
   boxGrep?(): TurnTool;
   boxEdit?(): TurnTool;
+  boxGlob?(): TurnTool;
   boxAwait?(): TurnTool;
   fileTransfer?(): readonly TurnTool[];
   computer?(): TurnTool;
@@ -668,6 +673,11 @@ export interface TurnEditToolFactoryInput {
   readonly toolName?: string;
 }
 
+export interface TurnGlobToolFactoryInput {
+  readonly resourceAccessor: GlobResourceAccessor;
+  readonly toolName?: string;
+}
+
 export interface TurnSendMessageToolFactoryInput {
   readonly dependencies: SendMessageDependencies<Context>;
 }
@@ -726,6 +736,7 @@ export interface TurnToolsetFactoryInputs {
   readonly boxDelete?: TurnDeleteToolFactoryInput;
   readonly boxGrep?: TurnGrepToolFactoryInput;
   readonly boxEdit?: TurnEditToolFactoryInput;
+  readonly boxGlob?: TurnGlobToolFactoryInput;
   readonly sendMessage?: TurnSendMessageToolFactoryInput;
   readonly sendToAgent?: TurnSendToAgentToolFactoryInput;
   readonly reaction?: TurnReactionToolFactoryInput;
@@ -823,6 +834,10 @@ export interface TurnToolsetHostFactoryProvider {
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
   ) => TurnEditToolFactoryInput | undefined;
+  readonly createBoxGlobToolInputs?: (
+    turn: TurnToolsetTurnInput,
+    props: TurnToolsetBuildProps,
+  ) => TurnGlobToolFactoryInput | undefined;
   readonly createSendMessageToolInputs?: (
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
@@ -1067,6 +1082,12 @@ export function createTurnEditToolFactory(
   return () => asTurnTool(createEditTool(input.resourceAccessor, input.toolName));
 }
 
+export function createTurnGlobToolFactory(
+  input: TurnGlobToolFactoryInput,
+): () => TurnTool {
+  return () => asTurnTool(createGlobTool(input.resourceAccessor, input.toolName));
+}
+
 export function createTurnSendMessageToolFactory(
   input: TurnSendMessageToolFactoryInput,
 ): () => TurnTool {
@@ -1141,7 +1162,7 @@ export function createTurnToolsetFactories(
   TurnToolFactories,
   "task" | "mcpMeta" | "computer" | "browser" | "screenshot"
   | "fileTransfer" | "requestBoxHelp" | "generateImage" | "webSearch" | "webFetch" | "externalAwait"
-  | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead" | "boxLs" | "boxDelete" | "boxGrep" | "boxEdit"
+  | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead" | "boxLs" | "boxDelete" | "boxGrep" | "boxEdit" | "boxGlob"
   | "sendMessage" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState"
   | "subagentManagement"
   | "mcpManagement" | "cloudAgent"
@@ -1210,6 +1231,9 @@ export function createTurnToolsetFactories(
     ...(input.boxEdit === undefined
       ? {}
       : { boxEdit: createTurnEditToolFactory(input.boxEdit) }),
+    ...(input.boxGlob === undefined
+      ? {}
+      : { boxGlob: createTurnGlobToolFactory(input.boxGlob) }),
     ...(input.sendMessage === undefined
       ? {}
       : { sendMessage: createTurnSendMessageToolFactory(input.sendMessage) }),
@@ -1259,6 +1283,7 @@ export function createTurnToolsetFactoriesForTurn(
   const boxDelete = provider.createBoxDeleteToolInputs?.(turn, props);
   const boxGrep = provider.createBoxGrepToolInputs?.(turn, props);
   const boxEdit = provider.createBoxEditToolInputs?.(turn, props);
+  const boxGlob = provider.createBoxGlobToolInputs?.(turn, props);
   return createTurnToolsetFactories({
     ...(provider.createTaskToolInputs === undefined
       ? {}
@@ -1323,6 +1348,9 @@ export function createTurnToolsetFactoriesForTurn(
     ...(provider.createBoxEditToolInputs === undefined
       ? {}
       : boxEdit === undefined ? {} : { boxEdit }),
+    ...(provider.createBoxGlobToolInputs === undefined
+      ? {}
+      : boxGlob === undefined ? {} : { boxGlob }),
     ...(provider.createSendMessageToolInputs === undefined
       ? {}
       : { sendMessage: provider.createSendMessageToolInputs(turn, props) }),
@@ -1555,6 +1583,8 @@ export function buildTurnTools(
     if (boxGrep !== undefined) tools.push(boxGrep);
     const boxEdit = scoped(factories.boxEdit?.());
     if (boxEdit !== undefined) tools.push(boxEdit);
+    const boxGlob = scoped(factories.boxGlob?.());
+    if (boxGlob !== undefined) tools.push(boxGlob);
     if (!host.isBoxScopedSubagent) {
       const boxAwait = scoped(factories.boxAwait?.());
       if (boxAwait !== undefined) tools.push(boxAwait);
