@@ -1,6 +1,5 @@
 import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig } from "./sand-multitask.js";
-import { runCodexSubagentProcess } from "./runner/codex-subagent-process.js";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -2359,6 +2358,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       };
       runnerOptions.productionTurnRunShell = createProductionTurnRunShellHostInput({
         createAgentOwnerInput: ({ requestId, runOptions, context, cancelThisRun, emitUpdate }) => {
+          // Roo/Cline subtask algorithm: a subagent runs under its OWN conversation id so its
+          // turn reads its own fresh transcript instead of the parent's — otherwise the child
+          // inherits the parent's entire history and blows the turn token limit. The child
+          // threads its id through runOptions.conversationId; the parent passes none and keeps
+          // session.id, so parent behaviour is unchanged.
+          const turnConversationId = typeof (runOptions as { conversationId?: unknown }).conversationId === "string"
+            ? (runOptions as { conversationId: string }).conversationId
+            : session.id;
           if (session.agentStore == null || typeof session.agentStore.getBlobStore !== "function") {
             throw new TypeError("production Agent blob store is not bound");
           }
@@ -2431,7 +2438,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           };
           return {
             context,
-            conversationId: session.id,
+            conversationId: turnConversationId,
             requestId,
             inference: createTypedInferenceOwner(extensions.api("inference").port),
             onRequestId: requestIdForwarder(hooks, "agent"),
@@ -2460,7 +2467,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 agentId: string,
                 args: SubagentAdapterArgs,
               ): SubagentSession => {
-                const childRunnerOptions: Record<string, unknown> = {
+                const child = deps.buildRunner({
                   ...runnerOptions,
                   conversationId: agentId,
                   transcriptId: agentId,
@@ -2471,42 +2478,31 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                     summaryArchives: [],
                     turnTimings: [],
                   },
-                  productionTurnRunShell: undefined,
-                };
-                // A subagent runs on the createRunStep fallback loop, not the parent's
-                // productionTurnRunShell. The parent skips the createRunStep wiring below
-                // (it has a turn-run shell), so runnerOptions carries no runStep — and a
-                // runner with neither returns undefined from run(), which the caller reports
-                // as "production subagent result is not bound". Bind a runStep to the child's
-                // own context so its turn loop actually runs and yields { text, aborted }.
-                if (deps.createRunStep != null) {
-                  childRunnerOptions.runStep = deps.createRunStep({
-                    session,
-                    hooks,
-                    overrides,
-                    runnerOptions: childRunnerOptions,
-                    createTurnToolInputs,
-                  });
-                }
-                const child = deps.buildRunner(childRunnerOptions);
+                  // Inherit the parent's production turn-run shell (Belmont's built-in turn
+                  // engine — codex-HTTP inference + the full toolset), reused via the spread
+                  // above. The child's turn runs under its OWN conversation id (injected into
+                  // run() below), so it reads its own fresh transcript rather than the parent's
+                  // — Roo/Cline's isolated-subtask model, on Belmont's existing engine.
+                });
                 bindSessionOwnedRunner(child);
                 ownedRunners.add(child);
-                const subagentAbort = new AbortController();
                 return {
-                  run: async (prompt, _options) => {
-                    // Run the subagent as a separate `codex exec` process (the pi-subagents /
-                    // OpenMausBot pattern): the spawned process is a full agent with its own
-                    // turn engine and toolset, so we do not depend on an in-process subagent
-                    // turn engine (never wired in this reconstruction). The child's final
-                    // assistant message, captured via `codex exec -o`, is the result.
-                    return runCodexSubagentProcess({
-                      prompt,
-                      cwd: join(getSandRootDir(), "box-workspace"),
-                      signal: subagentAbort.signal,
-                    });
+                  run: async (prompt, options) => {
+                    const result = await child.run(prompt, {
+                      ...options,
+                      conversationId: agentId,
+                    } as Parameters<typeof child.run>[1]);
+                    if (typeof result !== "object" || result == null) {
+                      throw new TypeError("production subagent result is not bound");
+                    }
+                    const text = Reflect.get(result, "text");
+                    const aborted = Reflect.get(result, "aborted");
+                    if (typeof text !== "string" || typeof aborted !== "boolean") {
+                      throw new TypeError("production subagent result is not bound");
+                    }
+                    return { text, aborted };
                   },
                   interrupt: reason => {
-                    subagentAbort.abort();
                     child.interrupt(reason);
                   },
                   getResolvedOutline: () => child.getResolvedOutline(),
@@ -2551,7 +2547,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             staticConfig: {
               modelId: staticModelId,
               agentTokenLimit: 200_000,
-              conversationId: session.id,
+              conversationId: turnConversationId,
               isBoxScopedSubagent: false,
               isSubagentRunner: false,
               isSharedRoomRunner: isSharedRoomTurn,
