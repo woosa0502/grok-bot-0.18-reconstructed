@@ -2459,7 +2459,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 agentId: string,
                 args: SubagentAdapterArgs,
               ): SubagentSession => {
-                const child = deps.buildRunner({
+                const childRunnerOptions: Record<string, unknown> = {
                   ...runnerOptions,
                   conversationId: agentId,
                   transcriptId: agentId,
@@ -2471,7 +2471,23 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                     turnTimings: [],
                   },
                   productionTurnRunShell: undefined,
-                });
+                };
+                // A subagent runs on the createRunStep fallback loop, not the parent's
+                // productionTurnRunShell. The parent skips the createRunStep wiring below
+                // (it has a turn-run shell), so runnerOptions carries no runStep — and a
+                // runner with neither returns undefined from run(), which the caller reports
+                // as "production subagent result is not bound". Bind a runStep to the child's
+                // own context so its turn loop actually runs and yields { text, aborted }.
+                if (deps.createRunStep != null) {
+                  childRunnerOptions.runStep = deps.createRunStep({
+                    session,
+                    hooks,
+                    overrides,
+                    runnerOptions: childRunnerOptions,
+                    createTurnToolInputs,
+                  });
+                }
+                const child = deps.buildRunner(childRunnerOptions);
                 bindSessionOwnedRunner(child);
                 ownedRunners.add(child);
                 return {
