@@ -72,13 +72,16 @@ test("WSL runtime owns an isolated local Codex host", () => {
 
 test("local settings initialize missing values without overwriting persisted choices", () => {
   const seededReview = { isEnabled: false, allowInstructions: [], blockInstructions: [] };
-  // First run (no inference provider yet): seed codex + onboarding + auto-review off.
-  assert.deepEqual(initialLocalSettingsUpdate(null), { inferenceProvider: "codex", hasSeenOnboarding: true, autoReviewInstructions: seededReview });
-  // Once the profile exists (inference provider present), auto-review is NEVER re-seeded,
-  // even when the field is absent — an absent field is how the store records the user's
-  // "enabled" choice, so re-seeding here would silently disable it on the next restart.
+  // Marker absent (first time this profile is seeded): seed codex + onboarding + review off.
+  assert.deepEqual(initialLocalSettingsUpdate(null, { seedAutoReviewOff: true }), { inferenceProvider: "codex", hasSeenOnboarding: true, autoReviewInstructions: seededReview });
+  // The auto-review seed is gated ONLY by the marker, not by inferenceProvider — so a profile
+  // that predates this setting (already has a provider, no review field, marker absent) still
+  // gets seeded on upgrade.
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex" }, { seedAutoReviewOff: true }), { hasSeenOnboarding: true, autoReviewInstructions: seededReview });
+  // Marker present (already seeded): auto-review is never re-seeded, even when the field is
+  // absent — an absent field is how the store records the user's "enabled" choice.
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex" }, { seedAutoReviewOff: false }), { hasSeenOnboarding: true });
   assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex" }), { hasSeenOnboarding: true });
-  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "claude-code", hasSeenOnboarding: false }), {});
-  // A persisted auto-review choice is likewise left untouched.
-  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex", hasSeenOnboarding: true, autoReviewInstructions: { isEnabled: true, allowInstructions: [], blockInstructions: [] } }), {});
+  // A persisted auto-review choice is left untouched even when the marker is absent.
+  assert.deepEqual(initialLocalSettingsUpdate({ inferenceProvider: "codex", hasSeenOnboarding: true, autoReviewInstructions: { isEnabled: true, allowInstructions: [], blockInstructions: [] } }, { seedAutoReviewOff: true }), {});
 });

@@ -49,35 +49,6 @@ export function projectInferenceRouterTranscriptEntry(entry: StoredEntry): Recor
     : { kind: "send-message", id: entry.id, message: { type: "text", content: entry.content }, timestampMs: entry.timestampMs, ...(entry.reactions === undefined ? {} : { reactions: entry.reactions }) };
 }
 
-// Combine the host runner's authoritative transcript with any legacy routed-JSON
-// transcript for the same agent, so conversations recorded before GB-CORE-001 moved turns
-// onto the host store still appear after upgrade. The two paths share a turn-indexed id
-// namespace ("t0u", "t0s0", ...), so a naive concat produces duplicate rowIds the renderer
-// rejects. Deduplicate by id: the host copy wins an exact-id collision (it is authoritative),
-// and a legacy entry whose id collides with a *different* host message is re-keyed so the old
-// message stays visible instead of being dropped. Entries are ordered by timestamp so the
-// older routed history reads before the newer host history.
-export function mergeRoutedTranscriptEntries(
-  hostEntries: readonly unknown[],
-  legacyEntries: readonly Record<string, unknown>[],
-): unknown[] {
-  const idOf = (entry: unknown): string | undefined => { const row = asRecord(entry); return row != null && typeof row.id === "string" ? row.id : undefined; };
-  const timestampOf = (entry: unknown): number => { const row = asRecord(entry); return row != null && typeof row.timestampMs === "number" ? row.timestampMs : 0; };
-  const seen = new Set<string>();
-  const merged: unknown[] = [];
-  for (const entry of hostEntries) { const id = idOf(entry); if (id !== undefined) seen.add(id); merged.push(entry); }
-  for (const entry of legacyEntries) {
-    const id = idOf(entry);
-    if (id === undefined) { merged.push(entry); continue; }
-    if (!seen.has(id)) { seen.add(id); merged.push(entry); continue; }
-    let alternate = `${id}~legacy`;
-    while (seen.has(alternate)) alternate = `${alternate}~`;
-    seen.add(alternate);
-    merged.push({ ...entry, id: alternate });
-  }
-  return merged.sort((left, right) => timestampOf(left) - timestampOf(right));
-}
-
 export function createCoordinatorInferenceRouter(options: {
   readonly dataDir: string;
   readonly postEvent: (family: string, payload: unknown) => void;
@@ -220,12 +191,10 @@ export function createCoordinatorInferenceRouter(options: {
       // GB-CORE-001: routed (non-cursor) providers now run their turns on the full host
       // runner — like the cursor path — so the bot receives the complete built-in
       // toolset (turn-toolset: Shell, Task/Subagent, SendMessage, WebFetch, ...) rather
-      // than routed MCP tools alone. Let their prompts fall through to the gateway/host
-      // runner (whose durable per-agent store is authoritative) instead of the
-      // coordinator's minimal local turn loop below. Transcript reads deliberately do NOT
-      // fall through here: they flow to the merge block below so pre-GB-CORE-001 routed
-      // history (recorded only in the JSON store) still surfaces alongside the host store.
-      if (provider !== "cursor" && method === "sendPrompt") {
+      // than routed MCP tools alone. Let their prompts and transcript reads fall through
+      // to the gateway/host runner (whose durable per-agent store is authoritative)
+      // instead of the coordinator's minimal local turn loop + JSON transcript below.
+      if (provider !== "cursor" && (method === "sendPrompt" || ["getAgentTranscriptTail", "openAgentTail", "getAgentTranscriptWindow"].includes(method))) {
         return { handled: false };
       }
       if (method === "reactToMessage") {
@@ -245,7 +214,7 @@ export function createCoordinatorInferenceRouter(options: {
         const [remote, local] = await Promise.all([options.dispatchRemote(method, args), load()]);
         const result = asRecord(remote);
         if (result == null || !Array.isArray(result.entries) || agentId.length === 0) return { handled: true, value: remote };
-        const entries = mergeRoutedTranscriptEntries(result.entries, (local.agents[agentId] ?? []).map(projectInferenceRouterTranscriptEntry));
+        const entries = [...result.entries, ...(local.agents[agentId] ?? []).map(projectInferenceRouterTranscriptEntry)];
         const limit = typeof record.limit === "number" && Number.isInteger(record.limit) && record.limit > 0 ? record.limit : 500;
         return { handled: true, value: { ...result, entries: entries.slice(-limit) } };
       }

@@ -58,29 +58,30 @@ export function gatewayUrlFromDiscovery(discovery, expectedPid) {
   return `${scheme}://${host.includes(":") && !host.startsWith("[") ? `[${host}]` : host}:${discovery.port}`;
 }
 
-export function initialLocalSettingsUpdate(raw) {
+export const LOCAL_AUTO_REVIEW_SEED_MARKER = ".local-auto-review-seeded";
+
+export function initialLocalSettingsUpdate(raw, { seedAutoReviewOff = false } = {}) {
   const settings = typeof raw === "object" && raw != null && !Array.isArray(raw) ? raw : {};
-  // A brand-new local profile has no inference provider yet; that is our one-time
-  // first-run signal. inferenceProvider is never cleared once written, so it stays a
-  // stable marker that this profile has already been initialised.
-  const firstRun = typeof settings.inferenceProvider !== "string";
+  const hasAutoReview = typeof settings.autoReviewInstructions === "object" && settings.autoReviewInstructions != null;
   return {
-    ...(firstRun ? { inferenceProvider: "codex" } : {}),
+    // inferenceProvider / onboarding: seed when missing (idempotent — a persisted value wins).
+    ...(typeof settings.inferenceProvider === "string" ? {} : { inferenceProvider: "codex" }),
     ...(typeof settings.hasSeenOnboarding === "boolean" ? {} : { hasSeenOnboarding: true }),
-    // Ship the local/codex build pre-configured with Smart-Mode auto-review off, the
-    // same way the app carries any other first-run default: the Cursor-backed risk
-    // classifier has no backend here, so an enabled review fail-closes and blocks every
-    // shell/browser/computer action. Seeding the setting (instead of hard-coding the
-    // mode in the host) leaves host-machine actions gated by "Execution on Local
-    // Computer".
+    // Ship the local/codex build pre-configured with Smart-Mode auto-review off: the
+    // Cursor-backed risk classifier has no backend here, so an enabled review fail-closes
+    // and blocks every shell/browser/computer action. Seeding the setting (instead of
+    // hard-coding the mode in the host) leaves host-machine actions gated by "Execution on
+    // Local Computer".
     //
-    // Seed this ONLY on first run, not whenever the field is absent. The settings store
-    // records an enabled review with no custom instructions as "the default" by dropping
-    // the field entirely (setAutoReviewInstructions), so a user who turns review back on
-    // leaves no field behind. Re-seeding on absence would silently disable their choice
-    // on the next restart; gating on firstRun lets an enabled review persist (absent
-    // field -> store default isEnabled:true) while a fresh profile still starts off.
-    ...(firstRun ? { autoReviewInstructions: { isEnabled: false, allowInstructions: [], blockInstructions: [] } } : {}),
+    // Seed it exactly once per profile, tracked by an on-disk marker (LOCAL_AUTO_REVIEW_SEED
+    // _MARKER), NOT by field-absence. The store records an enabled review with no custom
+    // instructions as "the default" by dropping the field, so a user who turns review back
+    // on leaves no field behind — re-seeding on absence would silently disable their choice
+    // on the next restart. inferenceProvider is also unusable as the first-run signal here:
+    // an older launcher already wrote it, so profiles predating this setting would never be
+    // seeded and would fall back to the enabled default. The caller passes seedAutoReviewOff
+    // = "marker absent", and we still respect an auto-review setting the user already chose.
+    ...(seedAutoReviewOff && !hasAutoReview ? { autoReviewInstructions: { isEnabled: false, allowInstructions: [], blockInstructions: [] } } : {}),
   };
 }
 

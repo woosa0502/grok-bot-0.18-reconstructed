@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -28,7 +28,9 @@ test("GB-CORE-001: routed (non-cursor) turns and transcript reads fall through t
   const loaded = await loadModule("source/node-agent-coordinator/inference-router.ts");
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "gb-core-001-codex-"));
   try {
-    await writeFile(path.join(dataDir, "settings.json"), JSON.stringify({ inferenceProvider: "codex" }));
+    // version:1 is required — the settings parser rejects a file without it and falls back
+    // to the default "cursor" provider, which would silently exercise the wrong path.
+    await writeFile(path.join(dataDir, "settings.json"), JSON.stringify({ version: 1, inferenceProvider: "codex" }));
     let remoteCalls = 0;
     const router = loaded.module.createCoordinatorInferenceRouter({
       dataDir,
@@ -53,7 +55,7 @@ test("GB-CORE-001: cursor mode keeps the existing coordinator fall-through behav
   const loaded = await loadModule("source/node-agent-coordinator/inference-router.ts");
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "gb-core-001-cursor-"));
   try {
-    await writeFile(path.join(dataDir, "settings.json"), JSON.stringify({ inferenceProvider: "cursor" }));
+    await writeFile(path.join(dataDir, "settings.json"), JSON.stringify({ version: 1, inferenceProvider: "cursor" }));
     const router = loaded.module.createCoordinatorInferenceRouter({
       dataDir,
       postEvent: () => {},
@@ -86,19 +88,23 @@ test("GB-CORE-001: a disabled auto-review setting turns off every tool-surface c
 });
 
 test("GB-CORE-001: re-enabling auto-review survives a restart (real settings-store round-trip)", async () => {
-  const { initialLocalSettingsUpdate } = await import("../scripts/lib/wsl-runtime.mjs");
+  const { initialLocalSettingsUpdate, LOCAL_AUTO_REVIEW_SEED_MARKER } = await import("../scripts/lib/wsl-runtime.mjs");
   const loaded = await loadModule("source/shared/node/settings/sand-settings-store.ts");
   const dir = await mkdtemp(path.join(os.tmpdir(), "gb-core-001-settings-"));
   const settingsPath = path.join(dir, "settings.json");
-  // Mimic run-wsl.mjs: read the persisted file, compute the seed delta, and apply it
-  // through the very setters setHostSettings uses — the round-trip the earlier tests skipped.
+  const markerPath = path.join(dir, LOCAL_AUTO_REVIEW_SEED_MARKER);
+  // Mimic run-wsl.mjs exactly: read the persisted file, gate the auto-review seed on the
+  // on-disk marker, apply the delta through the setters setHostSettings uses, then drop the
+  // marker — the full round-trip the earlier object-only tests skipped.
   const applyStartupSeed = async () => {
     const raw = await readFile(settingsPath, "utf8").then(JSON.parse).catch(() => null);
-    const delta = initialLocalSettingsUpdate(raw);
+    const seeded = await access(markerPath).then(() => true).catch(() => false);
+    const delta = initialLocalSettingsUpdate(raw, { seedAutoReviewOff: !seeded });
     const store = new loaded.module.SandSettingsStore(settingsPath);
     if (delta.inferenceProvider !== undefined) store.setInferenceProvider(delta.inferenceProvider);
     if (delta.hasSeenOnboarding !== undefined) store.setHasSeenOnboarding(delta.hasSeenOnboarding);
     if (delta.autoReviewInstructions !== undefined) store.setAutoReviewInstructions(delta.autoReviewInstructions);
+    if (!seeded) await writeFile(markerPath, "");
     return store;
   };
   try {
@@ -170,38 +176,6 @@ test("GB-CORE-001: skipCheckpoint agrees with route() regardless of call order",
     const enabledMirror = new loaded.module.RoutedTranscriptMirror(enabledJournal, {}, async () => true);
     await enabledMirror.skipCheckpoint({}, "agent", {}, {});
     assert.deepEqual(enabledCalls, ["recover", "skip"], "an enabled owning journal recovers then skips");
-  } finally {
-    await loaded.dispose();
-  }
-});
-
-test("GB-CORE-001: legacy routed transcript history merges into the host read without duplicate rowIds", async () => {
-  const loaded = await loadModule("source/node-agent-coordinator/inference-router.ts");
-  try {
-    // Modelled on the real data: the same agent has an older routed-JSON conversation and a
-    // newer host conversation that both start their turn ids at "t0u".
-    const host = [
-      { kind: "message", id: "t0u", role: "user", content: "new-first", timestampMs: 1787705390410 },
-      { kind: "send-message", id: "t0s0", message: { type: "text", content: "new-reply" }, timestampMs: 1787705397539 },
-    ];
-    const legacy = [
-      { kind: "message", id: "t0u", role: "user", content: "old-first", timestampMs: 1787662208894 },
-      { kind: "send-message", id: "t1787662210106s0", message: { type: "text", content: "old-reply" }, timestampMs: 1787662210106 },
-    ];
-    const merged = loaded.module.mergeRoutedTranscriptEntries(host, legacy);
-    const ids = merged.map((entry) => entry.id);
-    assert.equal(new Set(ids).size, ids.length, "merged transcript must not contain duplicate rowIds");
-    // The host copy of the shared id wins and keeps its own content.
-    assert.equal(merged.find((entry) => entry.id === "t0u").content, "new-first");
-    // The colliding legacy message is preserved (re-keyed), not dropped.
-    assert.ok(merged.some((entry) => entry.content === "old-first"), "the old colliding message must survive");
-    // JSON-only history is restored.
-    assert.ok(merged.some((entry) => entry.id === "t1787662210106s0"), "JSON-only history must be restored");
-    // 2 host + 2 legacy, nothing lost.
-    assert.equal(merged.length, 4);
-    // Ordered by timestamp: older routed history reads before newer host history.
-    const times = merged.map((entry) => entry.timestampMs);
-    assert.deepEqual(times, [...times].sort((a, b) => a - b), "entries must be ordered by timestamp");
   } finally {
     await loaded.dispose();
   }

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { repoRoot } from "./lib/config.mjs";
@@ -12,6 +12,7 @@ import {
   BELMONT_WSL_DEBUG_PORT_ENV,
   gatewayUrlFromDiscovery,
   initialLocalSettingsUpdate,
+  LOCAL_AUTO_REVIEW_SEED_MARKER,
   parseDebugPort,
   wslDataRoot,
   wslElectronArgs,
@@ -49,7 +50,12 @@ try {
   assertWslBuildSourceIdentity(buildLineage, sourceIdentity);
   await mkdir(dataRoot, { recursive: true });
   const storedSettings = await readFile(settingsPath, "utf8").then(JSON.parse).catch(() => null);
-  const initialSettings = initialLocalSettingsUpdate(storedSettings);
+  // Auto-review is seeded off exactly once per profile, tracked by this marker rather than
+  // by field-absence — so re-enabling review survives a restart, and profiles that predate
+  // the setting (which already have inferenceProvider written) still get seeded on upgrade.
+  const autoReviewSeedMarker = path.join(dataRoot, LOCAL_AUTO_REVIEW_SEED_MARKER);
+  const autoReviewSeeded = await access(autoReviewSeedMarker).then(() => true).catch(() => false);
+  const initialSettings = initialLocalSettingsUpdate(storedSettings, { seedAutoReviewOff: !autoReviewSeeded });
 
   const hostStartedAt = new Date().toISOString();
   const host = spawn(process.execPath, [hostEntry], {
@@ -99,6 +105,9 @@ try {
       });
       if (!response.ok) throw new Error(`Could not initialize Belmont local settings (${response.status}).`);
     }
+    // Record that this profile's one-time auto-review seed has run, so later launches never
+    // re-seed it and cannot overwrite a review setting the user changes from here on.
+    if (!autoReviewSeeded) await writeFile(autoReviewSeedMarker, "").catch(() => {});
   } catch (error) {
     stopHost();
     await hostExit.catch(() => {});
