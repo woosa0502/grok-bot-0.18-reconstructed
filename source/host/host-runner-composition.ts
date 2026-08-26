@@ -1,4 +1,4 @@
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -70,6 +70,8 @@ import {
 } from "./sand-activity.js";
 import { connectorCardEmissionToMessage } from "./runner/tools/box-help-tool.js";
 import { createAgentPromptSession } from "./extensions/inference/extension.js";
+import { getSandRootDir } from "./host-paths.js";
+import { SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
 import { CONNECTOR_MANIFESTS } from "../shared/channels.js";
 import { parseStoredTrigger } from "./automations/automation-trigger.js";
 import { listenerPlatformsInTrigger } from "./automations/listener-integrations.js";
@@ -1644,10 +1646,16 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         reportOutcome: report => {
           method(telemetry.brain ?? {}, "reportJournalOutcome")?.(report);
         },
-        isJournalEnabled: async () =>
-          await method(experiments, "checkGate")?.(
-            "sand_new_transcript_journal"
-          ) ?? false
+        // The new transcript journal WAL has no recover() wiring anywhere in this
+        // reconstruction, so once a conversation is journal-claimed, prepareCheckpoint
+        // throws TranscriptJournalCorruptionError ("must recover before preparing").
+        // The flag defaults off; the durable store.db path persists transcripts on its
+        // own. In local (non-cursor) inference mode we therefore force the journal off
+        // so routed-provider turns settle cleanly through the legacy store path.
+        isJournalEnabled: async () => {
+          if (new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider() !== "cursor") return false;
+          return await method(experiments, "checkGate")?.("sand_new_transcript_journal") ?? false;
+        }
       }) as TurnSettleHost["transcriptMirror"] | undefined;
       Object.assign(runnerOptions, {
         transcriptMirror: transcriptMirrorForTurn,

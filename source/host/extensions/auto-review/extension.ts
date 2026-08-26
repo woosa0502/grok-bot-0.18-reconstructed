@@ -1,5 +1,8 @@
+import { join } from "node:path";
 import { defineHostExtension } from "../../../internal/host-extensions.js";
 import { SAND_AUTO_REVIEW_HOST_GENERATION } from "../../runner/sand-auto-review.js";
+import { getSandRootDir } from "../../host-paths.js";
+import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 import {
   AutoReviewService,
@@ -48,7 +51,15 @@ export const autoReviewExtension = defineHostExtension<
       awaitingSink: transcript.createAwaitingStateSink(),
       transcript,
       hostGeneration: SAND_AUTO_REVIEW_HOST_GENERATION,
-      localMode: parseLocalAutoReviewMode(process.env.SAND_AUTO_REVIEW_MODE)!,
+      // Smart Mode's risk classifier runs on the Cursor backend. In local (routed,
+      // non-cursor) inference mode there is no such backend, so an enforced classifier
+      // fail-closes and blocks every shell/browser/computer action. Default the local
+      // auto-review override to "off" there so those tools fall through to the local
+      // tool-permission gate (the user still approves via "Execution on Local
+      // Computer"), matching how the shipped app treats a missing backend classifier.
+      // An explicit SAND_AUTO_REVIEW_MODE env still wins for deliberate testing.
+      localMode: (parseLocalAutoReviewMode(process.env.SAND_AUTO_REVIEW_MODE)
+        ?? (new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider() !== "cursor" ? "off" : undefined))!,
       createClassifierExecutor: createSandBackendSmartModeClassifierExecutor,
     });
     context.onStop(() => service.stop());

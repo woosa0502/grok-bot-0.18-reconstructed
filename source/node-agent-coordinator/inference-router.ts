@@ -188,6 +188,15 @@ export function createCoordinatorInferenceRouter(options: {
     provider(): SandInferenceProvider { return settings.getInferenceProvider(); },
     async dispatch(method: string, args: unknown): Promise<{ handled: boolean; value?: unknown }> {
       const provider = settings.getInferenceProvider();
+      // GB-CORE-001: routed (non-cursor) providers now run their turns on the full host
+      // runner — like the cursor path — so the bot receives the complete built-in
+      // toolset (turn-toolset: Shell, Task/Subagent, SendMessage, WebFetch, ...) rather
+      // than routed MCP tools alone. Let their prompts and transcript reads fall through
+      // to the gateway/host runner (whose durable per-agent store is authoritative)
+      // instead of the coordinator's minimal local turn loop + JSON transcript below.
+      if (provider !== "cursor" && (method === "sendPrompt" || ["getAgentTranscriptTail", "openAgentTail", "getAgentTranscriptWindow"].includes(method))) {
+        return { handled: false };
+      }
       if (method === "reactToMessage") {
         const record = asRecord(args) ?? {};
         const agentId = typeof record.agentId === "string" ? record.agentId : "";

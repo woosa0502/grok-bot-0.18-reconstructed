@@ -72,8 +72,13 @@ export class RoutedTranscriptMirror<Checkpoint, Store> {
   private async selectRoute(
     conversationId: string
   ): Promise<TranscriptMirrorRoute> {
-    if (await this.journal.ownsConversation(conversationId)) return "journal";
+    // When the journal is disabled, always use the legacy/durable-store path even if
+    // a stale `.journal-mode` claim marker is present. The journal WAL is a secondary
+    // read cache layered on top of the authoritative store, so honouring a stale claim
+    // when journaling is off would strand the conversation on a path whose recover()
+    // lifecycle is not driven — throwing "checkpoint must recover before preparing".
     if (!await this.isJournalEnabled()) return "legacy";
+    if (await this.journal.ownsConversation(conversationId)) return "journal";
 
     await this.journal.claimConversation(conversationId);
     return "journal";
