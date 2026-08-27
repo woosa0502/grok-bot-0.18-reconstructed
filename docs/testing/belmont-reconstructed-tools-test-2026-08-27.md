@@ -99,3 +99,50 @@
 3. REVIEW_REQUIRED 5건: proto/unit 수준 검증 또는 전용 plan(Plan 모드 000199)
 4. 독립 검토자가 `feature-results.jsonl`과 PNG를 대조해 최종 `PASS` 승격 여부 결정
 5. 문서 커밋으로 트리가 바뀌었으므로, 추가 라이브 run 전 `npm run wsl:setup` 재빌드 필요
+
+## 10. 후속 세션 업데이트 (2026-08-27 저녁)
+
+§3·§4·§6의 다수 케이스가 이후 실제로 복원·검증됐다. 최신 판정은
+`data/artifacts/belmont-user-e2e-20260825/fixes-verify-2026-08-27/feature-results.jsonl`에 있다.
+
+| caseId | 이전 | 현재 | 근거 |
+| --- | --- | --- | --- |
+| GBF-AGT-000338 (write 도구) | UNREACHABLE | **PROVISIONAL_PASS** | write 도구 복원(PiWrite), agent가 `write({path,contents})` 호출→파일 생성 |
+| GBF-AGT-000258 (읽기전용 편집) | 충실도 gap | **PROVISIONAL_PASS** | edit.ts가 `writePermissionDenied`+isReadonly 방출→"Write permission denied" |
+| GBF-AGT-000372 (grep 상한/output_mode) | REVIEW | **PROVISIONAL_PASS** | 상한 안내 렌더 + output_mode(files/count) + offset 복원 |
+| GBF-AGT-000320 (큰 디렉터리 요약) | REVIEW | **PROVISIONAL_PASS** | 1000파일→서브디렉터리 요약 |
+| GBF-AGT-000280 (확장자 카운트) | REVIEW | **PROVISIONAL_PASS** | `[200 files in subtree: 120 *.ts, …]` |
+| GBF-AGT-000319 (ls terminal 메타) | REVIEW | **PROVISIONAL_PASS** | box ls가 터미널 frontmatter/footer 파싱→cwd/명령/exit 렌더 |
+| GBF-AGT-000257 (ENOSPC) | BLOCKED | 코드 완료(라이브 유발 불가) | box write가 ENOSPC→noSpace 매핑 |
+| GBF-AGT-000199 (plan 모드) | REVIEW | 로컬 무의미 | 로컬 Codex는 단일 모드, plan 모드 부재 |
+
+## 11. 복원 불가 확정 — 인프라 부재 (사유)
+
+아래 둘은 **복원 원본 코드의 유무가 문제가 아니다.** 원본 소스는 복원본에 있고 일부는 우리
+레포에도 있으나, 그 코드를 실제로 동작시킬 **Belmont 로컬에 없는 상위 표면/실행 경로**가 필요하다.
+computer-use·browser와 같은 성격(Cursor 표면 의존)으로, 도구 복원이 아니라 로컬 backend 구축 과제다.
+
+### GBF-AGT-000260 — canvas (.canvas.tsx) TypeScript 진단 — `UNREACHABLE_CURRENT_BUILD`
+
+- **canvas란**: Cursor/Grok의 "live React app"(채팅 옆에 렌더되는 인터랙티브 아티팩트). 코드는
+  `.cursor/projects/<proj>/canvases/<name>.canvas.tsx`. 진단은 그 파일을 edit할 때 자동 TypeScript
+  검사 결과("Canvas TypeScript check: no errors." 등)를 모델에 붙여주는 기능.
+- **왜 불가 (실증)**: 에이전트에게 canvas 생성을 직접 시킨 결과 —
+  **"I can't create a Cursor Canvas because no Canvas tool or live-app surface is available in this session."**
+- **정적 근거**: (1) box에 canvas diagnostics 실행기 **핸들러 없음**, (2) canvas 스킬/프롬프트가
+  시스템 프롬프트에 **주입 안 됨**(에이전트가 canvas 사용 지시조차 못 받음), (3) canvas는 Cursor의
+  라이브 React 표면 + SDK + backend에 의존 — 로컬 Codex에 그 표면 자체가 없음.
+- **결론**: canvas 기능 전체가 로컬에 부재하므로 "진단"은 대상이 없다. 진단 backend를 붙이는 문제가
+  아니라 canvas 표면(SDK/렌더러/backend) 구축 문제 → 도구 복원 범위 밖.
+
+### GBF-AGT-000356 — readonly 서브에이전트의 write/delete 거부 — `BLOCKED / UNREACHABLE`
+
+- **기능**: readonly 모드로 뜬 서브에이전트가 write/delete/mcp/shell을 시도하면
+  "This operation is not allowed in readonly mode…"로 거부.
+- **복원 코드**: `source/packages/agent-exec/readonly-resource-accessor.ts`가 **우리 레포에 이미 완전히
+  존재**(6001 bytes). 코드 부재가 아니다.
+- **왜 불가**: 이 거부가 발생하려면 **readonly 서브에이전트를 실제로 실행하는 경로**가 있어야 하는데,
+  로컬 Codex 대화에서 서브에이전트(특히 readonly 모드) 실행 경로가 연결돼 있지 않다(`GB-CORE-001`
+  영역: routine/update_state/subagent 경로 미연결).
+- **결론**: 코드는 준비돼 있으나 그것을 태울 subagent 실행 컨텍스트가 로컬에 없다 → GB-CORE-001의
+  subagent 경로가 열린 뒤 재검토.
