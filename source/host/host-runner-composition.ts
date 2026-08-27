@@ -79,6 +79,8 @@ import { connectorCardEmissionToMessage } from "./runner/tools/box-help-tool.js"
 import { createAgentPromptSession } from "./extensions/inference/extension.js";
 import { getSandRootDir } from "./host-paths.js";
 import { SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
+import { getSandProfilePath, readSandProfileFile, writeSandProfileFile } from "./agents/agent-profile.js";
+import { getSandSettingsPath, writeSandSettingsFile } from "./agents/settings-file.js";
 import { CONNECTOR_MANIFESTS } from "../shared/channels.js";
 import { parseStoredTrigger } from "./automations/automation-trigger.js";
 import { listenerPlatformsInTrigger } from "./automations/listener-integrations.js";
@@ -1253,7 +1255,29 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           agentDir: dirname(session.dbPath),
           agentId: session.id,
           readBoxFile: (boxPath: string) =>
-            method(remoteBox, "downloadFile")?.(ctx, session.id, boxPath)
+            method(remoteBox, "downloadFile")?.(ctx, session.id, boxPath),
+          // Persist profile (name/description/title/avatar shape) and per-agent settings
+          // (notify/hidden) to the agent's own profile.json/settings.json, the same files the
+          // session layer reads. Without these, update_state profile.set / settings.set threw
+          // because deps.writeProfile / deps.writeSettings were undefined.
+          readProfile: (): Record<string, string> | null =>
+            readSandProfileFile(getSandProfilePath(dirname(session.dbPath))) as Record<string, string> | null,
+          writeProfile: (profile: Record<string, string>): void => {
+            const current = readSandProfileFile(getSandProfilePath(dirname(session.dbPath)));
+            writeSandProfileFile(getSandProfilePath(dirname(session.dbPath)), {
+              name: profile.name ?? current?.name ?? "",
+              description: profile.description ?? current?.description ?? "",
+              title: profile.title ?? current?.title ?? "",
+              avatarShape: profile.avatarShape ?? current?.avatarShape ?? "",
+              avatarColor: profile.avatarColor ?? current?.avatarColor ?? "",
+            });
+          },
+          writeSettings: (settings: Record<string, boolean>): void => {
+            const update: Partial<{ notifyOnAgentUpdates: boolean; hiddenFromSidebar: boolean }> = {};
+            if (typeof settings.notifyOnAgentUpdates === "boolean") update.notifyOnAgentUpdates = settings.notifyOnAgentUpdates;
+            if (typeof settings.hiddenFromSidebar === "boolean") update.hiddenFromSidebar = settings.hiddenFromSidebar;
+            writeSandSettingsFile(getSandSettingsPath(dirname(session.dbPath)), update);
+          }
         })
       : undefined;
 

@@ -37,12 +37,15 @@ function renderGrepSuccess(success: GrepSuccess): string {
   let capped = false;
   let totalMatched = 0;
   const overBudget = (extra: number): boolean => used + extra > GREP_CHARACTER_BUDGET;
+  const budgetNotice = (): string => totalMatched > 0
+    ? `… (output truncated to fit the character budget; ${totalMatched} total match${totalMatched === 1 ? "" : "es"})`
+    : "… (output truncated to fit the character budget)";
   for (const union of Object.values(success.workspaceResults)) {
     const r = union.result;
     if (r.case === "files") {
       if (r.value.clientTruncated || r.value.ripgrepTruncated) capped = true;
       for (const file of r.value.files) {
-        if (overBudget(file.length)) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
+        if (overBudget(file.length)) { lines.push(budgetNotice()); return lines.join("\n"); }
         lines.push(file);
         used += file.length + 1;
       }
@@ -53,7 +56,7 @@ function renderGrepSuccess(success: GrepSuccess): string {
       totalMatched += r.value.totalMatches;
       for (const entry of r.value.counts) {
         const row = `${entry.file}: ${entry.count}`;
-        if (overBudget(row.length)) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
+        if (overBudget(row.length)) { lines.push(budgetNotice()); return lines.join("\n"); }
         lines.push(row);
         used += row.length + 1;
       }
@@ -65,12 +68,12 @@ function renderGrepSuccess(success: GrepSuccess): string {
     totalMatched += content.totalMatchedLines;
     for (const fileMatch of content.matches) {
       const header = `${fileMatch.file}:`;
-      if (overBudget(header.length)) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
+      if (overBudget(header.length)) { lines.push(budgetNotice()); return lines.join("\n"); }
       lines.push(header);
       used += header.length + 1;
       for (const match of fileMatch.matches) {
         const row = `  ${match.lineNumber}: ${match.content}`;
-        if (overBudget(row.length)) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
+        if (overBudget(row.length)) { lines.push(budgetNotice()); return lines.join("\n"); }
         lines.push(row);
         used += row.length + 1;
       }
