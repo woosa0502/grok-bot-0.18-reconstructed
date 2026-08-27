@@ -216,3 +216,24 @@ t128의 `/bin/sh: 1: Syntax error: "then" unexpected`는 **자식이 실제로 �
 ### 남은 테스트 (원장 route 기준)
 - AGENT_REACHABLE 438 총 → 301 완료, **137 남음**(FAULT_RECOVERY 117 + LIFECYCLE 16 + EXTERNAL 3 + REPO 1) — 프롬프트 러너로 진행.
 - USER_REACHABLE **823** — CDP 클릭/스크린샷 하네스 필요(별도).
+
+## 14. 나머지 AGENT_REACHABLE 137 + 전체 438 종합 (2026-08-28)
+
+원장 `route=AGENT_REACHABLE` 중 10_배치(301) 외 나머지 137개(FAULT_RECOVERY 117 + LIFECYCLE 16 +
+EXTERNAL 3 + REPO 1)를 프롬프트 러너로 실행. 3개 수정 반영된 빌드.
+
+**137 결과**: PASS 24 / BLOCKED 89 / FAIL 17 / REVIEW 6 / NO_VERDICT 1.
+FAULT_RECOVERY는 fault-injection 표면(hook·컴퓨터·브라우저·큐 telemetry) 부재로 대거 BLOCKED — 예상.
+
+**AGENT_REACHABLE 전체 438 종합**: PASS 87(20%) / BLOCKED 275(63%) / FAIL 50(11%) / NO_VERDICT 11 / REVIEW 15.
+
+**FAIL 50 최종 판정**:
+- ✅ **수정 완료 8건**: update_state profile/settings(89·90·97·267·268), grep truncation 총계(372),
+  AwaitShell 권한(186·187) — phase-1은 구 빌드라 stale-FAIL로 남음(신 빌드 실증 PASS).
+- ⏸️ **보류(다시 만들기)**: Shell 세션의미론 7(지속세션·cwd·lifecycle·idle-timeout 메시지),
+  file_attachments 2(user-machine→box 재지정).
+- ❌ **백엔드(코드 아님)**: Cursor 웹 6.
+- ➖ **의도된 fail / edge**: update_state avatar-clear·memory-forget(대상 없음/텍스트 불일치),
+  검증메시지 형식차이·loop 감지 10, 테스트자원 부족·관찰한계 8.
+
+**결론**: 438 스윕에서 순수 코드 결함 = 3개 근본(8케이스), 전부 수정·검증 완료. 나머지는 보류·백엔드·edge.
