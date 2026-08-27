@@ -8,10 +8,12 @@ import type { RemoteExecManager } from "../../../../agent-exec/remote.js";
 import type { ResourceAccessor } from "../../../../agent-exec/resource-provider.js";
 import { createStringResult } from "../../../../chat-inference/prompt-executor.js";
 import { ToolCall } from "../../../../proto/generated/agent/v1/agent_pb.js";
-import { EditArgs, EditError, EditFileNotFound, EditResult, EditSuccess } from "../../../../proto/generated/agent/v1/edit_tool_pb.js";
+import { EditArgs, EditError, EditFileNotFound, EditReadPermissionDenied, EditRejected, EditResult, EditSuccess, EditWritePermissionDenied } from "../../../../proto/generated/agent/v1/edit_tool_pb.js";
 import { EditToolCall } from "../../../../proto/generated/agent/v1/edit_tool_pb.js";
 import { ReadArgs } from "../../../../proto/generated/agent/v1/read_exec_pb.js";
 import { WriteArgs } from "../../../../proto/generated/agent/v1/write_exec_pb.js";
+import { WORKTREE_GUARD_ERROR } from "../../../../utils/path-utils.js";
+import { decoratePostWriteResultForModel } from "./post-write-result-decoration.js";
 import { ToolCallArgParseError, ToolCallRejectedError, ToolCallUnexpectedEnvironmentError, createZodAgentTool } from "../../common.js";
 
 const EDIT_DESCRIPTION = "Edit a file by replacing an exact string with a new string. Provide `path`, the exact `old_string` to find (including surrounding context so it is unique), and the `new_string` to replace it with. By default the match must be unique; set `replace_all` to replace every occurrence. To create a new file, use the write path instead.";
@@ -82,25 +84,49 @@ export function createEditTool(
         const readResult = await readExecutor.execute(ctx, new ReadArgs({ path: filePath, toolCallId: meta.toolCallId }), { execId: meta.toolCallId });
         if (readResult.result.case !== "success") {
           if (readResult.result.case === "fileNotFound") return new EditResult({ result: { case: "fileNotFound", value: new EditFileNotFound({ path: filePath }) } });
+          if (readResult.result.case === "permissionDenied") return new EditResult({ result: { case: "readPermissionDenied", value: new EditReadPermissionDenied({ path: filePath }) } });
           if (readResult.result.case === "rejected") throw new ToolCallRejectedError(readResult.result.value.reason || "Read rejected");
           const message = readResult.result.case === "error" ? readResult.result.value.error : "Could not read file for editing";
-          return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: message, isReadonly: false }) } });
+          return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: message }) } });
         }
         const output = readResult.result.value.output;
-        if (output.case !== "content") return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: "File is not text and cannot be edited", isReadonly: false }) } });
+        if (output.case !== "content") return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: "File is not text and cannot be edited" }) } });
         const before = output.value;
-        const occurrences = before.split(oldString).length - 1;
-        if (occurrences === 0) return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: "old_string was not found in the file", isReadonly: false }) } });
-        if (occurrences > 1 && replaceAll !== true) return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: `old_string is not unique (${occurrences} matches); pass replace_all or add more context`, isReadonly: false }) } });
-        const after = replaceAll === true ? before.split(oldString).join(newString) : before.replace(oldString, newString);
+        let occurrences = before.split(oldString).length - 1;
+        let after: string;
+        if (occurrences === 0) {
+          // Whitespace-insensitive fallback: match old_string treating any run of whitespace as flexible,
+          // mirroring the original edit tool's use_whitespace_insensitive_fallback.
+          const pattern = new RegExp(oldString.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"), "g");
+          const wsCount = (before.match(pattern) ?? []).length;
+          if (wsCount === 0) return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: "old_string was not found in the file" }) } });
+          if (wsCount > 1 && replaceAll !== true) return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: `old_string is not unique (${wsCount} whitespace-insensitive matches); pass replace_all or add more context` }) } });
+          occurrences = wsCount;
+          after = before.replace(pattern, () => newString);
+        } else {
+          if (occurrences > 1 && replaceAll !== true) return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: `old_string is not unique (${occurrences} matches); pass replace_all or add more context` }) } });
+          after = replaceAll === true ? before.split(oldString).join(newString) : before.replace(oldString, () => newString);
+        }
         const writeResult = await writeExecutor.execute(ctx, new WriteArgs({ path: filePath, fileText: after, toolCallId: meta.toolCallId }), { execId: meta.toolCallId });
         if (writeResult.result.case !== "success") {
-          const message = writeResult.result.case === "error" ? writeResult.result.value.error : `Could not write edited file (${writeResult.result.case})`;
-          return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: message, isReadonly: false }) } });
+          switch (writeResult.result.case) {
+            case "permissionDenied": return new EditResult({ result: { case: "writePermissionDenied", value: new EditWritePermissionDenied({ path: filePath, error: `Write permission denied: ${filePath}`, isReadonly: writeResult.result.value.isReadonly ?? false }) } });
+            case "noSpace": return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: "No space left on device" }) } });
+            case "rejected": return new EditResult({ result: { case: "rejected", value: new EditRejected({ path: filePath, reason: writeResult.result.value.reason }) } });
+            case "error": {
+              const writeError = writeResult.result.value.error;
+              if (writeError === WORKTREE_GUARD_ERROR) throw new ToolCallUnexpectedEnvironmentError(writeError);
+              return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: writeError }) } });
+            }
+            default: return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: `Could not write edited file (${writeResult.result.case ?? "unknown"})` }) } });
+          }
         }
         const replaced = replaceAll === true ? occurrences : 1;
         const linesRemoved = oldString.split("\n").length * replaced;
         const linesAdded = newString.split("\n").length * replaced;
+        const baseMessage = `Replaced ${replaced} occurrence${replaced === 1 ? "" : "s"} in ${filePath}`;
+        // Append post-write diagnostics (canvas/TypeScript lints) exactly like the original edit tool.
+        const message = await decoratePostWriteResultForModel(ctx, resourceAccessor, filePath, baseMessage, meta.toolCallId);
         return new EditResult({ result: { case: "success", value: new EditSuccess({
           path: filePath,
           linesAdded,
@@ -108,7 +134,7 @@ export function createEditTool(
           diffString: unifiedish(oldString, newString),
           beforeFullFileContent: before.slice(0, 200_000),
           afterFullFileContent: after.slice(0, 200_000),
-          message: `Replaced ${replaced} occurrence${replaced === 1 ? "" : "s"} in ${filePath}`,
+          message,
         }) } });
       },
       result => createEditToolCall(new EditToolCall({ args: editArgs, result })),
@@ -138,7 +164,7 @@ export function createEditTool(
     execute,
     render,
     serializeError: (error: unknown) => createEditToolCall(new EditToolCall({
-      result: new EditResult({ result: { case: "error", value: new EditError({ path: "", error: error instanceof Error ? error.message : String(error), isReadonly: false }) } }),
+      result: new EditResult({ result: { case: "error", value: new EditError({ path: "", error: error instanceof Error ? error.message : String(error) }) } }),
     })),
   });
 }
