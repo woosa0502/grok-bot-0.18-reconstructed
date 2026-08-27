@@ -37,7 +37,7 @@ export function createLsTool(
   const lsExecutor = resourceAccessor.get(lsExecutorResource);
   const parameters = z.object({
     relative_workspace_path: z.string().describe("The path to the directory to list. Absolute, or relative to the workspace root."),
-    ignore: z.array(z.string()).optional().describe("Names to exclude from the listing."),
+    ignore: z.array(z.string()).optional().describe("Glob patterns to exclude from the listing. Patterns match anywhere in the tree; a pattern not starting with '**/' is treated as '**/<pattern>' (e.g. '*.log', '**/node_modules/**')."),
   });
 
   const execute = async (

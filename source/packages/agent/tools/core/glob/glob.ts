@@ -77,7 +77,8 @@ export function createGlobTool(
       async ctx => {
         // Search relative to workingDirectory (the box resolves it); do not pass the
         // virtual /workspace path as an rg argument — it does not exist on the host.
-        const command = `rg --files -g ${singleQuote(pattern)} 2>/dev/null || true`;
+        // Mirror the original ripwalk: include hidden files and don't require a git repo for ignore handling.
+        const command = `rg --files --hidden --no-require-git -g ${singleQuote(pattern)} 2>/dev/null || true`;
         const shellResult = await shellExecutor.execute(ctx, new ShellArgs({ command, workingDirectory: dir, timeout: 30_000, toolCallId: meta.toolCallId }), { execId: meta.toolCallId });
         if (shellResult.result.case !== "success" && shellResult.result.case !== "failure") {
           return new GlobToolResult({ result: { case: "error", value: new GlobToolError({ error: `glob failed (${shellResult.result.case ?? "unknown"})` }) } });
