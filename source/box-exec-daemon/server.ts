@@ -55,6 +55,7 @@ import {
 } from "../packages/proto/generated/agent/v1/ls_exec_pb.js";
 import {
   DeleteError,
+  DeleteFileBusy,
   DeleteFileNotFound,
   DeleteNotFile,
   DeletePermissionDenied,
@@ -75,6 +76,7 @@ import {
 } from "../packages/proto/generated/agent/v1/grep_exec_pb.js";
 import {
   WriteError,
+  WriteNoSpace,
   WritePermissionDenied,
   WriteResult,
   WriteSuccess,
@@ -164,6 +166,28 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function globToIgnoreRegExp(glob: string): RegExp {
+  // Match the original ls ignore semantics: patterns not starting with "**/" (or "/") are
+  // prepended with "**/" so they match anywhere in the tree.
+  const anchored = glob.startsWith("**/") || glob.startsWith("/") ? glob : `**/${glob}`;
+  let out = "";
+  for (let i = 0; i < anchored.length; i += 1) {
+    const c = anchored[i] as string;
+    if (c === "*") {
+      if (anchored[i + 1] === "*") {
+        if (anchored[i + 2] === "/") { out += "(?:.*/)?"; i += 2; } else { out += ".*"; i += 1; }
+      } else { out += "[^/]*"; }
+    } else if (c === "?") { out += "[^/]"; }
+    else if (".+^${}()|[]\\".includes(c)) { out += `\\${c}`; }
+    else { out += c; }
+  }
+  return new RegExp(`^${out}$`);
+}
+function buildIgnoreMatcher(patterns: readonly string[]): (relPath: string) => boolean {
+  if (patterns.length === 0) return () => false;
+  const regexes = patterns.map(globToIgnoreRegExp);
+  return relPath => regexes.some(re => re.test(relPath));
+}
 function yamlString(value: string): string {
   return JSON.stringify(value);
 }
@@ -356,7 +380,7 @@ class BoxExecRuntime {
     try {
       const info = await stat(root);
       if (!info.isDirectory()) return new LsResult({ result: { case: "error", value: new LsError({ path: args.path, error: "Path is not a directory" }) } });
-      const ignore = new Set(args.ignore ?? []);
+      const isIgnored = buildIgnoreMatcher(args.ignore ?? []);
       const build = async (dir: string, depth: number): Promise<LsDirectoryTreeNode> => {
         const node = new LsDirectoryTreeNode({ absPath: dir, childrenDirs: [], childrenFiles: [], fullSubtreeExtensionCounts: {}, numFiles: 0, childrenWereProcessed: false });
         if (depth > LS_MAX_DEPTH || budget <= 0) return node;
@@ -367,7 +391,7 @@ class BoxExecRuntime {
         entries.sort((a, b) => a.name.localeCompare(b.name));
         for (const entry of entries) {
           if (budget <= 0) break;
-          if (ignore.has(entry.name)) continue;
+          if (isIgnored(path.relative(root, path.join(dir, entry.name)))) continue;
           budget -= 1;
           if (entry.isDirectory()) {
             const child = await build(path.join(dir, entry.name), depth + 1);
@@ -411,6 +435,7 @@ class BoxExecRuntime {
       const code = typeof error === "object" && error != null && "code" in error ? String((error as { code: unknown }).code) : undefined;
       if (code === "ENOENT" || code === "ENOTDIR") return new DeleteResult({ result: { case: "fileNotFound", value: new DeleteFileNotFound({ path: args.path }) } });
       if (code === "EACCES" || code === "EPERM") return new DeleteResult({ result: { case: "permissionDenied", value: new DeletePermissionDenied({ path: args.path }) } });
+      if (code === "EBUSY") return new DeleteResult({ result: { case: "fileBusy", value: new DeleteFileBusy({ path: args.path }) } });
       return new DeleteResult({ result: { case: "error", value: new DeleteError({ path: args.path, error: errorText(error) }) } });
     }
   }
@@ -480,7 +505,12 @@ class BoxExecRuntime {
       return new WriteResult({ result: { case: "success", value: new WriteSuccess({ path: args.path, linesCreated }) } });
     } catch (error) {
       const code = typeof error === "object" && error != null && "code" in error ? String((error as { code: unknown }).code) : undefined;
-      if (code === "EACCES" || code === "EPERM") return new WriteResult({ result: { case: "permissionDenied", value: new WritePermissionDenied({ path: args.path }) } });
+      if (code === "ENOSPC") return new WriteResult({ result: { case: "noSpace", value: new WriteNoSpace({ path: args.path }) } });
+      if (code === "EACCES" || code === "EPERM") {
+        const existing = await stat(target).catch(() => null);
+        const isReadonly = existing !== null && existing.isFile() && (Number(existing.mode) & 0o200) === 0;
+        return new WriteResult({ result: { case: "permissionDenied", value: new WritePermissionDenied({ path: args.path, isReadonly }) } });
+      }
       return new WriteResult({ result: { case: "error", value: new WriteError({ path: args.path, error: errorText(error) }) } });
     }
   }
