@@ -190,3 +190,29 @@ t128의 `/bin/sh: 1: Syntax error: "then" unexpected`는 **자식이 실제로 �
 정의상 "자식이 끝날 때까지 블로킹"이므로 자식 도구가 걸리면 부모도 블로킹된다(예: 자식이 `sh -lc`
 로그인 셸을 걸리게 하면 부모 대기) — 바인딩 결함이 아니라 자식 도구 hang. adapter-레벨 timeout은
 없음(원본 로컬 설계와 동일, run_in_background=false 의미 보존).
+
+## 13. AGENT_REACHABLE 전수 스윕 (301) + 결함 3건 수정 (2026-08-28)
+
+원장 `10_AGENT_REACHABLE` 301개를 프롬프트 러너(sanctioned CDP 드라이버, wedge 복구 포함)로 전수 실행.
+
+**결과**: PASS 63 / BLOCKED 186 / FAIL 33 / NO_VERDICT 10 / REVIEW 9.
+
+- BLOCKED 186 = 전부 로컬 표면/백엔드 부재 (cloud agent·MCP·hook·computer/browser use·이미지생성·외부채널
+  Slack/Teams·화면녹화 등) — 도구 복원이 아니라 backend/표면 구축 과제.
+- FAIL 33 분해: Cursor 웹백엔드 4(코드 아님) / Shell 세션의미론 5(지속세션·cwd — box 재작업, 보류) /
+  update_state 12 / AwaitShell 2 / 기타 10(테스트자원·관찰한계 다수).
+
+### 수정한 실제 코드 결함 3건 (커밋 68622fe, 전부 실증 검증)
+
+| 결함 | 원인 | 수정 | 검증 |
+|---|---|---|---|
+| update_state profile/settings.set "errored" | `createAgentState`에 `readProfile/writeProfile/writeSettings` 미배선 → `deps.writeProfile` undefined → throw | agent의 `profile.json`/`settings.json`에 배선(session 계층과 동일 파일) | disk `profile.json="VERIFY_7788"` + UI 헤더 + `settings.json hiddenFromSidebar:true` |
+| AwaitShell 터미널파일 EACCES | box read guard가 **모든 경로를 realpath**, box 가상경로 `/root/.cursor/.../terminals/N.txt`는 `/root` 진입 불가라 `realpathNearestExisting`이 EACCES throw(ENOENT만 walk-up) | realpath 실패 시 catch→literal 검사 폴백(실경로 symlink 보호 유지) | AwaitShell가 `Task completed … exit code 0, output_length 286` 반환(EACCES 사라짐) |
+| grep 문자예산 truncation에 총계 누락 | client/ripgrep truncation 통지에만 총계, 문자예산 경로엔 없음 | 예산 truncation에도 총 매치 수 부착 | 5000매치 grep → `… truncated … ; 5000 total matches` |
+
+**보류(다시 만들기)**: Shell 지속세션(lifecycle 이벤트·cwd 유지), web/smart mode/cloud/MCP/computer use
+백엔드, file_attachments의 user-machine→box 재지정.
+
+### 남은 테스트 (원장 route 기준)
+- AGENT_REACHABLE 438 총 → 301 완료, **137 남음**(FAULT_RECOVERY 117 + LIFECYCLE 16 + EXTERNAL 3 + REPO 1) — 프롬프트 러너로 진행.
+- USER_REACHABLE **823** — CDP 클릭/스크린샷 하네스 필요(별도).
