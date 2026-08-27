@@ -21,8 +21,18 @@ import {
   ExecClientMessage,
   ExecClientStreamClose,
   ExecClientThrow,
+  ExecuteHookResponse,
+  ExecuteHookResult,
+  type ExecuteHookArgs,
   type ExecServerMessage,
 } from "../packages/proto/generated/agent/v1/exec_pb.js";
+import {
+  BeforeSubmitPromptRequestResponse,
+  PostToolUseRequestResponse,
+  PreToolUseRequestResponse,
+  StopRequestResponse,
+  SubagentStartRequestResponse,
+} from "../packages/proto/generated/agent/v1/agent_pb.js";
 import { ExecStreamElement } from "../packages/proto/generated/agent/v1/exec_service_pb.js";
 import {
   BackgroundShellSpawnError,
@@ -324,6 +334,96 @@ class BoxExecRuntime {
     throw new PathRejectedError(`Resolved path escapes configured roots: ${requested}`);
   }
 
+  // Hook config lives in the workspace's .cursor/hooks.json — the same file the plugin
+  // synthesizer writes: { version, hooks: { <step>: [{ type: "command", command } | { type: "prompt", ... }] } }.
+  async #readHooksConfig(): Promise<Record<string, Array<{ type?: string; command?: string }>>> {
+    try {
+      const raw = await readFile(path.join(this.workspaceRoot, ".cursor", "hooks.json"), "utf8");
+      const parsed: unknown = JSON.parse(raw);
+      const hooks = parsed != null && typeof parsed === "object" ? (parsed as Record<string, unknown>).hooks : undefined;
+      return hooks != null && typeof hooks === "object" ? hooks as Record<string, Array<{ type?: string; command?: string }>> : {};
+    } catch { return {}; }
+  }
+
+  // Run a hook command shell-style with the hook input JSON on stdin, capturing stdout and exit
+  // code (Claude-Code hook convention: stdout is the hook's JSON response; exit code 2 = block).
+  #runHookCommand(command: string, inputJson: string): Promise<{ stdout: string; exitCode: number }> {
+    return new Promise(resolve => {
+      let child: ChildProcessWithoutNullStreams;
+      try { child = spawn("sh", ["-c", command], { cwd: this.resolvePath("/workspace"), env: this.#environment }); }
+      catch { resolve({ stdout: "", exitCode: 1 }); return; }
+      let out = "", errored = false;
+      child.stdout.on("data", d => { out += d.toString(); });
+      child.stderr.on("data", () => {});
+      child.on("error", () => { if (!errored) { errored = true; resolve({ stdout: "", exitCode: 1 }); } });
+      child.on("close", code => { if (!errored) resolve({ stdout: out, exitCode: code ?? 0 }); });
+      try { child.stdin.write(inputJson); child.stdin.end(); } catch {}
+    });
+  }
+
+  async executeHook(args: ExecuteHookArgs): Promise<ExecuteHookResult> {
+    const req = args.request?.request;
+    if (req == null || req.case === undefined) return new ExecuteHookResult({});
+    const step = req.case;
+    const entries = (await this.#readHooksConfig())[step] ?? [];
+    const commands = entries.filter(e => e != null && e.type === "command" && typeof e.command === "string");
+    if (commands.length === 0) return new ExecuteHookResult({});
+    const q = req.value as Record<string, unknown>;
+    const toJson = (v: unknown): unknown => v != null && typeof (v as { toJson?: () => unknown }).toJson === "function" ? (v as { toJson: () => unknown }).toJson() : v;
+    const input: Record<string, unknown> = {
+      hook_event_name: step,
+      ...(q.toolName != null ? { tool_name: q.toolName } : {}),
+      ...(q.toolInput != null ? { tool_input: toJson(q.toolInput) } : {}),
+      ...(q.toolOutput != null ? { tool_output: q.toolOutput } : {}),
+      ...(q.errorMessage != null ? { error: q.errorMessage } : {}),
+      ...(q.failureType != null ? { failure_type: q.failureType } : {}),
+      ...(q.durationMs != null ? { duration_ms: typeof q.durationMs === "bigint" ? Number(q.durationMs) : q.durationMs } : {}),
+      ...(q.isInterrupt != null ? { is_interrupt: q.isInterrupt } : {}),
+      ...(q.toolUseId != null ? { tool_use_id: q.toolUseId } : {}),
+      ...(q.subagentId != null ? { subagent_id: q.subagentId } : {}),
+      ...(q.subagentType != null ? { subagent_type: q.subagentType } : {}),
+      ...(q.conversationId != null ? { conversation_id: q.conversationId } : {}),
+      ...(q.prompt != null ? { prompt: q.prompt } : {}),
+    };
+    let stdout = "", exitCode = 0;
+    for (const e of commands) {
+      const r = await this.#runHookCommand(e.command!, JSON.stringify(input));
+      stdout = r.stdout.trim();
+      exitCode = r.exitCode;
+      if (exitCode !== 0) break;
+    }
+    let parsed: Record<string, unknown> = {};
+    try { parsed = stdout ? JSON.parse(stdout) as Record<string, unknown> : {}; }
+    catch { parsed = stdout ? { additionalContext: stdout } : {}; }
+    const hookOut = parsed.hookSpecificOutput as Record<string, unknown> | undefined;
+    const additionalContext = (parsed.additionalContext ?? hookOut?.additionalContext ?? parsed.systemMessage) as string | undefined;
+    const rawPermission = (parsed.permission ?? parsed.decision ?? hookOut?.permissionDecision) as string | undefined;
+    const permission = exitCode === 2 ? "deny" : (rawPermission === "block" ? "deny" : rawPermission);
+    const s = (v: unknown): string | undefined => typeof v === "string" && v.length > 0 ? v : undefined;
+    let response: ExecuteHookResponse["response"];
+    switch (step) {
+      case "preToolUse":
+        response = { case: "preToolUse", value: new PreToolUseRequestResponse({ ...(s(permission) ? { permission } : {}), ...(s(additionalContext) ? { additionalContext } : {}), ...(s(parsed.userMessage) ? { userMessage: parsed.userMessage as string } : {}), ...(s(parsed.agentMessage) ? { agentMessage: parsed.agentMessage as string } : {}), ...(parsed.updatedInput != null ? { updatedInput: typeof parsed.updatedInput === "string" ? parsed.updatedInput : JSON.stringify(parsed.updatedInput) } : {}) }) };
+        break;
+      case "postToolUse":
+      case "postToolUseFailure":
+        response = { case: "postToolUse", value: new PostToolUseRequestResponse({ ...(s(additionalContext) ? { additionalContext } : {}) }) };
+        break;
+      case "beforeSubmitPrompt":
+        response = { case: "beforeSubmitPrompt", value: new BeforeSubmitPromptRequestResponse({ ...(s(additionalContext) ? { additionalContext } : {}) }) };
+        break;
+      case "subagentStart":
+        response = { case: "subagentStart", value: new SubagentStartRequestResponse({ ...(s(permission) ? { permission } : {}), ...(s(additionalContext) ? { additionalContext } : {}) }) };
+        break;
+      case "stop":
+        response = { case: "stop", value: new StopRequestResponse({ ...(s(additionalContext) ? { additionalContext } : {}) }) };
+        break;
+      default:
+        return new ExecuteHookResult({});
+    }
+    return new ExecuteHookResult({ response: new ExecuteHookResponse({ response }) });
+  }
+
   async *execute(request: ExecServerMessage, signal: AbortSignal): AsyncGenerator<ExecStreamElement> {
     try {
       switch (request.message.case) {
@@ -365,6 +465,9 @@ class BoxExecRuntime {
           break;
         case "writeShellStdinArgs":
           yield client(request.id, request.execId, { case: "writeShellStdinResult", value: await this.writeStdin(request.message.value) });
+          break;
+        case "executeHookArgs":
+          yield client(request.id, request.execId, { case: "executeHookResult", value: await this.executeHook(request.message.value) });
           break;
         default:
           yield thrown(request.id, `Unsupported ExecServerMessage case: ${request.message.case ?? "unset"}`, "BOX_EXEC_UNSUPPORTED");

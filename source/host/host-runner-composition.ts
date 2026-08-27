@@ -1131,6 +1131,13 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         )?.(contextEnvironment.timeZone);
       const projectFolder = contextEnvironment.projectFolder;
       const osPlatform = contextEnvironment.osVersion?.split(" ")[0];
+      // Enable the box-executed hook path for tools that carry the withRemoteHooks wrapper.
+      // configuredSteps can safely list every tool step: the box's executeHook returns an empty
+      // response for any step without a matching command in .cursor/hooks.json, so listing a step
+      // that is not configured is a no-op. Actual hook behavior is driven entirely by hooks.json.
+      // Remote-hook wiring (enableExecuteHookExec / configuredSteps / box resourceAccessor)
+      // is applied in one place only — createWebSearchToolInputs — because the hook executor
+      // resource must resolve through the remote-box accessor, not this projection's plain one.
       const webSearch = webSearchService === undefined
         ? undefined
         : {
@@ -2193,12 +2200,23 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         && method(extensions.api("inference"), "createWebSearch") === undefined
         ? {}
         : {
-            createWebSearchToolInputs: (_turn, props): TurnWebSearchToolFactoryInput => {
+            createWebSearchToolInputs: (turn, props): TurnWebSearchToolFactoryInput => {
               const webSearch = props.webSearch
                 ?? turnInputs?.webSearch
                 ?? createTurnWebAndAwaitProjections(props).webSearch;
               if (webSearch === undefined) throw new TypeError("web search service is not bound");
-              return { dependencies: webSearch as unknown as TurnWebSearchToolFactoryInput["dependencies"] };
+              // Enable the box-executed hook path regardless of which projection supplied the
+              // web-search dependencies (a hooks.json without a matching command is a no-op).
+              // The hook executor resource only resolves through the remote-box accessor (a
+              // RemoteResourceAccessor lazily routes any resource to the box daemon); the plain
+              // web-search resourceAccessor is a registry that has no hookExecutorResource entry.
+              const withHooks: Record<string, unknown> = {
+                ...(webSearch as Record<string, unknown>),
+                enableExecuteHookExec: true,
+                configuredSteps: ["preToolUse", "postToolUse", "postToolUseFailure"],
+              };
+              if (turn.remoteBoxResourceAccessor !== undefined) withHooks.resourceAccessor = turn.remoteBoxResourceAccessor;
+              return { dependencies: withHooks as unknown as TurnWebSearchToolFactoryInput["dependencies"] };
             },
           }),
       ...(turnInputs?.webFetch === undefined
@@ -2210,6 +2228,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 ?? turnInputs?.webFetch
                 ?? createTurnWebAndAwaitProjections(props).webFetch;
               if (webFetch === undefined) throw new TypeError("web fetch service is not bound");
+              // NOTE: web-fetch.ts does not consume the remote-hook options (no withRemoteHooks
+              // path in the recovered source), so no hook wiring is applied here — WebSearch is
+              // the only tool that executes preToolUse/postToolUse hooks in this build.
               return { dependencies: webFetch as unknown as TurnWebFetchToolFactoryInput["dependencies"] };
             },
           }),

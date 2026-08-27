@@ -4,6 +4,7 @@ import {
 import { computerUseExecutorResource } from "../../packages/agent-exec/computer-use.js";
 import { deleteExecutorResource } from "../../packages/agent-exec/delete.js";
 import { grepExecutorResource } from "../../packages/agent-exec/grep.js";
+import { hookExecutorResource } from "../../packages/agent-exec/hook-executor.js";
 import { lsExecutorResource } from "../../packages/agent-exec/ls.js";
 import { readExecutorResource } from "../../packages/agent-exec/read.js";
 import { writeExecutorResource } from "../../packages/agent-exec/write.js";
@@ -29,6 +30,7 @@ import type {
   ComputerUseResult,
 } from "../../packages/proto/generated/agent/v1/computer_use_tool_pb.js";
 import type { DeleteArgs, DeleteResult } from "../../packages/proto/generated/agent/v1/delete_exec_pb.js";
+import type { ExecuteHookArgs, ExecuteHookResult } from "../../packages/proto/generated/agent/v1/exec_pb.js";
 import type { GrepArgs, GrepResult } from "../../packages/proto/generated/agent/v1/grep_exec_pb.js";
 import type { LsArgs, LsResult } from "../../packages/proto/generated/agent/v1/ls_exec_pb.js";
 import type { ReadArgs, ReadResult } from "../../packages/proto/generated/agent/v1/read_exec_pb.js";
@@ -344,6 +346,20 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
       }
     },
   } satisfies Executor<ComputerUseArgs, ComputerUseResult>);
+  accessor.register(hookExecutorResource, {
+    execute: async (
+      context: Context,
+      args: ExecuteHookArgs,
+      options,
+    ): Promise<ExecuteHookResult> => {
+      const connection = await connect(context);
+      return await connection.remoteAccessor.get(hookExecutorResource).execute(
+        context,
+        args,
+        options,
+      );
+    },
+  } satisfies Executor<ExecuteHookArgs, ExecuteHookResult>);
 
   if (
     host.autoReviewClassifierExecutor !== undefined

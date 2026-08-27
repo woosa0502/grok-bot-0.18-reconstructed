@@ -286,6 +286,10 @@ export function createSandAgentStaticConfig(
       rerenderUserInfoOnRequestContextRecovery: true,
       rerenderUserInfoOnSummarization: true,
       skipPreTurnStateSnapshot: true,
+      // Surface additionalContext returned by postToolUse / postToolUseFailure
+      // hooks: the collected carriers are rendered as a system reminder on the
+      // next turn (state.ts renderHookAdditionalContextSystemReminder).
+      enableHookAdditionalContext: true,
     },
     agentType: "IDE" as const,
     conversationId: input.conversationId,
