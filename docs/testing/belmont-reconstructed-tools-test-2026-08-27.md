@@ -261,3 +261,39 @@ bespoke 상호작용 작성은 위험 대비 과대이므로, **주요 표면 �
 **판정**: 체크섬 고정 렌더러가 복원 host와 **정상 통합·렌더**된다(콘솔에러 0, 주요 표면 기능). USER_REACHABLE
 823의 대상 UI 표면이 동작함을 렌더-건전성 수준에서 실증. 각 케이스의 세부 상호작용(특정 상태 유발·클릭
 시퀀스)까지의 정밀 검증은 bespoke 플랜이 필요하며, 이 스윕 + 기존 authored 플랜 14개가 자동 커버리지다.
+
+## 16. 훅(hook) 박스 실행 복원 (2026-08-28) — `RESOLVED`
+
+**문제**: Belmont는 host측 remote-hook 배선(`withRemoteHooks`, `executeRemotePreToolUseHook`,
+`hookExecutorResource`)은 출고돼 있었지만 **박스 데몬이 `executeHookArgs` exec 메시지에 응답하지 않았고**,
+박스 리소스 accessor가 `hookExecutorResource`를 등록하지 않아 `.cursor/hooks.json`이 조용히 무시됐다.
+복원 산출물엔 클라우드 박스 바이너리가 없어(host-main.cjs + local-exec-daemon만) 박스측은 재구성 대상이었다.
+
+**끊긴 지점 3곳(순차 진단)**:
+1. `options.enableExecuteHookExec`가 WebSearch options에 안 닿음 → 팩토리 경계(`createWebSearchToolInputs`)에서 강제 주입.
+2. `resourceAccessor.get(hookExecutorResource)`가 undefined 반환 — WebSearch가 쓰던 accessor는 **registry형**(사전 등록만),
+   훅 리소스 미등록. 박스 도구(read/grep)가 쓰는 **remote-box accessor**(임의 리소스 지연 라우팅)로 훅 경로 교체.
+3. remote-box accessor 자체도 `hookExecutorResource` 미등록 → "production remote resource is not registered" 던짐.
+   `remote-box-resources.ts`에 read/grep과 동일 패턴으로 등록.
+
+**복원한 코드(커밋 a9a3e27, 내 파일만)**:
+- `box-exec-daemon/server.ts`: `executeHookArgs` case 처리. 박스 워크스페이스 `.cursor/hooks.json` 읽어 step별 command 실행,
+  훅 입력 JSON(`hook_event_name`, `tool_name`, `tool_input` + 실패 시 `error`/`failure_type`/`duration_ms`/`tool_use_id`)을
+  stdin으로 전달, stdout을 타입드 Pre/PostToolUse 응답으로 매핑(decision "block" 또는 exit 2 = deny, additionalContext/userMessage/updatedInput).
+- `remote-box-resources.ts`: `hookExecutorResource` 등록(박스 라우팅).
+- `host-runner-composition.ts`: WebSearch 훅 경로를 한 곳에서 remote-box accessor로 배선. (web-fetch는 복원 소스에 withRemoteHooks 경로가 없어 미배선, 주석 명시.)
+- `turn-agent-composition.ts`: `enableHookAdditionalContext` 켜 post-hook의 additionalContext가 에이전트에 렌더되게.
+
+**실증 결과**:
+- **preToolUse (deny)**: WebSearch 호출 → 훅 발화(marker에 `tool_name`/`tool_input` 정확 수신) → deny 반영.
+  에이전트가 받은 도구 결과 = `Web search rejected: HOOK_BLOCKED_9931 preToolUse hook fired and denied the web tool`. **끝까지 검증.**
+- **postToolUseFailure**: preToolUse 허용 → WebSearch 실행 → 실패 → 훅 발화. 훅이 받은 전체 실패 payload:
+  `error`("Waiting for an inference credential…"), `failure_type`("error"), `duration_ms`, `tool_use_id`, `conversation_id`. **payload 계약 검증.**
+- **인프라**: 박스 executeHook가 preToolUse/postToolUse/postToolUseFailure/beforeSubmitPrompt/subagentStart/stop 전 step 매핑.
+
+**경계(충실도 주석)**: post-hook의 additionalContext가 에이전트에 렌더되려면 도구가 **에러 결과를 반환**하거나 **성공**해야 한다
+(tool-stream-executor가 도구 throw 시 carrier 렌더 전에 재던짐 — 복원된 상류 동작). 이 박스는 web-search 인증 credential이
+없어 전송 계층에서 throw하므로 실패 경로의 additionalContext 렌더는 네트워크 있는 환경에서만 관찰된다. 상류 동작을
+바꾸지 않음(성적표 튜닝 금지). 훅은 이 복원 소스에서 **WebSearch에만** 연결된다(web-search.ts만 withRemoteHooks 사용).
+
+증거: `.cache/…/box-workspace/hook-marker.log`(훅 입력 payload), transcript의 `HOOK_BLOCKED_9931` 거부.
