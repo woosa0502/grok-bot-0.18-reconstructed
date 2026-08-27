@@ -461,8 +461,11 @@ class BoxExecRuntime {
     if (before !== undefined && before > 0) rgArgs.push("-B", String(before));
     if (after !== undefined && after > 0) rgArgs.push("-A", String(after));
     rgArgs.push("--", args.pattern, cwd);
+    // rg searches the absolute target (file or directory); spawn from a real directory so a
+    // single-file target does not fail with ENOTDIR.
+    const spawnCwd = this.resolvePath("/workspace");
     const stdout = await new Promise<string>((resolve) => {
-      const child = spawn("rg", rgArgs, { cwd, env: this.#environment });
+      const child = spawn("rg", rgArgs, { cwd: spawnCwd, env: this.#environment });
       let out = "";
       child.stdout.on("data", data => { out += String(data); });
       child.stderr.on("data", () => {});
@@ -473,11 +476,14 @@ class BoxExecRuntime {
     });
     const byFile = new Map<string, GrepContentMatch[]>();
     let totalMatchedLines = 0;
+    const offset = Math.max(0, args.offset ?? 0);
+    let matchIndex = 0;
     for (const line of stdout.split("\n")) {
       if (line.length === 0) continue;
       let event: { type?: string; data?: { path?: { text?: string }; line_number?: number; lines?: { text?: string } } };
       try { event = JSON.parse(line); } catch { continue; }
       if (event.type !== "match") continue;
+      if (matchIndex++ < offset) continue;
       const file = event.data?.path?.text ?? "";
       const lineNumber = event.data?.line_number ?? 0;
       const content = (event.data?.lines?.text ?? "").replace(/\n$/, "");

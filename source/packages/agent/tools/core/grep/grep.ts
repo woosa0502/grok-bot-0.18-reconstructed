@@ -96,6 +96,7 @@ export function createGrepTool(
     head_limit: z.number().int().optional().describe("Maximum number of matched lines to return."),
     multiline: z.boolean().optional().describe("Allow the pattern to span multiple lines."),
     output_mode: z.enum(["content", "files_with_matches", "count"]).optional().describe("What to return: 'content' (matching lines with line numbers, the default), 'files_with_matches' (only the paths of files that match), or 'count' (number of matches per file)."),
+    offset: z.number().int().optional().describe("Skip the first N matched lines before returning results (for pagination; combine with head_limit)."),
   });
 
   const execute = async (
@@ -130,6 +131,7 @@ export function createGrepTool(
       ...(parsed.data.head_limit === undefined ? {} : { headLimit: parsed.data.head_limit }),
       ...(parsed.data.multiline === undefined ? {} : { multiline: parsed.data.multiline }),
       ...(parsed.data.output_mode === undefined ? {} : { outputMode: parsed.data.output_mode }),
+      ...(parsed.data.offset === undefined ? {} : { offset: parsed.data.offset }),
     });
     return interactionHandler.executeToolCall(
       span.ctx,
