@@ -51,6 +51,8 @@ import {
   LsRejected,
   LsResult,
   LsSuccess,
+  TerminalMetadata,
+  TerminalMetadata_Command,
   type LsArgs,
 } from "../packages/proto/generated/agent/v1/ls_exec_pb.js";
 import {
@@ -191,6 +193,43 @@ function buildIgnoreMatcher(patterns: readonly string[]): (relPath: string) => b
   const regexes = patterns.map(globToIgnoreRegExp);
   return relPath => regexes.some(re => re.test(relPath));
 }
+async function parseTerminalMetadata(filePath: string): Promise<TerminalMetadata | undefined> {
+  let text: string;
+  let mtimeMs: number;
+  try {
+    text = await readFile(filePath, "utf8");
+    mtimeMs = (await stat(filePath)).mtimeMs;
+  } catch { return undefined; }
+  const frontmatter = text.match(/^---\n([\s\S]*?)\n---/);
+  const body = frontmatter?.[1];
+  if (body === undefined) return undefined;
+  const field = (key: string): string | undefined => {
+    const raw = body.match(new RegExp(`^${key}:[ \\t]*(.*)$`, "m"))?.[1];
+    if (raw === undefined) return undefined;
+    let value = raw.trim();
+    if (value.startsWith("\"") && value.endsWith("\"")) {
+      try { value = JSON.parse(value) as string; } catch { /* keep the raw value */ }
+    }
+    return value;
+  };
+  const cwd = field("cwd");
+  const command = field("command");
+  const startedAt = field("started_at");
+  const startedMs = startedAt !== undefined ? Date.parse(startedAt) : Number.NaN;
+  const footer = text.match(/---\nexit_code:[ \t]*(-?\d+)\nelapsed_ms:[ \t]*(\d+)/);
+  const metadata = new TerminalMetadata({ lastCommands: [], lastModifiedMs: BigInt(Math.round(mtimeMs)), ...(cwd === undefined ? {} : { cwd }) });
+  if (command !== undefined) {
+    const timestamp = Number.isFinite(startedMs) ? { timestampMs: BigInt(startedMs) } : {};
+    const exitCode = footer?.[1];
+    const elapsed = footer?.[2];
+    if (exitCode !== undefined && elapsed !== undefined) {
+      metadata.lastCommands = [new TerminalMetadata_Command({ command, exitCode: Number(exitCode), durationMs: BigInt(Number(elapsed)), ...timestamp })];
+    } else {
+      metadata.currentCommand = new TerminalMetadata_Command({ command, ...timestamp });
+    }
+  }
+  return metadata;
+}
 function yamlString(value: string): string {
   return JSON.stringify(value);
 }
@@ -256,6 +295,9 @@ class BoxExecRuntime {
 
   resolvePath(requested: string): string {
     const logical = requested.length === 0 ? "/workspace" : requested;
+    if (logical === BOX_TERMINAL_VIRTUAL_PREFIX || logical === BOX_TERMINAL_VIRTUAL_PREFIX.replace(/\/$/, "")) {
+      return this.terminalsDirectory;
+    }
     if (logical.startsWith(BOX_TERMINAL_VIRTUAL_PREFIX)) {
       const terminalName = logical.slice(BOX_TERMINAL_VIRTUAL_PREFIX.length);
       if (!/^\d+\.txt$/.test(terminalName)) throw new PathRejectedError(`Rejected terminal virtual path: ${requested}`);
@@ -403,7 +445,12 @@ class BoxExecRuntime {
               node.fullSubtreeExtensionCounts[ext] = (node.fullSubtreeExtensionCounts[ext] ?? 0) + count;
             }
           } else {
-            node.childrenFiles.push(new LsDirectoryTreeNode_File({ name: entry.name }));
+            const fileNode = new LsDirectoryTreeNode_File({ name: entry.name });
+            if (dir === this.terminalsDirectory) {
+              const terminalMetadata = await parseTerminalMetadata(path.join(dir, entry.name));
+              if (terminalMetadata !== undefined) fileNode.terminalMetadata = terminalMetadata;
+            }
+            node.childrenFiles.push(fileNode);
             node.numFiles += 1;
             const ext = path.extname(entry.name) || "(no extension)";
             node.fullSubtreeExtensionCounts[ext] = (node.fullSubtreeExtensionCounts[ext] ?? 0) + 1;
