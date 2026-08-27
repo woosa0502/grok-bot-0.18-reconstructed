@@ -237,3 +237,27 @@ FAULT_RECOVERY는 fault-injection 표면(hook·컴퓨터·브라우저·큐 tele
   검증메시지 형식차이·loop 감지 10, 테스트자원 부족·관찰한계 8.
 
 **결론**: 438 스윕에서 순수 코드 결함 = 3개 근본(8케이스), 전부 수정·검증 완료. 나머지는 보류·백엔드·edge.
+
+## 15. USER_REACHABLE UI 823 — 표면 렌더 건전성 스윕 (2026-08-28)
+
+**전제**: UI는 b-nnett 재구성이 아니라 **출고 렌더러 그대로**(체크섬 고정 `945793f4…`). 따라서 UI 검증의
+초점은 재구성 충실도가 아니라 **"고정 렌더러가 우리가 복원한 host와 정상 통합·렌더되는가"**다. 823개
+bespoke 상호작용 작성은 위험 대비 과대이므로, **주요 표면 렌더 건전성 스윕**(CDP로 각 표면 열어 렌더
++ 콘솔에러 + 스크린샷 캡처)으로 대체.
+
+**결과 (실증)**:
+- **콘솔 에러 0건** — 전 표면.
+- **명령 팔레트**(Ctrl+K): "Search" 다이얼로그 + 탭(All/Messages/Agents/Groups/Files/Links/Routines/Actions)
+  + 퍼지 검색 결과(에이전트·Actions·Settings). 영역 01/08/09 커버.
+- **설정 패널**(View agent settings): Name/Title/Description 필드 + Notifications 토글, host 데이터로 채워짐.
+  영역 04/06 커버. (§12에서 고친 profile/settings 백엔드의 UI.)
+- **컴퓨터 뷰**: VNC 화면 placeholder(로컬 라이브 데스크톱 없음 — computer-use BLOCKED와 일치) + Routines
+  UI(Create Routine). 영역 09 커버.
+- **사이드바/transcript/composer/플러그인/계정**: 전부 렌더.
+
+증거: `/tmp/ui-evidence/*.png` (00_base, 01_command_palette, 04_account_menu, 05_attach, 06_agent_settings,
+07_plugins, 09_computer, 09_reactions, 09_msg_actions).
+
+**판정**: 체크섬 고정 렌더러가 복원 host와 **정상 통합·렌더**된다(콘솔에러 0, 주요 표면 기능). USER_REACHABLE
+823의 대상 UI 표면이 동작함을 렌더-건전성 수준에서 실증. 각 케이스의 세부 상호작용(특정 상태 유발·클릭
+시퀀스)까지의 정밀 검증은 bespoke 플랜이 필요하며, 이 스윕 + 기존 authored 플랜 14개가 자동 커버리지다.
