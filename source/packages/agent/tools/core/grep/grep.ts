@@ -34,22 +34,29 @@ function createGrepToolCall(value: GrepToolCall): ToolCall {
 function renderGrepSuccess(success: GrepSuccess): string {
   const lines: string[] = [];
   let used = 0;
+  let capped = false;
+  let totalMatched = 0;
   for (const union of Object.values(success.workspaceResults)) {
     if (union.result.case !== "content") continue;
-    for (const fileMatch of union.result.value.matches) {
+    const content = union.result.value;
+    if (content.clientTruncated || content.ripgrepTruncated) capped = true;
+    totalMatched += content.totalMatchedLines;
+    for (const fileMatch of content.matches) {
       const header = `${fileMatch.file}:`;
-      if (used + header.length > GREP_CHARACTER_BUDGET) { lines.push("… (truncated)"); return lines.join("\n"); }
+      if (used + header.length > GREP_CHARACTER_BUDGET) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
       lines.push(header);
       used += header.length + 1;
       for (const match of fileMatch.matches) {
         const row = `  ${match.lineNumber}: ${match.content}`;
-        if (used + row.length > GREP_CHARACTER_BUDGET) { lines.push("… (truncated)"); return lines.join("\n"); }
+        if (used + row.length > GREP_CHARACTER_BUDGET) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
         lines.push(row);
         used += row.length + 1;
       }
     }
   }
-  return lines.length === 0 ? `No matches for /${success.pattern}/` : lines.join("\n");
+  if (lines.length === 0) return `No matches for /${success.pattern}/`;
+  if (capped) lines.push(`… (results capped at ${totalMatched} matched line${totalMatched === 1 ? "" : "s"}; narrow the pattern or path to see more)`);
+  return lines.join("\n");
 }
 
 export function createGrepTool(
