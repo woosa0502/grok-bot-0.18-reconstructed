@@ -49,6 +49,7 @@ import type {
   TurnMcpManagementToolFactoryInput,
   TurnDeleteToolFactoryInput,
   TurnEditToolFactoryInput,
+  TurnWriteToolFactoryInput,
   TurnGlobToolFactoryInput,
   TurnGrepToolFactoryInput,
   TurnLsToolFactoryInput,
@@ -2146,6 +2147,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         }
         return {
           resourceAccessor: turn.remoteBoxResourceAccessor as unknown as TurnEditToolFactoryInput["resourceAccessor"],
+        };
+      },
+      createBoxWriteToolInputs: (turn, _props): TurnWriteToolFactoryInput => {
+        if (turn.remoteBoxResourceAccessor === undefined) {
+          throw new TypeError("remote box resource accessor is not bound");
+        }
+        return {
+          resourceAccessor: turn.remoteBoxResourceAccessor as unknown as TurnWriteToolFactoryInput["resourceAccessor"],
         };
       },
       createBoxGlobToolInputs: (turn, _props): TurnGlobToolFactoryInput => {

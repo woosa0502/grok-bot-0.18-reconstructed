@@ -125,6 +125,10 @@ import {
   type EditResourceAccessor,
 } from "../../../packages/agent/tools/core/edit/edit.js";
 import {
+  createWriteTool,
+  type WriteResourceAccessor,
+} from "../../../packages/agent/tools/core/edit/write.js";
+import {
   createGlobTool,
   type GlobResourceAccessor,
 } from "../../../packages/agent/tools/core/glob/glob.js";
@@ -558,6 +562,7 @@ export interface TurnToolFactories {
   boxDelete?(): TurnTool;
   boxGrep?(): TurnTool;
   boxEdit?(): TurnTool;
+  boxWrite?(): TurnTool;
   boxGlob?(): TurnTool;
   boxAwait?(): TurnTool;
   fileTransfer?(): readonly TurnTool[];
@@ -673,6 +678,11 @@ export interface TurnEditToolFactoryInput {
   readonly toolName?: string;
 }
 
+export interface TurnWriteToolFactoryInput {
+  readonly resourceAccessor: WriteResourceAccessor;
+  readonly toolName?: string;
+}
+
 export interface TurnGlobToolFactoryInput {
   readonly resourceAccessor: GlobResourceAccessor;
   readonly toolName?: string;
@@ -736,6 +746,7 @@ export interface TurnToolsetFactoryInputs {
   readonly boxDelete?: TurnDeleteToolFactoryInput;
   readonly boxGrep?: TurnGrepToolFactoryInput;
   readonly boxEdit?: TurnEditToolFactoryInput;
+  readonly boxWrite?: TurnWriteToolFactoryInput;
   readonly boxGlob?: TurnGlobToolFactoryInput;
   readonly sendMessage?: TurnSendMessageToolFactoryInput;
   readonly sendToAgent?: TurnSendToAgentToolFactoryInput;
@@ -834,6 +845,10 @@ export interface TurnToolsetHostFactoryProvider {
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
   ) => TurnEditToolFactoryInput | undefined;
+  readonly createBoxWriteToolInputs?: (
+    turn: TurnToolsetTurnInput,
+    props: TurnToolsetBuildProps,
+  ) => TurnWriteToolFactoryInput | undefined;
   readonly createBoxGlobToolInputs?: (
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
@@ -1082,6 +1097,12 @@ export function createTurnEditToolFactory(
   return () => asTurnTool(createEditTool(input.resourceAccessor, input.toolName));
 }
 
+export function createTurnWriteToolFactory(
+  input: TurnWriteToolFactoryInput,
+): () => TurnTool {
+  return () => asTurnTool(createWriteTool(input.resourceAccessor, input.toolName));
+}
+
 export function createTurnGlobToolFactory(
   input: TurnGlobToolFactoryInput,
 ): () => TurnTool {
@@ -1162,7 +1183,7 @@ export function createTurnToolsetFactories(
   TurnToolFactories,
   "task" | "mcpMeta" | "computer" | "browser" | "screenshot"
   | "fileTransfer" | "requestBoxHelp" | "generateImage" | "webSearch" | "webFetch" | "externalAwait"
-  | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead" | "boxLs" | "boxDelete" | "boxGrep" | "boxEdit" | "boxGlob"
+  | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead" | "boxLs" | "boxDelete" | "boxGrep" | "boxEdit" | "boxWrite" | "boxGlob"
   | "sendMessage" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState"
   | "subagentManagement"
   | "mcpManagement" | "cloudAgent"
@@ -1231,6 +1252,9 @@ export function createTurnToolsetFactories(
     ...(input.boxEdit === undefined
       ? {}
       : { boxEdit: createTurnEditToolFactory(input.boxEdit) }),
+    ...(input.boxWrite === undefined
+      ? {}
+      : { boxWrite: createTurnWriteToolFactory(input.boxWrite) }),
     ...(input.boxGlob === undefined
       ? {}
       : { boxGlob: createTurnGlobToolFactory(input.boxGlob) }),
@@ -1283,6 +1307,7 @@ export function createTurnToolsetFactoriesForTurn(
   const boxDelete = provider.createBoxDeleteToolInputs?.(turn, props);
   const boxGrep = provider.createBoxGrepToolInputs?.(turn, props);
   const boxEdit = provider.createBoxEditToolInputs?.(turn, props);
+  const boxWrite = provider.createBoxWriteToolInputs?.(turn, props);
   const boxGlob = provider.createBoxGlobToolInputs?.(turn, props);
   return createTurnToolsetFactories({
     ...(provider.createTaskToolInputs === undefined
@@ -1348,6 +1373,9 @@ export function createTurnToolsetFactoriesForTurn(
     ...(provider.createBoxEditToolInputs === undefined
       ? {}
       : boxEdit === undefined ? {} : { boxEdit }),
+    ...(provider.createBoxWriteToolInputs === undefined
+      ? {}
+      : boxWrite === undefined ? {} : { boxWrite }),
     ...(provider.createBoxGlobToolInputs === undefined
       ? {}
       : boxGlob === undefined ? {} : { boxGlob }),
@@ -1583,6 +1611,8 @@ export function buildTurnTools(
     if (boxGrep !== undefined) tools.push(boxGrep);
     const boxEdit = scoped(factories.boxEdit?.());
     if (boxEdit !== undefined) tools.push(boxEdit);
+    const boxWrite = scoped(factories.boxWrite?.());
+    if (boxWrite !== undefined) tools.push(boxWrite);
     const boxGlob = scoped(factories.boxGlob?.());
     if (boxGlob !== undefined) tools.push(boxGlob);
     if (!host.isBoxScopedSubagent) {
