@@ -146,3 +146,47 @@ computer-use·browser와 같은 성격(Cursor 표면 의존)으로, 도구 복�
   영역: routine/update_state/subagent 경로 미연결).
 - **결론**: 코드는 준비돼 있으나 그것을 태울 subagent 실행 컨텍스트가 로컬에 없다 → GB-CORE-001의
   subagent 경로가 열린 뒤 재검토.
+- **2026-08-27 갱신**: §12에서 서브에이전트 **foreground 실행 경로가 연결**됐다. readonly 모드
+  서브에이전트(`run_in_background=false`)를 이제 실제로 태울 수 있으므로 000356은 재검토 가능 상태로
+  올라온다(다음 gate).
+
+## 12. 서브에이전트 결과 바인딩 복원 (2026-08-27) — `RESOLVED`
+
+**증상**: `run_in_background=false`(foreground)로 Task를 호출해도 부모가 자식 결과를 못 받고
+"Subagent is running in the background." 만 받았다. 부모 턴이 자식 산출물을 보고할 수 없었다.
+
+**부검 (기제 수준 사인)**: `SandSubagentHostAdapter.runSession`
+(`source/host/runner/agent-adapters.ts`)에 **foreground 경로 자체가 없었다.** `runInBackground`
+값과 무관하게 항상 `dispatcher.dispatch(...)`로 배경 큐에 넣고 `status:"background"`만 반환.
+반환 타입에 success/finalMessage 케이스가 아예 빠져 있었다.
+
+- executor 계약(`source/packages/agent-exec/subagent.ts`)은 이미 `status:"success"` →
+  `SubagentSuccess{finalMessage, backgroundReason=UNSPECIFIED}`로 매핑한다(= foreground 결과).
+- `child.run`은 상속된 production turn-run shell로 위임 → `settle.buildResult`가
+  `{text, aborted, ...}`를 반환한다(문자열 text 존재 확인).
+- 즉 계약은 준비돼 있었고 adapter만 그 케이스를 반환하지 않았다.
+
+**수정** (커밋 `d20f29f`):
+1. `runSession`에 foreground 분기 추가 — `args.runInBackground === false`면 `runner.run()`을
+   **인라인 await** → `{status:"success", finalMessage: text, toolCallCount, transcriptPath}` 반환
+   (abort 시 `"aborted"`). 배경 dispatch 경로는 그대로.
+2. composition의 subagent-runner 바인딩 정리 — `child.run` 결과 `{text, aborted}`를 그대로 바인딩,
+   text가 없으면 관측된 shape을 담아 명확히 throw(기존 placeholder throw 대체).
+
+**실증 검증** (sanctioned CDP 드라이버, 임의 evaluate 없음):
+
+| 테스트 | 부모 Task 호출 | 부모가 보고한 값 | 판정 |
+|---|---|---|---|
+| t126 | `run_in_background:false`, echo SUBTEST_5566 | `RESULT=SUBTEST_5566` | 자식 stdout 바인딩 |
+| t127 | `run_in_background:false`, echo …_DELEGATED | `RESULT=SUBTEST_7788_DELEGATED` | 자식 stdout 바인딩 |
+| **t128** | `run_in_background:false`, `printf … ; then …` | `RESULT=/bin/sh: 1: Syntax error: "then" unexpected` | **결정적** |
+
+t128의 `/bin/sh: 1: Syntax error: "then" unexpected`는 **자식이 실제로 셸을 실행해야만 나오는
+값**으로 부모가 미리 알 수 없다 → 자식 실행 + 결과의 부모 턴 바인딩이 실증된다. 수정 전이라면
+부모는 배경 메시지만 받았을 것.
+
+**남은 관찰 / 죽음 반경**: (1) 자식은 현재 부모와 **transcript를 공유**한다(별도 agentId 파일 아님) —
+격리(Roo/Cline식 독립 transcript)는 별도 과제로, 결과 바인딩과 무관한 표면 개선. (2) foreground는
+정의상 "자식이 끝날 때까지 블로킹"이므로 자식 도구가 걸리면 부모도 블로킹된다(예: 자식이 `sh -lc`
+로그인 셸을 걸리게 하면 부모 대기) — 바인딩 결함이 아니라 자식 도구 hang. adapter-레벨 timeout은
+없음(원본 로컬 설계와 동일, run_in_background=false 의미 보존).
