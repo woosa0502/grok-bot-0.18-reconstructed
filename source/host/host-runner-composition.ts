@@ -2547,15 +2547,19 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                       ...options,
                       conversationId: agentId,
                     } as Parameters<typeof child.run>[1]);
-                    if (typeof result !== "object" || result == null) {
-                      throw new TypeError("production subagent result is not bound");
+                    // child.run delegates to the inherited production turn-run shell, whose
+                    // settle.buildResult returns { text, sentMessageCount, reacted, aborted, ... }.
+                    // Bind that to the SubagentRunResult { text, aborted } the caller expects.
+                    const text = result != null && typeof result === "object" ? Reflect.get(result, "text") : undefined;
+                    const aborted = result != null && typeof result === "object" ? Reflect.get(result, "aborted") : undefined;
+                    if (typeof text === "string") {
+                      return { text, aborted: aborted === true };
                     }
-                    const text = Reflect.get(result, "text");
-                    const aborted = Reflect.get(result, "aborted");
-                    if (typeof text !== "string" || typeof aborted !== "boolean") {
-                      throw new TypeError("production subagent result is not bound");
-                    }
-                    return { text, aborted };
+                    // A missing string `text` means the child ran without a bound turn-run shell
+                    // (e.g. runStep-only path returning undefined). Surface it as a subagent error
+                    // rather than a silent empty result, so the parent turn fails cleanly.
+                    const keys = result != null && typeof result === "object" ? Object.keys(result as object).join(",") : "-";
+                    throw new TypeError(`Subagent produced no bound result (type=${typeof result}, keys=${keys})`);
                   },
                   interrupt: reason => {
                     child.interrupt(reason);
