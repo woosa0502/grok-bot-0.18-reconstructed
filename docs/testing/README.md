@@ -4,6 +4,7 @@
 - 다른 모델 전달: [단일 모델 테스트 프롬프트](belmont-single-model-test-prompt-2026-08-25.md)
 - 실행 plan 예제: [examples](examples/)
 - pilot 필수조치 결과: [2026-08-26 remediation](belmont-pilot-remediation-2026-08-26.md)
+- 복원 도구 실사용 검증: [2026-08-27 reconstructed-tools](belmont-reconstructed-tools-test-2026-08-27.md)
 - 이관된 과거 자료: [legacy Grok snapshot](legacy-grok-2026-08-25/README.md)
 
 현재 상태는 `PILOT_REMEDIATED_PROVISIONAL / 1292_QUEUE_READY`다. queue 재기준화는
