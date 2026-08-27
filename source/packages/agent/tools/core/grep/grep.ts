@@ -36,26 +36,48 @@ function renderGrepSuccess(success: GrepSuccess): string {
   let used = 0;
   let capped = false;
   let totalMatched = 0;
+  const overBudget = (extra: number): boolean => used + extra > GREP_CHARACTER_BUDGET;
   for (const union of Object.values(success.workspaceResults)) {
-    if (union.result.case !== "content") continue;
-    const content = union.result.value;
+    const r = union.result;
+    if (r.case === "files") {
+      if (r.value.clientTruncated || r.value.ripgrepTruncated) capped = true;
+      for (const file of r.value.files) {
+        if (overBudget(file.length)) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
+        lines.push(file);
+        used += file.length + 1;
+      }
+      continue;
+    }
+    if (r.case === "count") {
+      if (r.value.clientTruncated) capped = true;
+      totalMatched += r.value.totalMatches;
+      for (const entry of r.value.counts) {
+        const row = `${entry.file}: ${entry.count}`;
+        if (overBudget(row.length)) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
+        lines.push(row);
+        used += row.length + 1;
+      }
+      continue;
+    }
+    if (r.case !== "content") continue;
+    const content = r.value;
     if (content.clientTruncated || content.ripgrepTruncated) capped = true;
     totalMatched += content.totalMatchedLines;
     for (const fileMatch of content.matches) {
       const header = `${fileMatch.file}:`;
-      if (used + header.length > GREP_CHARACTER_BUDGET) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
+      if (overBudget(header.length)) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
       lines.push(header);
       used += header.length + 1;
       for (const match of fileMatch.matches) {
         const row = `  ${match.lineNumber}: ${match.content}`;
-        if (used + row.length > GREP_CHARACTER_BUDGET) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
+        if (overBudget(row.length)) { lines.push("… (output truncated to fit the character budget)"); return lines.join("\n"); }
         lines.push(row);
         used += row.length + 1;
       }
     }
   }
   if (lines.length === 0) return `No matches for /${success.pattern}/`;
-  if (capped) lines.push(`… (results capped at ${totalMatched} matched line${totalMatched === 1 ? "" : "s"}; narrow the pattern or path to see more)`);
+  if (capped) lines.push(totalMatched > 0 ? `… (results capped at ${totalMatched} match${totalMatched === 1 ? "" : "es"}; narrow the pattern or path to see more)` : "… (results truncated; narrow the pattern or path to see more)");
   return lines.join("\n");
 }
 
@@ -73,6 +95,7 @@ export function createGrepTool(
     context: z.number().int().optional().describe("Lines of context to show before and after each match."),
     head_limit: z.number().int().optional().describe("Maximum number of matched lines to return."),
     multiline: z.boolean().optional().describe("Allow the pattern to span multiple lines."),
+    output_mode: z.enum(["content", "files_with_matches", "count"]).optional().describe("What to return: 'content' (matching lines with line numbers, the default), 'files_with_matches' (only the paths of files that match), or 'count' (number of matches per file)."),
   });
 
   const execute = async (
@@ -106,6 +129,7 @@ export function createGrepTool(
       ...(parsed.data.context === undefined ? {} : { context: parsed.data.context }),
       ...(parsed.data.head_limit === undefined ? {} : { headLimit: parsed.data.head_limit }),
       ...(parsed.data.multiline === undefined ? {} : { multiline: parsed.data.multiline }),
+      ...(parsed.data.output_mode === undefined ? {} : { outputMode: parsed.data.output_mode }),
     });
     return interactionHandler.executeToolCall(
       span.ctx,

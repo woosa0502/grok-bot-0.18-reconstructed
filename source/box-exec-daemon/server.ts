@@ -67,8 +67,11 @@ import {
 import {
   GrepContentMatch,
   GrepContentResult,
+  GrepCountResult,
   GrepError,
+  GrepFileCount,
   GrepFileMatch,
+  GrepFilesResult,
   GrepResult,
   GrepSuccess,
   GrepUnionResult,
@@ -485,9 +488,20 @@ class BoxExecRuntime {
         totalMatchedLines += 1;
       }
     }
-    const matches = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileMatch({ file, matches: fileMatches }));
-    const union = new GrepUnionResult({ result: { case: "content", value: new GrepContentResult({ matches, totalLines: totalMatchedLines, totalMatchedLines, clientTruncated: totalMatchedLines >= headLimit, ripgrepTruncated: false }) } });
-    return new GrepResult({ result: { case: "success", value: new GrepSuccess({ pattern: args.pattern, path: cwd, outputMode: args.outputMode ?? "content", workspaceResults: { workspace: union } }) } });
+    const outputMode = args.outputMode ?? "content";
+    const clientTruncated = totalMatchedLines >= headLimit;
+    let union: GrepUnionResult;
+    if (outputMode === "files_with_matches" || outputMode === "files") {
+      const files = [...byFile.keys()];
+      union = new GrepUnionResult({ result: { case: "files", value: new GrepFilesResult({ files, totalFiles: files.length, clientTruncated, ripgrepTruncated: false }) } });
+    } else if (outputMode === "count") {
+      const counts = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileCount({ file, count: fileMatches.length }));
+      union = new GrepUnionResult({ result: { case: "count", value: new GrepCountResult({ counts, totalFiles: counts.length, totalMatches: totalMatchedLines, clientTruncated }) } });
+    } else {
+      const matches = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileMatch({ file, matches: fileMatches }));
+      union = new GrepUnionResult({ result: { case: "content", value: new GrepContentResult({ matches, totalLines: totalMatchedLines, totalMatchedLines, clientTruncated, ripgrepTruncated: false }) } });
+    }
+    return new GrepResult({ result: { case: "success", value: new GrepSuccess({ pattern: args.pattern, path: cwd, outputMode, workspaceResults: { workspace: union } }) } });
   }
 
   async write(args: WriteArgs): Promise<WriteResult> {
