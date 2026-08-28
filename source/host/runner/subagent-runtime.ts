@@ -56,6 +56,8 @@ export interface SubagentSession {
   getTranscriptPath(): string | null;
   getComputerUseUsageSnapshot?(): ComputerUseUsageSnapshot | undefined;
   getComputerUseAuditActionCounts?(): ReadonlyMap<string, number>;
+  /** Dispose the child runner and deregister it from the owning runner pool. */
+  dispose?(): void | Promise<void>;
 }
 
 export interface SubagentRecord {

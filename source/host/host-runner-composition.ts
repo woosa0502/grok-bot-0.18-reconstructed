@@ -2697,6 +2697,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   getObservedToolCallCount: () => child.getObservedToolCallCount(),
                   getActivitySnapshot: () => child.getActivitySnapshot(),
                   getTranscriptPath: () => child.getTranscriptPath(),
+                  // Deregister from the owning pool and dispose the child runner so a
+                  // completed/released subagent does not leak until host shutdown.
+                  dispose: async () => {
+                    ownedRunners.delete(child);
+                    try { await (child as { dispose?: () => void | Promise<void> }).dispose?.(); } catch { /* already disposed */ }
+                  },
                 };
               };
               const computerUse = runner.computerUse;

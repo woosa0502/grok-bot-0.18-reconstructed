@@ -89,7 +89,7 @@ export class SandSubagentHostAdapter {
     this.dispatcher.dispatch({ subagentAgentId: agentId, subagentType: args.subagentType || "generalPurpose", toolCallId: args.toolCallId, prompt: args.prompt, ...(lineage == null ? {} : { lineage }), run: () => runner.run(args.prompt, runOptions) });
     return { status: "background", backgroundReason: SubagentBackgroundReason.AGENT_REQUEST, toolCallCount: 0 };
   }
-  releaseSession(agentId: string): void { if (this.dispatcher.isRunning(agentId)) return; this.sessions.delete(agentId); this.dispatcher.freeComputerUseWindow(agentId); }
+  releaseSession(agentId: string): void { if (this.dispatcher.isRunning(agentId)) return; const session = this.sessions.get(agentId); this.sessions.delete(agentId); this.dispatcher.freeComputerUseWindow(agentId); void Promise.resolve(session?.dispose?.()).catch(() => {}); }
 }
 export interface ForwardedUpdate { readonly type: string; readonly [key: string]: unknown }
 const SURFACE_UNRESOLVED_TOOL_CASES = new Set(["shellToolCall", "readToolCall", "awaitToolCall"]);
