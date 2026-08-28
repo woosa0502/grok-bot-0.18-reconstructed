@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { connectNodeAdapter } from "@connectrpc/connect-node";
-import { MethodKind, Value, type JsonValue, type ServiceType } from "@bufbuild/protobuf";
+import { MethodKind, Struct, Value, type JsonValue, type ServiceType } from "@bufbuild/protobuf";
 
 import { ControlService } from "../packages/proto/generated/agent/v1/control_service_connect.js";
 import { ExecService } from "../packages/proto/generated/agent/v1/exec_service_connect.js";
@@ -48,11 +48,14 @@ import {
   type ExecServerMessage,
 } from "../packages/proto/generated/agent/v1/exec_pb.js";
 import {
+  AfterAgentThoughtRequestResponse,
   BeforeSubmitPromptRequestResponse,
+  PostToolUseFailureRequestResponse,
   PostToolUseRequestResponse,
   PreToolUseRequestResponse,
   StopRequestResponse,
   SubagentStartRequestResponse,
+  SubagentStopRequestResponse,
 } from "../packages/proto/generated/agent/v1/agent_pb.js";
 import { ExecStreamElement } from "../packages/proto/generated/agent/v1/exec_service_pb.js";
 import {
@@ -186,6 +189,19 @@ interface BackgroundProcess {
   writeQueue: Promise<void>;
 }
 
+// One hook-script entry from .cursor/hooks.json (repo validator shape). `type`
+// omitted means "command". `matcher` is a regex on the tool name; `timeout` is in
+// seconds; `failClosed` makes a non-zero exit deny the action.
+interface HookScript {
+  readonly type?: string;
+  readonly command?: string;
+  readonly matcher?: string;
+  readonly timeout?: number;
+  readonly failClosed?: boolean;
+}
+// Default per-hook wall-clock timeout when a script does not set `timeout`.
+const DEFAULT_HOOK_TIMEOUT_MS = 60_000;
+
 interface ProcessOutcome {
   readonly code: number;
   readonly signal: string;
@@ -304,7 +320,7 @@ class BoxExecRuntime {
   readonly #environment: NodeJS.ProcessEnv;
   readonly #foreground = new Set<ChildProcessWithoutNullStreams>();
   readonly #background = new Map<number, BackgroundProcess>();
-  readonly #mcpServers = new Map<string, McpStdioClient>();
+  readonly #mcpServers = new Map<string, { client: McpStdioClient; configKey: string }>();
   #nextShellId = 1;
 
   constructor(readonly workspaceRoot: string, readonly terminalsDirectory: string, environment: NodeJS.ProcessEnv) {
@@ -316,28 +332,33 @@ class BoxExecRuntime {
   async loadMcpServers(request: LoadMcpServersRequest): Promise<LoadMcpServersResponse> {
     const configured = parseMcpStdioConfig(request.mcpConfigJson);
     if (request.removeMissing) {
-      for (const [name, client] of this.#mcpServers) {
+      for (const [name, entry] of this.#mcpServers) {
         if (!configured.has(name)) {
-          client.stop();
+          entry.client.stop();
           this.#mcpServers.delete(name);
         }
       }
     }
     const loadedServerNames: string[] = [];
     for (const [name, config] of configured) {
-      if (this.#mcpServers.has(name)) {
+      const resolved = { ...config, cwd: config.cwd ?? this.resolvePath("/workspace") };
+      const configKey = JSON.stringify(resolved);
+      const existing = this.#mcpServers.get(name);
+      // Reuse a healthy server only when its resolved config is unchanged; a config
+      // change or a previously-failed start (re)spawns it.
+      if (existing !== undefined && existing.configKey === configKey && existing.client.startError === undefined) {
         loadedServerNames.push(name);
         continue;
       }
-      const client = new McpStdioClient({ ...config, cwd: config.cwd ?? this.resolvePath("/workspace") });
+      if (existing !== undefined) existing.client.stop();
+      const client = new McpStdioClient(resolved);
       try {
         await client.start();
-        this.#mcpServers.set(name, client);
         loadedServerNames.push(name);
       } catch {
-        // Keep the failed client so mcpState can report its startError as a status.
-        this.#mcpServers.set(name, client);
+        // Keep the failed client so mcpState reports its startError as a status.
       }
+      this.#mcpServers.set(name, { client, configKey });
     }
     return new LoadMcpServersResponse({ loadedServerNames });
   }
@@ -345,7 +366,7 @@ class BoxExecRuntime {
   mcpState(args: McpStateExecArgs): McpStateExecResult {
     const wanted = args.serverIdentifiers.length > 0 ? new Set(args.serverIdentifiers) : undefined;
     const servers: McpStateServer[] = [];
-    for (const [name, client] of this.#mcpServers) {
+    for (const [name, { client }] of this.#mcpServers) {
       if (wanted !== undefined && !wanted.has(name)) continue;
       const startError = client.startError;
       servers.push(new McpStateServer({
@@ -367,12 +388,13 @@ class BoxExecRuntime {
     return new McpStateExecResult({ result: { case: "success", value: new McpStateSuccess({ servers }) } });
   }
 
-  async callMcpTool(args: McpArgs): Promise<McpResult> {
+  async callMcpTool(args: McpArgs, signal?: AbortSignal): Promise<McpResult> {
     const serverName = args.serverIdentifier.length > 0 ? args.serverIdentifier : args.providerIdentifier;
-    const client = this.#mcpServers.get(serverName);
-    if (client === undefined) {
+    const entry = this.#mcpServers.get(serverName);
+    if (entry === undefined) {
       return new McpResult({ result: { case: "serverNotFound", value: new McpServerNotFound({ name: serverName, availableServers: [...this.#mcpServers.keys()] }) } });
     }
+    const client = entry.client;
     if (client.startError !== undefined) {
       return new McpResult({ result: { case: "error", value: new McpError({ error: `MCP server '${serverName}' failed to start: ${client.startError}` }) } });
     }
@@ -383,19 +405,24 @@ class BoxExecRuntime {
     const toolArgs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(args.args)) toolArgs[key] = value.toJson();
     try {
-      const result = await client.callTool(toolName, toolArgs);
+      const result = await client.callTool(toolName, toolArgs, signal);
       const content = result.content.map(item =>
         item.type === "image"
           ? new McpToolResultContentItem({ content: { case: "image", value: new McpImageContent({ data: item.data != null ? Uint8Array.from(Buffer.from(item.data, "base64")) : new Uint8Array(), mimeType: item.mimeType ?? "" }) } })
           : new McpToolResultContentItem({ content: { case: "text", value: new McpTextContent({ text: item.text ?? "" }) } }));
-      return new McpResult({ result: { case: "success", value: new McpSuccess({ content, isError: result.isError }) } });
+      const success = new McpSuccess({ content, isError: result.isError });
+      // Preserve tool-provided structuredContent when present.
+      if (result.structuredContent !== undefined) {
+        try { success.structuredContent = Struct.fromJson(result.structuredContent as JsonValue); } catch { /* non-JSON structured content: skip */ }
+      }
+      return new McpResult({ result: { case: "success", value: success } });
     } catch (error) {
       return new McpResult({ result: { case: "error", value: new McpError({ error: error instanceof Error ? error.message : String(error) }) } });
     }
   }
 
   stopMcpServers(): void {
-    for (const [, client] of this.#mcpServers) client.stop();
+    for (const [, { client }] of this.#mcpServers) client.stop();
     this.#mcpServers.clear();
   }
 
@@ -444,41 +471,84 @@ class BoxExecRuntime {
     throw new PathRejectedError(`Resolved path escapes configured roots: ${requested}`);
   }
 
-  // Hook config lives in the workspace's .cursor/hooks.json — the same file the plugin
-  // synthesizer writes: { version, hooks: { <step>: [{ type: "command", command } | { type: "prompt", ... }] } }.
-  async #readHooksConfig(): Promise<Record<string, Array<{ type?: string; command?: string }>>> {
+  // Hook config lives in the workspace's .cursor/hooks.json — the same shape the
+  // repo's own validator (packages/hooks/validators/hooksConfig.ts) accepts:
+  //   { version, hooks: { <step>: [ { command, matcher?, timeout?, failClosed? }
+  //                                  | { type: "prompt", prompt, ... } ] } }.
+  // `type` defaults to "command" when omitted. Malformed JSON is logged (not
+  // silently swallowed) so a broken config is diagnosable.
+  async #readHooksConfig(): Promise<Record<string, HookScript[]>> {
+    let raw: string;
     try {
-      const raw = await readFile(path.join(this.workspaceRoot, ".cursor", "hooks.json"), "utf8");
-      const parsed: unknown = JSON.parse(raw);
-      const hooks = parsed != null && typeof parsed === "object" ? (parsed as Record<string, unknown>).hooks : undefined;
-      return hooks != null && typeof hooks === "object" ? hooks as Record<string, Array<{ type?: string; command?: string }>> : {};
-    } catch { return {}; }
+      raw = await readFile(path.join(this.workspaceRoot, ".cursor", "hooks.json"), "utf8");
+    } catch {
+      return {}; // no hooks configured
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      console.error(`[box-hooks] .cursor/hooks.json is not valid JSON, ignoring: ${error instanceof Error ? error.message : String(error)}`);
+      return {};
+    }
+    const hooks = parsed != null && typeof parsed === "object" ? (parsed as Record<string, unknown>).hooks : undefined;
+    if (hooks == null || typeof hooks !== "object") return {};
+    const result: Record<string, HookScript[]> = {};
+    for (const [stepName, arr] of Object.entries(hooks as Record<string, unknown>)) {
+      if (Array.isArray(arr)) result[stepName] = arr.filter((entry): entry is HookScript => entry != null && typeof entry === "object");
+    }
+    return result;
   }
 
-  // Run a hook command shell-style with the hook input JSON on stdin, capturing stdout and exit
-  // code (Claude-Code hook convention: stdout is the hook's JSON response; exit code 2 = block).
-  #runHookCommand(command: string, inputJson: string): Promise<{ stdout: string; exitCode: number }> {
+  // Run a hook command shell-style with the hook input JSON on stdin, capturing
+  // stdout and exit code (hook convention: stdout is the hook's JSON response;
+  // exit code 2 = block). Enforces a wall-clock timeout, honors the request abort
+  // signal, and caps captured stdout to avoid an unbounded hook stalling/flooding.
+  #runHookCommand(command: string, inputJson: string, timeoutMs: number, signal?: AbortSignal): Promise<{ stdout: string; exitCode: number; timedOut: boolean }> {
     return new Promise(resolve => {
       let child: ChildProcessWithoutNullStreams;
       try { child = spawn("sh", ["-c", command], { cwd: this.resolvePath("/workspace"), env: this.#environment }); }
-      catch { resolve({ stdout: "", exitCode: 1 }); return; }
-      let out = "", errored = false;
-      child.stdout.on("data", d => { out += d.toString(); });
+      catch { resolve({ stdout: "", exitCode: 1, timedOut: false }); return; }
+      let out = "", done = false, timedOut = false;
+      const MAX_OUTPUT = 1_000_000; // 1 MB cap on captured stdout
+      const finish = (result: { stdout: string; exitCode: number; timedOut: boolean }): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (signal !== undefined) signal.removeEventListener("abort", onAbort);
+        resolve(result);
+      };
+      const kill = (): void => { try { child.kill("SIGKILL"); } catch { /* already gone */ } };
+      const onAbort = (): void => { kill(); finish({ stdout: out, exitCode: 130, timedOut: false }); };
+      const timer = setTimeout(() => { timedOut = true; kill(); finish({ stdout: out, exitCode: 124, timedOut: true }); }, timeoutMs);
+      if (signal !== undefined) {
+        if (signal.aborted) { kill(); resolve({ stdout: "", exitCode: 130, timedOut: false }); clearTimeout(timer); return; }
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+      child.stdout.on("data", d => { if (out.length < MAX_OUTPUT) out += d.toString(); });
       child.stderr.on("data", () => {});
-      child.on("error", () => { if (!errored) { errored = true; resolve({ stdout: "", exitCode: 1 }); } });
-      child.on("close", code => { if (!errored) resolve({ stdout: out, exitCode: code ?? 0 }); });
-      try { child.stdin.write(inputJson); child.stdin.end(); } catch {}
+      child.on("error", () => finish({ stdout: "", exitCode: 1, timedOut: false }));
+      child.on("close", code => finish({ stdout: out, exitCode: code ?? 0, timedOut }));
+      try { child.stdin.write(inputJson); child.stdin.end(); } catch { /* stdin closed early */ }
     });
   }
 
-  async executeHook(args: ExecuteHookArgs): Promise<ExecuteHookResult> {
+  async executeHook(args: ExecuteHookArgs, signal?: AbortSignal): Promise<ExecuteHookResult> {
     const req = args.request?.request;
     if (req == null || req.case === undefined) return new ExecuteHookResult({});
     const step = req.case;
-    const entries = (await this.#readHooksConfig())[step] ?? [];
-    const commands = entries.filter(e => e != null && e.type === "command" && typeof e.command === "string");
+    const q = req.value as unknown as Record<string, unknown>;
+    const toolName = typeof q.toolName === "string" ? q.toolName : "";
+    // `matcher` is a regex tested against the tool name; "", "*", or absent means
+    // "all tools". Only command hooks whose matcher matches this call are run.
+    const matcherMatches = (matcher: unknown): boolean => {
+      if (matcher === undefined || matcher === "" || matcher === "*" || typeof matcher !== "string") return true;
+      try { return new RegExp(matcher).test(toolName); } catch { return true; }
+    };
+    const scripts = (await this.#readHooksConfig())[step] ?? [];
+    const commands = scripts.filter(entry => (entry.type === undefined || entry.type === "command") && typeof entry.command === "string" && matcherMatches(entry.matcher));
     if (commands.length === 0) return new ExecuteHookResult({});
-    const q = req.value as Record<string, unknown>;
+
     const toJson = (v: unknown): unknown => v != null && typeof (v as { toJson?: () => unknown }).toJson === "function" ? (v as { toJson: () => unknown }).toJson() : v;
     const input: Record<string, unknown> = {
       hook_event_name: step,
@@ -492,42 +562,111 @@ class BoxExecRuntime {
       ...(q.toolUseId != null ? { tool_use_id: q.toolUseId } : {}),
       ...(q.subagentId != null ? { subagent_id: q.subagentId } : {}),
       ...(q.subagentType != null ? { subagent_type: q.subagentType } : {}),
+      ...(q.status != null ? { status: q.status } : {}),
+      ...(q.summary != null ? { summary: q.summary } : {}),
+      ...(q.task != null ? { task: q.task } : {}),
+      ...(q.description != null ? { description: q.description } : {}),
+      ...(q.text != null ? { text: q.text } : {}),
       ...(q.conversationId != null ? { conversation_id: q.conversationId } : {}),
       ...(q.prompt != null ? { prompt: q.prompt } : {}),
     };
-    let stdout = "", exitCode = 0;
-    for (const e of commands) {
-      const r = await this.#runHookCommand(e.command!, JSON.stringify(input));
+    const inputJson = JSON.stringify(input);
+
+    let stdout = "", exitCode = 0, failClosedDeny = false;
+    for (const entry of commands) {
+      const timeoutMs = typeof entry.timeout === "number" && entry.timeout > 0
+        ? Math.min(entry.timeout * 1000, 3_600_000)
+        : DEFAULT_HOOK_TIMEOUT_MS;
+      const r = await this.#runHookCommand(entry.command!, inputJson, timeoutMs, signal);
       stdout = r.stdout.trim();
       exitCode = r.exitCode;
-      if (exitCode !== 0) break;
+      if (exitCode !== 0) {
+        // A non-zero hook that opted into failClosed denies the action; otherwise
+        // the failure is non-blocking (matching Claude Code's default semantics).
+        if (entry.failClosed === true) failClosedDeny = true;
+        break;
+      }
     }
+
     let parsed: Record<string, unknown> = {};
     try { parsed = stdout ? JSON.parse(stdout) as Record<string, unknown> : {}; }
-    catch { parsed = stdout ? { additionalContext: stdout } : {}; }
+    catch { parsed = stdout ? { additional_context: stdout } : {}; }
     const hookOut = parsed.hookSpecificOutput as Record<string, unknown> | undefined;
-    const additionalContext = (parsed.additionalContext ?? hookOut?.additionalContext ?? parsed.systemMessage) as string | undefined;
-    const rawPermission = (parsed.permission ?? parsed.decision ?? hookOut?.permissionDecision) as string | undefined;
-    const permission = exitCode === 2 ? "deny" : (rawPermission === "block" ? "deny" : rawPermission);
-    const s = (v: unknown): string | undefined => typeof v === "string" && v.length > 0 ? v : undefined;
+    // Hook script JSON uses snake_case (the repo validators' contract); camelCase
+    // is accepted as a fallback for hand-written scripts.
+    const pick = (...keys: readonly string[]): string | undefined => {
+      for (const key of keys) { const v = parsed[key]; if (typeof v === "string" && v.length > 0) return v; }
+      return undefined;
+    };
+    const additionalContext = pick("additional_context", "additionalContext", "system_message", "systemMessage")
+      ?? (typeof hookOut?.additionalContext === "string" ? hookOut.additionalContext : undefined);
+    const userMessage = pick("user_message", "userMessage");
+    const agentMessage = pick("agent_message", "agentMessage");
+    const followupMessage = pick("followup_message", "followupMessage");
+    const rawPermission = pick("permission", "decision")
+      ?? (typeof hookOut?.permissionDecision === "string" ? hookOut.permissionDecision : undefined);
+    // exit code 2 blocks; a failClosed non-zero hook also denies; explicit "block"/"deny" denies.
+    const permission = exitCode === 2 || failClosedDeny
+      ? "deny"
+      : rawPermission === "block" ? "deny" : rawPermission;
+    const updatedInputRaw = parsed.updated_input ?? parsed.updatedInput;
+    const updatedInput = updatedInputRaw == null
+      ? undefined
+      : typeof updatedInputRaw === "string" ? updatedInputRaw : JSON.stringify(updatedInputRaw);
+
     let response: ExecuteHookResponse["response"];
     switch (step) {
-      case "preToolUse":
-        response = { case: "preToolUse", value: new PreToolUseRequestResponse({ ...(s(permission) ? { permission } : {}), ...(s(additionalContext) ? { additionalContext } : {}), ...(s(parsed.userMessage) ? { userMessage: parsed.userMessage as string } : {}), ...(s(parsed.agentMessage) ? { agentMessage: parsed.agentMessage as string } : {}), ...(parsed.updatedInput != null ? { updatedInput: typeof parsed.updatedInput === "string" ? parsed.updatedInput : JSON.stringify(parsed.updatedInput) } : {}) }) };
+      case "preToolUse": {
+        const value = new PreToolUseRequestResponse();
+        if (permission !== undefined) value.permission = permission;
+        if (additionalContext !== undefined) value.additionalContext = additionalContext;
+        if (userMessage !== undefined) value.userMessage = userMessage;
+        if (agentMessage !== undefined) value.agentMessage = agentMessage;
+        if (updatedInput !== undefined) value.updatedInput = updatedInput;
+        response = { case: "preToolUse", value };
         break;
-      case "postToolUse":
-      case "postToolUseFailure":
-        response = { case: "postToolUse", value: new PostToolUseRequestResponse({ ...(s(additionalContext) ? { additionalContext } : {}) }) };
+      }
+      case "postToolUse": {
+        const value = new PostToolUseRequestResponse();
+        if (additionalContext !== undefined) value.additionalContext = additionalContext;
+        response = { case: "postToolUse", value };
         break;
-      case "beforeSubmitPrompt":
-        response = { case: "beforeSubmitPrompt", value: new BeforeSubmitPromptRequestResponse({ ...(s(additionalContext) ? { additionalContext } : {}) }) };
+      }
+      case "postToolUseFailure": {
+        const value = new PostToolUseFailureRequestResponse();
+        if (additionalContext !== undefined) value.additionalContext = additionalContext;
+        response = { case: "postToolUseFailure", value };
         break;
-      case "subagentStart":
-        response = { case: "subagentStart", value: new SubagentStartRequestResponse({ ...(s(permission) ? { permission } : {}), ...(s(additionalContext) ? { additionalContext } : {}) }) };
+      }
+      case "beforeSubmitPrompt": {
+        const value = new BeforeSubmitPromptRequestResponse();
+        if (additionalContext !== undefined) value.additionalContext = additionalContext;
+        response = { case: "beforeSubmitPrompt", value };
         break;
-      case "stop":
-        response = { case: "stop", value: new StopRequestResponse({ ...(s(additionalContext) ? { additionalContext } : {}) }) };
+      }
+      case "subagentStart": {
+        const value = new SubagentStartRequestResponse();
+        if (permission !== undefined) value.permission = permission;
+        if (additionalContext !== undefined) value.additionalContext = additionalContext;
+        response = { case: "subagentStart", value };
         break;
+      }
+      case "subagentStop": {
+        const value = new SubagentStopRequestResponse();
+        if (additionalContext !== undefined) value.additionalContext = additionalContext;
+        if (followupMessage !== undefined) value.followupMessage = followupMessage;
+        response = { case: "subagentStop", value };
+        break;
+      }
+      case "afterAgentThought":
+        response = { case: "afterAgentThought", value: new AfterAgentThoughtRequestResponse() };
+        break;
+      case "stop": {
+        const value = new StopRequestResponse();
+        if (followupMessage !== undefined) value.followupMessage = followupMessage;
+        response = { case: "stop", value };
+        break;
+      }
       default:
         return new ExecuteHookResult({});
     }
@@ -577,10 +716,10 @@ class BoxExecRuntime {
           yield client(request.id, request.execId, { case: "writeShellStdinResult", value: await this.writeStdin(request.message.value) });
           break;
         case "executeHookArgs":
-          yield client(request.id, request.execId, { case: "executeHookResult", value: await this.executeHook(request.message.value) });
+          yield client(request.id, request.execId, { case: "executeHookResult", value: await this.executeHook(request.message.value, signal) });
           break;
         case "mcpArgs":
-          yield client(request.id, request.execId, { case: "mcpResult", value: await this.callMcpTool(request.message.value) });
+          yield client(request.id, request.execId, { case: "mcpResult", value: await this.callMcpTool(request.message.value, signal) });
           break;
         case "mcpStateExecArgs":
           yield client(request.id, request.execId, { case: "mcpStateExecResult", value: this.mcpState(request.message.value) });
@@ -963,6 +1102,7 @@ class BoxExecRuntime {
   }
 
   async stop(): Promise<void> {
+    this.stopMcpServers();
     for (const child of this.#foreground) this.kill(child);
     for (const process of this.#background.values()) this.kill(process.child);
     this.#foreground.clear();

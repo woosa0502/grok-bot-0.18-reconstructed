@@ -2277,16 +2277,16 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               }),
             }),
         // Meta pair (CallMcpTool / GetMcpTools). Built from the per-turn MCP
-        // projection injected into props.mcp; returns undefined for turns with no
-        // MCP projection so the factory simply stays absent (no meta tools).
-        createMcpMetaToolInputs: (_turn, props): TurnMcpMetaToolFactoryInput | undefined => {
+        // projection injected into props.mcp. When a turn has no MCP projection
+        // the factory yields an empty discovery (getMcpTools -> []); the toolset
+        // gate then only surfaces the pair under dynamic-tools mode.
+        createMcpMetaToolInputs: (_turn, props): TurnMcpMetaToolFactoryInput => {
           const mcpMeta = props.mcp?.mcpMeta;
-          if (mcpMeta === undefined) return undefined;
           return {
             resourceAccessor: props.resourceAccessor as unknown as TurnMcpMetaToolFactoryInput["resourceAccessor"],
-            getMcpTools: mcpMeta.getMcpTools,
-            callOptions: mcpMeta.callOptions,
-            ...(mcpMeta.discoveryOptions === undefined ? {} : { discoveryOptions: mcpMeta.discoveryOptions }),
+            getMcpTools: mcpMeta?.getMcpTools ?? (() => []),
+            callOptions: mcpMeta?.callOptions ?? {},
+            ...(mcpMeta?.discoveryOptions === undefined ? {} : { discoveryOptions: mcpMeta.discoveryOptions }),
           };
         },
         ...(!isSharedRoomTurn && cloudAgent !== undefined
@@ -2354,7 +2354,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         emitConnectorCard: (emission: TurnScopedConnectorCardEmission) => {
           hooks.transport.onUpdate({
             type: "send-message",
-            message: connectorCardEmissionToMessage(emission),
+            message: connectorCardEmissionToMessage(emission as Parameters<typeof connectorCardEmissionToMessage>[0]),
             timestampMs: Date.now(),
           });
         },
@@ -2641,6 +2641,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               if (runner === undefined) {
                 throw new TypeError("production turn resource runner is not bound");
               }
+              const localMcpProjection = buildTurnMcpProjection();
               const projectedActionAuditor = asActionAuditor(actionAuditor);
               if (projectedActionAuditor === undefined) {
                 throw new TypeError("production turn action auditor is not bound");
@@ -2729,9 +2730,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 // guarded box executor (→ box daemon) rather than falling through
                 // to the raw box accessor, which in shared-desktop mode is gated
                 // by the local-exec (desktop-app) transport that isn't connected.
-                ...(buildTurnMcpProjection() === undefined
-                  ? {}
-                  : { mcp: buildTurnMcpProjection() }),
+                ...(localMcpProjection === undefined ? {} : { mcp: localMcpProjection }),
               };
             },
             blobStore: getAgentBlobStore(

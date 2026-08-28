@@ -1526,6 +1526,10 @@ export function buildTurnTools(
           trustedVideoAttachmentRoots: host.remoteBoxHasDesktop
             ? [SAND_BOX_WORKSPACE_ROOT]
             : [],
+          // Run the box-executed subagent-completion hooks (postToolUse fires when
+          // the Task tool returns; subagentStop fires when the child agent stops).
+          enableExecuteHookExec: true,
+          configuredSteps: ["preToolUse", "postToolUse", "postToolUseFailure", "subagentStart", "subagentStop"],
         } as unknown as TaskToolParameters[5],
       })();
     if (tool !== undefined) tools.push(tool);

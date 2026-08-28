@@ -272,6 +272,9 @@ export function createSandAgentStaticConfig(
     maxSteps: SAND_AGENT_MAX_STEPS,
     modelId: input.modelId,
     agentTokenLimit: input.agentTokenLimit,
+    // Enable the box-executed agent-lifecycle hooks (afterAgentThought, etc.);
+    // each fires only when .cursor/hooks.json configures a command for its step.
+    enableExecuteHookExec: true,
     backgroundSummarizationProps: {
       ...DEFAULT_BACKGROUND_SUMMARIZATION,
       ...input.backgroundSummarizationPropsOverride,

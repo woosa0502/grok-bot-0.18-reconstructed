@@ -40,7 +40,11 @@ export interface McpCallResult {
 }
 
 const PROTOCOL_VERSION = "2024-11-05";
-const REQUEST_TIMEOUT_MS = 30_000;
+// The initialize/tools-list handshake should be quick; a tool call may legitimately
+// run for a long time (the repo contract is 60 minutes — see
+// packages/mcp-core/config/mcp-tool-call-timeout.ts), so the two are timed apart.
+const HANDSHAKE_TIMEOUT_MS = 30_000;
+const TOOL_CALL_TIMEOUT_MS = 60 * 60_000;
 
 interface PendingRequest {
   resolve(value: unknown): void;
@@ -80,6 +84,17 @@ export class McpStdioClient {
 
   /** Spawn the process, run the initialize handshake, and cache tools/list. */
   async start(): Promise<void> {
+    try {
+      await this.#startInner();
+    } catch (error) {
+      // Record why start failed (spawn error, handshake timeout, protocol error)
+      // so mcpState reports this server as "error", not a phantom "connected".
+      this.#fail(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  async #startInner(): Promise<void> {
     const child = spawn(this.#config.command, [...(this.#config.args ?? [])], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...(this.#config.env ?? {}) },
@@ -95,12 +110,12 @@ export class McpStdioClient {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: { name: "belmont-box", version: "0.1.0" },
-    })) as { serverInfo?: { name?: string }; instructions?: string } | undefined;
+    }, HANDSHAKE_TIMEOUT_MS)) as { serverInfo?: { name?: string }; instructions?: string } | undefined;
     this.#serverInfoName = initResult?.serverInfo?.name ?? "";
     this.#instructions = initResult?.instructions ?? "";
     this.#notify("notifications/initialized", {});
 
-    const listed = (await this.#request("tools/list", {})) as { tools?: McpToolInfo[] } | undefined;
+    const listed = (await this.#request("tools/list", {}, HANDSHAKE_TIMEOUT_MS)) as { tools?: McpToolInfo[] } | undefined;
     this.#tools = (listed?.tools ?? []).map(tool => ({
       name: tool.name,
       description: tool.description ?? "",
@@ -109,17 +124,30 @@ export class McpStdioClient {
   }
 
   /** Invoke a tool and normalize the MCP result into McpCallResult. */
-  async callTool(toolName: string, args: Record<string, unknown>): Promise<McpCallResult> {
-    const raw = (await this.#request("tools/call", { name: toolName, arguments: args })) as
-      | { content?: McpCallContentItem[]; isError?: boolean; structuredContent?: unknown }
+  async callTool(toolName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<McpCallResult> {
+    const raw = (await this.#request("tools/call", { name: toolName, arguments: args }, TOOL_CALL_TIMEOUT_MS, signal)) as
+      | { content?: Array<Record<string, unknown>>; isError?: boolean; structuredContent?: unknown }
       | undefined;
-    const content = Array.isArray(raw?.content)
-      ? raw!.content.map(item =>
-          item.type === "image"
-            ? { type: "image" as const, data: item.data, mimeType: item.mimeType }
-            : { type: "text" as const, text: typeof item.text === "string" ? item.text : String(item.text ?? "") },
-        )
-      : [];
+    const content: McpCallContentItem[] = [];
+    if (Array.isArray(raw?.content)) {
+      for (const item of raw!.content) {
+        if (item?.type === "image" || item?.type === "audio") {
+          content.push({
+            type: "image",
+            ...(typeof item.data === "string" ? { data: item.data } : {}),
+            ...(typeof item.mimeType === "string" ? { mimeType: item.mimeType } : {}),
+          });
+        } else if (item?.type === "resource" && item.resource != null && typeof item.resource === "object") {
+          // Embedded resource: surface its text if present, else a URI reference.
+          const resource = item.resource as { text?: unknown; uri?: unknown };
+          const text = typeof resource.text === "string" ? resource.text
+            : typeof resource.uri === "string" ? `[resource ${resource.uri}]` : "[resource]";
+          content.push({ type: "text", text });
+        } else {
+          content.push({ type: "text", text: typeof item?.text === "string" ? item.text : String(item?.text ?? "") });
+        }
+      }
+    }
     return {
       content,
       isError: raw?.isError === true,
@@ -164,22 +192,35 @@ export class McpStdioClient {
     }
   }
 
-  #request(method: string, params: unknown): Promise<unknown> {
+  #request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
     if (this.#closed) return Promise.reject(new Error("client closed"));
     if (this.#startError !== undefined) return Promise.reject(new Error(this.#startError));
+    if (signal?.aborted === true) return Promise.reject(new Error(`MCP request '${method}' aborted`));
     const id = this.#nextId++;
     const payload = JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n";
     return new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const settleReject = (error: Error): void => {
+        const pending = this.#pending.get(id);
+        if (pending === undefined) return;
         this.#pending.delete(id);
-        reject(new Error(`MCP request '${method}' timed out`));
-      }, REQUEST_TIMEOUT_MS);
-      this.#pending.set(id, { resolve, reject, timer });
+        clearTimeout(pending.timer);
+        if (signal !== undefined) signal.removeEventListener("abort", onAbort);
+        reject(error);
+      };
+      const onAbort = (): void => settleReject(new Error(`MCP request '${method}' aborted`));
+      const timer = setTimeout(() => settleReject(new Error(`MCP request '${method}' timed out`)), timeoutMs);
+      this.#pending.set(id, {
+        resolve: value => { if (signal !== undefined) signal.removeEventListener("abort", onAbort); resolve(value); },
+        reject: error => { if (signal !== undefined) signal.removeEventListener("abort", onAbort); reject(error); },
+        timer,
+      });
+      if (signal !== undefined) signal.addEventListener("abort", onAbort, { once: true });
       try {
         this.#child?.stdin.write(payload);
       } catch (error) {
         this.#pending.delete(id);
         clearTimeout(timer);
+        if (signal !== undefined) signal.removeEventListener("abort", onAbort);
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
