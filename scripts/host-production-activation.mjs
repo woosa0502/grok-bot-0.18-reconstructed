@@ -611,8 +611,12 @@ export async function buildProductionHostIfSupplied({ outputRoot, manifestPath =
   ])];
   const result = await esbuild({
     absWorkingDir: repoRoot,
-    banner: { js: `// Deterministic clean-source production host; bindings ${validated.manifestSha256}` },
+    // CJS output has no native import.meta.url; bundled deps (e.g. @earendil-works/pi-coding-agent's
+    // config.js) call fileURLToPath(import.meta.url) at module init and would crash on undefined.
+    // Point it at the host bundle's own file URL so those calls resolve to a real path.
+    banner: { js: `// Deterministic clean-source production host; bindings ${validated.manifestSha256}\nconst import_meta_url = require("node:url").pathToFileURL(__filename).href;` },
     bundle: true,
+    define: { "import.meta.url": "import_meta_url" },
     entryNames: "host-main",
     external,
     format: "cjs",
