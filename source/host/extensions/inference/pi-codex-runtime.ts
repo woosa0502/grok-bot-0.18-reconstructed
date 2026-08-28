@@ -45,7 +45,7 @@ export interface PiCodexExecutorOptions {
 }
 
 const CODEX_PROVIDER = "openai-codex";
-const DEFAULT_CODEX_MODEL = "gpt-5.4";
+const DEFAULT_CODEX_MODEL = "gpt-5.5";
 const GROK_ROUTER_SYSTEM_PROMPT = [
   "You are Grok Bot, a warm, concise desktop assistant.",
   "You are running inside Grok Bot. Belmont owns tools, approvals, transcript, MCP, and subagents.",

@@ -84,12 +84,15 @@ function response(text: string, id: string, modelId: string, toolCalls: readonly
 }
 
 function configuredCodexModel(): string {
-  return process.env.SAND_CODEX_MODEL?.trim() || "gpt-5.4";
+  return process.env.SAND_CODEX_MODEL?.trim() || "gpt-5.5";
 }
 
-function configuredCodexReasoningEffort(): "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
+// The original default model id "gpt-5.5-high-fast" folded reasoning into the model name. Routing
+// through Pi splits reasoning into its own axis, so the "high" half is restored here as the default
+// effort (env-overridable) rather than silently falling back to the model's own default. (PI-P1-02)
+function configuredCodexReasoningEffort(): "minimal" | "low" | "medium" | "high" | "xhigh" {
   const selected = process.env.SAND_CODEX_REASONING_EFFORT?.trim();
-  return selected === "minimal" || selected === "low" || selected === "medium" || selected === "high" || selected === "xhigh" ? selected : undefined;
+  return selected === "minimal" || selected === "low" || selected === "medium" || selected === "high" || selected === "xhigh" ? selected : "high";
 }
 
 function signalFromContext(context: unknown): AbortSignal | undefined {

@@ -181,10 +181,12 @@ import type {
 } from "./runner/agent-adapters.js";
 import type { CursorRule } from "../packages/proto/generated/agent/v1/cursor_rules_pb.js";
 
-// Must be a real id in the Pi Codex catalog and match pi-codex-runtime's DEFAULT_CODEX_MODEL, so the
-// UI/usage/selected model and the actual Pi inference converge instead of splitting between a
-// fabricated default and Pi's fallback. (PI-P1-02)
-export const DEFAULT_SAND_MODEL = "gpt-5.4";
+// Faithful reconstruction of the original "gpt-5.5-high-fast" default: the model half is "gpt-5.5"
+// (a real id in the Pi Codex catalog — verified present), the "high" half is restored as the default
+// reasoning effort in provider-session, and the "fast" serving-tier suffix has no Pi Codex catalog
+// equivalent so it is dropped. Must match pi-codex-runtime's DEFAULT_CODEX_MODEL so the UI/usage/
+// selected model and the actual Pi inference converge instead of splitting. (PI-P1-02)
+export const DEFAULT_SAND_MODEL = "gpt-5.5";
 export const SAND_SUMMARIZATION_MAX_PROMPT_CHARS = 2_800_000;
 
 type DynamicApi = Record<string, any>;
