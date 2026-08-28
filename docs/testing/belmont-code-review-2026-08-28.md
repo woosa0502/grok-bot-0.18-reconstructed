@@ -318,6 +318,23 @@ Response to the findings above. Commits: `eb5890b`, `23f1b09`, `4c6926d`,
   structuredContent, startError, abort) and for the hook config/response shapes
   against the repo validators. (`09ae1a0`)
 
+### Follow-up 2 — subagent lifecycle + afterAgentThought (partial progress)
+
+- **Subagent leak (done):** a released foreground subagent runner is now disposed
+  and deregistered from the owning pool (`f211d91`); verified the foreground Task
+  still binds its child result.
+- **afterAgentThought (wired):** `RequestContext.hooksConfig.configuredSteps` is now
+  populated by scanning the box `.cursor/hooks.json` (`4bd6c89`); the step fires when
+  the model emits reasoning chunks (the current Codex path does not surface those, so
+  it is untestable here but no longer blocked on missing config).
+- **Still a major piece — child-owned isolation:** the child still binds the parent's
+  session store/memory via `bindSessionOwnedRunner` and reuses the parent's
+  production turn-run shell, so a child-owned store/checkpoint, `isSubagentRunner:true`
+  (nested-Task enforcement), cancellation targeting the child, resumable child state,
+  and the client-side Task subagentStart/subagentStop hooks remain. These require
+  rebuilding the child's shell/store/toolHost and are deferred to focused work rather
+  than a rushed change that risks the working foreground path.
+
 ### Still open (accurately PARTIAL)
 
 - **Foreground subagent lifecycle (Major):** child still reuses the parent's
