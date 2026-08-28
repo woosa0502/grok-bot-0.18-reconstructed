@@ -89,12 +89,24 @@ test("Pi final output replaces stale deltas and retains reasoning and delegated 
   ], "toolUse");
   materializer.apply({ type: "done", reason: "toolUse", message: final });
   assert.deepEqual(projection.belmontContentFromPi(materializer.content()), [
-    { type: "reasoning", reasoning: "reason" },
+    // Reasoning maps to Belmont's canonical { type: "reasoning", text } — the field is `text`, so
+    // hasMeaningfulContentPart (which reads part.text.trim()) does not crash on a reasoning part.
+    { type: "reasoning", text: "reason" },
     { type: "tool-call", toolCallId: "call-2", toolName: "Read", args: { path: "/workspace/a" } },
     { type: "text", text: "fresh" },
   ]);
   assert.equal(materializer.apply({ type: "text_delta", contentIndex: 2, delta: "late", partial: final }), undefined);
   assert.equal(materializer.content()[2].text, "fresh");
+});
+
+test("Pi reasoning carries its signature and redacted reasoning maps to redacted-reasoning", async () => {
+  const projection = await loadProjection();
+  // A signed (encrypted) reasoning part keeps its signature under `signature`; a redacted part
+  // becomes { type: "redacted-reasoning", data } — never a reasoning part with an undefined text.
+  const signed = projection.belmontContentFromPi([{ type: "thinking", thinking: "", thinkingSignature: "sig-xyz" }]);
+  assert.deepEqual(signed, [{ type: "reasoning", text: "", signature: "sig-xyz" }]);
+  const redacted = projection.belmontContentFromPi([{ type: "thinking", thinking: "", thinkingSignature: "enc-1", redacted: true }]);
+  assert.deepEqual(redacted, [{ type: "redacted-reasoning", data: "enc-1" }]);
 });
 
 test("routed provider state preserves bot-selected model across compact and resume", async () => {

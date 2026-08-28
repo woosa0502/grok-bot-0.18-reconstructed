@@ -17,7 +17,12 @@ export interface PiProviderMessage {
 export type PiToolDefinition = Loose;
 export type BelmontAssistantContent =
   | { readonly type: "text"; readonly text: string }
-  | { readonly type: "reasoning"; readonly reasoning: string; readonly redacted?: boolean }
+  // Belmont's canonical assistant reasoning part is { type: "reasoning", text, signature? } — the
+  // field is `text`, matching AssistantContentPart in tool-stream-executor (hasMeaningfulContentPart
+  // reads part.text.trim()). Emitting `reasoning` here instead left `text` undefined and crashed that
+  // check the moment a reasoning part reached it (surfaced once reasoning effort defaulted to high).
+  | { readonly type: "reasoning"; readonly text: string; readonly signature?: string }
+  | { readonly type: "redacted-reasoning"; readonly data: string }
   | { readonly type: "tool-call"; readonly toolCallId: string; readonly toolName: string; readonly args: unknown };
 
 export interface RoutedProviderSessionState<TMessage = PiProviderMessage> {
@@ -259,10 +264,19 @@ export function belmontContentFromPi(content: AssistantMessage["content"]): Belm
   return content.map(part => {
     if (part.type === "text") return { type: "text" as const, text: part.text };
     if (part.type === "thinking") {
+      // Pi's ThinkingContent stores the (possibly encrypted) reasoning in `thinking` and its
+      // signature in `thinkingSignature`. Redacted reasoning maps to Belmont's redacted-reasoning
+      // part; ordinary reasoning to { type: "reasoning", text, signature? } so downstream content
+      // checks (which read part.text) and the message->Pi round-trip both see a real string field.
+      if (part.redacted === true) {
+        return { type: "redacted-reasoning" as const, data: part.thinkingSignature ?? part.thinking };
+      }
       return {
         type: "reasoning" as const,
-        reasoning: part.thinking,
-        ...(part.redacted === true ? { redacted: true } : {}),
+        text: part.thinking,
+        ...(typeof part.thinkingSignature === "string" && part.thinkingSignature.length > 0
+          ? { signature: part.thinkingSignature }
+          : {}),
       };
     }
     return {
