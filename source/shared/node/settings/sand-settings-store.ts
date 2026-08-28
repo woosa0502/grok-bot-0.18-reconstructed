@@ -23,7 +23,7 @@ export interface SandStoredSettings {
   mcpCustomInstructions: StringMap; mcpCustomInstructionsByServerId: StringMap; mcpDisabledToolsByServerId: StringListMap;
   conciergeConsent: "unset" | "allowed" | "denied"; settingsMigrations: string[];
   hasSeenOnboarding?: boolean; hasSeenOnboardingAccountScope?: string; updateTrackOverride?: SandUpdateTrack; themePreference?: SandThemePreference;
-  agentDefaultModel?: SandAgentModelSelection; computerUseModel?: SandAgentModelSelection; notifications?: Record<string, unknown>;
+  agentDefaultModel?: SandAgentModelSelection; computerUseModel?: SandAgentModelSelection; subagentDefaultModel?: SandAgentModelSelection; notifications?: Record<string, unknown>;
   userTimeZone?: string; userTimeZoneOverride?: string; autoReviewInstructions?: SandAutoReviewInstructions;
   localToolPermission?: SandLocalToolPermission; localToolPermissionCeiling?: SandLocalToolPermission;
   inferenceProvider?: SandInferenceProvider; inferenceRouterUsage?: SandInferenceRouterUsage;
@@ -64,6 +64,7 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   if (isSandThemePreference(raw.themePreference)) result.themePreference = raw.themePreference;
   if (isSandAgentModelSelection(raw.agentDefaultModel)) result.agentDefaultModel = raw.agentDefaultModel;
   if (isSandAgentModelSelection(raw.computerUseModel)) result.computerUseModel = raw.computerUseModel;
+  if (isSandAgentModelSelection(raw.subagentDefaultModel)) result.subagentDefaultModel = raw.subagentDefaultModel;
   if (typeof raw.notifications === "object" && raw.notifications != null && !Array.isArray(raw.notifications)) result.notifications = raw.notifications as Record<string, unknown>;
   for (const key of ["userTimeZone", "userTimeZoneOverride", "mcpCustomInstructionsAccountScope"] as const) if (typeof raw[key] === "string" && raw[key].length > 0) result[key] = raw[key];
   if (typeof raw.autoReviewInstructions === "object" && raw.autoReviewInstructions != null) result.autoReviewInstructions = normalizeSandAutoReviewInstructions(raw.autoReviewInstructions as Record<string, unknown>);
@@ -121,6 +122,8 @@ export class SandSettingsStore {
   getAgentDefaultModel(): SandAgentModelSelection | undefined { const model = this.load().agentDefaultModel; return model === undefined ? undefined : { ...model, maxMode: true }; }
   setAgentDefaultModel(model: SandAgentModelSelection | undefined): void { this.update((s) => { const { agentDefaultModel: _old, ...rest } = s; return model === undefined ? rest : { ...rest, agentDefaultModel: { modelId: model.modelId, maxMode: true, parameters: model.parameters.map((p) => ({ ...p })) } }; }); }
   getComputerUseModel(): SandAgentModelSelection | undefined { return this.load().computerUseModel; }
+  getSubagentDefaultModel(): SandAgentModelSelection | undefined { return this.load().subagentDefaultModel; }
+  setSubagentDefaultModel(model: SandAgentModelSelection | undefined): void { this.update((s) => { const { subagentDefaultModel: _old, ...rest } = s; return model === undefined ? rest : { ...rest, subagentDefaultModel: { modelId: model.modelId, maxMode: model.maxMode, parameters: model.parameters.map((p) => ({ ...p })) } }; }); }
   setComputerUseModel(model: SandAgentModelSelection | undefined): void { this.update((s) => { const { computerUseModel: _old, ...rest } = s; return model === undefined ? rest : { ...rest, computerUseModel: { modelId: model.modelId, maxMode: model.maxMode, parameters: model.parameters.map((p) => ({ ...p })) } }; }); }
   getUpdateTrackOverride(): SandUpdateTrack | null { const stored = this.load().updateTrackOverride ?? null; if (stored == null) return null; const coerced = coerceToEnabledTrack(stored); if (coerced !== stored) { try { this.setUpdateTrackOverride(coerced); } catch {} } return coerced; }
   setUpdateTrackOverride(track: SandUpdateTrack | null): void { this.update((s) => { const { updateTrackOverride: _old, ...rest } = s; return track == null ? rest : { ...rest, updateTrackOverride: track }; }); }

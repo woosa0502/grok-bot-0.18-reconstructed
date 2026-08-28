@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { Context } from "../../packages/context/core.js";
 import type { PrivacyMode } from "../../packages/redaction/privacy-mode.js";
-import { SAND_SUMMARIZATION_MODEL_ID } from "../../shared/agents/sand-agent-model.js";
+import { SAND_SUMMARIZATION_MODEL_ID, reasoningEffortFromSelection, type SandAgentModelSelection } from "../../shared/agents/sand-agent-model.js";
 import type { DiskPressureReminderEpisodes } from "../extensions/forever-box/disk-pressure.js";
 import {
   createDiskPressureReminderMiddleware,
@@ -28,7 +28,7 @@ import type {
   PromptSnapshotStore,
 } from "./system-prompt-assembly.js";
 import type { SummarizationPromptSession } from "../../packages/agent-summarization/summarization-handler.js";
-import { createProviderPromptSession } from "../extensions/inference/provider-session.js";
+import { createProviderPromptSession, type CodexReasoningEffort } from "../extensions/inference/provider-session.js";
 import { getSandRootDir } from "../host-paths.js";
 import { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { AgentProfilePromptSnapshot } from "./sand-agent-profile-prompt.js";
@@ -182,10 +182,24 @@ export async function createTurnAgentRunContext<ContextValue>(
     skipLabeling: input.isSubagentRunner || input.hidden === true,
     ...(input.lineage === undefined ? {} : { lineage: input.lineage }),
   };
-  const inferenceProvider = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider();
+  const settingsStore = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
+  const inferenceProvider = settingsStore.getInferenceProvider();
+  // Per-agent model + reasoning for the local (non-Cursor) path. The main "bot" and the delegated
+  // subagents each read their own model selection from settings.json (agentDefaultModel /
+  // subagentDefaultModel), so a subagent can run a cheaper model/effort than the main agent —
+  // e.g. subagentDefaultModel { effort: "medium" } while the main stays "high". The selection's
+  // model id and its "effort" parameter override the runner's global default; both fall back to it.
+  const agentSelection: SandAgentModelSelection | undefined = input.isSubagentRunner
+    ? settingsStore.getSubagentDefaultModel()
+    : settingsStore.getAgentDefaultModel();
+  const resolvedModelId = agentSelection?.modelId ?? input.modelId;
+  const resolvedReasoning = ((): CodexReasoningEffort | undefined => {
+    const effort = reasoningEffortFromSelection(agentSelection);
+    return effort === "minimal" || effort === "low" || effort === "medium" || effort === "high" || effort === "xhigh" ? effort : undefined;
+  })();
   const agent = inferenceProvider === "cursor"
     ? input.inference.createSession(input.onRequestId, sessionOptions)
-    : createProviderPromptSession(inferenceProvider, input.modelId) as unknown as TurnAgentPromptSession;
+    : createProviderPromptSession(inferenceProvider, resolvedModelId, resolvedReasoning) as unknown as TurnAgentPromptSession;
   const summarizationSession = inferenceProvider === "cursor" ? input.inference.createSummarizationSession?.(
     input.onRequestId,
     {

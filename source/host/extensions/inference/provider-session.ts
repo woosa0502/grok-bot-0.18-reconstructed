@@ -23,7 +23,8 @@ interface ProviderMessage extends LabelMessage { role: string; content: string |
 type RoutedProvider = Exclude<SandInferenceProvider, "cursor">;
 type UsageRecord = { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number };
 type RoutedToolExecutor = (tool: Loose, args: unknown, toolCallId: string) => Promise<unknown>;
-type ProviderExecutorContext = { readonly signal?: AbortSignal; readonly modelId?: string };
+export type CodexReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+type ProviderExecutorContext = { readonly signal?: AbortSignal; readonly modelId?: string; readonly reasoning?: CodexReasoningEffort };
 type PiRuntimeModule = typeof import("./pi-codex-runtime.js");
 
 const GROK_ROUTER_SYSTEM_PROMPT = [
@@ -107,10 +108,21 @@ function modelFromContext(context: unknown): string | undefined {
   return typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : undefined;
 }
 
-function providerContext(signal: AbortSignal | undefined, modelId: string | undefined): ProviderExecutorContext {
+function isCodexReasoningEffort(value: unknown): value is CodexReasoningEffort {
+  return value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
+}
+
+function reasoningFromContext(context: unknown): CodexReasoningEffort | undefined {
+  if (typeof context !== "object" || context == null) return undefined;
+  const reasoning = (context as { reasoning?: unknown }).reasoning;
+  return isCodexReasoningEffort(reasoning) ? reasoning : undefined;
+}
+
+function providerContext(signal: AbortSignal | undefined, modelId: string | undefined, reasoning?: CodexReasoningEffort): ProviderExecutorContext {
   return {
     ...(signal == null ? {} : { signal }),
     ...(modelId == null ? {} : { modelId }),
+    ...(reasoning == null ? {} : { reasoning }),
   };
 }
 
@@ -146,7 +158,9 @@ function codexExecutor(
   onUsage?: (usage: UsageRecord) => void,
   context?: ProviderExecutorContext,
 ) {
-  const reasoning = configuredCodexReasoningEffort();
+  // Per-turn reasoning (resolved from the agent's model selection — e.g. a computer-use subagent's
+  // effort=low) overrides the global default; the env fallback keeps the "high" the original name carried.
+  const reasoning = context?.reasoning ?? configuredCodexReasoningEffort();
   return lazyPiCodexExecutor({
     messages,
     invocationId,
@@ -287,6 +301,7 @@ class ProviderPromptExecutor implements PromptExecutor {
     initialMessages: readonly ProviderMessage[] | undefined,
     readonly onUsage: ((usage: UsageRecord) => void) | undefined,
     readonly modelId: string | undefined,
+    readonly reasoning?: CodexReasoningEffort,
   ) {
     this.#messages = initialMessages == null ? [] : [...initialMessages];
   }
@@ -320,7 +335,7 @@ class ProviderPromptExecutor implements PromptExecutor {
         invocationId,
         definitions,
         this.onUsage,
-        providerContext(signalFromContext(ctx), modelFromContext(ctx) ?? this.modelId),
+        providerContext(signalFromContext(ctx), modelFromContext(ctx) ?? this.modelId, reasoningFromContext(ctx) ?? this.reasoning),
       );
     }
     if (this.provider === "claude-code") return claudeExecutor(this.getMessages(), invocationId, this.onUsage);
@@ -331,6 +346,7 @@ class ProviderPromptExecutor implements PromptExecutor {
 export function createProviderPromptSession(
   provider: RoutedProvider,
   requestedModelId?: string,
+  requestedReasoning?: CodexReasoningEffort,
 ): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
   const requested = requestedModelId?.trim();
   const modelId = provider === "codex"
@@ -347,6 +363,7 @@ export function createProviderPromptSession(
         parsed.messages,
         usage => recordRoutedUsage(provider, usage),
         parsed.modelId ?? modelId,
+        requestedReasoning,
       );
     },
   };

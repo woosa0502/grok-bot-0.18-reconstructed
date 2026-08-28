@@ -23,3 +23,13 @@ export function isSandAgentModelSelection(value: unknown): value is SandAgentMod
 export function resolveComputerUseModelSelection(args: { readonly storedModel?: SandAgentModelSelection; readonly overrideModel?: SandAgentModelSelection }): SandAgentModelSelection | undefined {
   return args.overrideModel ?? args.storedModel;
 }
+
+// The reasoning effort a model selection carries lives in its "effort" parameter (e.g. the
+// computer-use selection's effort=low, or the "high" folded into the original gpt-5.5-high-fast
+// default). Callers routing through Pi read it here to drive per-agent reasoning instead of a
+// single global effort. Returns the raw value; the inference layer validates it against the
+// provider's accepted reasoning levels.
+export function reasoningEffortFromSelection(selection: SandAgentModelSelection | undefined): string | undefined {
+  const effort = selection?.parameters.find((parameter) => parameter.id === "effort")?.value.trim();
+  return effort != null && effort.length > 0 ? effort : undefined;
+}

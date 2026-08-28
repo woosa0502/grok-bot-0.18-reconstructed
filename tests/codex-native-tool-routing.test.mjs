@@ -50,7 +50,11 @@ test("bot-selected Codex model survives executor state and reaches Pi catalog va
   assert.match(provider, /return \[\.\.\.this\.#messages\];/);
   assert.match(provider, /parsed\.modelId \?\? modelId/);
   assert.match(provider, /modelFromContext\(ctx\) \?\? this\.modelId/);
-  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, input\.modelId\)/);
+  // Per-agent model + reasoning ride the same requested-model channel: main vs subagent each resolve
+  // their own selection (model id + effort) from settings, and reasoning threads through the context
+  // alongside modelId (reasoningFromContext ?? this.reasoning).
+  assert.match(provider, /reasoningFromContext\(ctx\) \?\? this\.reasoning/);
+  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, resolvedModelId, resolvedReasoning\)/);
   assert.match(runtime, /models\.getModel\(CODEX_PROVIDER, selectedId\)/);
   assert.match(runtime, /Unknown Pi Codex model/);
 });
