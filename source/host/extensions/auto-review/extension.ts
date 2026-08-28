@@ -1,5 +1,8 @@
+import { join } from "node:path";
 import { defineHostExtension } from "../../../internal/host-extensions.js";
 import { SAND_AUTO_REVIEW_HOST_GENERATION } from "../../runner/sand-auto-review.js";
+import { getSandRootDir } from "../../host-paths.js";
+import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 import {
   AutoReviewService,
@@ -40,10 +43,20 @@ export const autoReviewExtension = defineHostExtension<
       logs: AutoReviewDependencies["telemetry"];
     }).logs;
     const transcript = context.deps[HostExtensions.Transcript] as AutoReviewDependencies["transcript"];
+    // The smart-mode / auto-review classifier runs ClassifySandAutoReview against the Cursor
+    // backend, which does not exist in local Codex mode. Auto-review defaults to enabled, so
+    // without this every shell command would be sent to that missing classifier and rejected
+    // ("safety review errored") — the primary Shell tool would never run. Force auto-review off
+    // whenever the inference provider is not Cursor, mirroring how the transcript journal is
+    // forced off in local mode; local shells then run without classification.
+    const localCodexMode = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider() !== "cursor";
+    const settingsForAutoReview: AutoReviewDependencies["settings"] = localCodexMode
+      ? { getAutoReviewInstructions: () => ({ ...settings.getAutoReviewInstructions(), isEnabled: false }) }
+      : settings;
     const service = new AutoReviewService({
       auth,
       experiments,
-      settings,
+      settings: settingsForAutoReview,
       telemetry,
       awaitingSink: transcript.createAwaitingStateSink(),
       transcript,
