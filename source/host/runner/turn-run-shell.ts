@@ -96,6 +96,7 @@ export interface TurnAgentRunContextInput<ContextValue> {
   readonly modelId?: string;
   readonly requestSource?: string;
   readonly isSubagentRunner: boolean;
+  readonly subagentType?: string;
   readonly isSilenceAllowed: boolean;
   readonly isComputerUseSubagent?: boolean;
   readonly isBrowserUseSubagent?: boolean;
@@ -184,13 +185,19 @@ export async function createTurnAgentRunContext<ContextValue>(
   };
   const settingsStore = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
   const inferenceProvider = settingsStore.getInferenceProvider();
-  // Per-agent model + reasoning for the local (non-Cursor) path. The main "bot" and the delegated
-  // subagents each read their own model selection from settings.json (agentDefaultModel /
-  // subagentDefaultModel), so a subagent can run a cheaper model/effort than the main agent —
-  // e.g. subagentDefaultModel { effort: "medium" } while the main stays "high". The selection's
-  // model id and its "effort" parameter override the runner's global default; both fall back to it.
+  // Per-agent model + reasoning for the local (non-Cursor) path. The main "bot", each subagent
+  // TYPE (executor, video-review, …), and a subagent-wide fallback each read their own model
+  // selection from settings.json, so e.g. an executor can run a cheaper model/effort than the main
+  // agent — agentModelsBySubagentType[type] { effort: "medium" } while the main stays "high". The
+  // selection's model id and its "effort" parameter override the runner's global default; both
+  // fall back to it. Resolution order for a subagent: its type's selection, then the subagent
+  // default, then the runner default. (Per-type keys need input.subagentType, threaded from the
+  // subagent dispatcher through the owner input.)
   const agentSelection: SandAgentModelSelection | undefined = input.isSubagentRunner
-    ? settingsStore.getSubagentDefaultModel()
+    ? (input.subagentType != null && input.subagentType.length > 0
+        ? settingsStore.getAgentModelForSubagentType(input.subagentType)
+        : undefined)
+      ?? settingsStore.getSubagentDefaultModel()
     : settingsStore.getAgentDefaultModel();
   const resolvedModelId = agentSelection?.modelId ?? input.modelId;
   const resolvedReasoning = ((): CodexReasoningEffort | undefined => {

@@ -55,6 +55,7 @@ export interface ProductionTurnAgentOwnerInput {
   readonly inference: TurnAgentInferenceOwner;
   readonly onRequestId: (requestId: string) => void;
   readonly isSubagentRunner: boolean;
+  readonly subagentType?: string;
   readonly isSilenceAllowed: boolean;
   readonly canUseSelfSummary: () => boolean;
   readonly cancelThisRun: TurnAgentScope["cancelThisRun"];
@@ -166,6 +167,7 @@ export async function createProductionTurnAgentOwner(
       ? {}
       : { requestSource: input.requestSource }),
     isSubagentRunner: input.isSubagentRunner,
+    ...(input.subagentType === undefined ? {} : { subagentType: input.subagentType }),
     isSilenceAllowed: input.isSilenceAllowed,
     ...(input.hidden === undefined ? {} : { hidden: input.hidden }),
     ...(input.lineage === undefined ? {} : { lineage: input.lineage }),

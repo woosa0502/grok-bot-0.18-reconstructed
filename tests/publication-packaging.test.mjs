@@ -109,7 +109,8 @@ test("Router settings use the trusted backend and Pi-owned Codex runtime", async
   assert.doesNotMatch(rendererPatch, /ANTHROPIC_API_KEY|OPENAI_API_KEY/);
   assert.match(turnShell, /inferenceProvider === "cursor"/);
   assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, resolvedModelId, resolvedReasoning\)/);
-  assert.match(turnShell, /input\.isSubagentRunner\s*\n?\s*\?\s*settingsStore\.getSubagentDefaultModel\(\)/);
+  assert.match(turnShell, /settingsStore\.getAgentModelForSubagentType\(input\.subagentType\)/);
+  assert.match(turnShell, /\?\? settingsStore\.getSubagentDefaultModel\(\)/);
   assert.match(turnShell, /: settingsStore\.getAgentDefaultModel\(\)/);
   assert.match(providers, /context\?\.reasoning \?\? configuredCodexReasoningEffort\(\)/);
   // The coordinator's own per-provider local turn loop (execute), activity pulse

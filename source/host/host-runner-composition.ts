@@ -1192,6 +1192,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     bindLocalPermissionSurface(session, hooks, overrides);
 
     let builtRunner: Runner | undefined;
+    // A subagent's TYPE (executor, video-review, …) is known only where it is dispatched
+    // (createSubagentRunner), but the per-turn owner input is built later from runOptions, which
+    // carries only the child's conversation id. This map bridges the two — keyed by conversation id
+    // — so createAgentOwnerInput can attach the subagentType and the local inference path can resolve
+    // a per-type model + reasoning selection. Entries are removed when the subagent run settles.
+    const subagentTypeByConversationId = new Map<string, string>();
     let transcriptMirrorForTurn: TurnSettleHost["transcriptMirror"] | undefined;
 
     const requestContext = isSharedRoomTurn
@@ -2637,6 +2643,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           // write/grep/glob/web/mcp-call). subagentConfigs is always a defined array here, so the
           // subagent does not fall into buildTurnTools' empty-fence. (F-003)
           const isSubagentTurn = turnConversationId !== session.id;
+          const resolvedSubagentType = subagentTypeByConversationId.get(turnConversationId);
           return {
             context,
             conversationId: turnConversationId,
@@ -2644,6 +2651,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             inference: createTypedInferenceOwner(extensions.api("inference").port),
             onRequestId: requestIdForwarder(hooks, "agent"),
             isSubagentRunner: isSubagentTurn,
+            ...(resolvedSubagentType === undefined ? {} : { subagentType: resolvedSubagentType }),
             isSilenceAllowed: runOptions.isSilenceAllowed === true,
             ...(runOptions.ackToken === undefined
               ? {}
@@ -2669,6 +2677,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 agentId: string,
                 args: SubagentAdapterArgs,
               ): SubagentSession => {
+                if (typeof args.subagentType === "string" && args.subagentType.length > 0) {
+                  subagentTypeByConversationId.set(agentId, args.subagentType);
+                }
                 const child = deps.buildRunner({
                   ...runnerOptions,
                   conversationId: agentId,
@@ -2730,6 +2741,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                       subagentError = error instanceof Error ? error.message : String(error);
                       throw error;
                     } finally {
+                      // The subagent has finished all its turns; drop its type mapping. A resume
+                      // re-dispatches through createSubagentRunner and re-populates it.
+                      subagentTypeByConversationId.delete(agentId);
                       try {
                         await executeRemoteSubagentStopHook({ ctx: productionContext, subagentId: agentId, subagentType: args.subagentType, status: subagentStatus, durationMs: Date.now() - subagentStartedAt, messageCount: 0, toolCallCount: observedToolCalls, loopCount: 0, task: prompt, description: args.subagentType, ...(subagentError === undefined ? {} : { errorMessage: subagentError }), parentConversationId: session.id, requestContext: hookRequestContext, options: hookOptions });
                       } catch { /* hook must not break the subagent */ }
