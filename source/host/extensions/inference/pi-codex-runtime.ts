@@ -6,7 +6,7 @@ import type {
   ThinkingLevel,
   Usage,
 } from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import { getSandRootDir } from "../../host-paths.js";
 import {
@@ -60,6 +60,11 @@ export function resolvePiCodexCredentialPath(): string {
 
 async function runtime(): Promise<ModelRuntime> {
   runtimePromise ??= (async () => {
+    // @earendil-works/pi-coding-agent (and pi-ai) are ESM-only packages with no `require` export
+    // condition. The clean host is a CJS bundle, so the value must be pulled in through a dynamic
+    // import(), which esbuild preserves for an external package (require() would throw
+    // ERR_PACKAGE_PATH_NOT_EXPORTED). The type import above is erased and stays static.
+    const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
     const credentials = new BelmontPiCredentialStore(resolvePiCodexCredentialPath());
     await migrateLegacyCodexCredential(credentials);
     return await ModelRuntime.create({
