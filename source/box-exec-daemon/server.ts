@@ -708,35 +708,97 @@ class BoxExecRuntime {
     return new ExecuteHookResult({ response: new ExecuteHookResponse({ response }) });
   }
 
+  // Central preToolUse gate for box tools (Read/Grep/Shell/Write/Delete/LS/...).
+  // Unlike the host-wired WebSearch hook, this lets a .cursor/hooks.json preToolUse
+  // entry — optionally matcher-scoped ("Read", "Shell", "*") — gate ANY box tool
+  // with no code change. Returns a deny message when the action is blocked, else
+  // undefined. Errors in hook infrastructure fail open (the tool still runs).
+  async #preToolUseGate(toolName: string, toolInput: unknown, signal?: AbortSignal): Promise<string | undefined> {
+    let scripts: HookScript[];
+    try { scripts = (await this.#readHooksConfig()).preToolUse ?? []; }
+    catch { return undefined; }
+    const matches = (matcher: unknown): boolean => {
+      if (matcher === undefined || matcher === "" || matcher === "*" || typeof matcher !== "string") return true;
+      try { return new RegExp(matcher).test(toolName); }
+      catch { console.error(`[box-hooks] invalid preToolUse matcher "${String(matcher)}", skipping`); return false; }
+    };
+    const commands = scripts.filter(entry => (entry.type === undefined || entry.type === "command") && typeof entry.command === "string" && matches(entry.matcher));
+    if (commands.length === 0) return undefined;
+    const inputJson = JSON.stringify({ hook_event_name: "preToolUse", tool_name: toolName, tool_input: toolInput });
+    for (const entry of commands) {
+      const timeoutMs = typeof entry.timeout === "number" && entry.timeout > 0 ? Math.min(entry.timeout * 1000, 3_600_000) : DEFAULT_HOOK_TIMEOUT_MS;
+      const r = await this.#runHookCommand(entry.command!, inputJson, timeoutMs, signal);
+      let parsed: Record<string, unknown> = {};
+      try { parsed = r.stdout.trim() ? JSON.parse(r.stdout.trim()) as Record<string, unknown> : {}; } catch { /* non-JSON */ }
+      const rawPermission = typeof parsed.permission === "string" ? parsed.permission : typeof parsed.decision === "string" ? parsed.decision : undefined;
+      const denies = r.exitCode === 2 || (entry.failClosed === true && r.exitCode !== 0) || rawPermission === "block" || rawPermission === "deny";
+      if (denies) {
+        const message = typeof parsed.user_message === "string" && parsed.user_message.length > 0 ? parsed.user_message
+          : typeof parsed.userMessage === "string" && parsed.userMessage.length > 0 ? parsed.userMessage
+          : `Blocked by preToolUse hook`;
+        return message;
+      }
+    }
+    return undefined;
+  }
+
   async *execute(request: ExecServerMessage, signal: AbortSignal): AsyncGenerator<ExecStreamElement> {
     try {
       switch (request.message.case) {
         case "readArgs":
         case "redactedReadArgs": {
-          const result = await this.read(request.message.value);
+          const args = request.message.value;
+          const denyMsg = await this.#preToolUseGate("Read", { path: args.path }, signal);
+          const result = denyMsg !== undefined
+            ? new ReadResult({ result: { case: "rejected", value: new ReadRejected({ path: args.path, reason: denyMsg }) } })
+            : await this.read(args);
           const resultCase = request.message.case === "readArgs" ? "readResult" : "redactedReadResult";
           yield client(request.id, request.execId, { case: resultCase, value: result } as ExecClientMessage["message"]);
           break;
         }
         case "lsArgs": {
-          yield client(request.id, request.execId, { case: "lsResult", value: await this.ls(request.message.value) });
+          const args = request.message.value;
+          const denyMsg = await this.#preToolUseGate("LS", { path: args.path }, signal);
+          const result = denyMsg !== undefined
+            ? new LsResult({ result: { case: "rejected", value: new LsRejected({ path: args.path, reason: denyMsg }) } })
+            : await this.ls(args);
+          yield client(request.id, request.execId, { case: "lsResult", value: result });
           break;
         }
         case "deleteArgs": {
-          yield client(request.id, request.execId, { case: "deleteResult", value: await this.delete(request.message.value) });
+          const args = request.message.value;
+          const denyMsg = await this.#preToolUseGate("Delete", { path: args.path }, signal);
+          const result = denyMsg !== undefined
+            ? new DeleteResult({ result: { case: "rejected", value: new DeleteRejected({ path: args.path, reason: denyMsg }) } })
+            : await this.delete(args);
+          yield client(request.id, request.execId, { case: "deleteResult", value: result });
           break;
         }
         case "grepArgs": {
-          yield client(request.id, request.execId, { case: "grepResult", value: await this.grep(request.message.value, signal) });
+          const args = request.message.value;
+          const denyMsg = await this.#preToolUseGate("Grep", { pattern: args.pattern, path: args.path }, signal);
+          const result = denyMsg !== undefined
+            ? new GrepResult({ result: { case: "error", value: new GrepError({ error: denyMsg }) } })
+            : await this.grep(args, signal);
+          yield client(request.id, request.execId, { case: "grepResult", value: result });
           break;
         }
         case "writeArgs": {
-          yield client(request.id, request.execId, { case: "writeResult", value: await this.write(request.message.value) });
+          const args = request.message.value;
+          const denyMsg = await this.#preToolUseGate("Write", { path: args.path }, signal);
+          const result = denyMsg !== undefined
+            ? new WriteResult({ result: { case: "error", value: new WriteError({ path: args.path, error: denyMsg }) } })
+            : await this.write(args);
+          yield client(request.id, request.execId, { case: "writeResult", value: result });
           break;
         }
         case "shellArgs":
         case "miniSweAgentBashArgs": {
-          const result = await this.shell(request.message.value, signal);
+          const args = request.message.value;
+          const denyMsg = await this.#preToolUseGate("Shell", { command: args.command, workingDirectory: args.workingDirectory }, signal);
+          const result = denyMsg !== undefined
+            ? new ShellResult({ result: { case: "spawnError", value: new ShellSpawnError({ command: args.command, workingDirectory: args.workingDirectory, error: denyMsg }) } })
+            : await this.shell(args, signal);
           const resultCase = request.message.case === "shellArgs" ? "shellResult" : "miniSweAgentBashResult";
           yield client(request.id, request.execId, { case: resultCase, value: result } as ExecClientMessage["message"]);
           break;
