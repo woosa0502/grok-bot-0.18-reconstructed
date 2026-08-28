@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { DashboardService } from "../../../packages/proto/generated/aiserver/v1/dashboard_connect.js";
 import {
   createAccountMcpWriter,
@@ -5,6 +8,7 @@ import {
   fetchEffectiveUserPlugins,
   type AccountMcpClient,
   type AccountMcpDependencies,
+  type AccountMcpServer,
 } from "../../../shared/node/cursor-backend/account-mcp.js";
 import {
   createDashboardSandBackendMcpExec,
@@ -170,6 +174,54 @@ export interface McpHostServiceDeps {
   pluginSkills?: PluginSkillsPort;
   onDiscoveryFailed?: (event: Record<string, unknown>) => void;
   onConnectorAuth?: (event: Record<string, unknown>) => void;
+  /** Root that may hold a local `mcp.json` of stdio servers (codex/Claude style). */
+  sandRootDir?: string;
+}
+
+/**
+ * Read a local `<sandRootDir>/mcp.json` and return its stdio servers in the same
+ * shape as account servers. This gives local (codex) mode a way to configure MCP
+ * servers without a Cursor backend account — the file has the familiar
+ * `{ "mcpServers": { "<name>": { "command": ..., "args": [...], "env": {...} } } }`
+ * shape used by Claude Code / Codex. Missing or malformed files yield [].
+ */
+function readLocalMcpServers(sandRootDir: string | undefined): AccountMcpServer[] {
+  if (sandRootDir == null || sandRootDir.length === 0) return [];
+  let raw: string;
+  try {
+    raw = readFileSync(join(sandRootDir, "mcp.json"), "utf8");
+  } catch {
+    return [];
+  }
+  let parsed: { mcpServers?: Record<string, unknown> } | null;
+  try {
+    parsed = JSON.parse(raw) as { mcpServers?: Record<string, unknown> };
+  } catch {
+    return [];
+  }
+  const servers = parsed?.mcpServers;
+  if (servers == null || typeof servers !== "object") return [];
+  const result: AccountMcpServer[] = [];
+  for (const [name, value] of Object.entries(servers)) {
+    if (value == null || typeof value !== "object") continue;
+    const config = value as { command?: unknown; args?: unknown; env?: unknown };
+    if (typeof config.command !== "string") continue; // stdio only
+    result.push({
+      id: `local-${name}`,
+      name,
+      serverIdentifier: name,
+      config: {
+        command: config.command,
+        ...(Array.isArray(config.args) ? { args: config.args.map(String) } : {}),
+        ...(config.env != null && typeof config.env === "object"
+          ? { env: Object.fromEntries(Object.entries(config.env as Record<string, unknown>).map(([k, v]) => [k, String(v)])) }
+          : {}),
+      } as AccountMcpServer["config"],
+      isTeamServer: false,
+      disabledByTeamAdminPolicy: false,
+    });
+  }
+  return result;
 }
 export class McpHostService {
   readonly authCompletionListeners = new Set<(event: unknown) => void>();
@@ -203,7 +255,16 @@ export class McpHostService {
       ...(deps.pluginSkills == null ? {} : { pluginSkills: deps.pluginSkills }),
       getAccessToken: async () => { try { const token = await deps.auth.getAccessToken({ backendUrl: getSandInferenceBackendUrl() }); return token.length > 0 ? token : null; } catch { return null; } },
       getMachineId: deps.auth.getMachineId,
-      accountServersProvider: () => fetchAccountMcpServers(accountMcpDeps),
+      accountServersProvider: async () => {
+        const local = readLocalMcpServers(deps.sandRootDir);
+        const account = await fetchAccountMcpServers(accountMcpDeps);
+        if (local.length === 0) return account;
+        // Merge local stdio servers with any account servers. In local/codex mode
+        // fetchAccountMcpServers typically returns null (no backend account); still
+        // surface the local servers so box-stdio MCP works.
+        const servers = [...(account?.servers ?? []), ...local];
+        return { servers, cacheScope: account?.cacheScope ?? "local" };
+      },
       accountMcpWriter: createAccountMcpWriter(accountMcpDeps),
       effectivePluginsProvider: () => fetchEffectiveUserPlugins(accountMcpDeps),
       backendMcpExec,

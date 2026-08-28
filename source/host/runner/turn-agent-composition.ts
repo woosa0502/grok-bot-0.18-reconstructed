@@ -530,13 +530,21 @@ export function createTurnAgentToolsHandoff(input: {
     };
   };
 
+  // The recovered runner supplies per-turn props but never a props.mcp
+  // projection; the host stashes one on the tool host so the CallMcpTool /
+  // GetMcpTools meta pair (and its box-routed exec resources) can be built.
+  const stashedMcpProjection = (input.toolHost as { mcpProjection?: TurnMcpProjectionInput }).mcpProjection;
   return {
     toolsGenerator: props => {
+      const propsWithMcp: TurnToolsetBuildProps =
+        stashedMcpProjection === undefined || props.mcp !== undefined
+          ? props
+          : { ...props, mcp: stashedMcpProjection };
       const enrichedProps: TurnToolsetBuildProps =
         turn.parentModelInfo === undefined && turn.subagentModels === undefined
-          ? props
+          ? propsWithMcp
           : {
-              ...props,
+              ...propsWithMcp,
               ...(turn.parentModelInfo === undefined
                 ? {}
                 : { parentModelInfo: turn.parentModelInfo }),

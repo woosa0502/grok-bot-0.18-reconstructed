@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { connectNodeAdapter } from "@connectrpc/connect-node";
-import { MethodKind, type ServiceType } from "@bufbuild/protobuf";
+import { MethodKind, Value, type JsonValue, type ServiceType } from "@bufbuild/protobuf";
 
 import { ControlService } from "../packages/proto/generated/agent/v1/control_service_connect.js";
 import { ExecService } from "../packages/proto/generated/agent/v1/exec_service_connect.js";
@@ -14,8 +14,29 @@ import {
   LoadMcpServersResponse,
   PingResponse,
   UpdateEnvironmentVariablesResponse,
+  type LoadMcpServersRequest,
   type UpdateEnvironmentVariablesRequest,
 } from "../packages/proto/generated/agent/v1/control_service_pb.js";
+import {
+  McpError,
+  McpImageContent,
+  McpResult,
+  McpServerNotFound,
+  McpStateExecResult,
+  McpStateServer,
+  McpStateSuccess,
+  McpSuccess,
+  McpTextContent,
+  McpToolNotFound,
+  McpToolResultContentItem,
+  type McpArgs,
+  type McpStateExecArgs,
+} from "../packages/proto/generated/agent/v1/mcp_exec_pb.js";
+import {
+  McpInstructions,
+  McpToolDefinition,
+} from "../packages/proto/generated/agent/v1/mcp_pb.js";
+import { McpStdioClient, parseMcpStdioConfig } from "./mcp-stdio-client.js";
 import {
   ExecClientControlMessage,
   ExecClientMessage,
@@ -283,10 +304,99 @@ class BoxExecRuntime {
   readonly #environment: NodeJS.ProcessEnv;
   readonly #foreground = new Set<ChildProcessWithoutNullStreams>();
   readonly #background = new Map<number, BackgroundProcess>();
+  readonly #mcpServers = new Map<string, McpStdioClient>();
   #nextShellId = 1;
 
   constructor(readonly workspaceRoot: string, readonly terminalsDirectory: string, environment: NodeJS.ProcessEnv) {
     this.#environment = { ...environment };
+  }
+
+  // --- MCP host: spawn stdio MCP servers and route tool calls to them. ---
+
+  async loadMcpServers(request: LoadMcpServersRequest): Promise<LoadMcpServersResponse> {
+    const configured = parseMcpStdioConfig(request.mcpConfigJson);
+    if (request.removeMissing) {
+      for (const [name, client] of this.#mcpServers) {
+        if (!configured.has(name)) {
+          client.stop();
+          this.#mcpServers.delete(name);
+        }
+      }
+    }
+    const loadedServerNames: string[] = [];
+    for (const [name, config] of configured) {
+      if (this.#mcpServers.has(name)) {
+        loadedServerNames.push(name);
+        continue;
+      }
+      const client = new McpStdioClient({ ...config, cwd: config.cwd ?? this.resolvePath("/workspace") });
+      try {
+        await client.start();
+        this.#mcpServers.set(name, client);
+        loadedServerNames.push(name);
+      } catch {
+        // Keep the failed client so mcpState can report its startError as a status.
+        this.#mcpServers.set(name, client);
+      }
+    }
+    return new LoadMcpServersResponse({ loadedServerNames });
+  }
+
+  mcpState(args: McpStateExecArgs): McpStateExecResult {
+    const wanted = args.serverIdentifiers.length > 0 ? new Set(args.serverIdentifiers) : undefined;
+    const servers: McpStateServer[] = [];
+    for (const [name, client] of this.#mcpServers) {
+      if (wanted !== undefined && !wanted.has(name)) continue;
+      const startError = client.startError;
+      servers.push(new McpStateServer({
+        serverName: name,
+        serverIdentifier: name,
+        tools: client.tools.map(tool => new McpToolDefinition({
+          name: tool.name,
+          providerIdentifier: name,
+          toolName: tool.name,
+          description: tool.description,
+          inputSchema: Value.fromJson((tool.inputSchema ?? { type: "object" }) as JsonValue),
+          inputSchemaJson: JSON.stringify(tool.inputSchema ?? { type: "object" }),
+        })),
+        instructions: client.instructions.length > 0 ? [new McpInstructions({ serverName: name, serverIdentifier: name, instructions: client.instructions })] : [],
+        status: startError === undefined ? "connected" : "error",
+        ...(startError === undefined ? {} : { errorMessage: startError }),
+      }));
+    }
+    return new McpStateExecResult({ result: { case: "success", value: new McpStateSuccess({ servers }) } });
+  }
+
+  async callMcpTool(args: McpArgs): Promise<McpResult> {
+    const serverName = args.serverIdentifier.length > 0 ? args.serverIdentifier : args.providerIdentifier;
+    const client = this.#mcpServers.get(serverName);
+    if (client === undefined) {
+      return new McpResult({ result: { case: "serverNotFound", value: new McpServerNotFound({ name: serverName, availableServers: [...this.#mcpServers.keys()] }) } });
+    }
+    if (client.startError !== undefined) {
+      return new McpResult({ result: { case: "error", value: new McpError({ error: `MCP server '${serverName}' failed to start: ${client.startError}` }) } });
+    }
+    const toolName = args.toolName.length > 0 ? args.toolName : args.name;
+    if (!client.tools.some(tool => tool.name === toolName)) {
+      return new McpResult({ result: { case: "toolNotFound", value: new McpToolNotFound({ name: toolName, availableTools: client.tools.map(tool => tool.name) }) } });
+    }
+    const toolArgs: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args.args)) toolArgs[key] = value.toJson();
+    try {
+      const result = await client.callTool(toolName, toolArgs);
+      const content = result.content.map(item =>
+        item.type === "image"
+          ? new McpToolResultContentItem({ content: { case: "image", value: new McpImageContent({ data: item.data != null ? Uint8Array.from(Buffer.from(item.data, "base64")) : new Uint8Array(), mimeType: item.mimeType ?? "" }) } })
+          : new McpToolResultContentItem({ content: { case: "text", value: new McpTextContent({ text: item.text ?? "" }) } }));
+      return new McpResult({ result: { case: "success", value: new McpSuccess({ content, isError: result.isError }) } });
+    } catch (error) {
+      return new McpResult({ result: { case: "error", value: new McpError({ error: error instanceof Error ? error.message : String(error) }) } });
+    }
+  }
+
+  stopMcpServers(): void {
+    for (const [, client] of this.#mcpServers) client.stop();
+    this.#mcpServers.clear();
   }
 
   applyEnvironment(request: UpdateEnvironmentVariablesRequest): { applied: number; removed: number } {
@@ -468,6 +578,12 @@ class BoxExecRuntime {
           break;
         case "executeHookArgs":
           yield client(request.id, request.execId, { case: "executeHookResult", value: await this.executeHook(request.message.value) });
+          break;
+        case "mcpArgs":
+          yield client(request.id, request.execId, { case: "mcpResult", value: await this.callMcpTool(request.message.value) });
+          break;
+        case "mcpStateExecArgs":
+          yield client(request.id, request.execId, { case: "mcpStateExecResult", value: this.mcpState(request.message.value) });
           break;
         default:
           yield thrown(request.id, `Unsupported ExecServerMessage case: ${request.message.case ?? "unset"}`, "BOX_EXEC_UNSUPPORTED");
@@ -917,7 +1033,7 @@ export async function startBoxExecDaemon(options: BoxExecDaemonOptions): Promise
         ping: async () => new PingResponse(),
         getCapabilities: async () => new GetCapabilitiesResponse({ computerUseSupported: false, installPluginArtifactSupported: false }),
         updateEnvironmentVariables: async request => new UpdateEnvironmentVariablesResponse(runtime.applyEnvironment(request)),
-        loadMcpServers: async () => new LoadMcpServersResponse(),
+        loadMcpServers: async request => runtime.loadMcpServers(request),
       });
       router.service(BoxExecService, { exec: (request, context) => runtime.execute(request, context.signal) });
     },

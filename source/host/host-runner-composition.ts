@@ -47,6 +47,7 @@ import type {
   TurnAwaitToolFactoryInput,
   TurnCloudAgentToolFactoryInput,
   TurnMcpManagementToolFactoryInput,
+  TurnMcpMetaToolFactoryInput,
   TurnDeleteToolFactoryInput,
   TurnEditToolFactoryInput,
   TurnWriteToolFactoryInput,
@@ -106,6 +107,8 @@ import {
   createTurnAgentRunStreamInput,
   createTurnAgentStreamStart,
   type TurnLocalResourceProjectionInput,
+  type TurnMcpProjectionInput,
+  type TurnScopedConnectorCardEmission,
 } from "./runner/turn-agent-composition.js";
 import {
   createProductionTurnAgentOwner,
@@ -2273,6 +2276,19 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           },
               }),
             }),
+        // Meta pair (CallMcpTool / GetMcpTools). Built from the per-turn MCP
+        // projection injected into props.mcp; returns undefined for turns with no
+        // MCP projection so the factory simply stays absent (no meta tools).
+        createMcpMetaToolInputs: (_turn, props): TurnMcpMetaToolFactoryInput | undefined => {
+          const mcpMeta = props.mcp?.mcpMeta;
+          if (mcpMeta === undefined) return undefined;
+          return {
+            resourceAccessor: props.resourceAccessor as unknown as TurnMcpMetaToolFactoryInput["resourceAccessor"],
+            getMcpTools: mcpMeta.getMcpTools,
+            callOptions: mcpMeta.callOptions,
+            ...(mcpMeta.discoveryOptions === undefined ? {} : { discoveryOptions: mcpMeta.discoveryOptions }),
+          };
+        },
         ...(!isSharedRoomTurn && cloudAgent !== undefined
           ? {
               createCloudAgentToolInputs: (): TurnCloudAgentToolFactoryInput => ({
@@ -2306,13 +2322,58 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       };
     };
 
+    // Builds the per-turn MCP projection that wires the CallMcpTool / GetMcpTools
+    // meta pair and routes their exec resources to the box daemon. Without it the
+    // model only sees the MCP *management* tools (GetMcpServerStatus, …) and can
+    // discover but never invoke a connector's tools. The executor/state come from
+    // the mcp extension API; the connector-card and telemetry fields mirror
+    // createMcpManagementToolInputs. Returns undefined when MCP is not wired.
+    const buildTurnMcpProjection = (): TurnMcpProjectionInput | undefined => {
+      const mcpApi = (mcp as { mcp?: {
+        createExecutor?: (persistImage: unknown, spillLargeText: unknown, auditIdentity: { readonly agentId: string }) => unknown;
+        createStateExecutor?: () => unknown;
+        resolveNeedsAuthSlot?: (id: string) => Promise<{ readonly serverName: string; readonly serverId: string } | null>;
+      } } | undefined)?.mcp;
+      if (mcpApi == null || typeof mcpApi.createExecutor !== "function" || typeof mcpApi.createStateExecutor !== "function") return undefined;
+      return {
+        mcpForTurn: {
+          createExecutor: (persistImage, spillLargeText, auditIdentity) =>
+            mcpApi.createExecutor!(persistImage, spillLargeText, auditIdentity) as ReturnType<TurnMcpProjectionInput["mcpForTurn"]["createExecutor"]>,
+          createStateExecutor: () => mcpApi.createStateExecutor!() as ReturnType<TurnMcpProjectionInput["mcpForTurn"]["createStateExecutor"]>,
+          ...(typeof mcpApi.resolveNeedsAuthSlot === "function"
+            ? { resolveNeedsAuthSlot: (id: string) => mcpApi.resolveNeedsAuthSlot!(id) }
+            : {}),
+        },
+        persistImage: hooks.persistImage,
+        textSpiller: undefined,
+        isSubagentRunner: false,
+        beginObservation: () => () => {},
+        boundedConnectorTag: (providerIdentifier: string) => providerIdentifier,
+        mcpErrorClassOf: () => "unknown",
+        takeMcpExecErrorClass: () => undefined,
+        emitConnectorCard: (emission: TurnScopedConnectorCardEmission) => {
+          hooks.transport.onUpdate({
+            type: "send-message",
+            message: connectorCardEmissionToMessage(emission),
+            timestampMs: Date.now(),
+          });
+        },
+        cancelThisRun: () => {},
+        reportDiagnostic: () => {},
+        errorLogTag: (error: unknown) => error instanceof Error ? error.message : String(error),
+        mcpMeta: { getMcpTools: () => [], callOptions: {} },
+      } satisfies TurnMcpProjectionInput;
+    };
+
     const createTurnToolInputs = (input: ProductionTurnToolInputs) => {
       const dependencies = hostDependencies();
+      const mcpProjection = input.mcp ?? buildTurnMcpProjection();
       const projected = createProductionTurnToolInputs(
         input,
         {
           ...(createTurnToolProjections?.(input) ?? {}),
           ...createTurnWebAndAwaitProjections(input),
+          ...(mcpProjection === undefined ? {} : { mcp: mcpProjection }),
           ...(hooks.emitUpdate === undefined
             ? {}
             : { emitUpdate: hooks.emitUpdate }),
@@ -2383,15 +2444,30 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
 
     runnerOptions.createProductionTurnToolsetHost = (
       input: Omit<ProductionTurnToolsetHostInput, "factoryProvider">,
-    ) => createProductionTurnToolsetHost({
-      ...input,
-      factoryProvider: createTurnToolsetFactoryProvider(
-        hostDependencies(),
-      ),
-      ...(projectedLocalToolPermission === undefined
-        ? {}
-        : { localToolPermission: projectedLocalToolPermission }),
-    });
+    ) => {
+      // Inject the per-turn MCP projection into the toolset props so the
+      // CallMcpTool / GetMcpTools meta pair is built (and its exec resources
+      // route to the box daemon). The recovered runner never constructs it, so
+      // without this the model only gets the MCP management tools.
+      const mcpProjection = buildTurnMcpProjection();
+      const enrichedInput = mcpProjection === undefined || !("props" in input)
+        ? input
+        : { ...input, props: { ...(input as ProductionTurnToolsetHostInput).props, mcp: mcpProjection } };
+      const host = createProductionTurnToolsetHost({
+        ...enrichedInput,
+        factoryProvider: createTurnToolsetFactoryProvider(
+          hostDependencies(),
+        ),
+        ...(projectedLocalToolPermission === undefined
+          ? {}
+          : { localToolPermission: projectedLocalToolPermission }),
+      });
+      // Also stash the projection on the host so the per-turn toolsGenerator can
+      // enrich the runner-supplied props (the runner never sets props.mcp).
+      return mcpProjection === undefined
+        ? host
+        : { ...host, mcpProjection } as typeof host;
+    };
 
     if (productionContext !== undefined && productionPromptGlue !== undefined) {
       const turnRequestContext = productionRequestContext;
@@ -2421,27 +2497,34 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         subagentConfigs: multitaskEnabled ? [createSandExecutorSubagentConfig()] : [],
       };
       const staticModelId = process.env.SAND_AGENT_MODEL ?? DEFAULT_SAND_MODEL;
-      const lazyToolHost = () => createProductionTurnToolsetHost({
-        turn: baseTurn,
-        factoryProvider: createTurnToolsetFactoryProvider(hostDependencies()),
-        isSubagentRunner: false,
-        isSharedRoomRunner: isSharedRoomTurn,
-        isBoxScopedSubagent: false,
-        isComputerUseSubagent: false,
-        isBrowserUseSubagent: false,
-        isSystemPromptOverridden: typeof overrides.systemPrompt === "string",
-        remoteBoxHasDesktop: true,
-        getConversationId: () => session.id,
-        getRemoteBoxAvailable: () => method(remoteBox, "isAvailable")?.() !== false,
-        cloudAgentsDisabledByTeam: () => method(experiments, "isCloudAgentsDisabledByTeam")?.() ?? false,
-        spotlightEnabled: () => method(experiments, "isSpotlightEnabled")?.() ?? false,
-        isDynamicToolsEnabled: () => method(experiments, "isDynamicToolsEnabled")?.() ?? false,
-        isMultitaskEnabled: () => method(experiments, "isMultitaskEnabled")?.() ?? false,
-        isSharedRoomBoxToolsEnabled: () => resolveSharedRoomBoxToolsEnabled(process.env.SAND_SHARED_ROOM_BOX_TOOLS),
-        ...(projectedLocalToolPermission === undefined
-          ? {}
-          : { localToolPermission: projectedLocalToolPermission }),
-      });
+      const lazyToolHost = () => {
+        const host = createProductionTurnToolsetHost({
+          turn: baseTurn,
+          factoryProvider: createTurnToolsetFactoryProvider(hostDependencies()),
+          isSubagentRunner: false,
+          isSharedRoomRunner: isSharedRoomTurn,
+          isBoxScopedSubagent: false,
+          isComputerUseSubagent: false,
+          isBrowserUseSubagent: false,
+          isSystemPromptOverridden: typeof overrides.systemPrompt === "string",
+          remoteBoxHasDesktop: true,
+          getConversationId: () => session.id,
+          getRemoteBoxAvailable: () => method(remoteBox, "isAvailable")?.() !== false,
+          cloudAgentsDisabledByTeam: () => method(experiments, "isCloudAgentsDisabledByTeam")?.() ?? false,
+          spotlightEnabled: () => method(experiments, "isSpotlightEnabled")?.() ?? false,
+          isDynamicToolsEnabled: () => method(experiments, "isDynamicToolsEnabled")?.() ?? false,
+          isMultitaskEnabled: () => method(experiments, "isMultitaskEnabled")?.() ?? false,
+          isSharedRoomBoxToolsEnabled: () => resolveSharedRoomBoxToolsEnabled(process.env.SAND_SHARED_ROOM_BOX_TOOLS),
+          ...(projectedLocalToolPermission === undefined
+            ? {}
+            : { localToolPermission: projectedLocalToolPermission }),
+        });
+        // Stash the MCP projection so the per-turn toolsGenerator can set
+        // props.mcp (the recovered runner never does), which builds the
+        // CallMcpTool / GetMcpTools pair.
+        const mcpProjection = buildTurnMcpProjection();
+        return mcpProjection === undefined ? host : { ...host, mcpProjection } as typeof host;
+      };
       const getProductionConversationState = () => {
         const runner = builtRunner as {
           getAgentConversationStateStructure?: () => unknown;
@@ -2641,6 +2724,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 },
                 actionAuditor: projectedActionAuditor,
                 agentId: session.id,
+                // Register the box-routed MCP executor/state as LOCAL resource
+                // entries so CallMcpTool resolves mcpExecutorResource to the
+                // guarded box executor (→ box daemon) rather than falling through
+                // to the raw box accessor, which in shared-desktop mode is gated
+                // by the local-exec (desktop-app) transport that isn't connected.
+                ...(buildTurnMcpProjection() === undefined
+                  ? {}
+                  : { mcp: buildTurnMcpProjection() }),
               };
             },
             blobStore: getAgentBlobStore(

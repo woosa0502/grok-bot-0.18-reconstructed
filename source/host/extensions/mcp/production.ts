@@ -91,6 +91,7 @@ export function createMcpProductionExtras(
         auth,
         foreverBox: context.deps["forever-box"],
         settings: context.deps.settings,
+        sandRootDir,
         pluginSkills: pluginPort(pluginSkills),
         onDiscoveryFailed: event => context.deps.telemetry.logs.reportMcpDiscoveryFailed(event),
         onConnectorAuth: event => context.deps.telemetry.logs.reportConnectorAuth(event),

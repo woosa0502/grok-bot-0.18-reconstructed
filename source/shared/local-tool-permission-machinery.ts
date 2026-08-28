@@ -76,6 +76,11 @@ export function describeLocalExec(serverMessage: { readonly message: LocalExecMe
       return { action: "read-file", target: path, ...(isTerminalFile(path, terminalsFolder) ? { attachToResourcePath: terminalsFolder } : {}) };
     }
     case "lsArgs": return { action: "list-directory", target: value.path as string };
+    case "mcpArgs": {
+      const server = (value.serverIdentifier as string) || (value.providerIdentifier as string) || "";
+      const tool = (value.toolName as string) || (value.name as string) || "";
+      return { action: "run-command", target: server.length > 0 ? `MCP tool ${server}: ${tool}` : `MCP tool ${tool}` };
+    }
     default: return undefined;
   }
 }
