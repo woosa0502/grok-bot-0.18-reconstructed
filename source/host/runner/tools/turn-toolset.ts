@@ -771,7 +771,7 @@ export interface TurnToolsetHostFactoryProvider {
   readonly createMcpMetaToolInputs?: (
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
-  ) => TurnMcpMetaToolFactoryInput;
+  ) => TurnMcpMetaToolFactoryInput | undefined;
   readonly createComputerToolInputs?: (
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
@@ -1309,6 +1309,7 @@ export function createTurnToolsetFactoriesForTurn(
   const boxEdit = provider.createBoxEditToolInputs?.(turn, props);
   const boxWrite = provider.createBoxWriteToolInputs?.(turn, props);
   const boxGlob = provider.createBoxGlobToolInputs?.(turn, props);
+  const mcpMeta = provider.createMcpMetaToolInputs?.(turn, props);
   return createTurnToolsetFactories({
     ...(provider.createTaskToolInputs === undefined
       ? {}
@@ -1316,9 +1317,9 @@ export function createTurnToolsetFactoriesForTurn(
     ...(provider.createMultitaskToolInputs === undefined
       ? {}
       : { multitask: provider.createMultitaskToolInputs(turn, props) }),
-    ...(provider.createMcpMetaToolInputs === undefined
-      ? {}
-      : { mcpMeta: provider.createMcpMetaToolInputs(turn, props) }),
+    ...(provider.createMcpMetaToolInputs === undefined || mcpMeta === undefined
+          ? {}
+          : { mcpMeta }),
     ...(provider.createComputerToolInputs === undefined
       ? {}
       : { computer: provider.createComputerToolInputs(turn, props) }),

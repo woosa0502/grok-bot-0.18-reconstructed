@@ -185,7 +185,7 @@ export async function createTurnAgentRunContext<ContextValue>(
   const inferenceProvider = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider();
   const agent = inferenceProvider === "cursor"
     ? input.inference.createSession(input.onRequestId, sessionOptions)
-    : createProviderPromptSession(inferenceProvider) as unknown as TurnAgentPromptSession;
+    : createProviderPromptSession(inferenceProvider, input.modelId) as unknown as TurnAgentPromptSession;
   const summarizationSession = inferenceProvider === "cursor" ? input.inference.createSummarizationSession?.(
     input.onRequestId,
     {

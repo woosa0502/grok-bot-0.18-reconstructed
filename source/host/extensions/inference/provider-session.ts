@@ -1,32 +1,42 @@
-import { lstatSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { query as queryClaude, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createOpenAI } from "@ai-sdk/openai";
 import { jsonSchema, streamText, tool, type CoreMessage, type LanguageModelV1, type ToolSet } from "ai";
 
-import { BasePromptBuilder, BasePromptExecutor } from "../../../packages/chat-inference/base.js";
 import type { SandInferenceProvider } from "../../../shared/inference-router.js";
-import { isUsableCodexChatGptAuthDocument, resolveClaudeCodeCliPath } from "../../../shared/node/inference-router-local.js";
-import { getSandRootDir } from "../../host-paths.js";
+import { resolveClaudeCodeCliPath } from "../../../shared/node/inference-router-local.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
+import { getSandRootDir } from "../../host-paths.js";
 import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
-import { streamCodexDirectResponses, type CodexDirectTool } from "./codex-direct-responses.js";
+import {
+  belmontTextFromResponse,
+  createRoutedProviderSessionState,
+  parseRoutedProviderSessionState,
+} from "./pi-codex-projection.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
+import type { PiCodexExecutorOptions } from "./pi-codex-runtime.js";
 
 type Loose = Record<string, any>;
 interface ProviderMessage extends LabelMessage { role: string; content: string | readonly unknown[] }
 type RoutedProvider = Exclude<SandInferenceProvider, "cursor">;
 type UsageRecord = { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number };
 type RoutedToolExecutor = (tool: Loose, args: unknown, toolCallId: string) => Promise<unknown>;
+type ProviderExecutorContext = { readonly signal?: AbortSignal; readonly modelId?: string };
+type PiRuntimeModule = typeof import("./pi-codex-runtime.js");
 
+const PI_RUNTIME_SPECIFIER: string = "./pi-codex-runtime.js";
 const GROK_ROUTER_SYSTEM_PROMPT = [
   "You are Grok Bot, a warm, concise desktop assistant.",
   "You are running inside Grok Bot, not inside Codex CLI or Claude Code.",
   "The tools supplied with this request are Grok Bot's already-connected plugins and accounts. Use them whenever they are relevant instead of claiming that a plugin is unavailable or asking the user to reconnect it.",
   "Never ask for an API key for an already-connected plugin. Respond directly to the user in natural language after completing any necessary tool calls.",
 ].join("\n");
+
+function loadPiCodexRuntime(): Promise<PiRuntimeModule> {
+  return import(PI_RUNTIME_SPECIFIER) as Promise<PiRuntimeModule>;
+}
 
 function recordRoutedUsage(provider: RoutedProvider, usage: UsageRecord): void {
   new SandSettingsStore(join(getSandRootDir(), "settings.json")).recordInferenceUsage(provider, usage);
@@ -39,7 +49,9 @@ function persistedSecrets(): Record<string, string> {
     const secrets = (parsed as { secrets?: unknown }).secrets;
     if (typeof secrets !== "object" || secrets == null || Array.isArray(secrets)) return {};
     return Object.fromEntries(Object.entries(secrets).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
-  } catch { return {}; }
+  } catch {
+    return {};
+  }
 }
 
 function openRouterCredential(): string {
@@ -56,7 +68,9 @@ function providerPrompt(messages: readonly ProviderMessage[]): string {
   return `${GROK_ROUTER_SYSTEM_PROMPT}\n\nContinue this Grok Bot conversation.\n\n${rendered}`;
 }
 
-function deferred<T>() { return Promise.withResolvers<T>(); }
+function deferred<T>() {
+  return Promise.withResolvers<T>();
+}
 
 type DelegatedToolCall = { readonly toolCallId: string; readonly toolName: string; readonly args: unknown };
 
@@ -67,201 +81,67 @@ function response(text: string, id: string, modelId: string, toolCalls: readonly
   return { id, modelId, timestamp: new Date(), headers: {}, messages: [{ role: "assistant", content }] };
 }
 
-type CodexCredentials = { accessToken: string; refreshToken: string; idToken: string; accountId: string; path: string; document: Loose };
-
-function codexCredentials(): CodexCredentials {
-  const path = join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "auth.json");
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) throw new Error("Codex login credentials must be a private direct regular file.");
-  const parsed = JSON.parse(readFileSync(path, "utf8")) as Loose;
-  const accessToken = parsed?.tokens?.access_token;
-  const refreshToken = parsed?.tokens?.refresh_token;
-  const idToken = parsed?.tokens?.id_token;
-  const accountId = parsed?.tokens?.account_id;
-  if (!isUsableCodexChatGptAuthDocument(parsed)) {
-    throw new Error("Codex is not signed in with ChatGPT. Run `codex login`, then reopen Grok Bot.");
-  }
-  return { accessToken, refreshToken, idToken, accountId, path, document: parsed };
-}
-
-function jwtAudience(token: string): string | null {
-  try {
-    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")) as Loose;
-    const audience = payload.aud;
-    return typeof audience === "string" ? audience : Array.isArray(audience) ? audience.find((value): value is string => typeof value === "string") ?? null : null;
-  } catch { return null; }
-}
-
-async function refreshCodexCredentials(current: CodexCredentials): Promise<CodexCredentials> {
-  const clientId = jwtAudience(current.idToken);
-  if (clientId == null) throw new Error("Codex login expired and its refresh identity is invalid. Run `codex login` again.");
-  const refresh = await fetch("https://auth.openai.com/oauth/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: current.refreshToken, client_id: clientId }),
-  });
-  if (!refresh.ok) throw new Error("Codex login expired and could not be refreshed. Run `codex login` again.");
-  const payload = await refresh.json() as Loose;
-  if (typeof payload.access_token !== "string" || payload.access_token.length === 0) throw new Error("Codex returned an invalid refreshed login. Run `codex login` again.");
-  const document = {
-    ...current.document,
-    tokens: {
-      ...current.document.tokens,
-      access_token: payload.access_token,
-      refresh_token: typeof payload.refresh_token === "string" && payload.refresh_token.length > 0 ? payload.refresh_token : current.refreshToken,
-      id_token: typeof payload.id_token === "string" && payload.id_token.length > 0 ? payload.id_token : current.idToken,
-    },
-    last_refresh: new Date().toISOString(),
-  };
-  const temporary = `${current.path}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
-  renameSync(temporary, current.path);
-  return codexCredentials();
-}
-
-function codexAuthenticatedFetch(initial: CodexCredentials): typeof fetch {
-  let credentials = initial;
-  return async (input, init) => {
-    const perform = () => {
-      const headers = new Headers(init?.headers);
-      headers.set("authorization", `Bearer ${credentials.accessToken}`);
-      headers.set("ChatGPT-Account-Id", credentials.accountId);
-      return fetch(input, { ...init, headers });
-    };
-    let result = await perform();
-    if (result.status !== 401) return result;
-    credentials = await refreshCodexCredentials(credentials);
-    result = await perform();
-    return result;
-  };
-}
-
 function configuredCodexModel(): string {
-  const selected = process.env.SAND_CODEX_MODEL?.trim();
-  if (selected) return selected;
-  try {
-    const config = readFileSync(join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "config.toml"), "utf8");
-    return /^\s*model\s*=\s*["']([^"']+)["']/m.exec(config)?.[1]?.trim() || "gpt-5.5-high-fast";
-  } catch { return "gpt-5.5-high-fast"; }
+  return process.env.SAND_CODEX_MODEL?.trim() || "gpt-5.4";
 }
 
 function configuredCodexReasoningEffort(): "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
   const selected = process.env.SAND_CODEX_REASONING_EFFORT?.trim();
-  if (selected === "minimal" || selected === "low" || selected === "medium" || selected === "high" || selected === "xhigh") return selected;
-  try {
-    const config = readFileSync(join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "config.toml"), "utf8");
-    const value = /^\s*model_reasoning_effort\s*=\s*["']([^"']+)["']/m.exec(config)?.[1]?.trim();
-    return value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh" ? value : undefined;
-  } catch { return undefined; }
+  return selected === "minimal" || selected === "low" || selected === "medium" || selected === "high" || selected === "xhigh" ? selected : undefined;
 }
 
-function codexTools(definitions: readonly Loose[] | undefined): CodexDirectTool[] | undefined {
-  if (definitions == null) return undefined;
-  const tools = definitions.flatMap((source): CodexDirectTool[] => {
-    const wrappedParameters = source.inputSchema ?? source.parameters;
-    const parameters = typeof wrappedParameters === "object"
-      && wrappedParameters != null
-      && !Array.isArray(wrappedParameters)
-      && "jsonSchema" in wrappedParameters
-      ? wrappedParameters.jsonSchema
-      : wrappedParameters;
-    return typeof source.name === "string" && source.name.length > 0 && parameters != null ? [{
-      name: source.name,
-      ...(typeof source.description === "string" ? { description: source.description } : {}),
-      parameters,
-      source,
-    }] : [];
-  });
-  return tools.length === 0 ? undefined : tools;
+function signalFromContext(context: unknown): AbortSignal | undefined {
+  if (typeof context !== "object" || context == null) return undefined;
+  const signal = (context as { signal?: unknown }).signal;
+  return signal instanceof AbortSignal ? signal : undefined;
 }
 
-function codexSafeJson(value: unknown): string {
-  try { return JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item) ?? "null"; }
-  catch { return "null"; }
+function modelFromContext(context: unknown): string | undefined {
+  if (typeof context !== "object" || context == null) return undefined;
+  const modelId = (context as { modelId?: unknown }).modelId;
+  return typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : undefined;
 }
 
-// Convert Belmont's provider messages into Codex Responses input items. A prior assistant
-// tool call must be sent as a `function_call` item and its result as a `function_call_output`
-// item — NOT as JSON.stringify'd message text. Serialising them as text (the previous
-// behaviour) fed the model examples of tool calls written as text, so it learned to emit new
-// tool calls as plain text too; those never dispatched and showed up as "[{\"type\":\"tool-call\"…}]".
-function codexInputFromMessages(messages: readonly ProviderMessage[]): Loose[] {
-  const items: Loose[] = [];
-  for (const message of messages) {
-    const role = message.role === "assistant" ? "assistant" : "user";
-    if (typeof message.content === "string") {
-      if (message.content.length > 0) items.push({ role, content: message.content });
-      continue;
-    }
-    if (!Array.isArray(message.content)) {
-      items.push({ role, content: codexSafeJson(message.content) });
-      continue;
-    }
-    const textParts: string[] = [];
-    const calls: Loose[] = [];
-    const outputs: Loose[] = [];
-    for (const raw of message.content) {
-      const part = raw as Record<string, unknown>;
-      if (part.type === "text" && typeof part.text === "string") { textParts.push(part.text); continue; }
-      if (part.type === "tool-call" && typeof part.toolCallId === "string" && typeof part.toolName === "string") {
-        calls.push({ type: "function_call", call_id: part.toolCallId, name: part.toolName, arguments: typeof part.args === "string" ? part.args : codexSafeJson(part.args ?? {}) });
-        continue;
-      }
-      if (part.type === "tool-result" && typeof part.toolCallId === "string") {
-        outputs.push({ type: "function_call_output", call_id: part.toolCallId, output: typeof part.result === "string" ? part.result : codexSafeJson(part.result ?? "") });
-        continue;
-      }
-      // reasoning / redacted-reasoning / file parts are not part of the Codex Responses input here.
-    }
-    if (textParts.length > 0) items.push({ role, content: textParts.join("\n") });
-    for (const call of calls) items.push(call);
-    for (const output of outputs) items.push(output);
-  }
-  return items;
+function providerContext(signal: AbortSignal | undefined, modelId: string | undefined): ProviderExecutorContext {
+  return {
+    ...(signal == null ? {} : { signal }),
+    ...(modelId == null ? {} : { modelId }),
+  };
 }
 
-function codexExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void) {
-  const credentials = codexCredentials();
-  const usage = deferred<{ promptTokens: number; completionTokens: number; totalTokens: number }>();
-  const extendedUsage = deferred<{ inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; maxTokens: number }>();
-  const resultResponse = deferred<ReturnType<typeof response>>();
-  const metadata = deferred<Record<string, unknown>>();
-  const model = configuredCodexModel();
-  const tools = codexTools(definitions);
+function lazyPiCodexExecutor(options: PiCodexExecutorOptions) {
+  const executor = loadPiCodexRuntime().then(module => module.createPiCodexExecutor(options));
   const fullStream = (async function* () {
-    let text = "";
-    const delegatedToolCalls: DelegatedToolCall[] = [];
-    try {
-      for await (const event of streamCodexDirectResponses({
-        fetch: codexAuthenticatedFetch(credentials),
-        endpoint: "https://chatgpt.com/backend-api/codex/responses",
-        model,
-        ...(configuredCodexReasoningEffort() == null ? {} : { reasoningEffort: configuredCodexReasoningEffort()! }),
-        instructions: GROK_ROUTER_SYSTEM_PROMPT,
-        input: codexInputFromMessages(messages),
-        ...(tools == null ? {} : { tools }),
-        ...(executeTool == null ? {} : { executeTool: async (selected, args, toolCallId) => await executeTool(selected.source, args, toolCallId) }),
-        delegateToolCalls: tools != null && executeTool == null,
-        maxSteps: tools == null ? 1 : 8,
-      })) {
-        if (event.type === "text-delta") { text += event.delta; yield { type: "text-delta" as const, textDelta: event.delta }; continue; }
-        if (event.type === "tool-call") {
-          const call = { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args };
-          delegatedToolCalls.push(call);
-          yield { type: "tool-call" as const, ...call };
-          continue;
-        }
-        const basic = { promptTokens: event.usage.inputTokens, completionTokens: event.usage.outputTokens, totalTokens: event.usage.inputTokens + event.usage.outputTokens };
-        const extended = { ...event.usage, maxTokens: 0 };
-        onUsage?.(event.usage);
-        usage.resolve(basic);
-        extendedUsage.resolve(extended);
-        metadata.resolve({ openai: { responseId: event.responseId, direct: true } });
-        resultResponse.resolve(response(text, invocationId, model, delegatedToolCalls));
-      }
-    } catch (error) { usage.reject(error); extendedUsage.reject(error); metadata.reject(error); resultResponse.reject(error); throw error; }
+    const loaded = await executor;
+    for await (const event of loaded.fullStream) yield event;
   })();
-  return { fullStream, response: resultResponse.promise, usage: usage.promise, extendedUsage: extendedUsage.promise, providerMetadata: metadata.promise, invocationId: Promise.resolve(invocationId) };
+  return {
+    fullStream,
+    response: executor.then(value => value.response),
+    usage: executor.then(value => value.usage),
+    extendedUsage: executor.then(value => value.extendedUsage),
+    providerMetadata: executor.then(value => value.providerMetadata),
+    invocationId: Promise.resolve(options.invocationId),
+  };
+}
+
+function codexExecutor(
+  messages: readonly ProviderMessage[],
+  invocationId: string,
+  definitions?: readonly Loose[],
+  onUsage?: (usage: UsageRecord) => void,
+  context?: ProviderExecutorContext,
+) {
+  const reasoning = configuredCodexReasoningEffort();
+  return lazyPiCodexExecutor({
+    messages,
+    invocationId,
+    ...(definitions == null ? {} : { definitions }),
+    modelId: context?.modelId ?? configuredCodexModel(),
+    ...(reasoning == null ? {} : { reasoning }),
+    ...(context?.signal == null ? {} : { signal: context.signal }),
+    ...(onUsage == null ? {} : { onUsage }),
+  });
 }
 
 function claudeExecutor(messages: readonly ProviderMessage[], invocationId: string, onUsage?: (usage: UsageRecord) => void, mcpServerUrl?: string) {
@@ -275,20 +155,53 @@ function claudeExecutor(messages: readonly ProviderMessage[], invocationId: stri
     try {
       let final: SDKResultMessage | undefined;
       const selectedModel = process.env.SAND_CLAUDE_MODEL?.trim();
-      for await (const message of queryClaude({ prompt: providerPrompt(messages), options: { pathToClaudeCodeExecutable: executable, cwd: getSandRootDir(), tools: mcpServerUrl == null ? [] : ["mcp__grok_bot_plugins__*"], ...(mcpServerUrl == null ? {} : { mcpServers: { grok_bot_plugins: { type: "http" as const, url: mcpServerUrl } }, strictMcpConfig: true }), permissionMode: "default", maxTurns: mcpServerUrl == null ? 1 : 8, persistSession: false, ...(selectedModel == null || selectedModel.length === 0 ? {} : { model: selectedModel }) } })) if (message.type === "result") final = message;
+      for await (const message of queryClaude({
+        prompt: providerPrompt(messages),
+        options: {
+          pathToClaudeCodeExecutable: executable,
+          cwd: getSandRootDir(),
+          tools: mcpServerUrl == null ? [] : ["mcp__grok_bot_plugins__*"],
+          ...(mcpServerUrl == null ? {} : {
+            mcpServers: { grok_bot_plugins: { type: "http" as const, url: mcpServerUrl } },
+            strictMcpConfig: true,
+          }),
+          permissionMode: "default",
+          maxTurns: mcpServerUrl == null ? 1 : 8,
+          persistSession: false,
+          ...(selectedModel == null || selectedModel.length === 0 ? {} : { model: selectedModel }),
+        },
+      })) {
+        if (message.type === "result") final = message;
+      }
       if (final == null) throw new Error("Claude Code ended without a result.");
       if (final.subtype !== "success") throw new Error(final.errors.join("\n") || `Claude Code failed (${final.subtype}).`);
       const text = final.result;
       if (text.length > 0) yield { type: "text-delta" as const, textDelta: text };
-      const input = final.usage.input_tokens, output = final.usage.output_tokens, cacheRead = final.usage.cache_read_input_tokens ?? 0, cacheWrite = final.usage.cache_creation_input_tokens ?? 0;
+      const input = final.usage.input_tokens;
+      const output = final.usage.output_tokens;
+      const cacheRead = final.usage.cache_read_input_tokens ?? 0;
+      const cacheWrite = final.usage.cache_creation_input_tokens ?? 0;
       onUsage?.({ inputTokens: input, outputTokens: output, cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite });
       usage.resolve({ promptTokens: input, completionTokens: output, totalTokens: input + output });
       extendedUsage.resolve({ inputTokens: input, outputTokens: output, cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite, maxTokens: 0 });
       metadata.resolve({ anthropic: { sessionId: final.session_id, totalCostUsd: final.total_cost_usd } });
       resultResponse.resolve(response(text, invocationId, "claude-code"));
-    } catch (error) { usage.reject(error); extendedUsage.reject(error); metadata.reject(error); resultResponse.reject(error); throw error; }
+    } catch (error) {
+      usage.reject(error);
+      extendedUsage.reject(error);
+      metadata.reject(error);
+      resultResponse.reject(error);
+      throw error;
+    }
   })();
-  return { fullStream, response: resultResponse.promise, usage: usage.promise, extendedUsage: extendedUsage.promise, providerMetadata: metadata.promise, invocationId: Promise.resolve(invocationId) };
+  return {
+    fullStream,
+    response: resultResponse.promise,
+    usage: usage.promise,
+    extendedUsage: extendedUsage.promise,
+    providerMetadata: metadata.promise,
+    invocationId: Promise.resolve(invocationId),
+  };
 }
 
 function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: RoutedToolExecutor): ToolSet | undefined {
@@ -302,34 +215,123 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
       ...(typeof definition.description === "string" ? { description: definition.description } : {}),
       parameters: jsonSchema(parameters),
     };
-    if (executeTool != null) routedTool.execute = async (args: unknown, options: { toolCallId: string }) => await executeTool(definition, args, options.toolCallId);
+    if (executeTool != null) {
+      routedTool.execute = async (args: unknown, options: { toolCallId: string }) => await executeTool(definition, args, options.toolCallId);
+    }
     tools[definition.name] = tool(routedTool);
   }
   return Object.keys(tools).length === 0 ? undefined : tools;
 }
 
-function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void) {
+function openRouterExecutor(
+  messages: readonly ProviderMessage[],
+  invocationId: string,
+  definitions?: readonly Loose[],
+  executeTool?: RoutedToolExecutor,
+  onUsage?: (usage: UsageRecord) => void,
+) {
   const id = process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
-  const model: LanguageModelV1 = createOpenAI({ apiKey: openRouterCredential(), baseURL: "https://openrouter.ai/api/v1", compatibility: "compatible", name: "openrouter", headers: { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" } }).chat(id as any);
+  const model: LanguageModelV1 = createOpenAI({
+    apiKey: openRouterCredential(),
+    baseURL: "https://openrouter.ai/api/v1",
+    compatibility: "compatible",
+    name: "openrouter",
+    headers: { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" },
+  }).chat(id as any);
   const tools = toToolSet(definitions, executeTool);
-  const result = streamText({ model, system: GROK_ROUTER_SYSTEM_PROMPT, messages: messages as CoreMessage[], ...(tools === undefined ? {} : { tools }), toolCallStreaming: true, maxSteps: tools === undefined ? 1 : 8 });
-  const extendedUsage = result.usage.then(value => ({ inputTokens: value.promptTokens, outputTokens: value.completionTokens, cacheReadTokens: 0, cacheWriteTokens: 0, maxTokens: 0 }));
+  const result = streamText({
+    model,
+    system: GROK_ROUTER_SYSTEM_PROMPT,
+    messages: messages as CoreMessage[],
+    ...(tools === undefined ? {} : { tools }),
+    toolCallStreaming: true,
+    maxSteps: tools === undefined ? 1 : 8,
+  });
+  const extendedUsage = result.usage.then(value => ({
+    inputTokens: value.promptTokens,
+    outputTokens: value.completionTokens,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    maxTokens: 0,
+  }));
   if (onUsage != null) void extendedUsage.then(onUsage);
-  return { fullStream: result.fullStream, response: result.response, usage: result.usage, extendedUsage, providerMetadata: result.providerMetadata, invocationId: Promise.resolve(invocationId) };
+  return {
+    fullStream: result.fullStream,
+    response: result.response,
+    usage: result.usage,
+    extendedUsage,
+    providerMetadata: result.providerMetadata,
+    invocationId: Promise.resolve(invocationId),
+  };
 }
 
-class ProviderPromptExecutor extends BasePromptExecutor<ProviderMessage> {
-  constructor(readonly provider: RoutedProvider, initialMessages?: readonly ProviderMessage[], readonly onUsage?: (usage: UsageRecord) => void) { super(new BasePromptBuilder(initialMessages)); }
-  stream(_ctx: unknown, invocationId = crypto.randomUUID(), definitions?: readonly Loose[]) {
-    if (this.provider === "codex") return codexExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage);
+class ProviderPromptExecutor implements PromptExecutor {
+  readonly #messages: ProviderMessage[];
+
+  constructor(
+    readonly provider: RoutedProvider,
+    initialMessages: readonly ProviderMessage[] | undefined,
+    readonly onUsage: ((usage: UsageRecord) => void) | undefined,
+    readonly modelId: string | undefined,
+  ) {
+    this.#messages = initialMessages == null ? [] : [...initialMessages];
+  }
+
+  appendMessages(messages: LabelMessage | readonly LabelMessage[]): this {
+    const incoming = Array.isArray(messages) ? messages : [messages];
+    this.#messages.push(...incoming as ProviderMessage[]);
+    return this;
+  }
+
+  getState(): unknown {
+    return createRoutedProviderSessionState(this.#messages, this.modelId);
+  }
+
+  getMessages(): ProviderMessage[] {
+    return [...this.#messages];
+  }
+
+  clearMessages(): void {
+    this.#messages.length = 0;
+  }
+
+  stream(ctx: unknown, invocationId = crypto.randomUUID(), definitions?: readonly Loose[]) {
+    if (this.provider === "codex") {
+      return codexExecutor(
+        this.getMessages(),
+        invocationId,
+        definitions,
+        this.onUsage,
+        providerContext(signalFromContext(ctx), modelFromContext(ctx) ?? this.modelId),
+      );
+    }
     if (this.provider === "claude-code") return claudeExecutor(this.getMessages(), invocationId, this.onUsage);
     return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage);
   }
 }
 
-export function createProviderPromptSession(provider: RoutedProvider): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
-  const modelId = provider === "codex" ? configuredCodexModel() : provider === "claude-code" ? "claude-code" : process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
-  return { getModelId: () => modelId, getExecutor: state => new ProviderPromptExecutor(provider, Array.isArray(state) ? state as ProviderMessage[] : undefined, usage => recordRoutedUsage(provider, usage)) };
+export function createProviderPromptSession(
+  provider: RoutedProvider,
+  requestedModelId?: string,
+): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
+  const requested = requestedModelId?.trim();
+  const modelId = provider === "codex"
+    ? requested || configuredCodexModel()
+    : provider === "claude-code"
+      ? "claude-code"
+      : process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
+  return {
+    getModelId: () => modelId,
+    getExecutor: state => {
+      const parsed = parseRoutedProviderSessionState<ProviderMessage>(state);
+      return new ProviderPromptExecutor(
+        provider,
+        parsed.messages,
+        usage => recordRoutedUsage(provider, usage),
+        parsed.modelId ?? modelId,
+      );
+    },
+  };
 }
 
 export async function runRoutedProviderText(provider: RoutedProvider, messages: readonly ProviderMessage[], options?: {
@@ -337,11 +339,13 @@ export async function runRoutedProviderText(provider: RoutedProvider, messages: 
   readonly tools?: readonly Loose[];
   readonly executeTool?: RoutedToolExecutor;
   readonly onTextDelta?: (delta: string, accumulated: string) => void;
+  readonly signal?: AbortSignal;
+  readonly modelId?: string;
 }): Promise<string> {
   const invocationId = crypto.randomUUID();
   const onUsage = (usage: UsageRecord) => recordRoutedUsage(provider, usage);
   const result = provider === "codex"
-    ? codexExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage)
+    ? codexExecutor(messages, invocationId, options?.tools, onUsage, providerContext(options?.signal, options?.modelId))
     : provider === "claude-code"
       ? claudeExecutor(messages, invocationId, onUsage, options?.mcpServerUrl)
       : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage);
@@ -352,6 +356,13 @@ export async function runRoutedProviderText(provider: RoutedProvider, messages: 
       options?.onTextDelta?.(event.textDelta, text);
     }
   }
-  await result.response;
+  const settled = await result.response;
+  if (provider === "codex") {
+    const authoritative = belmontTextFromResponse(settled);
+    if (authoritative != null && authoritative !== text) {
+      text = authoritative;
+      options?.onTextDelta?.("", text);
+    }
+  }
   return text;
 }

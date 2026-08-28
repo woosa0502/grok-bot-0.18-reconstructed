@@ -26,7 +26,11 @@
     "verify": "node scripts/verify.mjs",
     "wsl:setup": "node scripts/setup-wsl.mjs",
     "wsl:start": "node scripts/run-wsl.mjs",
-    "wsl:cdp": "node scripts/belmont-cdp.mjs"
+    "wsl:cdp": "node scripts/belmont-cdp.mjs",
+    "codex:auth:status": "node scripts/pi-codex-auth.mjs status",
+    "codex:auth:login": "node scripts/pi-codex-auth.mjs login",
+    "codex:auth:logout": "node scripts/pi-codex-auth.mjs logout",
+    "codex:models": "node scripts/pi-codex-auth.mjs models"
   },
   "devDependencies": {
     "@electron/asar": "4.2.1",
@@ -128,7 +132,9 @@
     "web-tree-sitter": "0.21.0",
     "ws": "8.20.0",
     "zod": "^3.25.76",
-    "zod-to-json-schema": "3.24.5"
+    "zod-to-json-schema": "3.24.5",
+    "@earendil-works/pi-ai": "0.84.3",
+    "@earendil-works/pi-coding-agent": "0.84.3"
   },
   "overrides": {
     "node-addon-api": "8.5.0",

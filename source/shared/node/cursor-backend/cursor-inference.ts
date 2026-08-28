@@ -187,7 +187,7 @@ export function createCursorInferencePromptSession(options: Omit<SandInferenceOp
 }) {
   const settingsPath = join(getSandRootDir(), "settings.json");
   const routedProvider = new SandSettingsStore(settingsPath).getInferenceProvider();
-  if (routedProvider !== "cursor") return createProviderPromptSession(routedProvider);
+  if (routedProvider !== "cursor") return createProviderPromptSession(routedProvider, options.requestedModel.modelId);
   const client = createSandCursorBackendClient(InferenceService, options);
   return createProtoSessionProvider(client, options.requestedModel, undefined, options.inferenceReason).getSession(imageResizingMiddleware);
 }

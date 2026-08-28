@@ -35,7 +35,7 @@ test("default packaging keeps the polished checksum-pinned renderer", async () =
   assert.match(source, /await buildFidelityReconstructedAsar\(\)/);
 });
 
-test("Router settings use the trusted backend and display recorded inference usage", async () => {
+test("Router settings use the trusted backend and Pi-owned Codex runtime", async () => {
   const rendererPatch = await readFile(path.join(repoRoot, "scripts", "lib", "router-renderer-patch.mjs"), "utf8");
   const preload = await readFile(path.join(repoRoot, "source", "electron-preload", "preload.ts"), "utf8");
   const mainEdge = await readFile(path.join(repoRoot, "source", "electron-main", "main-edge.ts"), "utf8");
@@ -43,7 +43,9 @@ test("Router settings use the trusted backend and display recorded inference usa
   const cursorSession = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "cursor-session.ts"), "utf8");
   const cursorBackend = await readFile(path.join(repoRoot, "source", "shared", "node", "cursor-backend", "cursor-inference.ts"), "utf8");
   const providers = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "provider-session.ts"), "utf8");
-  const codexDirect = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "codex-direct-responses.ts"), "utf8");
+  const piRuntime = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "pi-codex-runtime.ts"), "utf8");
+  const piProjection = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "pi-codex-projection.ts"), "utf8");
+  const piCredentials = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "pi-codex-credential-store.ts"), "utf8");
   const turnShell = await readFile(path.join(repoRoot, "source", "host", "runner", "turn-run-shell.ts"), "utf8");
   const coordinator = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "inference-router.ts"), "utf8");
   const coordinatorMain = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "main.ts"), "utf8");
@@ -81,14 +83,19 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(inference, /recordInferenceUsage\(provider/);
   assert.match(inference, /routerSettings\.getInferenceProvider\(\)/);
   assert.match(inference, /typeof extendedUsage\.then === "function"/);
-  assert.match(inference, /createProviderPromptSession\(provider\)/);
-  assert.match(providers, /https:\/\/chatgpt\.com\/backend-api\/codex/);
-  assert.match(providers, /headers\.set\("ChatGPT-Account-Id", credentials\.accountId\)/);
-  assert.match(providers, /streamCodexDirectResponses/);
-  assert.doesNotMatch(providers, /provider\.responses\(configuredCodexModel\(\)\)/);
-  assert.match(codexDirect, /store: false/);
-  assert.match(codexDirect, /response\.output_text\.delta/);
-  assert.match(codexDirect, /type: "function_call_output"/);
+  assert.match(inference, /createProviderPromptSession\(provider, sessionOptions\?\.modelId\)/);
+  assert.match(providers, /import\(PI_RUNTIME_SPECIFIER\)/);
+  assert.doesNotMatch(providers, /chatgpt\.com\/backend-api\/codex|auth\.openai\.com\/oauth\/token/);
+  assert.match(providers, /createRoutedProviderSessionState\(this\.#messages, this\.modelId\)/);
+  assert.match(piRuntime, /ModelRuntime\.create\(\{/);
+  assert.match(piRuntime, /streamSimple\(resolved\.model, context/);
+  assert.match(piRuntime, /getProviderAuthStatus\(CODEX_PROVIDER\)/);
+  assert.doesNotMatch(piRuntime, /executeTool/);
+  assert.match(piProjection, /ArrayBuffer\.isView\(value\)/);
+  assert.match(piProjection, /PiStreamMaterializer/);
+  assert.match(piProjection, /event\.type === "toolcall_end"/);
+  assert.match(piCredentials, /implements CredentialStore/);
+  assert.match(piCredentials, /migrateLegacyCodexCredential/);
   assert.match(providers, /parameters: jsonSchema\(parameters\)/);
   assert.match(providers, /You are Grok Bot, a warm, concise desktop assistant/);
   assert.match(providers, /mcpServers: \{ grok_bot_plugins:/);
@@ -97,13 +104,11 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(providers, /tools: mcpServerUrl == null \? \[\] : \["mcp__grok_bot_plugins__\*"\]/);
   assert.match(providers, /https:\/\/openrouter\.ai\/api\/v1/);
   assert.match(providers, /OpenRouter needs OPENROUTER_API_KEY/);
-  assert.match(cursorSession, /routedProvider !== "cursor"/);
-  assert.match(cursorSession, /createProviderPromptSession\(routedProvider\)/);
-  assert.match(cursorBackend, /routedProvider !== "cursor"/);
-  assert.match(cursorBackend, /createProviderPromptSession\(routedProvider\)/);
+  assert.match(cursorSession, /createProviderPromptSession\(routedProvider, sessionOptions\?\.modelId\)/);
+  assert.match(cursorBackend, /createProviderPromptSession\(routedProvider, options\.requestedModel\.modelId\)/);
   assert.doesNotMatch(rendererPatch, /ANTHROPIC_API_KEY|OPENAI_API_KEY/);
   assert.match(turnShell, /inferenceProvider === "cursor"/);
-  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider\)/);
+  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, input\.modelId\)/);
   // The coordinator's own per-provider local turn loop (execute), activity pulse
   // (beginActivity), routed-MCP bridge wiring, and JSON-transcript merge were unreachable —
   // non-cursor providers run their turns on the full host runner and cursor routes there too —

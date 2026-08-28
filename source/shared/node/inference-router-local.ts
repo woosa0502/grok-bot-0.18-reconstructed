@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 export interface LocalInferenceCliStatus {
   readonly installed: boolean;
@@ -27,12 +27,41 @@ export function resolveClaudeCodeCliPath(): string | null {
   return firstExecutable([process.env.CLAUDE_CODE_PATH, join(home, ".local", "bin", "claude"), join(home, ".claude", "local", "claude"), ...pathCandidates("claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]);
 }
 
-function hasUsableCodexLogin(path: string): boolean {
+function privateJson(path: string): unknown | null {
   try {
     const stat = lstatSync(path);
-    if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) return false;
-    return isUsableCodexChatGptAuthDocument(JSON.parse(readFileSync(path, "utf8")));
-  } catch { return false; }
+    if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) return null;
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function hasUsableCodexLogin(path: string): boolean {
+  return isUsableCodexChatGptAuthDocument(privateJson(path));
+}
+
+function hasUsablePiCodexLogin(path: string): boolean {
+  const raw = privateJson(path);
+  if (typeof raw !== "object" || raw == null || Array.isArray(raw)) return false;
+  const credential = (raw as Record<string, unknown>)["openai-codex"];
+  if (typeof credential !== "object" || credential == null || Array.isArray(credential)) return false;
+  const parsed = credential as Record<string, unknown>;
+  return parsed.type === "oauth"
+    && typeof parsed.access === "string" && parsed.access.length > 0
+    && typeof parsed.refresh === "string" && parsed.refresh.length > 0
+    && typeof parsed.expires === "number" && Number.isFinite(parsed.expires);
+}
+
+function piCodexAuthCandidates(home: string): string[] {
+  const explicit = process.env.SAND_PI_CODEX_AUTH_PATH?.trim();
+  const dataRoot = process.env.SAND_DATA_ROOT?.trim();
+  return [
+    ...(explicit == null || explicit.length === 0 ? [] : [resolve(explicit)]),
+    ...(dataRoot == null || dataRoot.length === 0 ? [] : [join(resolve(dataRoot), "pi-auth.json")]),
+    join(home, ".grokbot", "pi-auth.json"),
+    join(home, ".cursor", "sand", "pi-auth.json"),
+  ];
 }
 
 export function isUsableCodexChatGptAuthDocument(raw: unknown): boolean {
@@ -52,13 +81,22 @@ export function getLocalInferenceCliStatus(): { readonly codex: LocalInferenceCl
   const home = homedir();
   const codexPath = resolveCodexCliPath();
   const claudePath = resolveClaudeCodeCliPath();
-  const codexAuthPath = join(process.env.CODEX_HOME?.trim() || join(home, ".codex"), "auth.json");
-  const hasCodexAuthFile = existsSync(codexAuthPath);
-  const hasCodexLogin = hasUsableCodexLogin(codexAuthPath);
+  const legacyCodexAuthPath = join(process.env.CODEX_HOME?.trim() || join(home, ".codex"), "auth.json");
+  const piAuthPaths = piCodexAuthCandidates(home);
+  const piConfigured = piAuthPaths.some(hasUsablePiCodexLogin);
+  const migratableLegacyLogin = hasUsableCodexLogin(legacyCodexAuthPath);
   return {
-    // Codex inference is a Grok Bot-owned HTTP transport authenticated by the
-    // existing Codex login. The CLI binary is not in the request path.
-    codex: { installed: hasCodexAuthFile, authenticated: hasCodexLogin, executablePath: codexPath },
-    "claude-code": { installed: claudePath != null, authenticated: existsSync(join(home, ".claude", ".credentials.json")) || (process.env.ANTHROPIC_API_KEY?.length ?? 0) > 0, executablePath: claudePath },
+    // Pi owns Codex auth and transport. A private legacy Codex login remains a
+    // one-time migration source; the CLI binary is optional after migration.
+    codex: {
+      installed: piConfigured || migratableLegacyLogin || codexPath != null,
+      authenticated: piConfigured || migratableLegacyLogin,
+      executablePath: codexPath,
+    },
+    "claude-code": {
+      installed: claudePath != null,
+      authenticated: existsSync(join(home, ".claude", ".credentials.json")) || (process.env.ANTHROPIC_API_KEY?.length ?? 0) > 0,
+      executablePath: claudePath,
+    },
   };
 }
