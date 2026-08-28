@@ -2498,11 +2498,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         subagentConfigs: multitaskEnabled ? [createSandExecutorSubagentConfig()] : [],
       };
       const staticModelId = process.env.SAND_AGENT_MODEL ?? DEFAULT_SAND_MODEL;
-      const lazyToolHost = () => {
+      const lazyToolHost = (isSubagentRunner: boolean) => {
         const host = createProductionTurnToolsetHost({
           turn: baseTurn,
           factoryProvider: createTurnToolsetFactoryProvider(hostDependencies()),
-          isSubagentRunner: false,
+          // The toolset host is what buildTurnTools consults to HARD-gate the parent-only tool
+          // surface (Task, multitask, MCP-management, agent-management, subagentManagement,
+          // screenshot). It must reflect the per-turn subagent flag, not a constant. (F-003)
+          isSubagentRunner,
           isSharedRoomRunner: isSharedRoomTurn,
           isBoxScopedSubagent: false,
           isComputerUseSubagent: false,
@@ -2619,13 +2622,23 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   },
                 }),
           };
+          // A subagent turn runs under its own conversation id (the child threads it through
+          // runOptions.conversationId; the parent passes none and keeps session.id). Derive the
+          // subagent flag from that so the child's turn — which reuses this same production shell —
+          // reports isSubagentRunner=true. buildTurnTools then HARD-gates the parent-only surface
+          // (Task nesting, multitask, MCP-management, agent-management: createAgent/updateAgent/
+          // updateState/sendToAgent, subagentManagement, screenshot/requestBoxHelp) that a prompt
+          // boundary alone could not enforce, while the child keeps its work tools (shell/read/
+          // write/grep/glob/web/mcp-call). subagentConfigs is always a defined array here, so the
+          // subagent does not fall into buildTurnTools' empty-fence. (F-003)
+          const isSubagentTurn = turnConversationId !== session.id;
           return {
             context,
             conversationId: turnConversationId,
             requestId,
             inference: createTypedInferenceOwner(extensions.api("inference").port),
             onRequestId: requestIdForwarder(hooks, "agent"),
-            isSubagentRunner: false,
+            isSubagentRunner: isSubagentTurn,
             isSilenceAllowed: runOptions.isSilenceAllowed === true,
             ...(runOptions.ackToken === undefined
               ? {}
@@ -2769,14 +2782,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             blobStore: getAgentBlobStore(
               session.agentStore as Parameters<typeof getAgentBlobStore>[0],
             ),
-            toolHost: lazyToolHost(),
+            toolHost: lazyToolHost(isSubagentTurn),
             turn,
             staticConfig: {
               modelId: staticModelId,
               agentTokenLimit: 200_000,
               conversationId: turnConversationId,
               isBoxScopedSubagent: false,
-              isSubagentRunner: false,
+              isSubagentRunner: isSubagentTurn,
               isSharedRoomRunner: isSharedRoomTurn,
               sandSendMessageDeliveryOwed: method(experiments, "isSendMessageDeliveryOwedEnabled")?.() ?? false,
               systemPromptGenerator: () => productionSystemPromptAssembly?.getSystemPrompt() ?? DEFAULT_SAND_SYSTEM_PROMPT,
