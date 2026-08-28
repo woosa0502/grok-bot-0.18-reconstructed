@@ -327,7 +327,17 @@ Response to the findings above. Commits: `eb5890b`, `23f1b09`, `4c6926d`,
   populated by scanning the box `.cursor/hooks.json` (`4bd6c89`); the step fires when
   the model emits reasoning chunks (the current Codex path does not surface those, so
   it is untestable here but no longer blocked on missing config).
-- **Still a major piece — child-owned isolation:** the child still binds the parent's
+- **Subagent -> parent hooks (done):** subagentStart/subagentStop now fire around
+  the foreground child run, routed through the remote-box accessor (`9b547a8`);
+  verified SUBSTART/SUBSTOP markers with the child result intact.
+- **Cloud isolation (out of scope):** the original per-subagent box-container
+  isolation was a cloud-only mechanism whose binary is not part of the recovery, so
+  a separate local child DB is not reconstructed.
+- **Still coupled to the shared shell:** the child reuses the parent's
+  productionTurnRunShell, so `isSubagentRunner:true` (nested-Task enforcement),
+  child-scoped cancellation, and resumable child state all require building a
+  child-owned shell/owner input. Deferred to focused work rather than a rushed change
+  that risks the working foreground path. the child still binds the parent's
   session store/memory via `bindSessionOwnedRunner` and reuses the parent's
   production turn-run shell, so a child-owned store/checkpoint, `isSubagentRunner:true`
   (nested-Task enforcement), cancellation targeting the child, resumable child state,
