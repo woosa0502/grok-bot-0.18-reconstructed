@@ -601,22 +601,30 @@ export async function buildProductionHostIfSupplied({ outputRoot, manifestPath =
   }
   const outfile = path.join(outputRoot, "dist/host/host-main.cjs");
   await mkdir(path.dirname(outfile), { recursive: true });
-  // Optional transitive native/third-party deps that `ws` (via the Pi Codex runtime, @earendil-works/pi-ai)
-  // and `debug`/`chalk` try to require but fall back to pure-JS when absent. They are legitimately left
-  // external and are simply not installed at runtime, so declare them alongside the manifest bindings.
-  const optionalTransitiveExternals = ["bufferutil", "utf-8-validate", "supports-color"];
+  // The Pi Codex packages load their OAuth-provider and config modules through computed dynamic
+  // imports (import(specifier)) that esbuild cannot statically bundle, so they must resolve from
+  // node_modules at runtime; the host runs with cwd=repoRoot which has them. Keep them external
+  // (and their optional transitive native/JS-fallback deps ws->bufferutil/utf-8-validate,
+  // debug/chalk->supports-color), and declare them alongside the manifest bindings. (Pi integration)
+  const piRuntimeExternals = [
+    "@earendil-works/pi-ai",
+    "@earendil-works/pi-coding-agent",
+    "bufferutil",
+    "utf-8-validate",
+    "supports-color",
+  ];
   const external = [...new Set([
     ...validated.bindings.filter(binding => !localSourceClassifications.has(binding.classification)).map(binding => binding.resolvedModule),
-    ...optionalTransitiveExternals,
+    ...piRuntimeExternals,
   ])];
   const result = await esbuild({
     absWorkingDir: repoRoot,
-    // CJS output has no native import.meta.url; bundled deps (e.g. @earendil-works/pi-coding-agent's
-    // config.js) call fileURLToPath(import.meta.url) at module init and would crash on undefined.
-    // Point it at the host bundle's own file URL so those calls resolve to a real path.
-    banner: { js: `// Deterministic clean-source production host; bindings ${validated.manifestSha256}\nconst import_meta_url = require("node:url").pathToFileURL(__filename).href;` },
+    // CJS output has no native import.meta.url; bundled deps call fileURLToPath(import.meta.url) at
+    // module init and would crash on undefined. Provide it exactly as clean-build.mjs's nodeBanner
+    // does for the other clean-source bundles, so the host bundle stays consistent.
+    banner: { js: `const __cleanImportMetaUrl = require("node:url").pathToFileURL(__filename + ".bundled").href;\n// Deterministic clean-source production host; bindings ${validated.manifestSha256}` },
     bundle: true,
-    define: { "import.meta.url": "import_meta_url" },
+    define: { "import.meta.url": "__cleanImportMetaUrl" },
     entryNames: "host-main",
     external,
     format: "cjs",
