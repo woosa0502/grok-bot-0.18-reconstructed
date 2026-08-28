@@ -471,6 +471,36 @@ class BoxExecRuntime {
     throw new PathRejectedError(`Resolved path escapes configured roots: ${requested}`);
   }
 
+  // Canonicalize `target` and assert the canonical path stays within the allowed
+  // roots. The final segment may not exist yet (write/mkdir), so the deepest
+  // existing ancestor is realpath'd and the non-existent tail re-appended — this
+  // makes a symlinked parent directory unable to redirect a write/delete/list
+  // outside the workspace. EACCES/EPERM (an inaccessible host dir, e.g. a box
+  // virtual path) surfaces to the caller rather than being treated as an escape.
+  async #assertCanonicalWithinRoots(target: string, requested: string): Promise<void> {
+    let probe = path.resolve(target);
+    for (let i = 0; i < 64; i += 1) {
+      let canonicalProbe: string;
+      try {
+        canonicalProbe = await realpath(probe);
+      } catch (error) {
+        const code = typeof error === "object" && error != null && "code" in error ? String((error as { code: unknown }).code) : undefined;
+        if (code === "ENOENT" || code === "ENOTDIR") {
+          const parent = path.dirname(probe);
+          if (parent === probe) break;
+          probe = parent;
+          continue;
+        }
+        throw error;
+      }
+      const tail = path.relative(probe, path.resolve(target));
+      this.assertRealPathAllowed(tail === "" ? canonicalProbe : path.join(canonicalProbe, tail), requested);
+      return;
+    }
+    // No existing ancestor was found; fall back to the lexical resolution.
+    this.assertRealPathAllowed(path.resolve(target), requested);
+  }
+
   // Hook config lives in the workspace's .cursor/hooks.json — the same shape the
   // repo's own validator (packages/hooks/validators/hooksConfig.ts) accepts:
   //   { version, hooks: { <step>: [ { command, matcher?, timeout?, failClosed? }
@@ -542,8 +572,12 @@ class BoxExecRuntime {
     // `matcher` is a regex tested against the tool name; "", "*", or absent means
     // "all tools". Only command hooks whose matcher matches this call are run.
     const matcherMatches = (matcher: unknown): boolean => {
-      if (matcher === undefined || matcher === "" || matcher === "*" || typeof matcher !== "string") return true;
-      try { return new RegExp(matcher).test(toolName); } catch { return true; }
+      if (matcher === undefined || matcher === "" || matcher === "*") return true;
+      if (typeof matcher !== "string") return true;
+      // An invalid matcher regex is a config error; treat it as matching NOTHING
+      // (fail safe) rather than every tool, and log it so it is diagnosable.
+      try { return new RegExp(matcher).test(toolName); }
+      catch (error) { console.error(`[box-hooks] invalid matcher "${matcher}" for step ${step}, skipping: ${error instanceof Error ? error.message : String(error)}`); return false; }
     };
     const scripts = (await this.#readHooksConfig())[step] ?? [];
     const commands = scripts.filter(entry => (entry.type === undefined || entry.type === "command") && typeof entry.command === "string" && matcherMatches(entry.matcher));
@@ -572,47 +606,47 @@ class BoxExecRuntime {
     };
     const inputJson = JSON.stringify(input);
 
-    let stdout = "", exitCode = 0, failClosedDeny = false;
+    // Compose the hook scripts deterministically: run them in order, MERGE each
+    // one's additionalContext, and let the FIRST deny (exit 2, a failClosed
+    // non-zero exit, or an explicit block/deny permission) short-circuit the rest.
+    // A fail-open non-zero exit is non-blocking and does NOT stop later hooks.
+    const pickFrom = (parsed: Record<string, unknown>, ...keys: readonly string[]): string | undefined => {
+      for (const key of keys) { const v = parsed[key]; if (typeof v === "string" && v.length > 0) return v; }
+      return undefined;
+    };
+    const contexts: string[] = [];
+    let permission: string | undefined;
+    let userMessage: string | undefined;
+    let agentMessage: string | undefined;
+    let followupMessage: string | undefined;
+    let updatedInput: string | undefined;
     for (const entry of commands) {
       const timeoutMs = typeof entry.timeout === "number" && entry.timeout > 0
         ? Math.min(entry.timeout * 1000, 3_600_000)
         : DEFAULT_HOOK_TIMEOUT_MS;
       const r = await this.#runHookCommand(entry.command!, inputJson, timeoutMs, signal);
-      stdout = r.stdout.trim();
-      exitCode = r.exitCode;
-      if (exitCode !== 0) {
-        // A non-zero hook that opted into failClosed denies the action; otherwise
-        // the failure is non-blocking (matching Claude Code's default semantics).
-        if (entry.failClosed === true) failClosedDeny = true;
-        break;
-      }
+      const out = r.stdout.trim();
+      let parsed: Record<string, unknown> = {};
+      try { parsed = out ? JSON.parse(out) as Record<string, unknown> : {}; }
+      catch { parsed = out ? { additional_context: out } : {}; }
+      const hookOut = parsed.hookSpecificOutput as Record<string, unknown> | undefined;
+      const ac = pickFrom(parsed, "additional_context", "additionalContext", "system_message", "systemMessage")
+        ?? (typeof hookOut?.additionalContext === "string" ? hookOut.additionalContext : undefined);
+      if (ac !== undefined) contexts.push(ac);
+      userMessage ??= pickFrom(parsed, "user_message", "userMessage");
+      agentMessage ??= pickFrom(parsed, "agent_message", "agentMessage");
+      followupMessage ??= pickFrom(parsed, "followup_message", "followupMessage");
+      const rawUpdated = parsed.updated_input ?? parsed.updatedInput;
+      if (updatedInput === undefined && rawUpdated != null) updatedInput = typeof rawUpdated === "string" ? rawUpdated : JSON.stringify(rawUpdated);
+      const rawPermission = pickFrom(parsed, "permission", "decision")
+        ?? (typeof hookOut?.permissionDecision === "string" ? hookOut.permissionDecision : undefined);
+      const deniesHere = r.exitCode === 2
+        || (entry.failClosed === true && r.exitCode !== 0)
+        || rawPermission === "block" || rawPermission === "deny";
+      if (deniesHere) { permission = "deny"; break; } // deny short-circuits remaining hooks
+      if (permission === undefined && (rawPermission === "ask" || rawPermission === "allow")) permission = rawPermission;
     }
-
-    let parsed: Record<string, unknown> = {};
-    try { parsed = stdout ? JSON.parse(stdout) as Record<string, unknown> : {}; }
-    catch { parsed = stdout ? { additional_context: stdout } : {}; }
-    const hookOut = parsed.hookSpecificOutput as Record<string, unknown> | undefined;
-    // Hook script JSON uses snake_case (the repo validators' contract); camelCase
-    // is accepted as a fallback for hand-written scripts.
-    const pick = (...keys: readonly string[]): string | undefined => {
-      for (const key of keys) { const v = parsed[key]; if (typeof v === "string" && v.length > 0) return v; }
-      return undefined;
-    };
-    const additionalContext = pick("additional_context", "additionalContext", "system_message", "systemMessage")
-      ?? (typeof hookOut?.additionalContext === "string" ? hookOut.additionalContext : undefined);
-    const userMessage = pick("user_message", "userMessage");
-    const agentMessage = pick("agent_message", "agentMessage");
-    const followupMessage = pick("followup_message", "followupMessage");
-    const rawPermission = pick("permission", "decision")
-      ?? (typeof hookOut?.permissionDecision === "string" ? hookOut.permissionDecision : undefined);
-    // exit code 2 blocks; a failClosed non-zero hook also denies; explicit "block"/"deny" denies.
-    const permission = exitCode === 2 || failClosedDeny
-      ? "deny"
-      : rawPermission === "block" ? "deny" : rawPermission;
-    const updatedInputRaw = parsed.updated_input ?? parsed.updatedInput;
-    const updatedInput = updatedInputRaw == null
-      ? undefined
-      : typeof updatedInputRaw === "string" ? updatedInputRaw : JSON.stringify(updatedInputRaw);
+    const additionalContext = contexts.length > 0 ? contexts.join("\n") : undefined;
 
     let response: ExecuteHookResponse["response"];
     switch (step) {
@@ -648,6 +682,7 @@ class BoxExecRuntime {
         const value = new SubagentStartRequestResponse();
         if (permission !== undefined) value.permission = permission;
         if (additionalContext !== undefined) value.additionalContext = additionalContext;
+        if (userMessage !== undefined) value.userMessage = userMessage;
         response = { case: "subagentStart", value };
         break;
       }
@@ -776,6 +811,7 @@ class BoxExecRuntime {
     let root: string;
     try {
       root = this.resolvePath(args.path);
+      await this.#assertCanonicalWithinRoots(root, args.path);
     } catch (error) {
       if (error instanceof PathRejectedError) return new LsResult({ result: { case: "rejected", value: new LsRejected({ path: args.path, reason: error.message }) } });
       return new LsResult({ result: { case: "error", value: new LsError({ path: args.path, error: errorText(error) }) } });
@@ -799,6 +835,9 @@ class BoxExecRuntime {
           if (entry.isDirectory()) {
             const child = await build(path.join(dir, entry.name), depth + 1);
             node.childrenDirs.push(child);
+            // numFiles is rendered as "files in subtree", so roll the child's
+            // subtree file count up into this node (not just direct children).
+            node.numFiles += child.numFiles;
             for (const [ext, count] of Object.entries(child.fullSubtreeExtensionCounts)) {
               node.fullSubtreeExtensionCounts[ext] = (node.fullSubtreeExtensionCounts[ext] ?? 0) + count;
             }
@@ -827,6 +866,7 @@ class BoxExecRuntime {
     let target: string;
     try {
       target = this.resolvePath(args.path);
+      await this.#assertCanonicalWithinRoots(target, args.path);
     } catch (error) {
       if (error instanceof PathRejectedError) return new DeleteResult({ result: { case: "rejected", value: new DeleteRejected({ path: args.path, reason: error.message }) } });
       return new DeleteResult({ result: { case: "error", value: new DeleteError({ path: args.path, error: errorText(error) }) } });
@@ -869,48 +909,66 @@ class BoxExecRuntime {
     // rg searches the absolute target (file or directory); spawn from a real directory so a
     // single-file target does not fail with ENOTDIR.
     const spawnCwd = this.resolvePath("/workspace");
-    const stdout = await new Promise<string>((resolve) => {
-      const child = spawn("rg", rgArgs, { cwd: spawnCwd, env: this.#environment });
-      let out = "";
+    const outcome = await new Promise<{ stdout: string; stderr: string; exitCode: number | null; spawnError?: string; aborted: boolean }>((resolve) => {
+      let child: ChildProcessWithoutNullStreams;
+      try { child = spawn("rg", rgArgs, { cwd: spawnCwd, env: this.#environment }); }
+      catch (error) { resolve({ stdout: "", stderr: "", exitCode: null, spawnError: errorText(error), aborted: false }); return; }
+      let out = "", err = "";
       child.stdout.on("data", data => { out += String(data); });
-      child.stderr.on("data", () => {});
+      child.stderr.on("data", data => { err += String(data); });
       const abort = () => this.kill(child);
       signal.addEventListener("abort", abort, { once: true });
-      child.once("close", () => { signal.removeEventListener("abort", abort); resolve(out); });
-      child.once("error", () => resolve(out));
+      child.once("close", code => { signal.removeEventListener("abort", abort); resolve({ stdout: out, stderr: err, exitCode: code, aborted: signal.aborted }); });
+      child.once("error", error => { signal.removeEventListener("abort", abort); resolve({ stdout: out, stderr: err, exitCode: null, spawnError: errorText(error), aborted: signal.aborted }); });
     });
+    // Distinguish "no matches" from "search failed": ripgrep exits 0 (matches),
+    // 1 (no matches — a legitimate empty result), and >=2 on error (e.g. an
+    // invalid regex). A spawn error or abort is likewise a failure, not empty.
+    if (outcome.spawnError !== undefined) {
+      return new GrepResult({ result: { case: "error", value: new GrepError({ error: `ripgrep failed to start: ${outcome.spawnError}` }) } });
+    }
+    if (outcome.aborted) {
+      return new GrepResult({ result: { case: "error", value: new GrepError({ error: "grep was aborted" }) } });
+    }
+    if (outcome.exitCode !== 0 && outcome.exitCode !== 1) {
+      const detail = outcome.stderr.trim();
+      return new GrepResult({ result: { case: "error", value: new GrepError({ error: `ripgrep exited ${outcome.exitCode ?? "with a signal"}${detail.length > 0 ? `: ${detail}` : ""}` }) } });
+    }
     const byFile = new Map<string, GrepContentMatch[]>();
-    let totalMatchedLines = 0;
+    let totalSeen = 0;   // total match events emitted by ripgrep (post-offset)
+    let retained = 0;    // match lines kept within the head limit
     const offset = Math.max(0, args.offset ?? 0);
     let matchIndex = 0;
-    for (const line of stdout.split("\n")) {
+    for (const line of outcome.stdout.split("\n")) {
       if (line.length === 0) continue;
       let event: { type?: string; data?: { path?: { text?: string }; line_number?: number; lines?: { text?: string } } };
       try { event = JSON.parse(line); } catch { continue; }
-      if (event.type !== "match") continue;
+      if (event.type !== "match") continue; // context/begin/end/summary events: not counted as matches
       if (matchIndex++ < offset) continue;
+      totalSeen += 1;
       const file = event.data?.path?.text ?? "";
       const lineNumber = event.data?.line_number ?? 0;
       const content = (event.data?.lines?.text ?? "").replace(/\n$/, "");
       const list = byFile.get(file) ?? [];
       if (list.length === 0) byFile.set(file, list);
-      if (totalMatchedLines < headLimit) {
+      if (retained < headLimit) {
         list.push(new GrepContentMatch({ lineNumber, content: content.slice(0, 2000), contentTruncated: content.length > 2000 }));
-        totalMatchedLines += 1;
+        retained += 1;
       }
     }
     const outputMode = args.outputMode ?? "content";
-    const clientTruncated = totalMatchedLines >= headLimit;
+    // Truncated only when there were genuinely more matches than we retained.
+    const clientTruncated = totalSeen > retained;
     let union: GrepUnionResult;
     if (outputMode === "files_with_matches" || outputMode === "files") {
       const files = [...byFile.keys()];
       union = new GrepUnionResult({ result: { case: "files", value: new GrepFilesResult({ files, totalFiles: files.length, clientTruncated, ripgrepTruncated: false }) } });
     } else if (outputMode === "count") {
       const counts = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileCount({ file, count: fileMatches.length }));
-      union = new GrepUnionResult({ result: { case: "count", value: new GrepCountResult({ counts, totalFiles: counts.length, totalMatches: totalMatchedLines, clientTruncated }) } });
+      union = new GrepUnionResult({ result: { case: "count", value: new GrepCountResult({ counts, totalFiles: counts.length, totalMatches: totalSeen, clientTruncated }) } });
     } else {
       const matches = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileMatch({ file, matches: fileMatches }));
-      union = new GrepUnionResult({ result: { case: "content", value: new GrepContentResult({ matches, totalLines: totalMatchedLines, totalMatchedLines, clientTruncated, ripgrepTruncated: false }) } });
+      union = new GrepUnionResult({ result: { case: "content", value: new GrepContentResult({ matches, totalLines: totalSeen, totalMatchedLines: totalSeen, clientTruncated, ripgrepTruncated: false }) } });
     }
     return new GrepResult({ result: { case: "success", value: new GrepSuccess({ pattern: args.pattern, path: cwd, outputMode, workspaceResults: { workspace: union } }) } });
   }
@@ -919,6 +977,7 @@ class BoxExecRuntime {
     let target: string;
     try {
       target = this.resolvePath(args.path);
+      await this.#assertCanonicalWithinRoots(target, args.path);
     } catch (error) {
       return new WriteResult({ result: { case: "error", value: new WriteError({ path: args.path, error: errorText(error) }) } });
     }

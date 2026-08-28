@@ -64,6 +64,7 @@ export class McpStdioClient {
   #serverInfoName = "";
   #closed = false;
   #startError: string | undefined;
+  #stderrTail = "";
 
   constructor(config: McpStdioServerConfig) {
     this.#config = config;
@@ -103,6 +104,10 @@ export class McpStdioClient {
     this.#child = child;
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", chunk => this.#onData(chunk as string));
+    // Drain stderr so a chatty server cannot fill its stderr pipe and block; keep
+    // only a bounded tail for diagnostics.
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", chunk => { this.#stderrTail = (this.#stderrTail + String(chunk)).slice(-4096); });
     child.on("error", error => this.#fail(`spawn failed: ${error instanceof Error ? error.message : String(error)}`));
     child.on("close", () => this.#fail("server process exited"));
 
@@ -131,12 +136,16 @@ export class McpStdioClient {
     const content: McpCallContentItem[] = [];
     if (Array.isArray(raw?.content)) {
       for (const item of raw!.content) {
-        if (item?.type === "image" || item?.type === "audio") {
+        if (item?.type === "image") {
           content.push({
             type: "image",
             ...(typeof item.data === "string" ? { data: item.data } : {}),
             ...(typeof item.mimeType === "string" ? { mimeType: item.mimeType } : {}),
           });
+        } else if (item?.type === "audio") {
+          // The box result union has no audio variant; surface a text marker
+          // rather than mislabeling audio bytes as an image.
+          content.push({ type: "text", text: `[audio content${typeof item.mimeType === "string" ? ` ${item.mimeType}` : ""}]` });
         } else if (item?.type === "resource" && item.resource != null && typeof item.resource === "object") {
           // Embedded resource: surface its text if present, else a URI reference.
           const resource = item.resource as { text?: unknown; uri?: unknown };
@@ -162,11 +171,13 @@ export class McpStdioClient {
       pending.reject(new Error("client stopped"));
     }
     this.#pending.clear();
-    try {
-      this.#child?.kill("SIGTERM");
-    } catch {
-      // best effort
-    }
+    const child = this.#child;
+    if (child === undefined) return;
+    try { child.kill("SIGTERM"); } catch { /* already gone */ }
+    // Force-kill if the server ignores SIGTERM.
+    const forceTimer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } }, 2_000);
+    if (typeof forceTimer.unref === "function") forceTimer.unref();
+    child.once("close", () => clearTimeout(forceTimer));
   }
 
   #onData(chunk: string): void {
@@ -207,7 +218,12 @@ export class McpStdioClient {
         if (signal !== undefined) signal.removeEventListener("abort", onAbort);
         reject(error);
       };
-      const onAbort = (): void => settleReject(new Error(`MCP request '${method}' aborted`));
+      const onAbort = (): void => {
+        // Tell the server to cancel the in-flight request (MCP cancellation
+        // notification) before we reject locally, so it can stop work.
+        this.#notify("notifications/cancelled", { requestId: id, reason: "client aborted" });
+        settleReject(new Error(`MCP request '${method}' aborted`));
+      };
       const timer = setTimeout(() => settleReject(new Error(`MCP request '${method}' timed out`)), timeoutMs);
       this.#pending.set(id, {
         resolve: value => { if (signal !== undefined) signal.removeEventListener("abort", onAbort); resolve(value); },

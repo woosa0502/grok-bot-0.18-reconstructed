@@ -75,6 +75,12 @@ export function createEditTool(
     const parsed = parameters.safeParse(parsedJson);
     if (!parsed.success) throw new ToolCallArgParseError(`Invalid arguments: ${parsed.error.message}`);
     const { path: filePath, old_string: oldString, new_string: newString, replace_all: replaceAll } = parsed.data;
+    // An empty old_string has no unique anchor: with replace_all it would splice
+    // new_string between every character, and occurrence counts are meaningless.
+    // Direct create/overwrite/prepend use cases to the write tool instead.
+    if (oldString.length === 0) {
+      return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: "old_string must not be empty. To create or overwrite a file, use the write tool." }) } });
+    }
     const editArgs = new EditArgs({ path: filePath, streamContent: newString });
     return interactionHandler.executeToolCall(
       span.ctx,

@@ -78,12 +78,25 @@ export function createGlobTool(
         // Search relative to workingDirectory (the box resolves it); do not pass the
         // virtual /workspace path as an rg argument — it does not exist on the host.
         // Mirror the original ripwalk: include hidden files and don't require a git repo for ignore handling.
-        const command = `rg --files --hidden --no-require-git -g ${singleQuote(pattern)} 2>/dev/null || true`;
+        // Do not mask failures: `rg --files -g <glob>` exits 0 when files match,
+        // 1 when nothing matches (a legitimate empty result), and >=2 on error
+        // (missing rg, invalid glob). Only exit 1 is an empty success — every
+        // other non-success is surfaced as an error so "no match" is never
+        // confused with "search failed".
+        const command = `rg --files --hidden --no-require-git -g ${singleQuote(pattern)}`;
         const shellResult = await shellExecutor.execute(ctx, new ShellArgs({ command, workingDirectory: dir, timeout: 30_000, toolCallId: meta.toolCallId }), { execId: meta.toolCallId });
-        if (shellResult.result.case !== "success" && shellResult.result.case !== "failure") {
-          return new GlobToolResult({ result: { case: "error", value: new GlobToolError({ error: `glob failed (${shellResult.result.case ?? "unknown"})` }) } });
+        const rc = shellResult.result;
+        let stdout: string;
+        if (rc.case === "success") {
+          stdout = rc.value.stdout;
+        } else if (rc.case === "failure" && rc.value.exitCode === 1 && rc.value.stderr.trim().length === 0 && !rc.value.aborted) {
+          stdout = ""; // ripgrep found no matching files
+        } else {
+          const detail = rc.case === "failure"
+            ? `exit ${rc.value.exitCode}${rc.value.stderr.trim().length > 0 ? `: ${rc.value.stderr.trim()}` : ""}${rc.value.aborted ? " (aborted)" : ""}`
+            : (rc.case ?? "unknown");
+          return new GlobToolResult({ result: { case: "error", value: new GlobToolError({ error: `glob failed (${detail})` }) } });
         }
-        const stdout = shellResult.result.value.stdout;
         const allFiles = stdout.split("\n").map(line => line.trim()).filter(line => line.length > 0);
         allFiles.sort((a, b) => a.localeCompare(b));
         const files = allFiles.slice(0, GLOB_MAX_FILES);
