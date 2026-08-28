@@ -65,6 +65,7 @@ import type {
 import { subagentExecutorResource } from "../packages/agent-exec/subagent.js";
 import { requestContextExecutorResource } from "../packages/agent-exec/request-context.js";
 import { subagentRegistryResource } from "../packages/agent/tools/subagent-registry.js";
+import { executeRemoteSubagentStartHook, executeRemoteSubagentStopHook } from "../packages/agent/tools/core/remote-hooks.js";
 import { smartModeClassifierExecutorResource } from "../packages/agent-exec/smart-mode-classifier.js";
 import { mcpExecutorResource, mcpStateExecutorResource } from "../packages/agent-exec/mcp.js";
 import { shellStreamExecutorResource } from "../packages/agent-exec/shell-stream.js";
@@ -2636,7 +2637,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             },
             createResourceAccessor: localProductionResourceAccessor,
             createRemoteBoxResourceAccessor: productionResourceAccessor,
-            createTurnLocalResourceProjectionInput: baseAccessor => {
+            createTurnLocalResourceProjectionInput: (baseAccessor, remoteBoxAccessor) => {
               const runner = builtRunner;
               if (runner === undefined) {
                 throw new TypeError("production turn resource runner is not bound");
@@ -2671,24 +2672,50 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 ownedRunners.add(child);
                 return {
                   run: async (prompt, options) => {
-                    const boundedPrompt = `${SAND_SUBAGENT_BOUNDARY_PROMPT}\n\n${prompt}`;
-                    const result = await child.run(boundedPrompt, {
-                      ...options,
-                      conversationId: agentId,
-                    } as Parameters<typeof child.run>[1]);
-                    // child.run delegates to the inherited production turn-run shell, whose
-                    // settle.buildResult returns { text, sentMessageCount, reacted, aborted, ... }.
-                    // Bind that to the SubagentRunResult { text, aborted } the caller expects.
-                    const text = result != null && typeof result === "object" ? Reflect.get(result, "text") : undefined;
-                    const aborted = result != null && typeof result === "object" ? Reflect.get(result, "aborted") : undefined;
-                    if (typeof text === "string") {
-                      return { text, aborted: aborted === true };
+                    // Fire the subagentStart / subagentStop lifecycle hooks around the
+                    // child run (the subagent -> parent hook path). baseAccessor resolves
+                    // hookExecutorResource to the box daemon; each call is a no-op unless
+                    // a matching hook is configured, and every call is guarded so a hook
+                    // never breaks the subagent.
+                    const hookOptions = { resourceAccessor: remoteBoxAccessor, enableExecuteHookExec: true, configuredSteps: ["subagentStart", "subagentStop"] };
+                    const hookRequestContext = { toolCallId: args.toolCallId, conversationId: agentId };
+                    const subagentStartedAt = Date.now();
+                    try { await executeRemoteSubagentStartHook({ ctx: productionContext, subagentId: agentId, subagentType: args.subagentType, task: prompt, parentConversationId: session.id, requestContext: hookRequestContext, options: hookOptions }); } catch { /* hook must not break the subagent */ }
+                    let subagentStatus: "completed" | "error" = "completed";
+                    let subagentError: string | undefined;
+                    let observedToolCalls = 0;
+                    try {
+                      const boundedPrompt = `${SAND_SUBAGENT_BOUNDARY_PROMPT}\n\n${prompt}`;
+                      const result = await child.run(boundedPrompt, {
+                        ...options,
+                        conversationId: agentId,
+                      } as Parameters<typeof child.run>[1]);
+                      observedToolCalls = child.getObservedToolCallCount();
+                      // child.run delegates to the inherited production turn-run shell, whose
+                      // settle.buildResult returns { text, sentMessageCount, reacted, aborted, ... }.
+                      // Bind that to the SubagentRunResult { text, aborted } the caller expects.
+                      const text = result != null && typeof result === "object" ? Reflect.get(result, "text") : undefined;
+                      const aborted = result != null && typeof result === "object" ? Reflect.get(result, "aborted") : undefined;
+                      if (typeof text === "string") {
+                        if (aborted === true) subagentStatus = "error";
+                        return { text, aborted: aborted === true };
+                      }
+                      // A missing string `text` means the child ran without a bound turn-run shell
+                      // (e.g. runStep-only path returning undefined). Surface it as a subagent error
+                      // rather than a silent empty result, so the parent turn fails cleanly.
+                      const keys = result != null && typeof result === "object" ? Object.keys(result as object).join(",") : "-";
+                      subagentStatus = "error";
+                      subagentError = `no bound result (type=${typeof result}, keys=${keys})`;
+                      throw new TypeError(`Subagent produced no bound result (type=${typeof result}, keys=${keys})`);
+                    } catch (error) {
+                      subagentStatus = "error";
+                      subagentError = error instanceof Error ? error.message : String(error);
+                      throw error;
+                    } finally {
+                      try {
+                        await executeRemoteSubagentStopHook({ ctx: productionContext, subagentId: agentId, subagentType: args.subagentType, status: subagentStatus, durationMs: Date.now() - subagentStartedAt, messageCount: 0, toolCallCount: observedToolCalls, loopCount: 0, task: prompt, description: args.subagentType, ...(subagentError === undefined ? {} : { errorMessage: subagentError }), parentConversationId: session.id, requestContext: hookRequestContext, options: hookOptions });
+                      } catch { /* hook must not break the subagent */ }
                     }
-                    // A missing string `text` means the child ran without a bound turn-run shell
-                    // (e.g. runStep-only path returning undefined). Surface it as a subagent error
-                    // rather than a silent empty result, so the parent turn fails cleanly.
-                    const keys = result != null && typeof result === "object" ? Object.keys(result as object).join(",") : "-";
-                    throw new TypeError(`Subagent produced no bound result (type=${typeof result}, keys=${keys})`);
                   },
                   interrupt: reason => {
                     child.interrupt(reason);

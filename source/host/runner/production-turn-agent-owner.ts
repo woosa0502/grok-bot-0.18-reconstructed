@@ -62,6 +62,7 @@ export interface ProductionTurnAgentOwnerInput {
   readonly createRemoteBoxResourceAccessor: (context: Context) => Promise<TurnAgentResourceAccessor>;
   readonly createTurnLocalResourceProjectionInput: (
     baseAccessor: TurnAgentResourceAccessor,
+    remoteBoxAccessor: TurnAgentResourceAccessor,
   ) => Omit<TurnLocalResourceProjectionInput, "baseAccessor">;
   readonly blobStore: BlobStore<unknown>;
   /** Optional when the inference owner exposes its exact session factory. */
@@ -206,7 +207,7 @@ export async function createProductionTurnAgentOwner(
     const baseResourceAccessor = await input.createResourceAccessor(input.context);
     const remoteBoxResourceAccessor = await input.createRemoteBoxResourceAccessor(input.context);
     const turnLocalResourceProjection = createTurnLocalResourceProjection({
-      ...input.createTurnLocalResourceProjectionInput(baseResourceAccessor),
+      ...input.createTurnLocalResourceProjectionInput(baseResourceAccessor, remoteBoxResourceAccessor),
       baseAccessor: baseResourceAccessor,
     });
     const resourceAccessor = turnLocalResourceProjection.resourceAccessor;
