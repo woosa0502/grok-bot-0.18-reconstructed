@@ -36,7 +36,9 @@ test("routed Codex auth, refresh, login, logout, and status belong to Pi ModelRu
   const store = await readFile(path.join(repositoryRoot, "source/host/extensions/inference/pi-codex-credential-store.ts"), "utf8");
   const cli = await readFile(path.join(repositoryRoot, "scripts/pi-codex-auth.mjs"), "utf8");
   assert.doesNotMatch(provider, /auth\.openai\.com\/oauth\/token|chatgpt\.com\/backend-api\/codex/);
-  assert.match(provider, /import\(PI_RUNTIME_SPECIFIER\)/);
+  // A literal specifier (not a variable) so esbuild statically bundles pi-codex-runtime into the
+  // packaged host bundle; a variable dynamic import is left external and fails at runtime. (PI-P0-01)
+  assert.match(provider, /import\("\.\/pi-codex-runtime\.js"\)/);
   assert.match(runtime, /ModelRuntime\.create\(\{/);
   assert.match(runtime, /credentials,/);
   assert.match(runtime, /models\.login\(CODEX_PROVIDER, "oauth", interaction\)/);

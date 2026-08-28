@@ -12,8 +12,9 @@ async function source(relative) {
 test("Pi Codex is loaded lazily so unrelated Belmont bundles do not absorb the coding-agent CLI", async () => {
   const provider = await source("source/host/extensions/inference/provider-session.ts");
   assert.doesNotMatch(provider, /import \{[^}]*createPiCodexExecutor[^}]*\} from/);
-  assert.match(provider, /const PI_RUNTIME_SPECIFIER: string/);
-  assert.match(provider, /import\(PI_RUNTIME_SPECIFIER\)/);
+  // Lazy, but via a LITERAL specifier so esbuild bundles pi-codex-runtime into the packaged host
+  // (a variable dynamic import is left external and fails at runtime with module-not-found). (PI-P0-01)
+  assert.match(provider, /import\("\.\/pi-codex-runtime\.js"\)/);
   assert.match(provider, /lazyPiCodexExecutor/);
 });
 
@@ -43,7 +44,10 @@ test("bot-selected Codex model survives executor state and reaches Pi catalog va
   const provider = await source("source/host/extensions/inference/provider-session.ts");
   const runtime = await source("source/host/extensions/inference/pi-codex-runtime.ts");
   const turnShell = await source("source/host/runner/turn-run-shell.ts");
-  assert.match(provider, /createRoutedProviderSessionState\(this\.#messages, this\.modelId\)/);
+  // getState returns the messages ARRAY (the executor state contract the middlewares and checkpoint
+  // path consume with .map()/.length); the model rides the per-run context / requested id, not the
+  // state blob, and parseRoutedProviderSessionState still reads a legacy state.modelId if present. (PI-P0-03)
+  assert.match(provider, /return \[\.\.\.this\.#messages\];/);
   assert.match(provider, /parsed\.modelId \?\? modelId/);
   assert.match(provider, /modelFromContext\(ctx\) \?\? this\.modelId/);
   assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, input\.modelId\)/);

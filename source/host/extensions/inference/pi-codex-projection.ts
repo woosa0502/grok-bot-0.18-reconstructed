@@ -85,8 +85,14 @@ export function imageData(value: unknown): string | null {
 function imageMimeType(part: Loose): string {
   if (typeof part.mimeType === "string" && part.mimeType.length > 0) return part.mimeType;
   if (typeof part.mediaType === "string" && part.mediaType.length > 0) return part.mediaType;
-  if (typeof part.data === "string") return /^data:([^;]+);base64,/s.exec(part.data)?.[1] ?? "image/png";
+  // Belmont's image part is { type: "image", image: <dataUrl>, mimeType? }; `data` is only a fallback.
+  const src = typeof part.image === "string" ? part.image : typeof part.data === "string" ? part.data : undefined;
+  if (src !== undefined) return /^data:([^;]+);base64,/s.exec(src)?.[1] ?? "image/png";
   return "image/png";
+}
+// Belmont carries the image as `image` (a data URL); older/foreign parts may use `data`.
+function imagePartSource(part: Loose): unknown {
+  return part.image !== undefined ? part.image : part.data;
 }
 
 function userContent(parts: readonly unknown[]): Extract<Message, { role: "user" }>["content"] {
@@ -99,7 +105,7 @@ function userContent(parts: readonly unknown[]): Extract<Message, { role: "user"
       continue;
     }
     if (part.type === "image") {
-      const data = imageData(part.data);
+      const data = imageData(imagePartSource(part));
       if (data != null) content.push({ type: "image", data, mimeType: imageMimeType(part) });
     }
   }
@@ -113,7 +119,7 @@ function toolResultContent(value: unknown): Extract<Message, { role: "toolResult
       const part = record(raw);
       if (part?.type === "text" && typeof part.text === "string") projected.push({ type: "text", text: part.text });
       else if (part?.type === "image") {
-        const data = imageData(part.data);
+        const data = imageData(imagePartSource(part));
         if (data != null) projected.push({ type: "image", data, mimeType: imageMimeType(part) });
       }
     }
@@ -161,13 +167,20 @@ export function messagesToPi(messages: readonly PiProviderMessage[], now: () => 
       if (part == null) continue;
       if (part.type === "text" && typeof part.text === "string") {
         assistantContent.push({ type: "text", text: part.text });
-      } else if ((part.type === "reasoning" || part.type === "thinking") && typeof (part.reasoning ?? part.thinking) === "string") {
+      } else if ((part.type === "reasoning" || part.type === "thinking") && typeof (part.text ?? part.reasoning ?? part.thinking) === "string") {
+        // Belmont's reasoning part is { type: "reasoning", text, signature? }; keep reasoning/thinking
+        // as fallbacks for foreign parts. The signature lives in `signature`, not `thinkingSignature`. (PI-P0-04)
+        const signature = typeof part.signature === "string" ? part.signature
+          : typeof part.thinkingSignature === "string" ? part.thinkingSignature : undefined;
         assistantContent.push({
           type: "thinking",
-          thinking: String(part.reasoning ?? part.thinking),
-          ...(typeof part.thinkingSignature === "string" ? { thinkingSignature: part.thinkingSignature } : {}),
+          thinking: String(part.text ?? part.reasoning ?? part.thinking),
+          ...(signature === undefined ? {} : { thinkingSignature: signature }),
           ...(part.redacted === true ? { redacted: true } : {}),
         });
+      } else if (part.type === "redacted-reasoning" && typeof part.data === "string") {
+        // Belmont's encrypted/redacted reasoning: { type: "redacted-reasoning", data }. (PI-P0-04)
+        assistantContent.push({ type: "thinking", thinking: "", thinkingSignature: part.data, redacted: true });
       } else if ((part.type === "tool-call" || part.type === "toolCall") && typeof (part.toolCallId ?? part.id) === "string" && typeof (part.toolName ?? part.name) === "string") {
         assistantContent.push({
           type: "toolCall",

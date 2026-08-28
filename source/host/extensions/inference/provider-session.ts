@@ -26,7 +26,6 @@ type RoutedToolExecutor = (tool: Loose, args: unknown, toolCallId: string) => Pr
 type ProviderExecutorContext = { readonly signal?: AbortSignal; readonly modelId?: string };
 type PiRuntimeModule = typeof import("./pi-codex-runtime.js");
 
-const PI_RUNTIME_SPECIFIER: string = "./pi-codex-runtime.js";
 const GROK_ROUTER_SYSTEM_PROMPT = [
   "You are Grok Bot, a warm, concise desktop assistant.",
   "You are running inside Grok Bot, not inside Codex CLI or Claude Code.",
@@ -35,7 +34,10 @@ const GROK_ROUTER_SYSTEM_PROMPT = [
 ].join("\n");
 
 function loadPiCodexRuntime(): Promise<PiRuntimeModule> {
-  return import(PI_RUNTIME_SPECIFIER) as Promise<PiRuntimeModule>;
+  // Literal specifier (not a variable) so esbuild statically bundles pi-codex-runtime into the
+  // packaged host bundle. A variable dynamic import is left external and fails at runtime with
+  // module-not-found on the first packaged Codex call. (PI-P0-01)
+  return import("./pi-codex-runtime.js") as Promise<PiRuntimeModule>;
 }
 
 function recordRoutedUsage(provider: RoutedProvider, usage: UsageRecord): void {
@@ -113,7 +115,16 @@ function lazyPiCodexExecutor(options: PiCodexExecutorOptions) {
   const executor = loadPiCodexRuntime().then(module => module.createPiCodexExecutor(options));
   const fullStream = (async function* () {
     const loaded = await executor;
-    for await (const event of loaded.fullStream) yield event;
+    for await (const event of loaded.fullStream) {
+      // Belmont's StreamChunk carries reasoning as { type: "reasoning", textDelta }; the Pi runtime
+      // emits { type: "reasoning-delta", reasoningDelta }. Translate so reasoning reaches the agent
+      // stream (and afterAgentThought) instead of being dropped as an unknown event. (PI-P0-04)
+      if (event.type === "reasoning-delta") {
+        yield { type: "reasoning" as const, textDelta: event.reasoningDelta };
+      } else {
+        yield event;
+      }
+    }
   })();
   return {
     fullStream,
@@ -284,7 +295,11 @@ class ProviderPromptExecutor implements PromptExecutor {
   }
 
   getState(): unknown {
-    return createRoutedProviderSessionState(this.#messages, this.modelId);
+    // The ProviderPromptExecutor state contract is the messages ARRAY: checkpoint/compact and the
+    // send-message/ack reminder middlewares consume getState() with .map()/.length, and the restore
+    // path feeds it back as `initialMessages` (also an array). The model id is threaded per run via
+    // the turn context (modelFromContext), never the state blob, so it must not change this shape. (PI-P0-03)
+    return [...this.#messages];
   }
 
   getMessages(): ProviderMessage[] {
