@@ -601,7 +601,14 @@ export async function buildProductionHostIfSupplied({ outputRoot, manifestPath =
   }
   const outfile = path.join(outputRoot, "dist/host/host-main.cjs");
   await mkdir(path.dirname(outfile), { recursive: true });
-  const external = [...new Set(validated.bindings.filter(binding => !localSourceClassifications.has(binding.classification)).map(binding => binding.resolvedModule))];
+  // Optional transitive native/third-party deps that `ws` (via the Pi Codex runtime, @earendil-works/pi-ai)
+  // and `debug`/`chalk` try to require but fall back to pure-JS when absent. They are legitimately left
+  // external and are simply not installed at runtime, so declare them alongside the manifest bindings.
+  const optionalTransitiveExternals = ["bufferutil", "utf-8-validate", "supports-color"];
+  const external = [...new Set([
+    ...validated.bindings.filter(binding => !localSourceClassifications.has(binding.classification)).map(binding => binding.resolvedModule),
+    ...optionalTransitiveExternals,
+  ])];
   const result = await esbuild({
     absWorkingDir: repoRoot,
     banner: { js: `// Deterministic clean-source production host; bindings ${validated.manifestSha256}` },
