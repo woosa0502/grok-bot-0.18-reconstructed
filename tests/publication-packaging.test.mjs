@@ -86,7 +86,7 @@ test("Router settings use the trusted backend and Pi-owned Codex runtime", async
   assert.match(inference, /createProviderPromptSession\(provider, sessionOptions\?\.modelId\)/);
   assert.match(providers, /import\("\.\/pi-codex-runtime\.js"\)/);
   assert.doesNotMatch(providers, /chatgpt\.com\/backend-api\/codex|auth\.openai\.com\/oauth\/token/);
-  assert.match(providers, /createRoutedProviderSessionState\(this\.#messages, this\.modelId\)/);
+  assert.match(providers, /return \[\.\.\.this\.#messages\];/);
   assert.match(piRuntime, /ModelRuntime\.create\(\{/);
   assert.match(piRuntime, /streamSimple\(resolved\.model, context/);
   assert.match(piRuntime, /getProviderAuthStatus\(CODEX_PROVIDER\)/);
