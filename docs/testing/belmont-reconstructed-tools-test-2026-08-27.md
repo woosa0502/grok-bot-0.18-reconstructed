@@ -297,3 +297,38 @@ bespoke 상호작용 작성은 위험 대비 과대이므로, **주요 표면 �
 바꾸지 않음(성적표 튜닝 금지). 훅은 이 복원 소스에서 **WebSearch에만** 연결된다(web-search.ts만 withRemoteHooks 사용).
 
 증거: `.cache/…/box-workspace/hook-marker.log`(훅 입력 payload), transcript의 `HOOK_BLOCKED_9931` 거부.
+
+## 17. MCP(로컬 stdio 서버) 종단간 복원 (2026-08-28) — `RESOLVED`
+
+**문제**: host측 MCP 배관(SandMcpManager, discovery, box-mcp-exec, CallMcpTool/GetMcpTools meta 도구)은 있었지만
+로컬(codex) 모드에서 아무것도 연결되지 않았다: 박스 `loadMcpServers`는 stub, Cursor 계정 없이 stdio 서버 설정을 줄
+경로 없음, 턴별 MCP 투영 미구성, mcpArgs가 로컬 도구 게이트에 undescribable. 결과: 설정한 MCP 서버가 무력(잘해야
+발견만, 호출 불가). MCP SDK도 없음.
+
+**복원(커밋 89830c4, 내 파일만)**:
+- `box-exec-daemon`을 MCP 클라이언트 호스트로: 최소 JSON-RPC stdio 클라이언트(`mcp-stdio-client.ts`, SDK 무의존)가
+  각 서버를 spawn·initialize/tools/list 핸드셰이크·tools/call 프록시. `loadMcpServers`가 설정 파싱 + removeMissing 반영,
+  exec switch가 `mcpStateExecArgs`(서버+도구 목록)·`mcpArgs`(도구 호출) 응답 → McpStateExecResult/McpResult 매핑.
+- `mcp-service`: 로컬 `<sandRootDir>/mcp.json`을 읽어 account-servers provider에 병합 → Cursor 계정 없이 MCP 동작
+  (production이 sandRootDir 전달). mcp.json 형식은 클로드/codex와 동일 `{"mcpServers":{"<name>":{"command","args","env"}}}`.
+- `host-runner-composition`: mcp 확장 API로 턴별 `TurnMcpProjectionInput` 구성 후 tool host에 stash → toolsGenerator가
+  props.mcp 설정(복원 러너는 안 함); provider에 `createMcpMetaToolInputs` 추가; **guarded 박스 MCP executor/state를 로컬
+  리소스로 등록** → CallMcpTool이 raw 박스 accessor(shared-desktop에선 미연결 데스크톱 앱 게이트)가 아니라 박스 daemon으로 라우팅.
+- `local-tool-permission-machinery`: mcpArgs를 describable하게 → 로컬 도구 게이트가 undescribable로 거부하지 않고 승인.
+
+**끊긴 지점(순차 진단)**:
+1. 박스 loadMcpServers stub → MCP 클라이언트 호스트 구현.
+2. 로컬 서버 설정 출처 없음 → mcp.json 병합.
+3. CallMcpTool/GetMcpTools 미노출(props.mcp 미설정, factories.mcpMeta 없음) → 턴별 투영 stash + provider meta 배선.
+4. mcpArgs가 describable 아님 → describeLocalExec에 mcpArgs 케이스.
+5. mcpExecutorResource가 로컬 미등록 → base 박스 accessor(데스크톱 게이트, 미연결)로 감 → **로컬 리소스 등록**으로 박스 daemon 라우팅.
+
+**실증(종단간)**: 로컬 mcp.json이 stdio 서버(`belmont-test`: node echo/add) 가리킴.
+- `GetMcpServerStatus` → `belmont-test [connected] transport=stdio tools=2`.
+- `CallMcpTool(echo, {text:"clean-verify"})` → **`MCP_ECHO clean-verify`**.
+- `CallMcpTool(add, {a:19,b:23})` → **`MCP_SUM 42`**.
+에이전트 → CallMcpTool → mcpExecutorResource(로컬 guarded) → SandMcpExecutor → boxMcpExec → 박스 daemon callMcpTool →
+MCP stdio 클라이언트 → 테스트 서버 → 결과 왕복 전 구간 로그로 확인.
+
+**경계**: 이 복원 소스에서 stdio(command) MCP만 박스 실행 경로가 있음(http/SSE는 Cursor 백엔드 필요, 로컬 미지원).
+테스트 서버(`mcp-test-server.mjs`)와 `mcp.json`은 런타임 픽스처(`.cache/`, git 미추적).
