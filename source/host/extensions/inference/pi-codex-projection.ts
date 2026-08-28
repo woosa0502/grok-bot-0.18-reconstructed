@@ -222,11 +222,35 @@ export function toolsToPi(definitions: readonly PiToolDefinition[] | undefined):
   return tools.length > 0 ? tools : undefined;
 }
 
+function messageText(content: PiProviderMessage["content"]): string {
+  if (typeof content === "string") return content;
+  const texts: string[] = [];
+  for (const raw of content) {
+    const part = record(raw);
+    if (part?.type === "text" && typeof part.text === "string") texts.push(part.text);
+  }
+  return texts.join("\n");
+}
+
 export function createPiContext(messages: readonly PiProviderMessage[], definitions: readonly PiToolDefinition[] | undefined, systemPrompt: string): Context {
   const tools = toolsToPi(definitions);
+  // Belmont's full per-turn system authority (agent profile, tool policy, memory extracts, episode
+  // summaries) arrives as role:"system" messages. Route them to Pi's system channel instead of
+  // letting messagesToPi demote them to assistant history, which would silently drop them. (PI-P1-05)
+  const systemTexts: string[] = [];
+  const conversation: PiProviderMessage[] = [];
+  for (const message of messages) {
+    if (message.role === "system") {
+      const text = messageText(message.content).trim();
+      if (text.length > 0) systemTexts.push(text);
+    } else {
+      conversation.push(message);
+    }
+  }
+  const combinedSystem = systemTexts.length === 0 ? systemPrompt : `${systemPrompt}\n\n${systemTexts.join("\n\n")}`;
   return {
-    systemPrompt,
-    messages: messagesToPi(messages),
+    systemPrompt: combinedSystem,
+    messages: messagesToPi(conversation),
     ...(tools == null ? {} : { tools }),
   };
 }
