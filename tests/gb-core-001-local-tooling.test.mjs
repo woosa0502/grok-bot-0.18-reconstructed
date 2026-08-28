@@ -133,15 +133,33 @@ test("GB-CORE-001: re-enabling auto-review survives a restart (real settings-sto
   }
 });
 
-test("GB-CORE-001: a disabled journal ignores a stale claim marker and stays on the legacy store", async () => {
+test("GB-CORE-001: a disabled journal migrates a stale claim marker to the legacy store", async () => {
   const loaded = await loadModule("source/host/transcript-mirror/transcript-mirror-router.ts");
   try {
+    let released = 0;
     const journal = {
       ownsConversation: async () => true, // stale `.journal-mode` marker present
       claimConversation: async () => { throw new Error("must not claim when the journal is disabled"); },
+      releaseConversation: async () => { released += 1; }, // explicit migration to legacy (F-002)
     };
     const mirror = new loaded.module.RoutedTranscriptMirror(journal, {}, async () => false);
     assert.equal(await mirror.route("agent"), "legacy");
+    assert.equal(released, 1, "a disabled owned conversation is released (migrated), not left claimed");
+  } finally {
+    await loaded.dispose();
+  }
+});
+
+test("GB-CORE-001: an enabled journal that owns a conversation stays on the journal (ownership-first)", async () => {
+  const loaded = await loadModule("source/host/transcript-mirror/transcript-mirror-router.ts");
+  try {
+    const journal = {
+      ownsConversation: async () => true,
+      claimConversation: async () => { throw new Error("must not re-claim an already owned conversation"); },
+      releaseConversation: async () => { throw new Error("must not release an owned conversation while enabled"); },
+    };
+    const mirror = new loaded.module.RoutedTranscriptMirror(journal, {}, async () => true);
+    assert.equal(await mirror.route("agent"), "journal", "ownership is honoured before the enable gate");
   } finally {
     await loaded.dispose();
   }
@@ -154,15 +172,18 @@ test("GB-CORE-001: skipCheckpoint agrees with route() regardless of call order",
     // (so the route cache is empty and the selected==null branch runs). It must not recover
     // or skip through the journal it has disowned.
     const disabledCalls = [];
+    let released = 0;
     const disabledJournal = {
       ownsConversation: async () => true,
       claimConversation: async () => { throw new Error("must not claim when the journal is disabled"); },
+      releaseConversation: async () => { released += 1; },
       recover: async () => { disabledCalls.push("recover"); },
       skipCheckpoint: async () => { disabledCalls.push("skip"); },
     };
     const disabledMirror = new loaded.module.RoutedTranscriptMirror(disabledJournal, {}, async () => false);
     await disabledMirror.skipCheckpoint({}, "agent", {}, {});
     assert.deepEqual(disabledCalls, [], "a disabled journal must not recover/skip via the journal");
+    assert.equal(released, 1, "and it migrates the stale marker to legacy rather than leaving it claimed");
     assert.equal(await disabledMirror.route("agent"), "legacy", "and route() must still agree it is legacy");
 
     // Positive control: an enabled journal that owns the conversation still recovers then skips.

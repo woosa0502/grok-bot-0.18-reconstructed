@@ -3,6 +3,7 @@ export type TranscriptMirrorRoute = "journal" | "legacy";
 export interface TranscriptJournalPort<Checkpoint, Store> {
   ownsConversation(conversationId: string): Promise<boolean>;
   claimConversation(conversationId: string): Promise<void>;
+  releaseConversation(conversationId: string): Promise<void>;
   recover(
     ctx: unknown,
     conversationId: string,
@@ -72,14 +73,21 @@ export class RoutedTranscriptMirror<Checkpoint, Store> {
   private async selectRoute(
     conversationId: string
   ): Promise<TranscriptMirrorRoute> {
-    // When the journal is disabled, always use the legacy/durable-store path even if
-    // a stale `.journal-mode` claim marker is present. The journal WAL is a secondary
-    // read cache layered on top of the authoritative store, so honouring a stale claim
-    // when journaling is off would strand the conversation on a path whose recover()
-    // lifecycle is not driven — throwing "checkpoint must recover before preparing".
+    // Ownership-first: once the journal owns a conversation it must keep driving that
+    // conversation — checking the enable gate *before* ownership (the previous order) could
+    // route an already-journal-owned conversation back to the legacy writer, splitting its
+    // checkpoint bookkeeping across the two regimes on the same .jsonl.
+    if (await this.journal.ownsConversation(conversationId)) {
+      if (await this.isJournalEnabled()) return "journal";
+      // The journal is disabled and its recover() lifecycle is unwired here, so it cannot
+      // safely keep driving the WAL. Rather than silently flip the route and leave a stale
+      // `.journal-mode` marker that would pull the conversation back onto the journal on a
+      // later enable (diverging from the legacy writes made in between), migrate it to legacy
+      // explicitly by releasing the claim. The committed .jsonl and durable store are kept. (F-002)
+      await this.journal.releaseConversation(conversationId);
+      return "legacy";
+    }
     if (!await this.isJournalEnabled()) return "legacy";
-    if (await this.journal.ownsConversation(conversationId)) return "journal";
-
     await this.journal.claimConversation(conversationId);
     return "journal";
   }
@@ -167,18 +175,27 @@ export class RoutedTranscriptMirror<Checkpoint, Store> {
     let recoverOwnedJournal = false;
 
     if (selected == null) {
-      // Honour the same disable switch selectRoute() does: when journaling is off a stale
-      // `.journal-mode` claim marker must not pull an unrouted conversation onto the journal
-      // (recover + skip), or this method would diverge from route() purely by call order —
-      // route() returns "legacy" while skipCheckpoint drives the journal it disowned.
-      if (!await this.isJournalEnabled() || !await this.journal.ownsConversation(conversationId)) {
+      // Ownership-first, matching selectRoute(): the enable gate must not be consulted before
+      // ownership. An owned conversation keeps driving the journal while it is enabled; when it
+      // is disabled it is migrated to legacy explicitly (releasing the stale marker) rather than
+      // silently disowned by call order.
+      if (await this.journal.ownsConversation(conversationId)) {
+        if (await this.isJournalEnabled()) {
+          recoverOwnedJournal = true;
+          selected = Promise.resolve("journal");
+          this.routes.set(conversationId, selected);
+        } else {
+          await this.journal.releaseConversation(conversationId);
+          this.routes.set(conversationId, Promise.resolve("legacy"));
+          this.legacyPending.delete(conversationId);
+          return;
+        }
+      } else {
+        // Unowned: a skip (no state change) must not claim a new journal — the first real
+        // prepareCheckpoint does that. Fall through to the legacy path without caching a route.
         this.legacyPending.delete(conversationId);
         return;
       }
-
-      recoverOwnedJournal = true;
-      selected = Promise.resolve("journal");
-      this.routes.set(conversationId, selected);
     }
 
     if (await selected === "journal") {
