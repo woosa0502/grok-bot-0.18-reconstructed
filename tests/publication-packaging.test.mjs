@@ -104,26 +104,21 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.doesNotMatch(rendererPatch, /ANTHROPIC_API_KEY|OPENAI_API_KEY/);
   assert.match(turnShell, /inferenceProvider === "cursor"/);
   assert.match(turnShell, /createProviderPromptSession\(inferenceProvider\)/);
-  assert.match(coordinator, /method !== "sendPrompt" \|\| provider === "cursor"/);
-  assert.match(coordinator, /executeTool: async \(definition, toolArgs, toolCallId\)/);
+  // The coordinator's own per-provider local turn loop (execute), activity pulse
+  // (beginActivity), routed-MCP bridge wiring, and JSON-transcript merge were unreachable —
+  // non-cursor providers run their turns on the full host runner and cursor routes there too —
+  // so they were removed. The routed-MCP tool surface is still exercised through coordinatorMain
+  // below; the coordinator keeps only its transcript store, the transcript-tail passthrough, and
+  // local reaction toggling. (F-006)
   assert.match(coordinatorMain, /command\(commands, "listRoutedMcpTools", args\)/);
   assert.match(coordinator, /inference-router-transcript\.json/);
   assert.match(mcpBridge, /openWorldHint: !readOnly/);
   assert.match(coordinator, /schemaVersion: 2/);
   assert.match(coordinator, /\["getAgentTranscriptTail", "openAgentTail", "getAgentTranscriptWindow"\]/);
-  assert.match(coordinator, /\.map\(projectInferenceRouterTranscriptEntry\)/);
   assert.match(coordinator, /readonly richText\?: string/);
   assert.match(coordinator, /richText: entry\.richText/);
-  assert.match(coordinator, /setTimeout\(resolve, 1_200\)/);
   assert.match(coordinator, /method === "reactToMessage"/);
   assert.match(coordinator, /reaction\.by === "me"/);
-  assert.match(coordinator, /currentActivity: \{ kind: "thinking" \}/);
-  assert.match(coordinator, /onTextDelta/);
-  assert.match(coordinator, /streaming/);
-  assert.match(coordinator, /postEvent\("agents"/);
-  assert.match(coordinator, /createRoutedMcpBridge/);
-  assert.match(coordinator, /listRoutedMcpTools/);
-  assert.match(coordinator, /executeRoutedMcpTool/);
   assert.match(mcpBridge, /server\.listen\(0, "127\.0\.0\.1"/);
   assert.match(mcpBridge, /readOnlyHint: readOnly/);
   assert.match(mcpBridge, /request\.url !== `\/mcp\/\$\{secret\}`/);
