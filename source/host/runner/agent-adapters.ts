@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { NoopInteractionListener } from "../../packages/agent-core/interaction-listener.js";
+import { getBoxWorkspaceDir } from "../host-paths.js";
 import { getRootParentRequestId } from "../../packages/agent/utils/request-id.js";
 import { requestIdKey } from "../../packages/chat-inference-proto/client.js";
 import type { Context } from "../../packages/context/core.js";
@@ -7,6 +10,7 @@ import { SubagentBackgroundReason } from "../../packages/proto/generated/agent/v
 import type { AgentSkill } from "../../packages/proto/generated/agent/v1/agent_skills_pb.js";
 import type { CursorRule } from "../../packages/proto/generated/agent/v1/cursor_rules_pb.js";
 import {
+  HooksConfigInfo,
   RequestContext,
   RequestContextEnv,
   RequestContextResult,
@@ -25,9 +29,24 @@ import { projectAgentToolCallToClientSideToolV2 } from "../extensions/transcript
 export class SandSubagentDispatchError extends Error { override readonly name = "SandSubagentDispatchError"; }
 export function deriveSandSubagentRequestLineage(ctx: Context, toolCallId: string): (SubagentLineage & { parentAgentToolCallId?: string }) | undefined { const parentRequestId = ctx.get(requestIdKey); if (parentRequestId == null || parentRequestId === "") return undefined; return { parentRequestId, rootParentRequestId: getRootParentRequestId(ctx) ?? parentRequestId, ...(toolCallId.length > 0 ? { parentAgentToolCallId: toolCallId } : {}) }; }
 export interface RequestContextProvider { resolve(): { osVersion?: string; shell?: string; timeZone?: string; transcriptsFolder?: string }; resolveRules(): Promise<CursorRule[] | undefined> }
+// The steps that currently have at least one hook in the box workspace's
+// .cursor/hooks.json. This populates RequestContext.hooksConfig.configuredSteps
+// so lifecycle hooks (afterAgentThought, preCompact, …) fire only when actually
+// configured — the box's executeHook still re-reads the file at run time.
+function readConfiguredHookSteps(): string[] {
+  let raw: string;
+  try { raw = readFileSync(join(getBoxWorkspaceDir(), ".cursor", "hooks.json"), "utf8"); }
+  catch { return []; }
+  try {
+    const parsed = JSON.parse(raw) as { hooks?: Record<string, unknown> };
+    const hooks = parsed?.hooks;
+    if (hooks == null || typeof hooks !== "object") return [];
+    return Object.entries(hooks).filter(([, value]) => Array.isArray(value) && value.length > 0).map(([step]) => step);
+  } catch { return []; }
+}
 export class SandRequestContextExecutor {
   constructor(readonly requestContext: RequestContextProvider, readonly includeTranscripts: boolean, readonly autoReviewEnforceEnabled: boolean, readonly resolveAgentSkills?: () => AgentSkill[]) {}
-  async execute(_ctx?: unknown, _args?: unknown): Promise<RequestContextResult> { const info = this.requestContext.resolve(), rules = await this.requestContext.resolveRules(); return new RequestContextResult({ result: { case: "success", value: new RequestContextSuccess({ requestContext: new RequestContext({ env: new RequestContextEnv({ osVersion: info.osVersion!, shell: info.shell!, timeZone: info.timeZone!, agentTranscriptsFolder: this.includeTranscripts ? info.transcriptsFolder! : undefined!, smartModeClassifierAutoModeEnabled: this.autoReviewEnforceEnabled }), rules: rules ?? [], rulesInfoComplete: rules !== undefined, agentSkills: this.resolveAgentSkills?.() ?? [] }) }) } }); }
+  async execute(_ctx?: unknown, _args?: unknown): Promise<RequestContextResult> { const info = this.requestContext.resolve(), rules = await this.requestContext.resolveRules(); return new RequestContextResult({ result: { case: "success", value: new RequestContextSuccess({ requestContext: new RequestContext({ env: new RequestContextEnv({ osVersion: info.osVersion!, shell: info.shell!, timeZone: info.timeZone!, agentTranscriptsFolder: this.includeTranscripts ? info.transcriptsFolder! : undefined!, smartModeClassifierAutoModeEnabled: this.autoReviewEnforceEnabled }), rules: rules ?? [], rulesInfoComplete: rules !== undefined, agentSkills: this.resolveAgentSkills?.() ?? [], hooksConfig: new HooksConfigInfo({ configuredSteps: readConfiguredHookSteps() }) }) }) } }); }
 }
 export interface SubagentAdapterArgs { readonly resumeAgentId?: string; readonly subagentType: string; readonly toolCallId: string; readonly prompt: string; readonly readonly?: boolean; readonly runInBackground?: boolean; readonly selectedContext?: { selectedVideos?: readonly unknown[] } }
 type SubagentRunOutcome =
