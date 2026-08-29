@@ -56,9 +56,9 @@
 | 부모 전용 툴 게이팅 | ✅ | `turn-toolset.ts:1494/1546/1668` `!host.isSubagentRunner` |
 | Task modelId → child (타입별 모델) | ✅ | `host-runner-composition.ts:2681`, `turn-run-shell.ts:198` |
 | child가 parent store/DB/MCP/blob 공유 | ❌ OPEN | `host-runner-composition.ts:2877` (transcript만 격리) |
-| **child cancel이 parent를 interrupt** (버그성 cross-wire) | ❌ OPEN | `host-runner-composition.ts:2660` `cancelThisRun … builtRunner.interrupt` |
+| **child cancel이 parent를 interrupt** | ✅ CLOSED (`9dbb6e3`) | conversationId→runner 맵으로 턴 소유 runner를 타겟 |
 | resume이 durable checkpoint 없음 | ❌ OPEN | `:2689` 매 dispatch 빈 state |
-| **background settle이 runner 미dispose (누수)** | ❌ OPEN | `subagent-runtime.ts:318` map만 삭제, dispose 없음 |
+| **background settle이 runner 미dispose (누수)** | ✅ CLOSED (`9dbb6e3`) | settle 시 `runner.dispose()` 추가 |
 | readonly 실집행 | ⚠️ PARTIAL | 프레임워크엔 있음(`readonly-resource-accessor.ts:191`), **shipped DEFAULT executor엔 미적용** |
 | CloudAgent가 child에 남음 | ❌ OPEN | `turn-toolset.ts:1598` isSubagentRunner로 게이트 안 함 |
 
@@ -89,12 +89,12 @@
 | 항목 | 판정 | 근거 |
 |---|---|---|
 | grep 종료코드·stderr·abort·전체카운트·잘림 | ✅ | `server.ts:995/992/1023/1030` |
-| **grep ripgrep context 이벤트** | ❌ OPEN | `server.ts:1008` `event.type!=="match" continue` (-B/-A는 넘기는데 context 버림); 보존 파서는 dead code |
-| 제한 후 파일별 count 의미 | ⚠️ PARTIAL | `server.ts:1029` retained slice만 반영, 파일별 잘림 표시 없음 |
+| **grep ripgrep context 이벤트** | ✅ CLOSED (`9dbb6e3`) | context 이벤트를 매치와 함께 emit(`isContextLine`), count는 context 제외. 라이브 검증 |
+| 제한 후 파일별 count 의미 | ⚠️ PARTIAL | `server.ts` retained slice만 반영, 파일별 잘림 표시 없음 |
 | list_dir budget/오류 표시 | ⚠️ PARTIAL | `server.ts:890` `childrenWereProcessed=false`로 표시하나 오류 사유 삼킴 |
 | symlink 경계 (glob/grep/shell) | ⚠️ PARTIAL | grep/glob/shell은 lexical `resolvePath`만(`:956`), realpath 검사 건너뜀 (ls/read/write는 함) |
 | protected-path fail-open | ✅ (literal은 항상 강제) | `protected-path-guard.ts:11` (symlink 부분만 skip) |
-| **write atomic** | ❌ OPEN | `server.ts:1049` 직접 write, temp+rename 없음 → 중단 시 파일 손상 |
+| **write atomic** | ✅ CLOSED (`9dbb6e3`) | temp 파일 write 후 rename(원자), 실패 시 temp 정리 |
 
 ## 7. Background Shell (SHELL-001)
 
@@ -120,9 +120,9 @@
 |---|---|---|
 | native-byte staging | ✅ | `electron-main/attachments/attachments.ts:95` |
 | 이미지 입력 처리 | ✅ | `pi-codex-projection.ts:112` |
-| **성공 후 staging 파일 삭제** | ❌ OPEN (누수) | `ProductionRenderer.tsx:1001` commit 후 delete만, `discardStagedAttachment` 안 부름; sweep 없음 |
-| **PDF Read** | ❌ OPEN (라이브 교정) | 정적: `read/read.ts:374` `throw "Read PDF worker is not bound"`. **라이브: 박스 read 경로는 던지지 않고 raw 바이트를 반환**(텍스트 추출 X) — 실패 양상이 다름, 결과는 여전히 사용 불가 |
-| **video subagent (버그성 불일치)** | ❌ OPEN | 프롬프트(`system-prompt.ts:163`)는 watchVideo/videoReview 위임 지시하나 `subagentConfigs`에 미등록(`:2509`) → 그 타입 Task는 실패; config는 존재(`recovered-video-subagent-configs.ts`, importer 0) |
+| **성공 후 staging 파일 삭제** | ✅ CLOSED (`9dbb6e3`) | host-side startup sweep(`sweepStagedAttachments`, 1h 초과 정리) — 렌더러 pinned라 host 측에서 처리 |
+| **PDF Read** | ✅ CLOSED (`9dbb6e3`) | 박스 read가 PDF 감지 → raw 바이트 대신 명확한 에러. (텍스트 추출 자체는 여전히 미구현 — 별도 feature) |
+| **video subagent 불일치** | ✅ CLOSED (`9dbb6e3`) | 프롬프트가 "video 서브에이전트 없음"으로 정직화 → 거짓 위임 지시 제거. 라이브: 에이전트 거절 |
 
 ## 10. Skill / Routine (SKILL/ROUTINE-001)
 
@@ -173,13 +173,16 @@
 
 정적 대조 결과: **Pi blocker 5개·주요 배선(툴게이팅·Task모델·reasoning경로·transcript routing·compact metadata·이미지)은 RESOLVED**. 그러나 감사의 여러 경계 갭은 **여전히 OPEN**이며, 원장 1,202건은 미관측이라 "전체 결함 목록"이라 단정할 수 없다.
 
-### 확정 결함 (버그성, 개인 사용에 영향) — 우선순위 순
-1. 🔴 **PDF Read** — 텍스트 추출 안 됨(라이브: raw 바이트 반환, `read.ts:374` 경로는 박스에서 안 탐).
-2. 🔴 **video subagent 불일치** — 프롬프트는 쓰라는데 미등록 → 그 Task는 실패 (라이브 확인: `Expected one of: executor`; `:2509` vs `system-prompt.ts:163`).
-3. 🟠 **grep context 라인 버림** — `-A/-B` 요청해도 안 나옴 (`server.ts:1008`).
-4. 🟠 **write 비원자적** — 중단 시 파일 손상 (`server.ts:1049`).
-5. 🟠 **child cancel이 parent interrupt** cross-wire (`:2660`), **background subagent runner 누수** (`subagent-runtime.ts:318`).
-6. 🟠 **staging 파일 누수** — 전송 성공 후 미삭제 (`ProductionRenderer.tsx:1001`).
+### 확정 결함 (버그성) — 전부 CLOSED (2026-08-29, 커밋 `9dbb6e3`)
+1. ✅ **PDF Read** — 박스 read가 PDF magic/확장자 감지 → garbage 대신 **명확한 actionable 에러**. (라이브 검증)
+2. ✅ **video subagent 불일치** — 프롬프트 정직화(없는 위임 지시 제거). (라이브: 에이전트가 거절, videoReview 시도 안 함)
+3. ✅ **grep context 라인 버림** — `context` 이벤트를 매치와 함께 emit(`isContextLine`). (라이브: `-B2 -A2` before/after 나옴)
+4. ✅ **write 비원자적** — temp 파일 write 후 rename(원자). (코드/tsc)
+5. ✅ **child cancel이 parent interrupt** — conversationId→runner 맵으로 올바른 runner 타겟. (코드/tsc)
+6. ✅ **background subagent runner 누수** — settle 시 `runner.dispose()`. (코드/tsc)
+7. ✅ **staging 파일 누수** — host-side startup sweep(`sweepStagedAttachments`, 1h 초과 정리). (유닛 테스트)
+
+> 렌더러가 pinned 번들이라 staging 수정은 소스(ProductionRenderer) 대신 host-side sweep으로 처리. PDF도 `read.ts:374`가 아니라 실제 실행되는 박스 read에서 수정.
 
 ### 부분/미검증 (동작하나 경계·검증 부족)
 - MCP: cancel 라이브 E2E, cwd projection strip, pagination/list_changed/server-req, blob fidelity.
