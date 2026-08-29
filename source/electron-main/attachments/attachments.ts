@@ -1,6 +1,24 @@
 import { randomUUID } from "node:crypto";
-import { open, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { open, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
+
+const STAGING_RETENTION_MS = 60 * 60 * 1000;
+
+// commitStaged (send) uploads the bytes but never deletes the staged temp file, and the shipped
+// renderer discards only unsent stages — so sent attachments otherwise leak their staging files
+// (up to ~200MB each). Drop staged files older than the retention window; in-flight stages
+// (seconds old) are untouched. Runs best-effort at startup so the backlog does not grow unbounded.
+export async function sweepStagedAttachments(dir: string, maxAgeMs = STAGING_RETENTION_MS): Promise<number> {
+  const entries = await readdir(dir, { withFileTypes: true, encoding: "utf8" }).catch(() => []);
+  const cutoff = Date.now() - maxAgeMs;
+  let removed = 0;
+  await Promise.all(entries.map(async entry => {
+    if (!entry.isFile()) return;
+    const full = join(dir, entry.name);
+    try { if ((await stat(full)).mtimeMs < cutoff) { await rm(full, { force: true }); removed += 1; } } catch {}
+  }));
+  return removed;
+}
 
 import { posixPathFromFileUrl } from "../../shared/node/paths.js";
 
@@ -69,6 +87,8 @@ export function resizePreviewImage(dataUrl: string, target: { width: number } | 
 }
 
 export function createAttachmentEdgePort(deps: AttachmentEdgeDeps) {
+  // Reap leaked staged attachments left by prior sessions (see sweepStagedAttachments).
+  void sweepStagedAttachments(deps.getStagingDir()).catch(() => {});
   const report = (leg: string, error: unknown): void => deps.onEdgeFailure({ leg, errorClass: errorClassOf(error) });
   const readBoxBytes = async (filePath: string, maxBytes: number): Promise<{ kind: "too-large"; size: number } | { kind: "bytes"; bytes: Uint8Array } | null> => {
     let totalSize: number;

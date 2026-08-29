@@ -363,6 +363,10 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
       }
     }
 
+    // The subagent has settled; dispose its runner (which deregisters it from the owning pool),
+    // otherwise a completed background subagent's runner leaks until host shutdown.
+    try { await runner?.dispose?.(); } catch {}
+
     if (aborted) {
       if (meta != null) {
         host.onPendingWakeDisarmed?.({

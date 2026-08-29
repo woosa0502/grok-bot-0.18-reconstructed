@@ -1198,6 +1198,11 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     // — so createAgentOwnerInput can attach the subagentType and the local inference path can resolve
     // a per-type model + reasoning selection. Entries are removed when the subagent run settles.
     const subagentTypeByConversationId = new Map<string, string>();
+    // Same bridge for the child's runner: cancelThisRun is built into the per-turn owner input from
+    // the shared runnerOptions closure, which captures the PARENT's builtRunner — so a child turn's
+    // cancel would interrupt the parent. Keyed by conversation id, this lets cancelThisRun target the
+    // runner that actually owns the turn (child for a subagent turn, parent otherwise).
+    const runnerByConversationId = new Map<string, { interrupt?: (reason: string) => boolean | void }>();
     let transcriptMirrorForTurn: TurnSettleHost["transcriptMirror"] | undefined;
 
     const requestContext = isSharedRoomTurn
@@ -2658,7 +2663,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               : { ackToken: runOptions.ackToken }),
             canUseSelfSummary: () => true,
             cancelThisRun: reason => {
-              const runner = builtRunner as { interrupt?: (value: string) => boolean } | undefined;
+              // Interrupt the runner that OWNS this turn: the child runner for a subagent turn
+              // (turnConversationId !== session.id), the parent's builtRunner otherwise. Using
+              // builtRunner unconditionally would let a child-turn cancel interrupt the parent.
+              const runner = turnConversationId !== session.id
+                ? runnerByConversationId.get(turnConversationId)
+                : (builtRunner as { interrupt?: (value: string) => boolean } | undefined);
               runner?.interrupt?.(reason.reason);
             },
             createResourceAccessor: localProductionResourceAccessor,
@@ -2699,6 +2709,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 });
                 bindSessionOwnedRunner(child);
                 ownedRunners.add(child);
+                runnerByConversationId.set(agentId, child as { interrupt?: (reason: string) => boolean | void });
                 return {
                   run: async (prompt, options) => {
                     // Fire the subagentStart / subagentStop lifecycle hooks around the
@@ -2741,9 +2752,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                       subagentError = error instanceof Error ? error.message : String(error);
                       throw error;
                     } finally {
-                      // The subagent has finished all its turns; drop its type mapping. A resume
-                      // re-dispatches through createSubagentRunner and re-populates it.
+                      // The subagent has finished all its turns; drop its type + runner mappings.
+                      // A resume re-dispatches through createSubagentRunner and re-populates them.
                       subagentTypeByConversationId.delete(agentId);
+                      runnerByConversationId.delete(agentId);
                       try {
                         await executeRemoteSubagentStopHook({ ctx: productionContext, subagentId: agentId, subagentType: args.subagentType, status: subagentStatus, durationMs: Date.now() - subagentStartedAt, messageCount: 0, toolCallCount: observedToolCalls, loopCount: 0, task: prompt, description: args.subagentType, ...(subagentError === undefined ? {} : { errorMessage: subagentError }), parentConversationId: session.id, requestContext: hookRequestContext, options: hookOptions });
                       } catch { /* hook must not break the subagent */ }

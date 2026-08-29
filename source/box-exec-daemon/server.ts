@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { appendFile, lstat, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -844,6 +844,12 @@ class BoxExecRuntime {
         return new ReadResult({ result: { case: "invalidFile", value: new ReadInvalidFile({ path: args.path, reason: `Unsupported encoding hint: ${args.encodingHint}` }) } });
       }
       const data = await readFile(canonical);
+      // A binary PDF has no wired text extractor here, so reading it as text returns unusable bytes.
+      // Fail cleanly with an actionable message instead of handing the model garbage.
+      const looksLikePdf = (data.length >= 4 && data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46) || /\.pdf$/i.test(args.path);
+      if (looksLikePdf) {
+        return new ReadResult({ result: { case: "invalidFile", value: new ReadInvalidFile({ path: args.path, reason: "Binary PDF — text extraction is not available in this build, so reading it would return unusable bytes. Ask the user for a text export (e.g. run pdftotext on the file) or the relevant pages pasted as text." }) } });
+      }
       const text = data.toString(args.encodingHint === "latin1" ? "latin1" : "utf8");
       const lines = text.split("\n");
       const offset = Math.max(0, args.offset ?? 0);
@@ -1005,17 +1011,22 @@ class BoxExecRuntime {
       if (line.length === 0) continue;
       let event: { type?: string; data?: { path?: { text?: string }; line_number?: number; lines?: { text?: string } } };
       try { event = JSON.parse(line); } catch { continue; }
-      if (event.type !== "match") continue; // context/begin/end/summary events: not counted as matches
-      if (matchIndex++ < offset) continue;
-      totalSeen += 1;
+      // Keep ripgrep "context" events (-A/-B lines) alongside matches so requested context reaches
+      // the model; begin/end/summary are still skipped. Offset, totalSeen, and the head-limit count
+      // apply to matches only — context lines ride along with the retained matches they surround.
+      const isMatch = event.type === "match";
+      const isContext = event.type === "context";
+      if (!isMatch && !isContext) continue;
+      if (isMatch && matchIndex++ < offset) continue;
+      if (isMatch) totalSeen += 1;
       const file = event.data?.path?.text ?? "";
       const lineNumber = event.data?.line_number ?? 0;
       const content = (event.data?.lines?.text ?? "").replace(/\n$/, "");
       const list = byFile.get(file) ?? [];
       if (list.length === 0) byFile.set(file, list);
       if (retained < headLimit) {
-        list.push(new GrepContentMatch({ lineNumber, content: content.slice(0, 2000), contentTruncated: content.length > 2000 }));
-        retained += 1;
+        list.push(new GrepContentMatch({ lineNumber, content: content.slice(0, 2000), contentTruncated: content.length > 2000, ...(isContext ? { isContextLine: true } : {}) }));
+        if (isMatch) retained += 1;
       }
     }
     const outputMode = args.outputMode ?? "content";
@@ -1026,7 +1037,7 @@ class BoxExecRuntime {
       const files = [...byFile.keys()];
       union = new GrepUnionResult({ result: { case: "files", value: new GrepFilesResult({ files, totalFiles: files.length, clientTruncated, ripgrepTruncated: false }) } });
     } else if (outputMode === "count") {
-      const counts = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileCount({ file, count: fileMatches.length }));
+      const counts = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileCount({ file, count: fileMatches.filter(entry => !entry.isContextLine).length }));
       union = new GrepUnionResult({ result: { case: "count", value: new GrepCountResult({ counts, totalFiles: counts.length, totalMatches: totalSeen, clientTruncated }) } });
     } else {
       const matches = [...byFile.entries()].map(([file, fileMatches]) => new GrepFileMatch({ file, matches: fileMatches }));
@@ -1046,7 +1057,17 @@ class BoxExecRuntime {
     try {
       await mkdir(path.dirname(target), { recursive: true });
       const data = args.fileBytes !== undefined && args.fileBytes.length > 0 ? Buffer.from(args.fileBytes) : Buffer.from(args.fileText ?? "", args.encodingHint === "latin1" ? "latin1" : "utf8");
-      await writeFile(target, data);
+      // Atomic write: a crash mid-write must never leave a truncated file. Write a sibling temp
+      // file, then rename it over the target (rename is atomic within a filesystem). Clean up the
+      // temp on failure so a failed write leaves no debris.
+      const tempTarget = `${target}.tmp-${process.pid}-${Date.now()}`;
+      try {
+        await writeFile(tempTarget, data);
+        await rename(tempTarget, target);
+      } catch (writeError) {
+        await rm(tempTarget, { force: true }).catch(() => {});
+        throw writeError;
+      }
       const linesCreated = args.fileText === undefined ? 0 : args.fileText.length === 0 ? 0 : args.fileText.split("\n").length;
       return new WriteResult({ result: { case: "success", value: new WriteSuccess({ path: args.path, linesCreated }) } });
     } catch (error) {
