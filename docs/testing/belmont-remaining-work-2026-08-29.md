@@ -197,3 +197,34 @@
 원장 1,202건 미관측 — 결함 아님, 검증 공백. 완전성 판단엔 재실행 선행 필요.
 
 > 정확한 마지막 문장: **"개인 Codex 사용 기준 확정 결함은 위 §16 목록이고, 다수 경계 항목은 부분 구현/미검증이며, 원장 1,202건 미관측 때문에 전체 결함 목록이라 단정할 수 없다."**
+
+---
+
+## 17. 미관측 원장 검증 — 현실 + 층화 표본 (2026-08-29)
+
+### 왜 "1,202 전부 확인"은 그대로 불가능한가 (사망 반경)
+`belmont-wsl-test-queue.jsonl` = 1,292건. 구성:
+- **1,292건 전부 스크린샷 증거 요구**(`requiredEvidence: beforeScreenshot/afterScreenshot/...`).
+- **823 USER_REACHABLE** = UI 클릭 플로우 → 신뢰성 있는 UI 자동화+캡처 필요. CDP send/click가 불안정(이 세션에서 stop 버튼·new-chat composer 실패 확인). 감사가 미관측으로 남긴 바로 그 이유.
+- **438 AGENT_REACHABLE 중 ~38건**은 Cloud agents·Slack 채널 등 **Cursor 클라우드/외부 인프라 의존** → Codex 모드 실행 불가. 나머지 ~400 중에도 browser/computer/VNC/이미지생성은 인프라 필요.
+- **케이스별 durable oracle 부재** — 이전 sweep(`/tmp/queue-results*.jsonl`, 510행)은 **model self-report**라 감사 §6이 신뢰 불가로 판정.
+
+→ 전량 검증은 UI 자동화 harness + 클라우드 인프라 + 다일 캠페인이 선행돼야 하며, 이 harness로는 불가.
+
+### 실제로 durable 검증한 것 — 로컬 agent 코어 층화 표본 (전부 PASS)
+실행 인스턴스에서 에이전트로 실행, transcript에 근거 남김:
+
+| 영역 | 검증 | 결과 |
+|---|---|---|
+| Shell(로컬 셸) | cd/pwd(비유지 확인), sleep, echo, background(shellId/status), large-output(20k cap/5000행) | PASS |
+| Read 도구 | 텍스트 파일, PDF(clean 에러) | PASS |
+| Write / 파일 편집 | Write+Read-back(HELLO_WRITE), edit(line2→SECOND_EDITED) | PASS |
+| grep 도구 | 매치 + context(-B/-A), file:line | PASS |
+| WebSearch / WebFetch | DDG 검색 top result, example.com 헤딩 | PASS |
+| Task/Subagent | executor dispatch 완주, per-type 모델(gpt-5.4/low), 미등록 타입 거절 | PASS |
+| MCP | CallMcpTool(MCP_ECHO), GetMcpTools(belmont-test) | PASS |
+| TodoWrite | 항목 추가/확인 | PASS |
+| memory / update-state | 노트 저장(memory/log), 상태 | PASS |
+| Skill | SKILL.md 발견·인식 | PASS |
+
+= 로컬 agent 툴 표면 **~20개 코어 동작 층화 표본, 전부 PASS**. 이는 표본이며 전수가 아니다 — 남은 로컬 코어(~150+건)는 배치 확장으로, 823 UI·클라우드 케이스는 별도 harness/인프라가 필요.
