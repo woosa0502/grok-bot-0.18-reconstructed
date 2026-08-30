@@ -19,6 +19,11 @@ export interface LocalDisplayManagerOptions {
   readonly width?: number; // default 1280
   readonly height?: number; // default 800
   readonly startWindowManager?: boolean; // default true (best-effort)
+  /** Start x11vnc + websockify(noVNC) so the display can be watched in the UI. Default false. */
+  readonly vnc?: boolean;
+  readonly rfbPort?: number; // default 5900
+  readonly novncPort?: number; // default 6080
+  readonly novncWebRoot?: string; // default /usr/share/novnc
   readonly log?: (message: string) => void;
 }
 
@@ -27,21 +32,43 @@ export class LocalDisplayManager {
   private readonly width: number;
   private readonly height: number;
   private readonly startWm: boolean;
+  private readonly vncEnabled: boolean;
+  private readonly rfbPort: number;
+  private readonly novncPort: number;
+  private readonly novncWebRoot: string;
   private readonly log: (message: string) => void;
   private ready: Promise<LocalDisplay> | undefined;
   private xvfb: ReturnType<typeof spawn> | undefined;
   private wm: ReturnType<typeof spawn> | undefined;
+  private x11vnc: ReturnType<typeof spawn> | undefined;
+  private websockify: ReturnType<typeof spawn> | undefined;
+  private vncUrlValue: string | undefined;
 
   constructor(options: LocalDisplayManagerOptions = {}) {
     this.displayNumber = options.displayNumber ?? 99;
     this.width = options.width ?? 1280;
     this.height = options.height ?? 800;
     this.startWm = options.startWindowManager ?? true;
+    this.vncEnabled = options.vnc ?? false;
+    this.rfbPort = options.rfbPort ?? 5900;
+    this.novncPort = options.novncPort ?? 6080;
+    this.novncWebRoot = options.novncWebRoot ?? "/usr/share/novnc";
     this.log = options.log ?? (() => {});
   }
 
   get display(): string {
     return `:${this.displayNumber}`;
+  }
+
+  /**
+   * noVNC page URL for watching this display. Deterministic from novncPort, so it is
+   * available immediately when VNC is enabled (the box records vncUrl the first time it
+   * readies, which can precede websockify finishing its bind ~1s later); returns undefined
+   * when VNC is disabled.
+   */
+  get vncUrl(): string | undefined {
+    if (!this.vncEnabled) return undefined;
+    return this.vncUrlValue ?? `http://127.0.0.1:${this.novncPort}/vnc.html?autoconnect=1&resize=scale&path=websockify`;
   }
 
   /** Idempotent: starts Xvfb (and a WM) if needed and resolves once the display accepts X clients. */
@@ -87,7 +114,38 @@ export class LocalDisplayManager {
     // Best-effort background + window manager so apps are visible/framed.
     await this.run("xsetroot", ["-solid", "#1e2a3a"]).catch(() => {});
     if (this.startWm) await this.startWindowManager();
+    if (this.vncEnabled) await this.startVnc().catch((error) =>
+      this.log(`[local-computer] VNC start failed: ${error instanceof Error ? error.message : String(error)}`));
     return { display, displayNumber: this.displayNumber, width: this.width, height: this.height };
+  }
+
+  // Starts x11vnc (a VNC server for the Xvfb) and websockify serving noVNC, so the
+  // display can be watched in the app. x11vnc bails if it thinks the session is
+  // Wayland, so WAYLAND_DISPLAY/XDG_SESSION_TYPE are stripped from its environment.
+  private async startVnc(): Promise<void> {
+    if (!(await this.has("x11vnc")) || !(await this.has("websockify"))) {
+      this.log("[local-computer] x11vnc/websockify not installed; VNC viewer disabled");
+      return;
+    }
+    const vncEnv: NodeJS.ProcessEnv = { ...process.env, DISPLAY: this.display };
+    delete vncEnv.WAYLAND_DISPLAY;
+    delete vncEnv.XDG_SESSION_TYPE;
+    this.log(`[local-computer] starting x11vnc on ${this.display} (rfb ${this.rfbPort})`);
+    this.x11vnc = spawn(
+      "x11vnc",
+      ["-display", this.display, "-nopw", "-forever", "-shared", "-rfbport", String(this.rfbPort), "-quiet", "-noxdamage"],
+      { env: vncEnv, detached: true, stdio: "ignore" },
+    );
+    this.x11vnc.unref();
+    await delay(800);
+    this.log(`[local-computer] starting websockify(noVNC) on ${this.novncPort} -> ${this.rfbPort}`);
+    this.websockify = spawn(
+      "websockify",
+      [`--web=${this.novncWebRoot}`, String(this.novncPort), `localhost:${this.rfbPort}`],
+      { env: vncEnv, detached: true, stdio: "ignore" },
+    );
+    this.websockify.unref();
+    this.vncUrlValue = `http://127.0.0.1:${this.novncPort}/vnc.html?autoconnect=1&resize=scale&path=websockify`;
   }
 
   private async startWindowManager(): Promise<void> {
@@ -111,8 +169,12 @@ export class LocalDisplayManager {
   }
 
   dispose(): void {
+    try { this.websockify?.kill("SIGKILL"); } catch {}
+    try { this.x11vnc?.kill("SIGKILL"); } catch {}
     try { this.wm?.kill("SIGKILL"); } catch {}
     try { this.xvfb?.kill("SIGKILL"); } catch {}
+    this.websockify = undefined;
+    this.x11vnc = undefined;
     this.wm = undefined;
     this.xvfb = undefined;
     this.ready = undefined;

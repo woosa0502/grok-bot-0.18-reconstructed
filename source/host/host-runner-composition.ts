@@ -1,5 +1,7 @@
 import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
+import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
+import { LOCAL_COMPUTER_USE_ENABLED } from "./box/local-computer-use.js";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -2525,9 +2527,15 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       // subagent types are available". isMultitaskEnabled is env/gate-driven (SAND_MULTITASK),
       // matching the toolHost wiring below.
       const multitaskEnabled = method(experiments, "isMultitaskEnabled")?.() ?? false;
+      // Local computer-use: also offer the computerUse subagent so the parent can delegate a
+      // desktop task via Task (subagent_type "computerUse"). The subagent shares the single
+      // Xvfb screen; the dispatcher's allocateComputerUseWindow enforces one-at-a-time.
       const baseTurn: TurnToolsetTurnInput = {
         autoReviewModes,
-        subagentConfigs: multitaskEnabled ? [createSandExecutorSubagentConfig()] : [],
+        subagentConfigs: [
+          ...(multitaskEnabled ? [createSandExecutorSubagentConfig()] : []),
+          ...(LOCAL_COMPUTER_USE_ENABLED ? [createSandComputerUseSubagentConfig({ browserUseOffered: false })] : []),
+        ],
       };
       const staticModelId = process.env.SAND_AGENT_MODEL ?? DEFAULT_SAND_MODEL;
       const lazyToolHost = (isSubagentRunner: boolean) => {

@@ -28,7 +28,7 @@ import type {
   PingResult
 } from "./loopback-sand-box.js";
 import type { ShellAccessor } from "./box-windows.js";
-import { LOCAL_COMPUTER_USE_ENABLED, withLocalComputerUse } from "./local-computer-use.js";
+import { LOCAL_COMPUTER_USE_ENABLED, withLocalComputerUse, localComputerVncUrl } from "./local-computer-use.js";
 
 export type ProductionBoxControlClient = BoxPingControlClient &
   BoxEnvironmentControlClient &
@@ -93,7 +93,7 @@ function createStandaloneProductionBoxInner<
       return {
         ...primary,
         remoteAccessor: withNoMonitorComputerUse(primary.remoteAccessor),
-        vncUrl: "",
+        vncUrl: LOCAL_COMPUTER_USE_ENABLED ? (localComputerVncUrl() ?? "") : "",
       };
     },
     runState: () => loopback.runState(),

@@ -22,6 +22,9 @@ function localDisplayManager(): LocalDisplayManager {
     sharedLocalDisplayManager = new LocalDisplayManager({
       width: LOCAL_COMPUTER_DISPLAY.width,
       height: LOCAL_COMPUTER_DISPLAY.height,
+      // Start x11vnc + websockify(noVNC) so the desktop can be watched in the app's
+      // "Open computer" panel. Best-effort: skipped if the tools are not installed.
+      vnc: true,
       log: (message) => console.error(message),
     });
     // Start the virtual display eagerly so the first Computer action is fast.
@@ -29,6 +32,17 @@ function localDisplayManager(): LocalDisplayManager {
       console.error(`[local-computer] display start failed: ${error instanceof Error ? error.message : String(error)}`));
   }
   return sharedLocalDisplayManager;
+}
+
+/**
+ * noVNC URL for watching the local computer-use desktop, once the display manager
+ * has started the VNC stack. Ensures the display (and VNC) is starting; returns
+ * undefined until websockify is up (the UI falls back to its no-stream message).
+ */
+export function localComputerVncUrl(): string | undefined {
+  const manager = localDisplayManager();
+  void manager.ensure().catch(() => {});
+  return manager.vncUrl;
 }
 
 /**

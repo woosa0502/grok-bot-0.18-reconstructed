@@ -61,14 +61,21 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | move | ✅ (암묵) | 클릭 전 mousemove로 좌표 이동(executor 내장) |
 | scroll·drag·wait·cursorPosition | 구현됨 (미개별검증) | 동일 xdotool executor 경로 — 마우스(click)·키보드(type/key) 파이프라인 이미 입증 |
 
+### ② computerUse 서브에이전트 dispatch ✅ (2026-08-30 추가)
+Task 도구가 subagent_type을 executor만 허용("Invalid value. Expected one of: executor")한 이유는 host-runner-composition.ts:2530이 config를 `[executor]`로 하드코딩(재구성 잔재)한 것. 로컬 CU면 `createSandComputerUseSubagentConfig`도 추가하도록 고침. 단일화면 락(`allocateComputerUseWindow`, agent-adapters.ts:62)은 이미 존재 → 한 번에 하나만.
+- **라이브 검증**: "Use the Task tool to dispatch a computerUse subagent..." → 봇 "The computerUse subagent was accepted and dispatched successfully. It reported the code word: **PLUM-55**". (수정 전엔 "Invalid value. Expected one of: executor"로 거부됨 → 수정 후 수락)
+
+### ③ VNC 뷰어 패널 ✅ (2026-08-30 추가)
+호스트가 **x11vnc**(:99→5900) + **websockify/noVNC**(6080)를 spawn하고, 박스 vncUrl을 noVNC URL로 채움(display-manager.ts + box/local-computer-use.ts + box/production.ts). x11vnc가 WSL의 WAYLAND_DISPLAY를 보고 Wayland로 오인·종료하던 것 → spawn env에서 WAYLAND_DISPLAY/XDG_SESSION_TYPE 제거로 해결.
+- **라이브 검증**: 앱 "Grok Bot's Computer" 패널 클릭 → 렌더러가 `<webview src="http://127.0.0.1:6080/vnc.html?...">` 생성 → **:99 데스크톱이 앱 안에 실시간 표시**("VNC LIVE: MELON-33" 창 그대로 보임). 회색 플레이스홀더→실제 화면.
+
 ### 상태 / 한계
-- **커밋 815c410**(기능, 12파일) → main 병합(d4babb9) → origin push 완료.
-- 실행 조건: **`SAND_LOCAL_COMPUTER_USE=1`** (기본 동작 불변, opt-in).
+- 커밋 815c410(도구, 12파일) → main 병합(d4babb9). ②③은 추가 커밋 예정(4파일).
+- 실행 조건: **`SAND_LOCAL_COMPUTER_USE=1`** (기본 동작 불변, opt-in). VNC는 x11vnc/websockify/novnc 설치 시 자동(없으면 뷰어만 비활성, 도구는 작동).
 - 창 관리자 없음(openbox 등 미설치) → 앱이 테두리 없이 뜸. 실제 GUI 앱 자동화엔 WM 설치 권장.
-- VNC 패널(x11vnc/websockify) 미연결 — UI Computer 패널로 실시간 화면 노출은 후속.
 
 ### full-test 케이스 재분류 (컴퓨터 관련 — §6 UNAVAIL 641 중)
-컴퓨터 관련 케이스는 3그룹으로 갈린다. 내 구현은 **에이전트 Computer 도구**만 바꾸고, computerUse 서브에이전트 dispatch·VNC 뷰어 패널은 그대로 미구현이다(정직한 경계).
+컴퓨터 관련 케이스는 3그룹 — ①에이전트 Computer 도구 ②computerUse 서브에이전트 dispatch ③VNC 뷰어 패널. **셋 다 구현+라이브검증 완료**(초기엔 ①만; ②③은 사용자 지시로 후속 구현).
 
 | 케이스 | 원판정 | 새 판정 | 근거 |
 |---|---|---|---|
@@ -76,10 +83,11 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | GBF-AGT-000135 (Computer then-batch 후속액션) | UNAVAIL | **✅ PASS(코드+라이브)** | :347-348 primary+then[] 시퀀스 조립; 다중액션(클릭+타이핑) 라이브 입증 |
 | GBF-AGT-000206 (auto-review가 Computer 액션 거부) | UNAVAIL | **PARTIAL** | Computer 액션은 이제 존재하나 auto-review가 local서 강제OFF(AUDIT-W3)라 거부 게이트 미작동 |
 | GBF-AGT-000429 (no-monitor면 SandBoxNoMonitor throw) | PASS | PASS(유지) | 플래그 OFF면 여전히 throw, ON이면 Xvfb 모니터 존재 — 둘 다 정상 |
-| GBF-AGT-000297/298/420/235 (computerUse **서브에이전트** dispatch/단일화면 가드) | UNAVAIL/PASS | **유지** | 난 메인에이전트에 직접 노출 — Task의 computerUse 서브에이전트 경로는 미구현. 단 GUI 조작 능력 자체는 메인에이전트로 가능(420 부분충족) |
-| **VNC 뷰어** (USR-237/242/243/391/456/235/236 등 ~10건) | UNAVAIL | **유지** | 사용자용 별도 화면 뷰어 UI 미구현. Xvfb는 있으나 노출 패널 없음 |
+| GBF-AGT-000297/420 (computerUse **서브에이전트** dispatch/GUI 조작) | UNAVAIL | **✅ PASS(라이브)** | ②구현: config 하드코딩 수정 → subagent_type "computerUse" 수락·dispatch→PLUM-55 판독 |
+| GBF-AGT-000298/235 (두 번째 computerUse 서브에이전트 단일화면 가드) | UNAVAIL/PASS | **✅ 코드경로 활성** | allocateComputerUseWindow(agent-adapters.ts:62) 락이 이제 도달가능 — dispatch가 되므로 가드도 실동작 |
+| **VNC 뷰어** (USR-237/242/243/391/456/235/236 등 ~10건) | UNAVAIL | **✅ PASS(라이브)** | ③구현: x11vnc+websockify+noVNC로 :99를 앱 "Open computer" 패널에 실시간 표시(MELON-33 확인). Xvfb는 있고 이제 노출 패널도 있음 |
 
-**정직한 결론:** 컴퓨터 유즈의 *에이전트 도구 실행*(스크린샷·클릭·타이핑·키·then-batch·trailing-screenshot)은 라이브 PASS. *computerUse 서브에이전트 dispatch*와 *VNC 뷰어 패널*은 여전히 미구현이라 원판정 유지 — 후속 작업 대상.
+**정직한 결론:** 컴퓨터 유즈 3그룹 전부 라이브 PASS — *에이전트 도구 실행*(스크린샷·클릭·타이핑·키·then-batch·trailing-screenshot), *computerUse 서브에이전트 dispatch*(②), *VNC 뷰어 패널*(③). 미구현 없음. (VNC는 x11vnc/websockify/novnc 설치 필요, 로컬 설치 완료.)
 
 ## 2. 감사 findings — P0 (심각)
 
