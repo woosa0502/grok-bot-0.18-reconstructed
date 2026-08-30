@@ -174,7 +174,12 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
         completionTokens: recorded.outputTokens,
         totalTokens: recorded.inputTokens + recorded.outputTokens,
       });
-      extendedUsage.resolve({ ...recorded, maxTokens: 0 });
+      // Report the model's real context window so Belmont's summarization orchestrator can
+      // fire PRE-EMPTIVELY. Hardcoding 0 here made getBackgroundSummarizationTriggerThreshold
+      // return undefined (background-summarization.ts: `if (maxTokens <= 0) return undefined`),
+      // so proactive compaction never triggered and long conversations only compacted AFTER the
+      // model threw "input exceeds the context window". Pi exposes contextWindow on the model.
+      extendedUsage.resolve({ ...recorded, maxTokens: resolved.model.contextWindow ?? 0 });
       metadata.resolve({ openai: { responseId: authoritative.responseId, pi: true } });
       response.resolve(resultResponse(
         authoritative,

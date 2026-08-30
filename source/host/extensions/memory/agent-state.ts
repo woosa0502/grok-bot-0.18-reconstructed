@@ -9,8 +9,13 @@ import { CANONICAL_AVATAR_FILENAME, invalidateAvatarDataUrlCache, listConvention
 import { isBoxRootPath } from "../../box/box-transfer.js";
 import { FileMemoryStore, getProjectDir, getProjectMemoryShardDir, getUserMemoryShardDir, projectDirExists, type MemoryKind } from "./memory-service.js";
 
-export type StateWriteResult = { ok: true; message: string } | { ok: false; message: string };
-const ok = (message: string): StateWriteResult => ({ ok: true, message }), fail = (message: string): StateWriteResult => ({ ok: false, message });
+// Field names MUST match the canonical StateWriteResult the update_state tool renders
+// (source/host/runner/agent-state.ts): success reads `.detail`, failure reads `.reason`.
+// This writer reaches the tool through an `any` boundary (host-runner-composition.ts
+// reflective createAgentState), so a shape mismatch is not caught by tsc — it surfaces
+// at runtime as "undefined" / "Not saved — undefined" for every state operation.
+export type StateWriteResult = { ok: true; detail: string } | { ok: false; reason: string };
+const ok = (detail: string): StateWriteResult => ({ ok: true, detail }), fail = (reason: string): StateWriteResult => ({ ok: false, reason });
 const blank = (value?: string | null): boolean => value == null || value.trim().length === 0;
 export const MEMORY_NOTE_PREFIX = "Note: ";
 export const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
