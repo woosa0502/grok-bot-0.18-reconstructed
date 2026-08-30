@@ -1,6 +1,6 @@
 # Belmont — 풀 테스트 & 감사 종합 문서
 
-_생성: 2026-08-29 · 단일 통합본 (이전 산재 문서/임시 원장 대체)_
+_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 단일 통합본 (이전 산재 문서/임시 원장 대체)_
 
 이 문서는 두 검증 활동을 하나로 합친다: (1) **행위 단위 라이브 sweep** — 에이전트에 각 테스트 케이스를 주입해 실제 도구 실행 증거로 판정, (2) **소스 코드 감사** — production 배선/통합 여부를 코드로 확인. sweep은 '도구가 개별로 작동하는가'를 보고, 감사는 '실제로 production에 연결됐는가'를 본다. 후자가 전자의 여러 PASS를 false-green으로 뒤집었다.
 
@@ -15,9 +15,10 @@ _생성: 2026-08-29 · 단일 통합본 (이전 산재 문서/임시 원장 대�
 | — UNAVAIL (이 버전엔 기능 없음) | 641 |
 | — ENV / UI_ONLY / EXPECTED | 83 / 13 / 1 |
 | 감사 findings | 26 (CONFIRMED 19 · FIXED 3 · PARTIAL 3) |
-| 확정 실결함 | 3 (update_state, Pi maxTokens, 첨부전송 크래시 — 셋 다 수정+재빌드+라이브검증) |
+| 확정 실결함 | 3 (update_state, Pi maxTokens, 첨부전송 크래시 — 셋 다 수정+재빌드+라이브검증+커밋) |
+| 신규 기능 | **컴퓨터 유즈** (스크린샷·클릭·타이핑·키 — 라이브검증+커밋, §1.5) |
 
-**핵심 결론:** 다중 봇 *기반*은 있으나, Belmont의 핵심 연결부 — 기억 자동회수 · 봇 발견 · 위임 내구성 · child 상태 격리 · 결과 검토 — 가 아직 production에 끊겨 있다. sweep의 PASS 수치는 false-green으로 부풀려져 있었다.
+**핵심 결론:** 다중 봇 *기반*은 있으나, Belmont의 핵심 연결부 — 기억 자동회수 · 봇 발견 · 위임 내구성 · child 상태 격리 · 결과 검토 — 가 아직 production에 끊겨 있다. sweep의 PASS 수치는 false-green으로 부풀려져 있었다. (2026-08-30 갱신: 컴퓨터 유즈 신규 구현+검증 §1.5, 확정 실결함 3건 커밋·병합 완료.)
 
 ## 1. 확정 실결함 (수정 완료)
 
@@ -32,7 +33,39 @@ _생성: 2026-08-29 · 단일 통합본 (이전 산재 문서/임시 원장 대�
 ### DEFECT-3 — 이미지/파일 첨부 전송 시 앱 전체 크래시 (attachment kinds shape 불일치) ✅수정+빌드
 - 증거: session-projection.ts buildAttachmentLastEntry가 kinds를 countKinds()의 객체 {image:1}로 넣음. 렌더러 Yun/mergeKindCounts는 배열 [{kind,count}] 기대. 객체엔 .length=undefined라 빈-가드 통과 후 n.filter 폭발 -> 'TypeError: n.filter is not a function' -> 루트 에러경계 -> 앱 전체 크래시(reload로만, 심하면 agent 삭제로만 복구). 게이트웨이 주입/직접 CDP 앱제어 둘 다 동일 재현.
 
-> 상태: 소스 수정 + 재빌드로 live 배포됨. **아직 git 커밋은 안 됨** — 커밋+검증 필요.
+> 상태: 소스 수정 + 재빌드 + 라이브검증 완료. **커밋+병합 완료** (main d4babb9, origin push, 2026-08-30).
+
+## 1.5 컴퓨터 유즈 (Computer Use) — 신규 구현 + 라이브 검증 ✅ (2026-08-30)
+
+원래 이 로컬 버전엔 컴퓨터 유즈가 없었다(§6 UNAVAIL 641에 '컴퓨터' 포함). 이번에 **로컬 Codex 모드용 Computer 도구를 구현**해 에이전트가 화면을 보고(스크린샷→Pi 비전) 마우스·키보드로 조작(클릭·타이핑·키)하게 만들었다. 종단간 라이브 검증 완료, main 병합(d4babb9)·origin push.
+
+### 무엇이 막혀 있었나 — 근본원인 3개 (원인별 재설계, 성적표 튜닝 아님)
+원래 있던 `createComputerTool`은 **불완전 재구성**이라 턴-도구 계약을 하나도 안 지켰다.
+
+1. **프레임워크 미준수** — 스트리밍 execute·proto 결과(toJson)·serializeError·이미지 전달 render가 전무 → `createComputerTurnTool` 신규 작성(host-computer-tool-dependencies.ts). generate-image/ls와 동일 계약(withSafeParsedArgs + ComputerUseToolCall proto + createImageResult).
+2. **실행 라우팅 오류** — 컴퓨터 동작이 local-exec 게이트웨이(shell/파일만 앎)로 가서 describeLocalExec가 computerUseArgs를 몰라 '설명 불가(SAND_LOCAL_TOOLS_UNDESCRIBABLE)'로 차단됨 → 공유 헬퍼(box/local-computer-use.ts)로 박스 accessor를 로컬 Xvfb executor로 감쌈(box/production.ts + extensions/local-exec/production.ts). CombinedResourceAccessor는 로컬 항목이 게이트웨이보다 우선.
+3. **★이미지 미전달 (결정타)** — Pi 투영이 tool 결과의 텍스트(`part.result`)만 쓰고 스크린샷이 담긴 `experimental_content`를 통째로 버림 → experimental_content 우선 사용하도록 수정(extensions/inference/pi-codex-projection.ts:202). 이게 모델이 화면을 '보게' 만든 핵심.
+
+### 구현 방식
+- 전용 **Xvfb**(:99, 1280×800) 가상 화면. 캡처=**ffmpeg x11grab**(ImageMagick `import -window root`는 Xvfb서 1비트/빈 프레임으로 퇴화), 입력=**xdotool**.
+- 로컬 모드엔 컴퓨터유즈 서브에이전트 런타임이 없어 **메인 에이전트에 직접 노출**(turn-toolset.ts 게이트 완화 + turn-agent-composition.ts fallback + host-runner-composition.ts projection).
+- 실행기: `source/packages/local-exec/computer-use/{executor,display-manager}.ts`. remote-box-resources.ts는 로컬 모드서 monitor-lease/navigation-probe 단계 건너뜀.
+
+### 라이브 검증 (에이전트 응답 + 내 독립 ffmpeg 캡처로 교차확인 — self-report 아님)
+| 액션 | 판정 | 증거 |
+|---|---|---|
+| **screenshot** | ✅ PASS | 화면 코드 정확 판독: GRAPE-99·CHERRY-42·MANGO-88 정확 (작은폰트 KIWI→KWW 근사, 판독 자체는 작동) |
+| **click** | ✅ PASS | xmessage OK 버튼 클릭 → 창이 실제로 닫힘(내 독립 확인). 마우스 물리 입력 작동 |
+| **type** | ✅ PASS | xedit에 " ZEBRA-TYPED-42" 입력 → **내 독립 캡처에 실제 삽입 확인**(에이전트 환각 아님) |
+| **key** | ✅ PASS | Return 키로 새 줄(상태바 L1→L2) 생성 후 "KEY-NEWLINE-9" 입력, 독립 캡처 확인 |
+| move | ✅ (암묵) | 클릭 전 mousemove로 좌표 이동(executor 내장) |
+| scroll·drag·wait·cursorPosition | 구현됨 (미개별검증) | 동일 xdotool executor 경로 — 마우스(click)·키보드(type/key) 파이프라인 이미 입증 |
+
+### 상태 / 한계
+- **커밋 815c410**(기능, 12파일) → main 병합(d4babb9) → origin push 완료.
+- 실행 조건: **`SAND_LOCAL_COMPUTER_USE=1`** (기본 동작 불변, opt-in).
+- 창 관리자 없음(openbox 등 미설치) → 앱이 테두리 없이 뜸. 실제 GUI 앱 자동화엔 WM 설치 권장.
+- VNC 패널(x11vnc/websockify) 미연결 — UI Computer 패널로 실시간 화면 노출은 후속.
 
 ## 2. 감사 findings — P0 (심각)
 
@@ -122,7 +155,7 @@ _생성: 2026-08-29 · 단일 통합본 (이전 산재 문서/임시 원장 대�
 |---|---|---|
 | PASS | 503 | 실제 tool call/코드로 검증됨 (단, 배선 미검증 항목 잔존 가능) |
 | ISSUE | 34 | 문제점 (미완성·false-green 정정) |
-| UNAVAIL | 641 | 이 로컬 버전엔 기능 자체 없음 (클라우드·이미지·컴퓨터·브라우저·영상) |
+| UNAVAIL | 641 | 이 로컬 버전엔 기능 자체 없음 (클라우드·이미지·~~컴퓨터~~·브라우저·영상). **단 '컴퓨터'는 이후 구현됨 → §1.5 참조**(스크린샷/클릭/타이핑/키 라이브검증). 관련 케이스는 재분류 대상. |
 | ENV | 83 | 환경(채널·그룹) 없어 검증 불가 |
 | UI_ONLY | 13 | 데스크톱 UI 전용, 에이전트 조작 불가 |
 | EXPECTED | 1 | 설계상 정상 동작 |
