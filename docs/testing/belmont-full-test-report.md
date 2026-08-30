@@ -67,6 +67,20 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 - 창 관리자 없음(openbox 등 미설치) → 앱이 테두리 없이 뜸. 실제 GUI 앱 자동화엔 WM 설치 권장.
 - VNC 패널(x11vnc/websockify) 미연결 — UI Computer 패널로 실시간 화면 노출은 후속.
 
+### full-test 케이스 재분류 (컴퓨터 관련 — §6 UNAVAIL 641 중)
+컴퓨터 관련 케이스는 3그룹으로 갈린다. 내 구현은 **에이전트 Computer 도구**만 바꾸고, computerUse 서브에이전트 dispatch·VNC 뷰어 패널은 그대로 미구현이다(정직한 경계).
+
+| 케이스 | 원판정 | 새 판정 | 근거 |
+|---|---|---|---|
+| GBF-AGT-000141 (시퀀스가 screenshot로 안 끝나면 자동 screenshot 추가) | UI_ONLY | **✅ PASS(라이브)** | move만 시켜도 screenshot 반환·FIG-11 판독. host-computer-tool-dependencies.ts:351 |
+| GBF-AGT-000135 (Computer then-batch 후속액션) | UNAVAIL | **✅ PASS(코드+라이브)** | :347-348 primary+then[] 시퀀스 조립; 다중액션(클릭+타이핑) 라이브 입증 |
+| GBF-AGT-000206 (auto-review가 Computer 액션 거부) | UNAVAIL | **PARTIAL** | Computer 액션은 이제 존재하나 auto-review가 local서 강제OFF(AUDIT-W3)라 거부 게이트 미작동 |
+| GBF-AGT-000429 (no-monitor면 SandBoxNoMonitor throw) | PASS | PASS(유지) | 플래그 OFF면 여전히 throw, ON이면 Xvfb 모니터 존재 — 둘 다 정상 |
+| GBF-AGT-000297/298/420/235 (computerUse **서브에이전트** dispatch/단일화면 가드) | UNAVAIL/PASS | **유지** | 난 메인에이전트에 직접 노출 — Task의 computerUse 서브에이전트 경로는 미구현. 단 GUI 조작 능력 자체는 메인에이전트로 가능(420 부분충족) |
+| **VNC 뷰어** (USR-237/242/243/391/456/235/236 등 ~10건) | UNAVAIL | **유지** | 사용자용 별도 화면 뷰어 UI 미구현. Xvfb는 있으나 노출 패널 없음 |
+
+**정직한 결론:** 컴퓨터 유즈의 *에이전트 도구 실행*(스크린샷·클릭·타이핑·키·then-batch·trailing-screenshot)은 라이브 PASS. *computerUse 서브에이전트 dispatch*와 *VNC 뷰어 패널*은 여전히 미구현이라 원판정 유지 — 후속 작업 대상.
+
 ## 2. 감사 findings — P0 (심각)
 
 | ID | 제목 | 판정 | 증거 |
