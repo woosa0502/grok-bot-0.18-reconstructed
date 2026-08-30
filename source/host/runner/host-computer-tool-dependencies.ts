@@ -341,11 +341,11 @@ function renderComputerUseResult(result: GeneratedComputerUseResult | undefined)
  * The executor is resolved from the box resource accessor directly so the raw
  * proto ComputerUseResult (carrying the screenshot) reaches render unchanged.
  */
-export function createComputerTurnTool<Context = unknown>(deps: ComputerToolDependencies<Context>) {
+export function createComputerTurnTool<TContext extends Context = Context>(deps: ComputerToolDependencies<TContext>) {
   const parameters = buildComputerParameters(deps.autoReview);
 
   const coreExecute = async (
-    ctx: Context,
+    ctx: TContext,
     interactionHandler: ComputerInteractionHandler,
     parsed: ComputerActionArgs,
     meta: ComputerToolMeta,

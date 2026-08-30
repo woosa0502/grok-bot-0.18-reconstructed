@@ -3,6 +3,18 @@ import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from 
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
 import { createSandMcpTextSpiller, isLargeOutputSpillEnabled } from "./runner/large-output-spill.js";
+import { createLocalPdfTextExtractor } from "./runner/local-pdf-text-extractor.js";
+
+// One extractor per host process: the Read tools share its per-path text cache semantics upstream.
+const localPdfTextExtractor = createLocalPdfTextExtractor();
+
+// Compaction epoch = number of conversation summary archives (every summarization
+// pushes one — summarization-orchestrator `pushSummaryArchive`). Memory prompt
+// snapshots and the automation status reminder re-render when it advances.
+function compactionEpochFromConversationState(state: unknown): number {
+  const archives = (state as { summaryArchives?: unknown } | null | undefined)?.summaryArchives;
+  return Array.isArray(archives) ? archives.length : 0;
+}
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -138,6 +150,8 @@ import {
   createSystemPromptAssembly,
   type PromptSnapshotStore,
 } from "./runner/system-prompt-assembly.js";
+import type { MemoryPromptStore, MemorySnapshotStore, SystemPromptAssemblyDependencies } from "./runner/system-prompt-assembly.js";
+import { isLocalCodexMode } from "../shared/node/local-codex-account.js";
 import { PrivacyMode, type PrivacyMode as PrivacyModeValue } from "../packages/redaction/privacy-mode.js";
 import { tryExtractSandAutoReviewClassifierConversationContext } from "../packages/agent/smart-mode-classifier-context.js";
 import {
@@ -1244,6 +1258,56 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     const resolveCloudAgentTitle = async (_ctx: unknown, bcId: string) =>
       (await method(cloudAgents, "get")?.(bcId))?.name;
     const awaitCloudAgent = method(cloudAgents, "awaitCompletion");
+    // Bot roster for the system prompt and the ListAgents/ListGroups tools. One
+    // implementation for both the prompt-assembly context and runnerOptions
+    // (the former used to receive empty arrays — AUDIT-3).
+    const agentDirectoryProvider = () => {
+      const roster = method(transcript, "listAgentsSync")?.() ?? [];
+      return roster
+        .filter((agent: any) =>
+          agent.id !== session.id &&
+          !agent.isGroup &&
+          agent.remoteRoom == null
+        )
+        .map((agent: any) => ({
+          id: agent.id,
+          name: agent.name,
+          description: agent.description
+        }));
+    };
+    const agentGroupsProvider = () => {
+      const roster = method(transcript, "listAgentsSync")?.() ?? [];
+      const byId = new Map(roster.map((agent: any) => [agent.id, agent]));
+      return roster
+        .filter((agent: any) =>
+          agent.isGroup && agent.memberIds.includes(session.id)
+        )
+        .map((group: any) => ({
+          id: group.id,
+          name: group.name,
+          members: group.memberIds
+            .filter((memberId: string) => memberId !== session.id)
+            .map((memberId: string) => byId.get(memberId))
+            .filter((member: any) => member != null)
+            .map((member: any) => ({
+              id: member.id,
+              name: member.name,
+              description: member.description
+            }))
+        }));
+    };
+    // Prompt-facing memory (agent scope + user/project shards); memoized per runner.
+    let promptUserMemory: ReturnType<SystemPromptAssemblyDependencies["userMemory"]> | undefined;
+    let promptProjectMemory: ReturnType<SystemPromptAssemblyDependencies["projectMemory"]> | undefined;
+    const promptUserMemoryProvider = () => promptUserMemory ??= (method(memory, "createUserMemory")?.({
+      agentId: session.id,
+      resolveAgentName: resolveAgentDisplayName
+    }) ?? null) as ReturnType<SystemPromptAssemblyDependencies["userMemory"]>;
+    const promptProjectMemoryProvider = () => promptProjectMemory ??= (method(memory, "createProjectMemory")?.({
+      agentDir: dirname(session.dbPath),
+      agentId: session.id,
+      resolveAgentName: resolveAgentDisplayName
+    }) ?? null) as ReturnType<SystemPromptAssemblyDependencies["projectMemory"]>;
     const sendToAgent = (
       toAgentId: string,
       text: string,
@@ -1429,11 +1493,17 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               ? { getMetadata: (key: string) => String(store.getMetadata(key)) }
               : null;
           },
-          compactionEpoch: () => 0,
-          memoryStore: () => null,
-          memorySnapshots: () => null,
-          userMemory: () => null,
-          projectMemory: () => null,
+          compactionEpoch: () => {
+            const store = session.agentStore as { getConversationStateStructure?: () => unknown } | null | undefined;
+            try { return typeof store?.getConversationStateStructure === "function" ? compactionEpochFromConversationState(store.getConversationStateStructure()) : 0; }
+            catch { return 0; }
+          },
+          // Long-term memory recall (AUDIT-1): the same stores the turn engine writes to.
+          memoryStore: () => (session.memory as MemoryPromptStore | undefined) ?? null,
+          memorySnapshots: () => (session.db as unknown as MemorySnapshotStore | undefined) ?? null,
+          userMemory: promptUserMemoryProvider,
+          projectMemory: promptProjectMemoryProvider,
+          isLocalCodexMode: () => isLocalCodexMode(process.env),
           isBoxScopedSubagent: () => false,
           requestContext: {
             resolve: () => {
@@ -1452,8 +1522,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           connectorManifests: CONNECTOR_MANIFESTS,
           sendToAgentImpl: sendToAgent,
           agentManagement,
-          agentDirectory: () => [],
-          agentGroups: () => [],
+          agentDirectory: agentDirectoryProvider,
+          agentGroups: agentGroupsProvider,
           agentsRootDir: () => dirname(dirname(session.dbPath)),
           isSpotlightEnabled: () => method(experiments, "isSpotlightEnabled")?.() ?? false,
           isMultitaskEnabled: () => method(experiments, "isMultitaskEnabled")?.() ?? false,
@@ -1550,41 +1620,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         )?.(platform) ?? false,
       resolveCloudAgentTitle,
       sendToAgent,
-      agentDirectory: () => {
-        const roster = method(transcript, "listAgentsSync")?.() ?? [];
-        return roster
-          .filter((agent: any) =>
-            agent.id !== session.id &&
-            !agent.isGroup &&
-            agent.remoteRoom == null
-          )
-          .map((agent: any) => ({
-            id: agent.id,
-            name: agent.name,
-            description: agent.description
-          }));
-      },
-      agentGroups: () => {
-        const roster = method(transcript, "listAgentsSync")?.() ?? [];
-        const byId = new Map(roster.map((agent: any) => [agent.id, agent]));
-        return roster
-          .filter((agent: any) =>
-            agent.isGroup && agent.memberIds.includes(session.id)
-          )
-          .map((group: any) => ({
-            id: group.id,
-            name: group.name,
-            members: group.memberIds
-              .filter((memberId: string) => memberId !== session.id)
-              .map((memberId: string) => byId.get(memberId))
-              .filter((member: any) => member != null)
-              .map((member: any) => ({
-                id: member.id,
-                name: member.name,
-                description: member.description
-              }))
-          }));
-      },
+      agentDirectory: agentDirectoryProvider,
+      agentGroups: agentGroupsProvider,
       agentManagement,
       agentsRootDir: () => dirname(dirname(session.dbPath))
     };
@@ -1785,6 +1822,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       const downloadFile = method(remoteBox, "downloadFile");
       const watchCloudAgent = createRunnerCloudWatch(builtRunner);
       const cloudAgent = (() => {
+        // Cursor cloud agents need a Cursor account; local Codex mode hides the tool
+        // (the prompt switches to the cloud-agents-disabled variant as well).
+        if (isLocalCodexMode(process.env)) return undefined;
         const launchedIds = cloudAgents.launchedIds;
         if (
           !isCloudAgentApi(cloudAgents)
@@ -2142,6 +2182,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       createAgentManagementToolInputs: () => ({
         dependencies: dependencies.agentManagement,
       }),
+      createRosterToolInputs: () => ({
+        dependencies: { listAgents: agentDirectoryProvider, listGroups: agentGroupsProvider },
+      }),
       createBoxAwaitToolInputs: (turn, _props): TurnAwaitToolFactoryInput => ({
         resourceAccessor: (() => {
           if (turn.remoteBoxResourceAccessor === undefined) {
@@ -2167,9 +2210,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           toolIdentifier: "EXTERNAL_READ",
           toolDescription: SAND_EXTERNAL_READ_TOOL_DESCRIPTION,
           // The immutable Mac and Windows carriers contain the lazy Piscina
-          // producer but omit pdf-worker.{js,ts}. Leaving the extractor absent
-          // preserves ordinary Read while making the unrecoverable PDF branch
-          // fail closed in createReadTool.
+          // producer but omit pdf-worker.{js,ts}; the local extractor
+          // (pdftotext → pdfjs-dist) restores the PDF Read branch.
+          pdfTextExtractor: localPdfTextExtractor,
         },
       }),
       createBoxReadToolInputs: (turn, _props): TurnReadToolFactoryInput => {
@@ -2184,6 +2227,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             toolName: SAND_BOX_READ_TOOL_NAME,
             toolIdentifier: "READ",
             toolDescription: SAND_BOX_READ_TOOL_DESCRIPTION,
+            pdfTextExtractor: localPdfTextExtractor,
           },
         };
       },
@@ -2911,7 +2955,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         },
         promptOptions: (_prompt, options) => toGeneratedTurnPromptOptions(options),
         assembleGeneratedTurnAction: productionPromptGlue.assembleGeneratedTurnAction,
-        compactionEpoch: () => 0,
+        compactionEpoch: () => {
+          try { return compactionEpochFromConversationState(getProductionConversationState()); }
+          catch { return 0; }
+        },
         getConversationState: getProductionConversationState,
         ...(mcp.mcp != null && typeof mcp.mcp.getTools === "function"
           ? {

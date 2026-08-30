@@ -610,6 +610,28 @@ export function createHostGatewayApi(
       method(deps.extensions.api("trays"), "dismiss")(args),
     clearTrays: () => method(deps.extensions.api("trays"), "clearAll")(),
 
+    // Pi Codex OAuth for the desktop account screen. The device code is also
+    // surfaced in-app as a tray above the composer, since the pinned renderer's
+    // sign-in screen has no place to render it.
+    getProviderAuthStatus: () => method(deps.extensions.api("inference"), "getProviderAuthStatus")(),
+    startProviderLogin: async () => {
+      const state = await method(deps.extensions.api("inference"), "startProviderLogin")();
+      if (state?.state === "pending" && (state.userCode !== undefined || state.authUrl !== undefined)) {
+        const where = state.verificationUri ?? state.authUrl;
+        method(deps.extensions.api("trays"), "pushError")({
+          title: "Codex sign-in",
+          detail: state.userCode !== undefined
+            ? `Enter code ${state.userCode} at ${where} to finish signing in.`
+            : `Finish signing in at ${where}.`,
+          dedupeKey: "pi-codex-login",
+        });
+      }
+      return state;
+    },
+    getProviderLoginStatus: () => method(deps.extensions.api("inference"), "getProviderLoginStatus")(),
+    cancelProviderLogin: () => method(deps.extensions.api("inference"), "cancelProviderLogin")(),
+    providerLogout: () => method(deps.extensions.api("inference"), "providerLogout")(),
+
     uploadAttachment: (args: any) => method(attachments, "upload")(args),
     readAttachmentImage: (args: any) => method(attachments, "readImage")(args),
     readAttachmentText: (args: any) => method(attachments, "readText")(args),

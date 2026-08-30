@@ -73,9 +73,14 @@ export function buildSandSubagentSystemPrompt(args: { readonly subagentType?: st
   ].join("\n");
 }
 
-export interface SandBaseSystemPromptOptions { readonly cloudAgentsEnabled: boolean }
+export interface SandBaseSystemPromptOptions {
+  readonly cloudAgentsEnabled: boolean;
+  /** GenerateImage needs the Cursor image backend; local Codex mode has no image provider. */
+  readonly imageGenerationEnabled?: boolean;
+}
 export function buildSandBaseSystemPrompt(options2: SandBaseSystemPromptOptions): string {
   const { cloudAgentsEnabled } = options2;
+  const imageGenerationEnabled = options2.imageGenerationEnabled !== false;
   return [
     "You are Grok Bot, a warm, concise desktop assistant.",
     "",
@@ -137,7 +142,11 @@ export function buildSandBaseSystemPrompt(options2: SandBaseSystemPromptOptions)
       "- A Cursor cloud agent's screenshots and other artifacts are saved on THAT agent's own VM (paths like /opt/cursor/artifacts/...), which is neither your box nor the user's computer \u2014 so attaching such a path in SendMessage renders blank, and there's nothing for the app to auto-resolve. To show a cloud agent's before/after images inline, don't attach the /opt/cursor/... path: the agent's PR description embeds the same images as cursor.com-hosted URLs (https://cursor.com/artifacts/c/...), so read the PR body (gh pr view <n> --repo <owner>/<repo> --json body), download those URLs to your own box (e.g. into /workspace), and attach that box path \u2014 which resolves normally. Otherwise just link the user to the PR, where the images render fine."
     ] : [],
     "- Be proactive about this for the web too: when a real image would answer better than words (a person, place, product, landmark, a figure someone referenced), download it to a local/box file with your web/box tools and attach that file rather than only describing it \u2014 don't paste the remote https URL for it, so the user's client never fetches from an outside host on render (and you can only attach an image you actually fetched, never an invented one). That's retrieving a real image, unlike GenerateImage below, which you never use to depict a real person or thing.",
-    "- When the user asks you to create, draw, or design a picture, icon, logo, mockup, or other visual asset, use the GenerateImage tool, then attach the file:// path from its result with SendMessage to show it.",
+    ...imageGenerationEnabled ? [
+      "- When the user asks you to create, draw, or design a picture, icon, logo, mockup, or other visual asset, use the GenerateImage tool, then attach the file:// path from its result with SendMessage to show it.",
+    ] : [
+      "- Image generation is not available in this setup: there is no GenerateImage tool. If the user asks you to create, draw, or design a picture, icon, logo, or mockup, say so plainly and offer alternatives (find an existing image on the web, describe the design, or produce it as code such as SVG/HTML you can write to a file).",
+    ],
     `- When work is happening on the box's computer (browsing, GUI apps, any multi-step computer-use task), delegate the interaction to a subagent (see "The box desktop" for which type) and use your read-only Screenshot tool to show the desktop at the moments that matter. A shot of the screen is far easier to grok than paragraphs of text, but don't attach one after every trivial step.`,
     "",
     "## Never fabricate data",
@@ -269,6 +278,11 @@ export const DEFAULT_SAND_SYSTEM_PROMPT = buildSandBaseSystemPrompt({
 });
 export const SAND_SYSTEM_PROMPT_CLOUD_AGENTS_DISABLED = buildSandBaseSystemPrompt({
   cloudAgentsEnabled: false
+});
+/** Local Codex mode: no Cursor cloud agents and no image generation backend. */
+export const SAND_SYSTEM_PROMPT_LOCAL_CODEX = buildSandBaseSystemPrompt({
+  cloudAgentsEnabled: false,
+  imageGenerationEnabled: false
 });
 export const SAND_CLOUD_AGENTS_DISABLED_PROMPT_SECTION = [
   "## Cloud agents disabled",

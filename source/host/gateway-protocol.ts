@@ -123,7 +123,13 @@ export const SAND_GATEWAY_COMMANDS = {
   refreshMcp: (api: GatewayApi, body: string) => api.refreshMcp(parseCommandArgs(body)),
   listRoutedMcpTools: (api: GatewayApi) => api.listRoutedMcpTools(),
   executeRoutedMcpTool: (api: GatewayApi, body: string) => api.executeRoutedMcpTool(parseCommandArgs(body)),
-  listBoxMcpServers: (api: GatewayApi, body: string) => api.listBoxMcpServers(parseCommandArgs(body))
+  listBoxMcpServers: (api: GatewayApi, body: string) => api.listBoxMcpServers(parseCommandArgs(body)),
+  // Pi Codex OAuth (local Codex mode account screen).
+  getProviderAuthStatus: (api: GatewayApi) => api.getProviderAuthStatus(),
+  startProviderLogin: (api: GatewayApi) => api.startProviderLogin(),
+  getProviderLoginStatus: (api: GatewayApi) => api.getProviderLoginStatus(),
+  cancelProviderLogin: (api: GatewayApi) => api.cancelProviderLogin(),
+  providerLogout: (api: GatewayApi) => api.providerLogout()
 };
 export const GATEWAY_PREPARE_UPGRADE_PATH = "/prepare-upgrade";
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);

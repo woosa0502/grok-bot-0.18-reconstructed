@@ -42,15 +42,18 @@ import {
   ExecClientMessage,
   ExecClientStreamClose,
   ExecClientThrow,
+  ExecuteHookArgs,
+  ExecuteHookRequest,
   ExecuteHookResponse,
   ExecuteHookResult,
-  type ExecuteHookArgs,
   type ExecServerMessage,
 } from "../packages/proto/generated/agent/v1/exec_pb.js";
 import {
   AfterAgentThoughtRequestResponse,
   BeforeSubmitPromptRequestResponse,
+  PostToolUseFailureRequestQuery,
   PostToolUseFailureRequestResponse,
+  PostToolUseRequestQuery,
   PostToolUseRequestResponse,
   PreToolUseRequestResponse,
   StopRequestResponse,
@@ -124,11 +127,13 @@ import {
 import {
   ShellBackgroundReason,
   ShellFailure,
+  ShellPermissionDenied,
   ShellResult,
   ShellSpawnError,
   ShellStream,
   ShellStreamBackgrounded,
   ShellStreamExit,
+  ShellStreamHookContext,
   ShellStreamStart,
   ShellStreamStderr,
   ShellStreamStdout,
@@ -137,6 +142,8 @@ import {
   TimeoutBehavior,
   type ShellArgs,
 } from "../packages/proto/generated/agent/v1/shell_exec_pb.js";
+import { HookAdditionalContext } from "../packages/proto/generated/agent/v1/hook_additional_context_pb.js";
+import { buildShellStateWrappedCommand, isInsideWorkspace, SHELL_STATE_CWD_FILE, SHELL_STATE_DIRNAME, toLogicalWorkspacePath } from "./shell-state.js";
 
 // Recovered generated descriptors predate `satisfies ServiceType` and therefore
 // widen MethodKind during TypeScript reconstruction. Re-declaring only the
@@ -201,6 +208,8 @@ interface HookScript {
 }
 // Default per-hook wall-clock timeout when a script does not set `timeout`.
 const DEFAULT_HOOK_TIMEOUT_MS = 60_000;
+// Tail of combined shell output passed to postToolUse hooks as tool_output.
+const SHELL_HOOK_OUTPUT_TAIL_CHARS = 8192;
 
 interface ProcessOutcome {
   readonly code: number;
@@ -323,8 +332,11 @@ class BoxExecRuntime {
   readonly #mcpServers = new Map<string, { client: McpStdioClient; configKey: string }>();
   #nextShellId = 1;
 
+  readonly #shellStateDir: string;
+
   constructor(readonly workspaceRoot: string, readonly terminalsDirectory: string, environment: NodeJS.ProcessEnv) {
     this.#environment = { ...environment };
+    this.#shellStateDir = path.join(terminalsDirectory, SHELL_STATE_DIRNAME);
   }
 
   // --- MCP host: spawn stdio MCP servers and route tool calls to them. ---
@@ -742,6 +754,56 @@ class BoxExecRuntime {
     return undefined;
   }
 
+  // beforeShellExecution gate for the streaming Shell route. Upstream runs this
+  // step on the client before a command reaches the box; the local build has no
+  // client stage, so the daemon runs the .cursor/hooks.json entries right before
+  // spawning. permission allow/absent → run; deny (or exit 2 / failClosed non-zero)
+  // → blocked with user_message; "ask" is blocked as well because the local build
+  // has no interactive hook prompt (the same rule the agent applies to preToolUse
+  // "ask"). Hook infrastructure errors fail open.
+  async #beforeShellExecutionGate(command: string, workingDirectory: string, signal?: AbortSignal): Promise<string | undefined> {
+    let scripts: HookScript[];
+    try { scripts = (await this.#readHooksConfig()).beforeShellExecution ?? []; }
+    catch { return undefined; }
+    const commands = scripts.filter(entry => (entry.type === undefined || entry.type === "command") && typeof entry.command === "string");
+    if (commands.length === 0) return undefined;
+    const inputJson = JSON.stringify({ hook_event_name: "beforeShellExecution", command, cwd: workingDirectory });
+    for (const entry of commands) {
+      const timeoutMs = typeof entry.timeout === "number" && entry.timeout > 0 ? Math.min(entry.timeout * 1000, 3_600_000) : DEFAULT_HOOK_TIMEOUT_MS;
+      const r = await this.#runHookCommand(entry.command!, inputJson, timeoutMs, signal);
+      let parsed: Record<string, unknown> = {};
+      try { parsed = r.stdout.trim() ? JSON.parse(r.stdout.trim()) as Record<string, unknown> : {}; } catch { /* non-JSON */ }
+      const rawPermission = typeof parsed.permission === "string" ? parsed.permission : typeof parsed.decision === "string" ? parsed.decision : undefined;
+      const userMessage = typeof parsed.user_message === "string" && parsed.user_message.length > 0 ? parsed.user_message
+        : typeof parsed.userMessage === "string" && parsed.userMessage.length > 0 ? parsed.userMessage
+        : undefined;
+      const denies = r.exitCode === 2 || (entry.failClosed === true && r.exitCode !== 0) || rawPermission === "block" || rawPermission === "deny";
+      if (denies) return userMessage ?? "Blocked by beforeShellExecution hook";
+      if (rawPermission === "ask") return `${userMessage ?? "beforeShellExecution hook asked for confirmation"} (the 'ask' permission is not supported in the local build and was treated as deny)`;
+    }
+    return undefined;
+  }
+
+  // postToolUse / postToolUseFailure for the streaming Shell route. Reuses the
+  // generic executeHook path (matcher, failClosed, timeouts, context merging) and
+  // returns the merged additional_context as carriers for a `hookContext` stream
+  // event, which the agent-side Shell tool pushes into its hook context collector.
+  async #shellPostHooks(args: ShellArgs, output: string, exitCode: number, durationMs: number, signal?: AbortSignal): Promise<HookAdditionalContext[]> {
+    const toolInput = Struct.fromJson({ command: args.command, workingDirectory: args.workingDirectory });
+    const request = exitCode === 0
+      ? { case: "postToolUse" as const, value: new PostToolUseRequestQuery({ toolName: "Shell", toolInput, toolOutput: output, durationMs: BigInt(durationMs) }) }
+      : { case: "postToolUseFailure" as const, value: new PostToolUseFailureRequestQuery({ toolName: "Shell", toolInput, errorMessage: `exit code ${exitCode}`, failureType: "error", durationMs: BigInt(durationMs), isInterrupt: false }) };
+    try {
+      const result = await this.executeHook(new ExecuteHookArgs({ request: new ExecuteHookRequest({ request }) }), signal);
+      const response = result.response?.response;
+      const additionalContext = response?.case === "postToolUse" || response?.case === "postToolUseFailure" ? response.value.additionalContext : undefined;
+      return additionalContext ? [new HookAdditionalContext({ hookEventName: request.case, content: additionalContext })] : [];
+    } catch (error) {
+      console.error(`[box-hooks] ${request.case} hook failed (ignored): ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
+
   async *execute(request: ExecServerMessage, signal: AbortSignal): AsyncGenerator<ExecStreamElement> {
     try {
       switch (request.message.case) {
@@ -844,11 +906,18 @@ class BoxExecRuntime {
         return new ReadResult({ result: { case: "invalidFile", value: new ReadInvalidFile({ path: args.path, reason: `Unsupported encoding hint: ${args.encodingHint}` }) } });
       }
       const data = await readFile(canonical);
-      // A binary PDF has no wired text extractor here, so reading it as text returns unusable bytes.
-      // Fail cleanly with an actionable message instead of handing the model garbage.
+      // A binary PDF is handed back as bytes: the agent-side Read tool runs the host's
+      // text extractor (pdftotext -> pdfjs) on `data` output, so the model sees text.
       const looksLikePdf = (data.length >= 4 && data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46) || /\.pdf$/i.test(args.path);
       if (looksLikePdf) {
-        return new ReadResult({ result: { case: "invalidFile", value: new ReadInvalidFile({ path: args.path, reason: "Binary PDF — text extraction is not available in this build, so reading it would return unusable bytes. Ask the user for a text export (e.g. run pdftotext on the file) or the relevant pages pasted as text." }) } });
+        return new ReadResult({ result: { case: "success", value: new ReadSuccess({
+          path: args.path,
+          output: { case: "data", value: new Uint8Array(data) },
+          totalLines: 0,
+          fileSize: BigInt(data.byteLength),
+          truncated: false,
+          rangeApplied: false,
+        }) } });
       }
       const text = data.toString(args.encodingHint === "latin1" ? "latin1" : "utf8");
       const lines = text.split("\n");
@@ -1083,6 +1152,8 @@ class BoxExecRuntime {
   }
 
   async shell(args: ShellArgs, signal: AbortSignal): Promise<ShellResult> {
+    // Non-streaming route: internal probes (browser/computer tools) use it and must
+    // not touch the agent shell's persisted cwd/env — only shellStream persists state.
     let cwd: string;
     try {
       cwd = this.resolvePath(args.workingDirectory);
@@ -1108,9 +1179,18 @@ class BoxExecRuntime {
   }
 
   async *shellStream(request: ExecServerMessage, args: ShellArgs, signal: AbortSignal): AsyncGenerator<ExecStreamElement> {
-    const cwd = this.resolvePath(args.workingDirectory);
+    const cwd = await this.#startingCwd(args.workingDirectory);
+    // Hook gates (.cursor/hooks.json): preToolUse (matcher "Shell"/"*") and
+    // beforeShellExecution run before anything is spawned; a deny surfaces to the
+    // agent as a permissionDenied result ("Permission denied: <user_message>").
+    const hookDeny = await this.#preToolUseGate("Shell", { command: args.command, workingDirectory: args.workingDirectory }, signal)
+      ?? await this.#beforeShellExecutionGate(args.command, args.workingDirectory, signal);
+    if (hookDeny !== undefined) {
+      yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "permissionDenied", value: new ShellPermissionDenied({ command: args.command, workingDirectory: args.workingDirectory, error: hookDeny }) } }) });
+      return;
+    }
     yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "start", value: new ShellStreamStart() } }) });
-    const child = this.spawnShell(args.command, cwd);
+    const child = this.spawnShell(this.#withShellState(args.command), cwd);
     this.#foreground.add(child);
     const startedAt = Date.now();
     const events: Array<{ case: "stdout" | "stderr"; data: string }> = [];
@@ -1120,9 +1200,12 @@ class BoxExecRuntime {
     let exitSignal = "";
     let backgroundRequested = false;
     let backgrounded = false;
+    // Tail of the combined output handed to postToolUse hooks as tool_output.
+    let outputTail = "";
+    const appendTail = (data: string) => { outputTail = (outputTail + data).slice(-SHELL_HOOK_OUTPUT_TAIL_CHARS); };
     const notify = () => { wake?.(); wake = undefined; };
-    const onStdout = (data: unknown) => { events.push({ case: "stdout", data: String(data) }); notify(); };
-    const onStderr = (data: unknown) => { events.push({ case: "stderr", data: String(data) }); notify(); };
+    const onStdout = (data: unknown) => { events.push({ case: "stdout", data: String(data) }); appendTail(String(data)); notify(); };
+    const onStderr = (data: unknown) => { events.push({ case: "stderr", data: String(data) }); appendTail(String(data)); notify(); };
     child.stdout.on("data", onStdout);
     child.stderr.on("data", onStderr);
     child.once("close", (code, childSignal) => { exitCode = code ?? 1; exitSignal = childSignal ?? ""; done = true; notify(); });
@@ -1188,9 +1271,15 @@ class BoxExecRuntime {
         }) } }) });
         return;
       }
+      if (!signal.aborted) {
+        const hookContexts = await this.#shellPostHooks(args, outputTail, exitCode, Date.now() - startedAt, signal);
+        if (hookContexts.length > 0) yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "hookContext", value: new ShellStreamHookContext({ hookAdditionalContexts: hookContexts }) } }) });
+      } else {
+        await this.#resetShellState();
+      }
       yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "exit", value: new ShellStreamExit({
         code: exitCode,
-        cwd: args.workingDirectory,
+        cwd: signal.aborted ? args.workingDirectory : (await this.#savedCwdLogical()) ?? args.workingDirectory,
         aborted: signal.aborted,
         localExecutionTimeMs: Date.now() - startedAt,
       }) } }) });
@@ -1207,7 +1296,9 @@ class BoxExecRuntime {
 
   async spawnBackground(args: BackgroundShellSpawnArgs): Promise<BackgroundShellSpawnResult> {
     try {
-      const cwd = this.resolvePath(args.workingDirectory);
+      // Background shells start from the persisted foreground cwd (explicit
+      // workingDirectory still wins) but do not write the shared state back.
+      const cwd = await this.#startingCwd(args.workingDirectory);
       await mkdir(this.terminalsDirectory, { recursive: true });
       const shellId = this.#nextShellId++;
       const terminalPath = path.join(this.terminalsDirectory, `${shellId}.txt`);
@@ -1249,6 +1340,31 @@ class BoxExecRuntime {
     for (const process of this.#background.values()) this.kill(process.child);
     this.#foreground.clear();
     this.#background.clear();
+  }
+
+  // --- Persistent foreground-shell state (cwd + exported env), see shell-state.ts. ---
+  async #startingCwd(requested: string): Promise<string> {
+    if (requested.length > 0) return this.resolvePath(requested);
+    try {
+      const saved = (await readFile(path.join(this.#shellStateDir, SHELL_STATE_CWD_FILE), "utf8")).trim();
+      if (saved.length > 0 && isInsideWorkspace(this.workspaceRoot, saved) && (await stat(saved)).isDirectory()) return saved;
+    } catch { /* no saved state */ }
+    return this.resolvePath(requested);
+  }
+
+  #withShellState(command: string): string {
+    return buildShellStateWrappedCommand(this.#shellStateDir, command);
+  }
+
+  async #savedCwdLogical(): Promise<string | undefined> {
+    try {
+      const saved = (await readFile(path.join(this.#shellStateDir, SHELL_STATE_CWD_FILE), "utf8")).trim();
+      return saved.length > 0 ? toLogicalWorkspacePath(this.workspaceRoot, saved) : undefined;
+    } catch { return undefined; }
+  }
+
+  async #resetShellState(): Promise<void> {
+    await rm(this.#shellStateDir, { recursive: true, force: true }).catch(() => undefined);
   }
 
   private spawnShell(command: string, cwd: string): ChildProcessWithoutNullStreams {

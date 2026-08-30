@@ -1,8 +1,13 @@
 import { z } from "zod";
 import {
+  describeAddress,
   SAND_CREATE_AGENT_TOOL_NAME,
+  SAND_LIST_AGENTS_TOOL_NAME,
+  SAND_LIST_GROUPS_TOOL_NAME,
   SAND_SEND_TO_AGENT_TOOL_NAME,
   SAND_UPDATE_AGENT_TOOL_NAME,
+  type AgentAddress,
+  type AgentGroupAddress,
 } from "../../agents/agent-messaging.js";
 import { defineCommunicateTool } from "./communicate-tool.js";
 import { isValidAttachmentUrl } from "./send-message-schema.js";
@@ -165,6 +170,54 @@ export function createUpdateAgentTool(management: AgentManagementDependencies) {
       return updated == null
         ? `No agent found with id ${args.agent_id}.`
         : `Updated agent "${updated.name}" (id: ${updated.id}).`;
+    },
+  });
+}
+
+/**
+ * Read-only roster tools. The SendToAgent / SendMessage descriptions already
+ * point the model at "ListAgents, or ListGroups"; these provide them from the
+ * same roster the system prompt renders (ids are what SendToAgent needs).
+ */
+export interface AgentRosterDependencies {
+  listAgents(): readonly AgentAddress[];
+  listGroups(): readonly AgentGroupAddress[];
+}
+
+const emptyParameters = z.object({});
+
+export function createListAgentsTool(roster: AgentRosterDependencies) {
+  return defineCommunicateTool(roster, {
+    id: "PLATFORM_ACTION",
+    name: SAND_LIST_AGENTS_TOOL_NAME,
+    description: "List your user's other agents (your teammates) with the ids you need for SendToAgent. Read-only; group chats are listed by ListGroups.",
+    parameters: emptyParameters,
+    async execute(_context, _args: z.infer<typeof emptyParameters>, resolved) {
+      const agents = resolved.listAgents();
+      if (agents.length === 0) {
+        return `This user has no other agents yet. If a task would be better handled by a dedicated teammate, offer to ${SAND_CREATE_AGENT_TOOL_NAME} one.`;
+      }
+      return ["Teammates you can message with SendToAgent (use the id):", ...agents.map(describeAddress)].join("\n");
+    },
+  });
+}
+
+export function createListGroupsTool(roster: AgentRosterDependencies) {
+  return defineCommunicateTool(roster, {
+    id: "PLATFORM_ACTION",
+    name: SAND_LIST_GROUPS_TOOL_NAME,
+    description: "List the group chats you belong to, with their ids (SendToAgent with a group id posts to the whole group) and members. Read-only.",
+    parameters: emptyParameters,
+    async execute(_context, _args: z.infer<typeof emptyParameters>, resolved) {
+      const groups = resolved.listGroups();
+      if (groups.length === 0) return "You are not in any group chats.";
+      return [
+        "Group chats you're in (post to one by its id to reach all its members):",
+        ...groups.map((group) => {
+          const memberNames = group.members.map((member) => member.name).join(", ");
+          return `- ${group.name} (id: ${group.id})${memberNames.length > 0 ? ` — with ${memberNames}` : ""}`;
+        }),
+      ].join("\n");
     },
   });
 }

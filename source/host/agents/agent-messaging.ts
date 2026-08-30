@@ -6,6 +6,8 @@ export const ADMIN_BROADCAST_WAKE_CUE = "[broadcast]";
 export const SAND_SEND_TO_AGENT_TOOL_NAME = "SendToAgent";
 export const SAND_CREATE_AGENT_TOOL_NAME = "CreateAgent";
 export const SAND_UPDATE_AGENT_TOOL_NAME = "UpdateAgent";
+export const SAND_LIST_AGENTS_TOOL_NAME = "ListAgents";
+export const SAND_LIST_GROUPS_TOOL_NAME = "ListGroups";
 export const AGENT_MESSAGE_MAX_TEXT_LENGTH = 8_000;
 export const AGENT_DIRECTORY_PROMPT_LIMIT = 40;
 

@@ -68,7 +68,9 @@ export function createRecoveredProductionStreamRetry(
         },
       };
 
-  return createStreamAttempt({
+  // Explicit type arguments: the checkpoint type only appears in the two callbacks
+  // defined below, so inference has nothing else to pin it to.
+  return createStreamAttempt<Context, ConversationStateStructure, ConversationStateStructure>({
     ...input.attempt,
     ...(guardedAutomation === undefined
       ? {}

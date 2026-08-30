@@ -99,6 +99,9 @@ export class SandMcpManager {
       listEffectivePlugins: () => this.listEffectivePlugins(),
       requireAccountWriter: () => this.requireAccountWriter(),
       reloadServers: () => this.reloadServers(),
+      // Optional catalog source overrides (local Codex mode reads a local catalog
+      // file instead of the Cursor marketplace).
+      ...(options.catalog ?? {}),
     });
     this.slots = new SandMcpAccountSlotLifecycle({
       backendMcpExec: this.backendMcpExec,

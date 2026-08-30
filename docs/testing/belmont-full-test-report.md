@@ -1,6 +1,6 @@
 # Belmont — 풀 테스트 & 감사 종합 문서
 
-_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 2차 갱신: 2026-08-30 저녁 (auto-review 로컬 분류기 배선 + 계정 scope 초기화 결함 수정 — §1.6) · 단일 통합본 (이전 산재 문서/임시 원장 대체)_
+_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 2차 갱신: 2026-08-30 저녁 (auto-review 로컬 분류기 배선 + 계정 scope 초기화 결함 수정 — §1.6) · 3차 갱신: 2026-08-31 (남은 문제 전부 처리 — TS 회귀·원장 이관·UNCLEAR 29건·첨부 스테이징 AUDIT-W7·훅 배선 AUDIT-W8, §1.6 후속 3) · 4차 갱신: 2026-08-31 (0.18.0 설치파일 기준 parity 회차 — 기억 회수·roster·루틴·플러그인·PDF·셸 상태·로그인 상태 등 15건 구현+라이브, §1.6 후속 4 · `belmont-018-parity-inventory-2026-08-31.md`) · 단일 통합본 (이전 산재 문서/임시 원장 대체; 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`, `node scripts/verdict-ledger.mjs summary`)_
 
 이 문서는 두 검증 활동을 하나로 합친다: (1) **행위 단위 라이브 sweep** — 에이전트에 각 테스트 케이스를 주입해 실제 도구 실행 증거로 판정, (2) **소스 코드 감사** — production 배선/통합 여부를 코드로 확인. sweep은 '도구가 개별로 작동하는가'를 보고, 감사는 '실제로 production에 연결됐는가'를 본다. 후자가 전자의 여러 PASS를 false-green으로 뒤집었다.
 
@@ -9,16 +9,18 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | 항목 | 값 |
 |---|---|
 | 전체 테스트 케이스 | 1292 (USER 823 · AGENT 438 · GATED 31) |
-| sweep 판정 완료 | 2075 |
-| — PASS | 503 |
-| — ISSUE (문제점, false-green 정정 포함) | 34 |
-| — UNAVAIL (이 버전엔 기능 없음) | 641 |
-| — ENV / UI_ONLY / EXPECTED | 83 / 13 / 1 |
-| 감사 findings | 26 (CONFIRMED 19 · FIXED 3 · PARTIAL 3) |
-| 확정 실결함 | 5 (update_state, Pi maxTokens, 첨부전송 크래시 — 셋 다 수정+재빌드+라이브검증+커밋 · **auto-review 로컬 강제OFF(AUDIT-W3)** · **계정 scope 불일치로 설정 초기화(AUDIT-W4, 신규 발견)** — 둘 다 수정+재빌드+라이브검증, §1.6, 미커밋) |
-| 신규 기능 | **컴퓨터 유즈** (스크린샷·클릭·타이핑·키 — 라이브검증+커밋, §1.5) · **로컬 auto-review 분류기**(Pi gpt-5.5로 approve/block 판정 — 라이브검증, §1.6) |
+| sweep 판정 원장 | 2162행 (케이스별 최신 판정 1292 — `node scripts/verdict-ledger.mjs summary`, 4차 갱신) |
+| — PASS | 537 |
+| — ISSUE (문제점, false-green 정정 포함) | 17 |
+| — UNAVAIL (이 버전엔 기능 없음 — 사유별 EXCLUDED_HIDDEN 분류는 parity 목록 문서 §4) | 631 |
+| — ENV / UI_ONLY / EXPECTED | 87 / 13 / 1 |
+| — PARTIAL / FIXED / UNCLEAR | 4 / 2 / **0** |
+| 감사 findings | 30개 id, 최신 판정 기준 FIXED 15 · CONFIRMED 10 · PARTIAL 4 · POSITIVE 1 — `docs/testing/belmont-audit-findings.jsonl`(append-only, id별 최신 행이 유효) |
+| 확정 실결함 | 19 — 전부 수정+재빌드+라이브검증: update_state, Pi maxTokens, 첨부전송 크래시(커밋) · AUDIT-W3~W8(§1.6) · **4차 갱신(§1.6 후속 4, 0.18 parity 회차)**: AUDIT-1 기억 회수 · AUDIT-3 roster · AUDIT-7 예약 루틴 · AUDIT-8 플러그인 · AUDIT-10 로그인 상태 · AUDIT-11 PDF · AUDIT-W2 셸 상태 · AUDIT-EPOCH · **AUDIT-W9 로컬 준비 상태 게이트** · **AUDIT-W10 데몬 PDF 거부** — 4차분 미커밋 |
+| 신규 기능 | **컴퓨터 유즈**(§1.5) · **로컬 auto-review 분류기**(§1.6) · **hooks.json Shell 경로**(§1.6 후속 3) · **4차**: 장기 기억 자동 회수 · ListAgents/ListGroups · 로컬 cron 루틴 · 로컬 플러그인 저장소/카탈로그 · PDF 읽기 · Shell cwd/env 유지 · 앱 내 Pi OAuth 로그인/상태 · 클라우드 에이전트/이미지 생성 정직 숨김 — 전부 라이브검증(`docs/testing/belmont-018-parity-inventory-2026-08-31.md`) |
+| 게이트 | `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 143/143) — 4차 갱신 |
 
-**핵심 결론:** 다중 봇 *기반*은 있으나, Belmont의 핵심 연결부 — 기억 자동회수 · 봇 발견 · 위임 내구성 · child 상태 격리 · 결과 검토 — 가 아직 production에 끊겨 있다. sweep의 PASS 수치는 false-green으로 부풀려져 있었다. (2026-08-30 갱신: 컴퓨터 유즈 신규 구현+검증 §1.5, 확정 실결함 3건 커밋·병합 완료. 2차 갱신: 마지막 결함 클러스터(auto-review)가 해소되어 §0.5 ①은 0건 — §1.6.)
+**핵심 결론:** 다중 봇 *기반*은 있으나, Belmont의 핵심 연결부 — 기억 자동회수 · 봇 발견 · 위임 내구성 · child 상태 격리 · 결과 검토 — 가 아직 production에 끊겨 있다. sweep의 PASS 수치는 false-green으로 부풀려져 있었다. (2026-08-30 갱신: 컴퓨터 유즈 신규 구현+검증 §1.5, 확정 실결함 3건 커밋·병합 완료. 2차 갱신: 마지막 결함 클러스터(auto-review)가 해소되어 §0.5 ①은 0건 — §1.6. 3차 갱신: 남은 문제 목록을 전부 처리해 UNCLEAR 0건·typecheck 0오류, 그 과정에서 첨부 스테이징(AUDIT-W7)·훅 배선(AUDIT-W8) 결함 2건 추가 발견·수정 — §1.6 후속 3.)
 
 ## 0.5 완료 vs 남은 것 — 실행 관점 (USER 라우트 823 기준)
 
@@ -27,6 +29,8 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 - **실결함 3개 수정+검증+커밋**: 첨부전송 앱 크래시(DEFECT-3) · update_state 결과 오보고(DEFECT-1/AUDIT-2) · Pi maxTokens:0 선제압축 무력화(DEFECT-2/AUDIT-6).
 - **컴퓨터 유즈 신규 구현+라이브검증**(§1.5): 도구(스크린샷/클릭/타이핑/키) · computerUse 서브에이전트 dispatch·GUI조작 · VNC 뷰어. → 아래 ②의 "컴퓨터/박스 80" 상당수 해소.
 - **auto-review/Smart Mode 로컬 배선+라이브검증**(§1.6, 2차 갱신): 로컬 분류기(Pi) · Shell/컴퓨터 승인 카드(Allow once/Always allow/Deny) · 사용자 allow/block 규칙 · 규칙의 재시작 보존. → 아래 ①의 14건 해소.
+- **남은 문제 일괄 처리**(§1.6 후속 3, 3차 갱신): typecheck 회귀 4건 수정 · 판정 원장 저장소 이관(`belmont-sweep-verdicts.jsonl` + `scripts/verdict-ledger.mjs`) · UNCLEAR 29건 → 0 · 첨부 박스 스테이징 결함(AUDIT-W7) 수정 · hooks.json Shell 경로 배선(AUDIT-W8) · 660/489/675 확정.
+- **0.18.0 설치파일 기준 parity 회차**(§1.6 후속 4, 4차 갱신): 공식 문서·원장·감사·코드 지도로 미구현 재파악 → 15건 구현(기억 회수·roster+ListAgents/ListGroups·로컬 cron 루틴·로컬 플러그인·PDF·Shell 상태·Pi 로그인 상태·클라우드/이미지 숨김·epoch·컨텍스트 창 knob) → 전부 라이브 검증. 목록 문서: `belmont-018-parity-inventory-2026-08-31.md`.
 
 ### ❌ 非PASS 588 — "진짜 문제"는 몇 개?
 | 구분 | 수 | 진짜 문제? |
@@ -34,7 +38,7 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | ① 진짜 결함/무효화 (ISSUE) | ~~14~~ → **0** (12 PASS 재판정 · 675/676은 auto-review와 무관으로 재분류, §1.6) | ✅ 해소 |
 | ② 로컬에 원래 없는 기능 (UNAVAIL) | 501 | 아니오 (cursor/클라우드/외부 전용) |
 | ③ 환경·도구 한계 (ENV) | 65 | 아니오 (실사용자엔 작동, CDP로 테스트만 불가) |
-| ④ 미확정 (UNCLEAR) | ~~8~~(실제 12) → **0** (PASS 11 · UNAVAIL 1, §1.6 후속 2) | ✅ 해소 |
+| ④ 미확정 (UNCLEAR) | ~~8~~ → 실제 41(12+29) → **0** (후속 2: PASS 11·UNAVAIL 1 / 후속 3: PASS 22·UNAVAIL 5·ENV 1·PARTIAL 1) | ✅ 해소 |
 
 ### ✅ (해소) 진짜 문제 14개 = 사실상 뿌리 1개 (auto-review/smart-mode 강제 OFF — AUDIT-W3)
 `auto-review/extension.ts:52`가 local Codex서 강제 off → **"사용자가 켜도 무효"** 였던 것을 **로컬 분류기 배선으로 해소**(§1.6). 케이스별:
@@ -61,10 +65,12 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 
 ### 남은 실행 항목 (안 한 것)
 1. ~~**auto-review Codex 배선**~~ → 완료(§1.6). ~~UNAVAIL 중 "auto-review off라서" 19건 재판정~~ → 완료(§1.6 후속: PASS 7·PARTIAL 2·ENV 2·UNAVAIL 8, AUDIT-W5 발견·수정). 남은 것: 브라우저·MCP 표면 개별 라이브(같은 분류기 공유라 코드경로는 활성), 분류기 정책 프롬프트 튜닝(오프라인 탐침 8/8 정답), expired 로컬 도구 카드의 UI 문구(660).
-2. ~~**UNCLEAR 8건 확인**~~ → 완료(12건: PASS 11·UNAVAIL 1, §1.6 후속 2; AUDIT-W6 발견·수정).
-3. **routine 편집기 빈 이름 aria-invalid(USR-675)** — pinned 렌더러 UI 불일치, auto-review와 별개.
-4. (선택) 컴퓨터 유즈 VNC 세부(클립보드/키/줌) 개별 E2E 검증 · 다중창(USR-390, 현재 maxWindows=1 미지원).
-5. 기존 `npm run source:typecheck` 오류 4개(host-runner-composition.ts:2536-2537 subagent config 타입, host-computer-tool-dependencies.ts Context 타입) — 이번 작업 전부터 있던 것, 빌드(esbuild)엔 영향 없음.
+2. ~~**UNCLEAR 8건 확인**~~ → 완료(12건: PASS 11·UNAVAIL 1, §1.6 후속 2; AUDIT-W6 발견·수정). ~~남은 29건~~ → 완료(§1.6 후속 3: PASS 22·UNAVAIL 5·ENV 1·PARTIAL 1; AUDIT-W7/W8 발견·수정). **UNCLEAR 0.**
+3. **routine 편집기 빈 이름 aria-invalid(USR-675)** — ISSUE(UI)로 확정: pinned 렌더러가 blur/Test run 뒤에도 `aria-invalid`를 안 붙임. 편집 가능한 프런트엔드로 교체 전엔 고칠 수 없는 항목(제외).
+4. (선택) 컴퓨터 유즈 VNC 세부(클립보드/키/줌) 개별 E2E 검증 · 다중창(USR-390, 현재 maxWindows=1 미지원) · 브라우저/MCP 표면의 auto-review 개별 라이브 · beforeMCPExecution 훅(MCP 표면) 배선 · MCP 오류 클래스 기록(241, 로컬 투영 스텁).
+7. ~~0.18 parity 핵심 연결부(기억 회수·roster·예약 루틴·플러그인·PDF·셸 상태·로그인 상태)~~ → 완료(§1.6 후속 4). 남은 것은 `belmont-018-parity-inventory-2026-08-31.md` §4(EXCLUDED_HIDDEN 목록·후속 확장).
+5. ~~`npm run source:typecheck` 오류 4개~~ → 수정(컴퓨터 유즈 커밋의 회귀였음 — "기존 오류"라던 이전 표현 정정). `npm run check` exit 0.
+6. PARTIAL 3건은 렌더러/투영 한계로 남김: 660(expired 카드 문구) · 673(버튼 비활성 조건은 코드) · 241(MCP 전송 실패 시 원본 문구·오류 클래스 기록).
 
 ## 1. 확정 실결함 (수정 완료)
 
@@ -214,40 +220,141 @@ sweep이 "empty/timeout"으로 판정 못 한 AGENT 케이스 12건을 **단위(
 | AGT-262 429/5xx 재시도 분류 | PASS(코드) | `classifyWebSearchProviderError`: 429 또는 ≥500 → PROVIDER_ERROR "…may be temporary. Please try again." |
 | AGT-322 CI 조사 서브에이전트 | UNAVAIL | `createCiInvestigatorSubagentConfig`가 어디서도 등록되지 않음(클라우드 CI 연동 기능) |
 
+### 후속 3: 남은 문제 전부 처리 — TS 회귀·원장 이관·UNCLEAR 29건·첨부 스테이징(AUDIT-W7)·훅 배선(AUDIT-W8) (2026-08-30~31 5차)
+"남은 문제점을 전부 todo에 올리고 해결·테스트·문서화"를 한 회차. 처리 순서와 결과:
+
+| # | 항목 | 결과 |
+|---|---|---|
+| 1 | `npm run source:typecheck` 오류 4건 (host-runner-composition.ts subagent config 타입 2, host-computer-tool-dependencies.ts Context 타입 2) | **수정** — 컴퓨터 유즈 커밋(815c410/893aa53)에서 생긴 회귀였음(이전 문서의 "기존 오류" 표현은 오류). `createSandComputerUseSubagentConfig`가 proto `SubagentType`/`CustomSubagentPermissionMode`를 쓰도록, `createComputerTurnTool<TContext extends Context>` 제네릭 제약. `npm run check` exit 0 |
+| 2 | 판정 원장이 `/tmp/sweep-verdicts.jsonl`(휘발) | **이관** — `docs/testing/belmont-sweep-verdicts.jsonl`(append-only, 케이스별 최신 판정이 유효) + `docs/testing/belmont-audit-findings.jsonl` + `scripts/verdict-ledger.mjs summary\|list <VERDICT>\|show <CASE_ID>` |
+| 3 | UNCLEAR 29건(이전 문서는 8/12로 과소 집계) | **0건** — 아래 판정표. PASS 22 · UNAVAIL 5 · ENV 1 · PARTIAL 1 |
+| 4 | USR-660 로컬 도구 카드 TTL 만료 실측 | PARTIAL 확정 — 호스트는 `SAND_LOCAL_TOOL_ASK_TTL_MS`(10분) 경과 시 `expired`로 정리(라이브: 정확히 10분에 만료), pinned 렌더러는 카드만 제거하고 "was not allowed" 결과 문구를 안 그림 |
+| 5 | USR-489 상한 `ask`일 때 "Always allow" 비활성 툴팁 | PASS — 비활성 버튼 title "Always allow is disabled by your organization…" 노출 |
+| 6 | USR-675 routine 빈 이름 aria-invalid | ISSUE(UI) 확정 — pinned 렌더러가 blur/Test run 뒤에도 `aria-invalid`/`required`를 안 붙임. 편집 가능한 프런트엔드로 교체 전까지 제외 항목 |
+| 7 | AUDIT-W6 업로드 경로 변경이 첨부(A10)에 미치는 영향 | **결함 발견·수정(AUDIT-W7)** — 첨부 확장이 `ctx: {}`(가짜 Context)로 서비스를 만들어 박스 스테이징 업로드가 항상 실패("not ready … last ping: crash") → 프롬프트가 호스트 경로를 유지해 에이전트가 ExternalRead(로컬 권한 카드)로 읽고 있었음. `createContext()`로 수정. 라이브: 업로드 성공 후 `/workspace/uploads/<hash>.txt`를 권한 카드 없이 읽음(USR-244 재판정 PASS) |
+| 8 | 인수인계 문서 정정 | UNCLEAR 과소 집계 정정, 증거 등급 표기 정렬(아래) |
+| 9 | 훅(hooks.json) 3건(293/324/345) | **결함 발견·수정(AUDIT-W8)** — 아래 |
+
+**증거 등급(표기 통일):** `PASS(라이브)` = 실제 앱에서 CDP/게이트웨이로 실행·관찰 = parity 문서의 RUNTIME_VERIFIED · `PASS(단위)` = 복원 소스의 순수 함수를 직접 호출해 확인 = CODE_PRESENT+동작 확인 · `PASS(코드)` = 배선/분기만 코드로 확인 = CODE_PRESENT.
+
+| 케이스 | 판정 | 방법 · 근거 |
+|---|---|---|
+| AGT-009 팀 MCP 서버 제거 거부 | UNAVAIL | 코드: isTeamServer면 "…provided by the user's team…" 반환(sand-mcp-management-tools.ts:362) — 로컬엔 팀 서버 없음 |
+| AGT-015 SetMcpInstructions | UNAVAIL | 라이브: "MCP server ID must be a positive decimal string." — 로컬 stdio 서버는 백엔드 숫자 ID 없음 |
+| AGT-111 관리자 명령 거부 목록 | UNAVAIL | 코드: `shell-stream.ts`는 `adminCommandDenylist`를 받지만 로컬 호스트에 공급 경로 없음(팀 정책 = 클라우드 계정 설정) |
+| AGT-120 Shell로 UI 자동화 차단 | PASS(라이브) | 박스 Shell `xdotool getmouselocation` → "Rejected: Direct UI automation through Shell is blocked. Use the Computer tool…" |
+| AGT-190 Await 폴링 금지 | PASS(코드) | 프롬프트가 서브에이전트 폴링 금지 지시, await가 완료 시 transcriptPath 포함 반환(await.ts:378-380) |
+| AGT-237 Workspace Disconnected | ENV | connect-error.ts 정규화 경로 존재, 로컬에서 exec 백엔드 끊김 유발 불가 |
+| AGT-241 MCP 전송 실패 | PARTIAL | 라이브: `fail`/`crash` 픽스처 도구 → "Error: Tool execution error. simulated tool failure" / "… server process exited" — 오류 결과 ✓, 원본 "Box MCP execution failed for …" 문구·오류 클래스 기록은 로컬 투영 스텁(`mcpErrorClassOf: () => "unknown"`) |
+| AGT-245 ask 불가 시 로컬 도구 | PASS(단위) | `SandLocalToolPermissionController(canAsk:false).authorize` → `{allowed:false, reason: ASK_UNAVAILABLE}` |
+| AGT-250 서브에이전트 실행 오류 | PASS(코드) | `handleSubagentExecutionError` — 레지스트리 정리+stop 훅 후 rethrow → 부모 턴에 오류 텍스트 |
+| AGT-266 PAUSED 목표 재활성 | PASS(코드) | `reactivatePausedGoalOnUserMessage` — 사용자 메시지에만(isSyntheticWakeup 제외) |
+| AGT-293 preToolUse deny | PASS(라이브) | 아래 AUDIT-W8 표 |
+| AGT-304 잘못된 reply_to | PASS(라이브) | SendMessage reply_to 없는 ID → 오류 없이 전송, 전사 entry에 replyToId 없음 |
+| AGT-311 로컬 exec 루트 밖 경로 | PASS(단위+라이브) | `containPath` — 상대/절대/심볼릭 링크 전부 거부; CopyToBox /tmp → "outside the allowed local-exec root" |
+| AGT-324 beforeShellExecution | PASS(라이브) | 아래 |
+| AGT-345 postToolUse additional_context | PASS(라이브) | 아래 |
+| AGT-357 실행 중 서브에이전트 follow-up | PASS(코드) | Task 스키마(task-tool-schema.ts:108): interrupt=true일 때만 중단 후 전달 |
+| AGT-388 스킬 목록 예산 | PASS(단위) | `buildAvailableSkillsPromptSection` under_budget → shortened_descriptions → omitted_skills 3단계 |
+| AGT-390 백그라운드 에이전트 승인 즉시 거부 | PASS(코드) | mcp.ts:360 BACKGROUND면 카드 없이 ToolCallRejectedError; Shell 동일(분류기 비활성) |
+| AGT-392 노트 디렉터리 안내 | UNAVAIL | `metaAgentNotesEnabled`를 호스트가 어디서도 설정 안 함(미배선) |
+| AGT-435 8단계 상한 | UNAVAIL | `maxSteps: 8`은 OpenRouter 실행기 전용; Codex(Pi) 경로는 자체 루프(SAND_AGENT_MAX_STEPS) |
+| AGT-439 WebFetch localhost 차단 | PASS(라이브) | "Cannot fetch from localhost (127.0.0.1:9347) because this tool runs from an isolated server." |
+| USR-216/796/797 팔레트·메뉴 닫기 | PASS(라이브 CDP) | Ctrl+K → dialog 1 → Esc → 0 / 메뉴 바깥 클릭·Esc → 0 |
+| USR-445/605/606 에이전트 이동 | PASS(라이브 CDP) | Ctrl+[ / Ctrl+] 뒤·앞 · Alt+Up/Down 이전·다음(activeAgentId 변화 확인) |
+| USR-747/748 확대·축소 | PASS(라이브 xdotool) | Ctrl+= 1040→945 · Ctrl+- 945→1040 · Ctrl+0 리셋 (CDP 합성키는 Electron 메뉴 가속기라 무효 — 하네스 한계) |
+
+#### AUDIT-W8 — 훅이 에이전트 Shell(스트리밍 경로)에 안 걸림
+hooks.json에 preToolUse/beforeShellExecution/postToolUse를 넣고 에이전트에게 Shell을 시키면 셋 다 무반응(마커 로그 없음). 원인 3개:
+1. 박스 데몬의 preToolUse 게이트(`#preToolUseGate`)는 `shellArgs`(비스트리밍)·Read/LS/Grep/Write/Delete 경로에만 있고, 에이전트 Shell 도구가 쓰는 `shellStreamArgs` 경로엔 없음.
+2. `beforeShellExecution`은 소비자가 아예 없음(업스트림은 클라이언트 단계에서 실행 — 복원 호스트엔 그 단계가 없음; proto `ExecuteHookRequest`에도 해당 case 없음).
+3. postToolUse/postToolUseFailure의 additional_context는 호스트가 WebSearch(`withRemoteHooks`)에만 배선; Shell 스트림의 `hookContext` 이벤트는 에이전트 쪽이 `break`로 버림.
+
+수정(원인별): `box-exec-daemon/server.ts` `shellStream`에 spawn 전 preToolUse("Shell" matcher)·beforeShellExecution 게이트(deny/exit 2/failClosed → `permissionDenied` 스트림 이벤트 → 모델에 "Permission denied: <user_message>"; `ask`는 로컬에 대화형 프롬프트가 없어 deny 처리하고 문구로 명시), 종료 후 postToolUse(성공)/postToolUseFailure(exit≠0)를 generic `executeHook`으로 실행해 additional_context를 `hookContext` 이벤트로 송신(출력 꼬리 8KB를 tool_output으로 전달). `create-shell-tool.ts`는 `hookContext`를 `meta.hookContextCollector`에 push → 도구 결과·다음 턴 system reminder로 렌더(`enableHookAdditionalContext: true`). 테스트 `tests/box-shell-hooks.test.mjs` 4건. 훅 스크립트는 hooks.json 변경 즉시 반영(데몬이 매번 읽음).
+
+| 케이스 | 판정 | 근거(라이브, cycle16 빌드, 픽스처 `box-workspace/.cursor/h-*.sh`) |
+|---|---|---|
+| AGT-293 preToolUse deny | **PASS(라이브)** | matcher "Shell" 스크립트가 `{permission:"deny", user_message:"HOOK_BLOCKED_9931 …"}` → 결과 "Permission denied: HOOK_BLOCKED_9931 denied via matcher", 명령 미실행(마커 PRE만 기록). 수정 전엔 그대로 실행 |
+| AGT-324 beforeShellExecution allow/deny/ask | **PASS(라이브)** | allow → 실행 / deny → "Permission denied: SHELL_HOOK_DENY_7712 blocked by beforeShellExecution" / ask → "Permission denied: SHELL_HOOK_ASK_3300 needs confirmation (the 'ask' permission is not supported in the local build and was treated as deny)". beforeMCPExecution은 미배선(MCP 표면, 잔여) |
+| AGT-345 postToolUse(+Failure) additional_context | **PASS(라이브)** | 성공: `<system_reminder>POST_HOOK_CTX_5501 postToolUse fired</system_reminder>`를 모델이 그대로 인용 / `exit 3`: postToolUseFailure에 error "exit code 3"·failure_type "error" 전달, `POSTFAIL_HOOK_CTX_6602` reminder 전달 |
+
+### 후속 4: 0.18.0 설치파일 기준 미구현 재파악 → 구현 → 라이브 검증 (2026-08-31, 4차 갱신)
+사용자 지시: "0.18.0 설치파일(SHA-256 a253ccd8…/464079a1…) 기준으로 구현 안 된 것 재파악·구현·테스트, 플러그인은 로컬로, Cursor 계정 없이 Pi OAuth로도 원본과 같은 기능". 재파악 결과·판정표는 `docs/testing/belmont-018-parity-inventory-2026-08-31.md`(신규) — 여기엔 구현·검증 요약만 둔다.
+
+**구현 (전부 `npm run check` 통과 — typecheck 0, 테스트 143/143):**
+
+| # | 결함/공백 | 수정 | 근거 파일 |
+|---|---|---|---|
+| M1 | **AUDIT-1** 장기 기억 자동 회수 미연결(프롬프트 컨텍스트 memory 전부 null) | 프롬프트 조립에 `session.memory`·`session.db` 연결 + `createUserMemory/createProjectMemory` 신설(user/project 샤드를 `[via 봇]` 출처와 함께 병합) | `host-runner-composition.ts`, `extensions/memory/extension.ts` |
+| R1 | **AUDIT-3** roster 빈 배열 | 프롬프트 컨텍스트와 runnerOptions가 같은 provider 공유 | `host-runner-composition.ts` |
+| R2 | 그룹 요약이 항상 `isGroup:false` | `session-roster.ts`가 `group.json`으로 isGroup/memberIds 채움 → 그룹 배송 분기 도달 | `extensions/session/session-roster.ts` |
+| R3 | `ListAgents`/`ListGroups` 도구 부재(프롬프트만 광고) | 두 도구 신설·툴셋 등록 | `sand-agent-management-tools.ts`, `turn-toolset.ts` |
+| S1 | **AUDIT-W2** Shell cwd/env 미유지(결과 문구는 "persists") | 데몬 `shellStream`이 상태 파일(cwd·`export -p`)을 복원·스냅샷, 중단 시 초기화, exit cwd를 논리 경로로 보고; 내부 탐침용 `shellArgs` 경로는 제외 | `box-exec-daemon/shell-state.ts`, `server.ts`, `create-shell-tool.ts` |
+| P1 | **AUDIT-11** PDF Read 미구현 + **AUDIT-W10** 데몬이 PDF 거부 | 로컬 추출기(pdftotext→pdfjs) 바인딩 + 데몬이 PDF 바이트를 data로 반환 | `runner/local-pdf-text-extractor.ts`, `server.ts` |
+| C1 | **AUDIT-EPOCH** compactionEpoch 0 고정 | 요약 아카이브 수로 계산 | `host-runner-composition.ts` |
+| C2 | **AUDIT-6B** 컨텍스트 창 과대평가 | `SAND_CODEX_CONTEXT_WINDOW_TOKENS`/`_MAX_TOKENS` 운영자 조정(기본 미변경, 실측 후속) | `inference/context-window.ts` |
+| L1 | **AUDIT-10** 로그인 화면이 Pi 자격증명과 무관 | 실제 자격증명으로 상태·Sign in(기기 코드 OAuth, 브라우저+트레이 코드)·Sign out; 게이트웨이/코디네이터 메서드 5개 | `pi-codex-login-session.ts`, `extension.ts`, `account-oauth.ts`, `gateway-protocol.ts`, `host-gateway-api.ts`, `coordinator-main.ts` |
+| A1 | **AUDIT-7** 예약 루틴 로컬 미발화 | 로컬 cron 스케줄러(30s tick·lastRunAt 앵커·6h 초과 누락 재앵커·서버 스케줄 진입점 재사용) + `shouldScheduleCronLocally` | `automations/local-cron-scheduler.ts`, `extension.ts`, `sand-automation-cloud-sync.ts` |
+| A2 | **AUDIT-W9(신규)** 로컬 모드 추론 준비 상태 항상 false → 루틴/훅/wake 게이트 영구 차단 | `inference.isReady`가 Pi 자격증명도 인정 | `inference/extension.ts` |
+| PL1 | **AUDIT-8** 플러그인이 Cursor 백엔드 전용 | 로컬 저장소(`mcp.json`·`plugin-catalog.json`+기본 3종·`plugin-installs.json`), 데스크톱·호스트 관리자 로컬 배선, 인증 not-configured, `cwd` 지원 | `shared/node/mcp/local-mcp-store.ts`, `desktop-mcp-manager.ts`, `mcp-service.ts`, `mcp-manager.ts`, `mcp-oauth.ts` |
+| G1 | 클라우드 전용 게이트가 상류 기본값 의존 | 로컬 스냅샷에서 usage/teach/agent-network/iOS/publish/auto-update 게이트 false 고정 | `local-codex-mode.ts` |
+| G2 | CloudAgent 도구·GenerateImage 문구가 계속 광고(정직성 위반) | 로컬 모드: CloudAgent 도구 제거 + `isCloudAgentsDisabledByTeam` + 로컬 프롬프트 변형(이미지 생성 불가 명시) | `host-runner-composition.ts`, `experiments/extension.ts`, `system-prompt.ts`, `system-prompt-assembly.ts` |
+| T1 | 미사용 복원 모듈 제네릭 추론 실패 3건 | 명시적 타입 인자 | `recovered-production-stream-retry.ts` |
+
+**라이브 검증 (cycle18/19 빌드, 에이전트 ParityProbe·HooksProbe, CDP/게이트웨이):**
+
+| 항목 | 결과 |
+|---|---|
+| Pi 인증 상태 | `getProviderAuthStatus` → `{configured:true, source:"stored"}`, 로그인 세션 idle |
+| 메모리 회수 | 턴1 update_state(user 샤드에 "The user's favorite color is teal-7731." 기록) → 턴2 도구 없이 "teal-7731" 회답 |
+| ListAgents/ListGroups | 다른 봇 10개를 id와 함께 나열 / "You are not in any group chats." |
+| CloudAgent/GenerateImage 숨김 | 모델의 도구 목록 기준 "CloudAgent: no, GenerateImage: no" |
+| Shell env 유지 | 호출1 `export PARITY_VAR=…` → 호출2 `echo $PARITY_VAR` = 값 유지, 결과 문구 "Current directory: /workspace/parity-sub" 정확 |
+| Shell cwd 유지 | 호출1 `cd parity-sub` → 호출2(working_directory 미지정) `pwd` = …/box-workspace/parity-sub, "Current directory: /workspace/parity-sub" (cycle19; 명시 working_directory는 우선 — 스키마 "defaults to current directory") |
+| PDF Read | `Read /workspace/parity-test.pdf` → "HELLO PDF 42 parity" (cycle19; cycle18에선 데몬 거부 → AUDIT-W10) |
+| 루틴 로컬 발화 | `@every 1m` 루틴 생성 → t≈80s에 `schedule` 트리거 run ok(9s), 전사에 "PARITY_ROUTINE_OK" (cycle19; cycle18에선 준비 상태 게이트 false로 200s 미발화 → AUDIT-W9) |
+| 플러그인(로컬) | Plugins 화면: Marketplace "This computer"에 Filesystem/Knowledge graph memory/Sequential thinking, Yours에 belmont-test(Connected). 상세 → **Add** → "Adding Sequential thinking" → `plugin-installs.json`/`mcp.json` 갱신 → Yours에 "Sequential thinking · 1 connector · Connected" → 에이전트 GetMcpTools에 `sequential-thinking: sequentialthinking` 노출, 호출 성공(`{"thoughtNumber":1,…}`) |
+
+라이브 중 발견·수정: **AUDIT-W9**(준비 상태 게이트), **AUDIT-W10**(데몬 PDF 거부), 셸 상태가 내부 탐침(`curl 9223`)에 덮이던 문제(비스트리밍 경로 제외).
+
 ## 2. 감사 findings — P0 (심각)
 
 | ID | 제목 | 판정 | 증거 |
 |---|---|---|---|
-| AUDIT-1 | 장기 기억 자동 회수 미연결 | CONFIRMED | host-runner-composition.ts:1414-1417 system-prompt context has memoryStore/memorySnapshots/userMemory/projectMemory ALL null; :1740-1750 turn-exec has real stores. Write works, rec |
-| AUDIT-10 | 화면 로그인 vs 실제 Pi OAuth 별개 | CONFIRMED | account-oauth.ts:12 + local-codex-mode.ts:7-13 상수 logged-in(Belmont Local); 실제 추론은 별도 pi-auth.json. 경로 분기: CLI ~/.grokbot vs WSL .cache/.../sand-data (run-wsl.mjs:28). wsl-runtime. |
-| AUDIT-11 | PDF Read 미구현(안전실패) | CONFIRMED | read.ts:374 throws "Read PDF worker is not bound"; host-runner-composition.ts:2150 의도적 unbound; worker 파일 없음. 안전실패일 뿐 기능복원 아님. |
+| AUDIT-1 | 장기 기억 자동 회수 미연결 | **FIXED** (4차 갱신, §1.6 후속 4) | host-runner-composition.ts:1414-1417 system-prompt context has memoryStore/memorySnapshots/userMemory/projectMemory ALL null; :1740-1750 turn-exec has real stores. Write works, rec |
+| AUDIT-10 | 화면 로그인 vs 실제 Pi OAuth 별개 | **FIXED** (4차 갱신: 실제 자격증명 상태·앱 내 기기코드 로그인·로그아웃) | account-oauth.ts:12 + local-codex-mode.ts:7-13 상수 logged-in(Belmont Local); 실제 추론은 별도 pi-auth.json. 경로 분기: CLI ~/.grokbot vs WSL .cache/.../sand-data (run-wsl.mjs:28). wsl-runtime. |
+| AUDIT-11 | PDF Read 미구현(안전실패) | **FIXED** (4차 갱신: pdftotext→pdfjs 추출기 + 데몬 data 반환 AUDIT-W10) | read.ts:374 throws "Read PDF worker is not bound"; host-runner-composition.ts:2150 의도적 unbound; worker 파일 없음. 안전실패일 뿐 기능복원 아님. |
 | AUDIT-2 | update_state 결과 오보고 | FIXED | agent-state.ts {message} vs tool {detail/reason}; any boundary hid it. FIXED this session + built. |
-| AUDIT-3 | 봇 목록이 빈 배열 + ListAgents/ListGroups 도구 없음 | CONFIRMED | host-runner-composition.ts:1436-1437 agentDirectory/agentGroups: ()=>[] (빈), :2826 이게 실제 프롬프트 생성; agent-messaging.ts:54 "no other agents yet" 출력. 올바른 roster provider(:1534)는 아무도 안  |
+| AUDIT-3 | 봇 목록이 빈 배열 + ListAgents/ListGroups 도구 없음 | **FIXED** (4차 갱신: 실제 roster provider + 그룹 필드 + 두 도구 신설) | host-runner-composition.ts:1436-1437 agentDirectory/agentGroups: ()=>[] (빈), :2826 이게 실제 프롬프트 생성; agent-messaging.ts:54 "no other agents yet" 출력. 올바른 roster provider(:1534)는 아무도 안  |
 | AUDIT-4 | 서브에이전트 settle이 부모 상태 사용 | CONFIRMED | turn-run-shell.ts:637 settle이 createSettleHost/getConversationId 사용; host-runner-composition.ts:2409-2459가 부모 session/builtRunner에 바인딩(transcriptId=session.id, 부모 agentStore/blob/r |
 | AUDIT-5 | SendToAgent 휘발성 + marker만 영속 | CONFIRMED | agent-to-agent-messaging.ts:48 in-memory Map, 영속 wake-kind에 agent-message 없음; AgentInboundMessage(:14-22)에 task/result 필드 없음; pending-wake-rearm.ts:8-17 marker에 result 없음; :257 크래시 |
 | AUDIT-6 | Pi maxTokens:0 -> 선제압축 무력화 | FIXED | pi-codex-runtime.ts:177 hardcoded 0; background-summarization.ts:27 maxTokens<=0 => no threshold. FIXED (resolved.model.contextWindow=272000) + built. |
 | AUDIT-6B | maxTokens fix 불충분 — catalog 272000이 실제 Codex OAuth 한도 과대평가 | CONFIRMED | maxTokens fix는 배선까지 맞으나(usedTokens=usage.totalTokens 실측), aa1a1169가 transcript ~48k+시스템/도구 ~35k ≈ 55-83k에서 초과, 압축 미발화. 카탈로그 272000이 실제 OAuth 한도(~60-80k 관측)를 3-4배 과대평가 → 압축 임계(245k) |
-| AUDIT-7 | 예약 루틴이 로컬 WSL에서 실행 안 됨 | CONFIRMED | cron은 Cursor cloud 경로(sand-automation-cloud-sync.ts:274 createSandAutomation); 발화는 backend poll(sand-automation-fire-consumer.ts:84); shouldScheduleLocally(:370)는 cron에 false; 로컬 트 |
-| AUDIT-8 | 플러그인≠로컬MCP + 로컬MCP 4갭 | CONFIRMED | 플러그인 search/install/auth/delete는 Cursor backend(mcp-service.ts:126-149). 로컬MCP 갭: (a)cwd 누락 readLocalMcpServers(mcp-service.ts:207-218), (b)tools/list pagination 없음(mcp-stdio-clien |
+| AUDIT-7 | 예약 루틴이 로컬 WSL에서 실행 안 됨 | **FIXED** (4차 갱신: 로컬 cron 스케줄러 + AUDIT-W9 준비 상태 게이트) | cron은 Cursor cloud 경로(sand-automation-cloud-sync.ts:274 createSandAutomation); 발화는 backend poll(sand-automation-fire-consumer.ts:84); shouldScheduleLocally(:370)는 cron에 false; 로컬 트 |
+| AUDIT-8 | 플러그인≠로컬MCP + 로컬MCP 4갭 | **FIXED**(로컬 플러그인 저장소·카탈로그·cwd, 4차 갱신) / pagination·list_changed는 후속 | 플러그인 search/install/auth/delete는 Cursor backend(mcp-service.ts:126-149). 로컬MCP 갭: (a)cwd 누락 readLocalMcpServers(mcp-service.ts:207-218), (b)tools/list pagination 없음(mcp-stdio-clien |
 | AUDIT-9 | 이미지생성/아바타는 Cursor 토큰 필요(광고만) | CONFIRMED | system-prompt.ts:140 GenerateImage 광고; generate-image-service.ts:5 getAccessToken 요구; cursor-generate-image.ts:8 Cursor backend RPC. Codex-OAuth 로컬모드엔 토큰없어 실패. |
 | AUDIT-W3 | Auto-review가 Codex에서 강제 OFF | **FIXED** (2차 갱신) | 원인: 분류기가 Cursor 백엔드 RPC 전용. 수정: 로컬 분류기(`auto-review/local-smart-mode-classifier-exec.ts`, Pi gpt-5.5 reasoning low)를 `createClassifierExecutor`에 주입, 강제 off 제거, 로컬은 settings-on ⇒ enforce. 라이브: Shell/컴퓨터 카드·규칙·Always allow 전부 PASS. §1.6 |
 | AUDIT-W6 | loopback 박스 파일 업로드 실패 → MCP 큰 결과 spill 불가(항상 인라인) | **FIXED** (신규 발견, 4차) | (1) 로컬 MCP 투영 `textSpiller: undefined`(host-runner-composition) → `createSandMcpTextSpiller` 연결. (2) `box/production.ts` loopback `uploadFile`이 `uploadFileViaExecDaemon`(셸 `mkdir -p -- /workspace/…`·`mv`)를 써 리터럴 경로로 실패 — 데몬은 cwd/WriteArgs만 매핑 → `writeFileBytesViaExecDaemon`(매핑+상위 디렉터리 생성)으로 교체. 라이브: 60KB 결과가 `.sand/tools/*.txt`로 spill |
 | AUDIT-W5 | 로컬 실행 채널 401 → 호스트 셸 도구(ExternalShell/ExternalRead)가 항상 "local machine isn't connected" | **FIXED** (신규 발견, 3차) | `gateway-server.ts:51`은 토큰 없으면 `/local-exec/*`를 401. WSL 런처는 인증 없이 게이트웨이를 띄워 데몬 등록이 항상 실패. 수정: `wsl-runtime.mjs` `SAND_GATEWAY_REQUIRE_AUTH=1`. 라이브: 데몬 token 수신, ExternalShell 실행 + 로컬 도구 권한 카드 전 흐름(§1.6 후속) |
 | AUDIT-W4 | 계정 scope 불일치 → auto-review 규칙·모델 기본값·로컬 도구 권한이 매 시작마다 초기화 | **FIXED** (신규 발견, 2차 갱신) | 호스트 `mcp-service.ts:266`는 계정 없을 때 scope `"local"`, 데스크톱은 `accountCacheScope("local-codex")` → 시작마다 서로 뒤집으며 `scopeToAccount()`가 계정 범위 설정을 삭제(재시작 후 규칙 소실을 로그로 확인). 수정: 공용 `shared/node/local-codex-account.ts`로 양쪽 scope 통일. 라이브: 재시작 후 규칙 보존 확인. §1.6 |
+| AUDIT-W7 | 첨부 박스 스테이징이 항상 실패(가짜 Context) → 첨부를 박스에서 못 읽고 호스트 경로를 로컬 권한 카드로 읽음 | **FIXED** (신규 발견, 5차) | `attachments/extension.ts`가 `createAttachmentsService`에 `ctx: {}`를 전달 → `stageAttachmentsIntoBox → box.uploadFile → loopback ensureReady/ping`이 Context 메서드 없이 크래시("not ready within 90000ms (last ping: crash)") → staged 맵이 비어 프롬프트가 호스트 경로 유지 → 에이전트가 ExternalRead(권한 카드)로 읽음. 수정: `createContext()`. 라이브: 업로드 성공, `/workspace/uploads/<hash>.txt`를 카드 없이 읽음. §1.6 후속 3 |
+| AUDIT-W8 | hooks.json이 에이전트 Shell(스트리밍 경로)에 안 걸림 — preToolUse 게이트 누락·beforeShellExecution 소비자 없음·postToolUse 컨텍스트 폐기 | **FIXED** (신규 발견, 5차) | 데몬 `#preToolUseGate`는 `shellArgs`/Read/LS/Grep/Write/Delete만, 에이전트 Shell의 `shellStreamArgs` 경로엔 없음. `beforeShellExecution` 소비자 전무(업스트림은 클라이언트 단계). postToolUse additional_context는 WebSearch만 배선, Shell 스트림 `hookContext` 이벤트는 `create-shell-tool.ts`가 `break`로 폐기. 수정: `shellStream`에 spawn 전 preToolUse+beforeShellExecution 게이트(deny→`permissionDenied`, ask→deny 문구), 종료 후 postToolUse/postToolUseFailure를 `executeHook`으로 실행해 `hookContext` 송신; Shell 도구가 collector에 push. 라이브: 293/324/345 PASS. `tests/box-shell-hooks.test.mjs`. §1.6 후속 3 |
+| AUDIT-W9 | 로컬 모드 추론 준비 상태가 항상 false → 루틴/훅/wake 게이트 영구 차단 | **FIXED** (신규 발견, 4차) | `inference/extension.ts` `isReady`가 Cursor 토큰만 봐서 로컬 Codex 모드에선 false → `turn-execution.isRunReady()` false → 로컬 cron 스케줄러·트리거 허브가 매 tick 건너뜀(라이브: `@every 1m` 루틴 200s 미발화). 수정: 로컬 모드에서 Pi 자격증명 configured면 준비 완료. 라이브: 수정 후 t≈80s 발화 |
+| AUDIT-W10 | 박스 데몬이 PDF 읽기를 invalidFile로 거부 → 추출기까지 바이트 미전달 | **FIXED** (신규 발견, 4차) | `box-exec-daemon/server.ts read()`가 PDF면 "text extraction is not available" 오류 반환(라이브 재현). 수정: data 출력으로 반환 → 에이전트 Read가 호스트 추출기 실행. 라이브: "HELLO PDF 42 parity" |
 | DEFECT-3 | 이미지/파일 첨부 전송 시 앱 전체 크래시 (attachment kinds shape 불일치) | FIXED | session-projection.ts buildAttachmentLastEntry가 kinds를 countKinds()의 객체 {image:1}로 넣음. 렌더러 Yun/mergeKindCounts는 배열 [{kind,count}] 기대. 객체엔 .length=undefined라 빈-가드 통과 후 n.filter 폭발 - |
 
 ## 3. 감사 findings — P1
 
 | ID | 제목 | 판정 | 증거 |
 |---|---|---|---|
-| AUDIT-EPOCH | compactionEpoch 항상 0 | CONFIRMED | host-runner-composition.ts:1413 compactionEpoch: () => 0 (hardcoded) |
+| AUDIT-EPOCH | compactionEpoch 항상 0 | **FIXED** (4차: 요약 아카이브 수) | host-runner-composition.ts:1413 compactionEpoch: () => 0 (hardcoded) |
 | AUDIT-F1 | stream-retry 모듈 production 미연결(false-green) | CONFIRMED | recovered-production-stream-retry.ts importer 없음(테스트만); 실제 retry는 stream-attempt.ts. |
 | AUDIT-F2 | video 분석 실제 없음(config/test만) | CONFIRMED | recovered-video-subagent-configs.ts:5 not-wired; prod subagent는 executor뿐. |
 | AUDIT-F3 | per-agent-model 테스트가 resolver 재구현(false-green) | CONFIRMED | per-agent-model-selection.test.mjs가 로컬 resolve 복사, production turn-run-shell 미호출. |
 | AUDIT-F4 | local Codex 테스트가 가짜 로그인 객체 검사 | CONFIRMED | local-codex-mode.ts:7 frozen LOCAL_CODEX_STATUS; 상수만 assert. |
 | AUDIT-W1 | 영구 봇별 모델설정 없음(글로벌 하나) | CONFIRMED | turn-run-shell.ts:196-202 top-level는 getAgentDefaultModel() 하나; 봇id별 map 없음, 서브에이전트 타입별만. |
-| AUDIT-W2 | Shell 작업디렉터리 미유지 | CONFIRMED | server.ts:1254 매번 새 /bin/sh -lc; cd/export 비유지. |
-| AUDIT-W4 | 훅 커버리지 부분적 | PARTIAL | host측 WebSearch+Task만; 박스측 preToolUse는 Shell/Read/파일 게이트(server.ts:798). WebFetch/MCP 미포함. 감사의 Shell-미포함 주장은 오류. |
+| AUDIT-W2 | Shell 작업디렉터리 미유지 | **FIXED** (4차: 데몬 상태 스냅샷, 라이브 cwd/env 유지) | server.ts:1254 매번 새 /bin/sh -lc; cd/export 비유지. |
+| AUDIT-W4 | 훅 커버리지 부분적 | PARTIAL → 5차 갱신 | host측 WebSearch+Task만; 박스측 preToolUse는 `shellArgs`/Read/파일 게이트(server.ts:798)뿐이라 **에이전트 Shell(스트리밍 `shellStreamArgs`)엔 실제로 안 걸렸음** — 감사의 Shell-미포함 주장은 결과적으로 맞았음(AUDIT-W8에서 수정: preToolUse·beforeShellExecution·postToolUse(+Failure) 배선). WebFetch/MCP(beforeMCPExecution)는 여전히 미포함. |
 
 ## 4. 감사 findings — P2 (경미)
 

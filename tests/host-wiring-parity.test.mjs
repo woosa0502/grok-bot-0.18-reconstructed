@@ -1,0 +1,72 @@
+// Production-wiring guards for 0.18 parity fixes in the host composition.
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const read = (relativePath) => readFileSync(path.join(repoRoot, relativePath), "utf8");
+
+test("system-prompt context receives the real memory stores and the shared roster providers", () => {
+  const source = read("source/host/host-runner-composition.ts");
+  assert.doesNotMatch(source, /memoryStore: \(\) => null/);
+  assert.doesNotMatch(source, /memorySnapshots: \(\) => null/);
+  assert.doesNotMatch(source, /userMemory: \(\) => null/);
+  assert.doesNotMatch(source, /projectMemory: \(\) => null/);
+  assert.doesNotMatch(source, /agentDirectory: \(\) => \[\]/);
+  assert.doesNotMatch(source, /agentGroups: \(\) => \[\]/);
+  assert.match(source, /memoryStore: \(\) => \(session\.memory as MemoryPromptStore \| undefined\) \?\? null/);
+  assert.match(source, /userMemory: promptUserMemoryProvider/);
+  assert.match(source, /projectMemory: promptProjectMemoryProvider/);
+  assert.equal((source.match(/agentDirectory: agentDirectoryProvider/g) ?? []).length, 2, "both prompt-context and runnerOptions use the shared provider");
+  assert.match(source, /createRosterToolInputs: \(\) => \(\{\s*dependencies: \{ listAgents: agentDirectoryProvider, listGroups: agentGroupsProvider \}/);
+  const memoryExtension = read("source/host/extensions/memory/extension.ts");
+  assert.match(memoryExtension, /createUserMemory:\(options:PromptUserMemoryOptions\)=>createPromptUserMemory/);
+  assert.match(memoryExtension, /createProjectMemory:\(options:PromptProjectMemoryOptions\)=>createPromptProjectMemory/);
+});
+
+test("roster summaries carry group membership from group.json", () => {
+  const roster = read("source/host/extensions/session/session-roster.ts");
+  assert.match(roster, /function groupSummaryFields\(dbPath:string\)/);
+  assert.equal((roster.match(/\.\.\.groupSummaryFields\(dbPath\)/g) ?? []).length, 3);
+});
+
+test("ListAgents / ListGroups tools exist and are registered in the turn toolset", () => {
+  const tools = read("source/host/runner/tools/sand-agent-management-tools.ts");
+  assert.match(tools, /export function createListAgentsTool\(roster: AgentRosterDependencies\)/);
+  assert.match(tools, /export function createListGroupsTool\(roster: AgentRosterDependencies\)/);
+  const messaging = read("source/host/agents/agent-messaging.ts");
+  assert.match(messaging, /SAND_LIST_AGENTS_TOOL_NAME = "ListAgents"/);
+  assert.match(messaging, /SAND_LIST_GROUPS_TOOL_NAME = "ListGroups"/);
+  const toolset = read("source/host/runner/tools/turn-toolset.ts");
+  assert.match(toolset, /listAgents: createTurnListAgentsToolFactory\(input\.roster\)/);
+  assert.match(toolset, /roster: provider\.createRosterToolInputs\(turn, props\)/);
+  assert.match(toolset, /const listGroups = factories\.listGroups\?\.\(\);\s*if \(listGroups !== undefined\) tools\.push\(listGroups\);/);
+});
+
+test("local Codex mode hides Cursor cloud agents and image generation honestly", () => {
+  const composition = read("source/host/host-runner-composition.ts");
+  assert.match(composition, /const cloudAgent = \(\(\) => \{[\s\S]{0,400}if \(isLocalCodexMode\(process\.env\)\) return undefined;/);
+  assert.match(composition, /isLocalCodexMode: \(\) => isLocalCodexMode\(process\.env\)/);
+  const experiments = read("source/host/extensions/experiments/extension.ts");
+  assert.match(experiments, /isCloudAgentsDisabledByTeam: \(\) => isLocalCodexMode\(process\.env\)/);
+  const prompt = read("source/host/runner/system-prompt.ts");
+  assert.match(prompt, /export const SAND_SYSTEM_PROMPT_LOCAL_CODEX = buildSandBaseSystemPrompt\(\{\s*cloudAgentsEnabled: false,\s*imageGenerationEnabled: false\s*\}\)/);
+  assert.match(prompt, /Image generation is not available in this setup: there is no GenerateImage tool/);
+  const assembly = read("source/host/runner/system-prompt-assembly.ts");
+  assert.match(assembly, /deps\.isLocalCodexMode\?\.\(\) === true\s*\? SAND_SYSTEM_PROMPT_LOCAL_CODEX/);
+  const localMode = read("source/electron-main/adapters/local-codex-mode.ts");
+  for (const gate of ["sand_usage_page", "sand_teach_by_demonstration", "sand_agent_network", "sand_get_grok_bot_ios", "publish_user_skills", "sand_auto_update_when_idle"]) {
+    assert.match(localMode, new RegExp(`${gate}: false`));
+  }
+  assert.match(localMode, /\.\.\.LOCAL_CODEX_FEATURE_GATE_OVERRIDES/);
+});
+
+test("compaction epoch is derived from the conversation summary archives, not hardcoded", () => {
+  const source = read("source/host/host-runner-composition.ts");
+  assert.doesNotMatch(source, /compactionEpoch: \(\) => 0/);
+  assert.match(source, /function compactionEpochFromConversationState\(state: unknown\): number/);
+  assert.match(source, /compactionEpochFromConversationState\(getProductionConversationState\(\)\)/);
+  assert.match(source, /compactionEpochFromConversationState\(store\.getConversationStateStructure\(\)\)/);
+});

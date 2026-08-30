@@ -15,6 +15,9 @@ import {
   type DashboardMcpExecClient,
 } from "../../shared/node/cursor-backend/backend-mcp-exec.js";
 import { pinMcpDiagnosticsReporter } from "../../shared/node/mcp/mcp-diagnostics.js";
+import { getSandRootDir } from "../../host/host-paths.js";
+import { isLocalCodexMode, localCodexAccountCacheScope } from "../../shared/node/local-codex-account.js";
+import { createLocalMcpWriter, localCatalogEntryToMarketplacePlugin, localEffectivePlugins, localMcpServersFromConfig, readLocalMcpConfig, readLocalPluginCatalog, readLocalPluginInstalls } from "../../shared/node/mcp/local-mcp-store.js";
 import { SandMcpManager } from "../../shared/node/mcp/mcp-manager.js";
 import { createMcpToolsDiscovery } from "../../shared/node/mcp/tools-discovery.js";
 
@@ -84,12 +87,34 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
     getMachineId: accountMcpDeps.getMachineId,
     createClient: generatedBackendClient,
   });
+  // Local Codex mode: the Plugins page (Marketplace / Yours) and every mutation are
+  // served from local files under the sand root (mcp.json, plugin-catalog.json,
+  // plugin-installs.json — shared/node/mcp/local-mcp-store.ts) instead of the Cursor
+  // account backend, which needs an access token this build never has.
+  const localMode = isLocalCodexMode(process.env);
+  const localSandRoot = localMode ? getSandRootDir() : undefined;
   const manager = new SandMcpManager({
     settingsStore: options.settingsStore,
     onAccountScopeApplied: options.onAccountScopeApplied,
-    accountServersProvider: () => fetchAccountMcpServers(accountMcpDeps),
-    accountMcpWriter: createAccountMcpWriter(accountMcpDeps),
-    effectivePluginsProvider: () => fetchEffectiveUserPlugins(accountMcpDeps),
+    ...(localSandRoot === undefined
+      ? {
+          accountServersProvider: () => fetchAccountMcpServers(accountMcpDeps),
+          accountMcpWriter: createAccountMcpWriter(accountMcpDeps),
+          effectivePluginsProvider: () => fetchEffectiveUserPlugins(accountMcpDeps),
+        }
+      : {
+          accountServersProvider: async () => ({
+            servers: localMcpServersFromConfig(readLocalMcpConfig(localSandRoot), readLocalPluginInstalls(localSandRoot)),
+            cacheScope: localCodexAccountCacheScope(),
+          }),
+          accountMcpWriter: createLocalMcpWriter(localSandRoot),
+          effectivePluginsProvider: async () => localEffectivePlugins(localSandRoot),
+          catalog: {
+            bestEffortToken: async () => null,
+            fetchMarketplace: async () => ({ plugins: readLocalPluginCatalog(localSandRoot).map(localCatalogEntryToMarketplacePlugin), includesPrivateMarketplaces: false }),
+            resolveLogo: async () => null,
+          },
+        }),
     getMachineId: accountMcpDeps.getMachineId,
     backendMcpExec,
     onConnectorAuth: options.onConnectorAuth,
@@ -121,7 +146,7 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
   void warmRoutedTools().catch((error: unknown) => reportDesktopEdgeFailure("mcp-manager", "routed-tools-warm", error));
   let hasKickedInstallBackfill = false;
   const kickInstallBackfillOnce = (): void => {
-    if (hasKickedInstallBackfill) return;
+    if (hasKickedInstallBackfill || localMode) return;
     hasKickedInstallBackfill = true;
     void backfillUserPluginInstalls(accountMcpDeps).catch((error: unknown) => reportDesktopEdgeFailure("mcp-manager", "install-backfill", error));
   };
@@ -137,7 +162,11 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
     updatePluginInstall: (request, getAccessToken) => manager.updatePluginInstall(request, getAccessToken),
     removeServer: (serverId) => manager.removeServer(serverId),
     uninstallPlugin: (pluginId) => manager.uninstallPlugin(pluginId),
-    authenticateServer: (serverId, accountKey, trigger) => manager.authenticateServer(serverId, accountKey, null, false, trigger ?? null),
+    // Local stdio servers have no OAuth connector step; report "not-configured" so the
+    // Connect button degrades instead of opening a Cursor-backend auth flow.
+    authenticateServer: async (serverId, accountKey, trigger) => localMode
+      ? { status: "not-configured", serverName: (await manager.listServers() as { servers?: readonly { id: string; name: string }[] }).servers?.find((server) => server.id === serverId)?.name }
+      : manager.authenticateServer(serverId, accountKey, null, false, trigger ?? null),
     renameAccount: (args) => manager.renameAccount(args.serverId, args.accountKey, args.newAccountKey),
     removeAccount: (args) => manager.removeAccount(args.serverId, args.accountKey),
     setServerCustomInstructions: (request) => manager.setServerCustomInstructions(request),

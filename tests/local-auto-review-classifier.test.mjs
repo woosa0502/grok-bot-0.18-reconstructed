@@ -221,6 +221,11 @@ test("local MCP projection spills large tool results to a box file", async () =>
   const production = await readFile(path.join(repositoryRoot, "source/host/box/production.ts"), "utf8");
   assert.match(production, /async uploadFile\(ctx, accessor, path, data\): Promise<void> \{[\s\S]*?await writeFileBytesViaExecDaemon\(ctx, accessor, path, data\);/u, "loopback uploadFile must use writeFileBytesViaExecDaemon");
   assert.doesNotMatch(production, /uploadFileViaExecDaemon/u, "the shell-based uploader must not be used for the loopback box");
+  // Attachment box-staging needs a real Context: the loopback readiness ping calls ctx methods,
+  // so the extension's former `ctx: {}` made every staging upload fail ("last ping: crash").
+  const attachments = await readFile(path.join(repositoryRoot, "source/host/extensions/attachments/extension.ts"), "utf8");
+  assert.match(attachments, /ctx: createContext\(\)/u, "attachments service must be created with a real Context");
+  assert.doesNotMatch(attachments, /ctx: \{\}/u);
 });
 
 test("local classifier module stays free of provider SDK imports so it bundles standalone", async () => {

@@ -1,5 +1,8 @@
 import type { HostInferenceOptions } from "./inference-service.js";
 import type { SummarizationPromptSession } from "../../../packages/agent-summarization/summarization-handler.js";
+import { isLocalCodexMode } from "../../../shared/node/local-codex-account.js";
+import { createPiCodexLoginSession } from "./pi-codex-login-session.js";
+import { getPiCodexAuthStatus, loginPiCodex, logoutPiCodex } from "./pi-codex-runtime.js";
 
 export interface InferenceExtensionContext {
   deps: {
@@ -49,4 +52,20 @@ export function createAgentPromptSession(
   return owner.createSession(onRequestId, options);
 }
 
-export const inferenceExtension = { id: "inference", dependencies: ["auth", "experiments", "settings"] as const, start(context: InferenceExtensionContext) { const listeners = new Set<() => void>(); const notify = () => { for (const listener of [...listeners]) listener(); }; return { isReady: async () => process.env.SAND_AGENT_MOCK_RESPONSE != null || context.deps.auth.peekAccessToken() !== null, port: context.createPort(notify), onModelExperimentApplied(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }, createWebSearch: (args: unknown) => context.createWebSearch(args), createWebFetch: (args: unknown) => context.createWebFetch(args) }; } };
+export const inferenceExtension = { id: "inference", dependencies: ["auth", "experiments", "settings"] as const, start(context: InferenceExtensionContext) { const listeners = new Set<() => void>(); const notify = () => { for (const listener of [...listeners]) listener(); }; return {
+    // Run readiness gates routines/hooks/wakes (turn-execution.isRunReady). A Cursor
+    // token is the upstream signal; in local Codex mode the Pi credential is.
+    isReady: async () => process.env.SAND_AGENT_MOCK_RESPONSE != null || context.deps.auth.peekAccessToken() !== null || (isLocalCodexMode(process.env) && (await getPiCodexAuthStatus().catch(() => ({ configured: false }))).configured),
+    port: context.createPort(notify), onModelExperimentApplied(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }, createWebSearch: (args: unknown) => context.createWebSearch(args), createWebFetch: (args: unknown) => context.createWebFetch(args),
+    // Pi Codex OAuth surface for the desktop account screen (local Codex mode): status,
+    // background device-code login session, cancel, logout. See pi-codex-login-session.ts.
+    getProviderAuthStatus: () => getPiCodexAuthStatus(),
+    startProviderLogin: () => providerLoginSession.start(),
+    getProviderLoginStatus: () => providerLoginSession.status(),
+    cancelProviderLogin: () => providerLoginSession.cancel(),
+    providerLogout: async () => { await logoutPiCodex(); notify(); return getPiCodexAuthStatus(); },
+  }; } };
+const providerLoginSession = createPiCodexLoginSession({
+  login: (interaction) => loginPiCodex(interaction),
+  method: process.env.SAND_CODEX_LOGIN_METHOD === "browser" ? "browser" : "device_code",
+});

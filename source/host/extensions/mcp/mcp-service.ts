@@ -20,6 +20,7 @@ import {
 } from "../../../shared/node/cursor-backend/cursor-inference.js";
 import { SandMcpManager } from "../../../shared/node/mcp/mcp-manager.js";
 import { isLocalCodexMode, localCodexAccountCacheScope } from "../../../shared/node/local-codex-account.js";
+import { createLocalMcpWriter, localCatalogEntryToMarketplacePlugin, localEffectivePlugins, localMcpServersFromConfig, readLocalMcpConfig, readLocalPluginCatalog, readLocalPluginInstalls } from "../../../shared/node/mcp/local-mcp-store.js";
 import {
   createMcpToolsDiscovery,
   SandMcpExecutor,
@@ -188,41 +189,9 @@ export interface McpHostServiceDeps {
  */
 function readLocalMcpServers(sandRootDir: string | undefined): AccountMcpServer[] {
   if (sandRootDir == null || sandRootDir.length === 0) return [];
-  let raw: string;
-  try {
-    raw = readFileSync(join(sandRootDir, "mcp.json"), "utf8");
-  } catch {
-    return [];
-  }
-  let parsed: { mcpServers?: Record<string, unknown> } | null;
-  try {
-    parsed = JSON.parse(raw) as { mcpServers?: Record<string, unknown> };
-  } catch {
-    return [];
-  }
-  const servers = parsed?.mcpServers;
-  if (servers == null || typeof servers !== "object") return [];
-  const result: AccountMcpServer[] = [];
-  for (const [name, value] of Object.entries(servers)) {
-    if (value == null || typeof value !== "object") continue;
-    const config = value as { command?: unknown; args?: unknown; env?: unknown };
-    if (typeof config.command !== "string") continue; // stdio only
-    result.push({
-      id: `local-${name}`,
-      name,
-      serverIdentifier: name,
-      config: {
-        command: config.command,
-        ...(Array.isArray(config.args) ? { args: config.args.map(String) } : {}),
-        ...(config.env != null && typeof config.env === "object"
-          ? { env: Object.fromEntries(Object.entries(config.env as Record<string, unknown>).map(([k, v]) => [k, String(v)])) }
-          : {}),
-      } as AccountMcpServer["config"],
-      isTeamServer: false,
-      disabledByTeamAdminPolicy: false,
-    });
-  }
-  return result;
+  // Shared with the desktop Plugins page: <sandRoot>/mcp.json (+ plugin-installs.json
+  // for plugin attribution). Stable numeric ids, stdio `cwd` preserved.
+  return localMcpServersFromConfig(readLocalMcpConfig(sandRootDir), readLocalPluginInstalls(sandRootDir));
 }
 export class McpHostService {
   readonly authCompletionListeners = new Set<(event: unknown) => void>();
@@ -272,8 +241,22 @@ export class McpHostService {
         // instructions, agent/computer model defaults, local tool permission).
         return { servers, cacheScope: account?.cacheScope ?? (isLocalCodexMode() ? localCodexAccountCacheScope() : "local") };
       },
-      accountMcpWriter: createAccountMcpWriter(accountMcpDeps),
-      effectivePluginsProvider: () => fetchEffectiveUserPlugins(accountMcpDeps),
+      // Local Codex mode: plugin installs, the catalog and the server config live in
+      // local files (shared/node/mcp/local-mcp-store.ts) instead of the Cursor account.
+      ...(isLocalCodexMode() && deps.sandRootDir != null && deps.sandRootDir.length > 0
+        ? {
+            accountMcpWriter: createLocalMcpWriter(deps.sandRootDir),
+            effectivePluginsProvider: async () => localEffectivePlugins(deps.sandRootDir!),
+            catalog: {
+              bestEffortToken: async () => null,
+              fetchMarketplace: async () => ({ plugins: readLocalPluginCatalog(deps.sandRootDir!).map(localCatalogEntryToMarketplacePlugin), includesPrivateMarketplaces: false }),
+              resolveLogo: async () => null,
+            },
+          }
+        : {
+            accountMcpWriter: createAccountMcpWriter(accountMcpDeps),
+            effectivePluginsProvider: () => fetchEffectiveUserPlugins(accountMcpDeps),
+          }),
       backendMcpExec,
       boxMcpExec: createBoxSandMcpExec(deps.foreverBox.box),
       settingsStore: deps.settings,

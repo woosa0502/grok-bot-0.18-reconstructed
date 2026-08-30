@@ -1,5 +1,5 @@
 import { normalizeMcpAccountLabel } from "../../mcp.js"; import { SandMcpConfigError } from "./mcp-config-error.js";
-export type McpServerConfig = { url: string; type?: "sse" | "http"; headers?: Record<string, string> } | { command: string; args?: string[]; env?: Record<string, string> };
+export type McpServerConfig = { url: string; type?: "sse" | "http"; headers?: Record<string, string> } | { command: string; args?: string[]; env?: Record<string, string>; cwd?: string };
 export interface DisplayServer { id: string; name: string; serverIdentifier?: string; config: McpServerConfig; isTeamServer: boolean; disabledByTeamAdminPolicy?: boolean; pluginId?: string; isRequired?: boolean; managedByTeamPluginPolicy?: boolean; accounts?: Array<{ accountKey: string; hasToken: boolean; serverIdentifier?: string }> }
 export interface AccountDisplayConfig { servers: DisplayServer[]; cacheScope?: string; unavailable?: boolean; unresolvedServerIds?: string[] }
 export function normalizeAccountKey(raw: string): string { const key = normalizeMcpAccountLabel(raw); if (key.length === 0) throw new SandMcpConfigError("MCP account label is required."); return key; }

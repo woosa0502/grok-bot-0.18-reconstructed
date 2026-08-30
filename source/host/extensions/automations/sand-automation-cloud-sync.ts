@@ -376,6 +376,18 @@ export class SandAutomationCloudSync {
     return !evidence.enabledRemoteAutomationIds.has(stableAutomationId({ agentId, localId: automation.id }));
   }
 
+  /**
+   * Cron routines: the local clock (local-cron-scheduler.ts) owns a routine unless
+   * backend evidence shows the Cursor backend runs it. Without a credential there
+   * is never such evidence, so every cron routine fires locally.
+   */
+  shouldScheduleCronLocally({ agentId, automation }: { agentId: string; automation: { readonly id?: string } }): boolean {
+    if (automation.id === undefined) return true;
+    const evidence = this.schedulingEvidenceByAgent.get(agentId);
+    if (evidence?.kind !== "known") return true;
+    return !evidence.enabledRemoteAutomationIds.has(stableAutomationId({ agentId, localId: automation.id }));
+  }
+
   reconcileNow(): Promise<void> {
     if (this.inFlight !== undefined) {
       this.rerun = true;

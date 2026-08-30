@@ -8,6 +8,7 @@ import type { ElectronProductionAdapterBindings } from "../production-adapters.j
 import type { ProductionDisposable, ProductionMcpService, ProductionServiceContext } from "../main-production-services.js";
 import { getSandRootDir } from "../../host/host-paths.js";
 import { delay } from "../../shared/node/async.js";
+import { isLocalCodexMode } from "../../shared/node/local-codex-account.js";
 import { cleanupLegacyMcpAuthCredentials } from "../../shared/node/mcp/mcp-auth-cleanup.js";
 import { parseAllowedExternalUrl } from "../../shared/external-url-policy.js";
 import { DashboardService } from "../../packages/proto/generated/aiserver/v1/dashboard_connect.js";
@@ -126,7 +127,8 @@ export function createProductionMcpOAuthRootPortProvider(
           dispose: () => loopback.dispose(),
         };
       },
-      fetchTeamPopularity: createTeamPopularityFetcher(context),
+      // Team popularity is a Cursor-backend signal; local Codex mode has none.
+      fetchTeamPopularity: isLocalCodexMode(context.env) ? async () => new Map() : createTeamPopularityFetcher(context),
       refreshMcp: async (options) => {
         const refreshMcp = context.coordinatorLegs.legs.refreshMcp;
         if (typeof refreshMcp !== "function") throw new Error("Coordinator MCP refresh port is unavailable.");

@@ -86,7 +86,10 @@ import {
   createSendToAgentTool,
   createCreateAgentTool,
   createUpdateAgentTool,
+  createListAgentsTool,
+  createListGroupsTool,
   type AgentManagementDependencies,
+  type AgentRosterDependencies,
   type SendToAgentDependencies,
 } from "./sand-agent-management-tools.js";
 import {
@@ -555,6 +558,8 @@ export interface TurnToolFactories {
   reaction?(): TurnTool;
   createAgent?(): TurnTool;
   updateAgent?(): TurnTool;
+  listAgents?(): TurnTool;
+  listGroups?(): TurnTool;
   updateState?(): TurnTool;
   externalShell?(): TurnTool | undefined;
   externalRead?(): TurnTool;
@@ -711,6 +716,10 @@ export interface TurnAgentManagementToolFactoryInput {
   readonly dependencies: AgentManagementDependencies;
 }
 
+export interface TurnRosterToolFactoryInput {
+  readonly dependencies: AgentRosterDependencies;
+}
+
 export interface TurnStateToolFactoryInput {
   readonly dependencies: SandStateDependencies;
 }
@@ -759,6 +768,7 @@ export interface TurnToolsetFactoryInputs {
   readonly sendToAgent?: TurnSendToAgentToolFactoryInput;
   readonly reaction?: TurnReactionToolFactoryInput;
   readonly agentManagement?: TurnAgentManagementToolFactoryInput;
+  readonly roster?: TurnRosterToolFactoryInput;
   readonly state?: TurnStateToolFactoryInput;
   readonly subagentManagement?: TurnSubagentManagementToolFactoryInput;
   readonly mcpManagement?: TurnMcpManagementToolFactoryInput;
@@ -876,6 +886,10 @@ export interface TurnToolsetHostFactoryProvider {
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
   ) => TurnAgentManagementToolFactoryInput;
+  readonly createRosterToolInputs?: (
+    turn: TurnToolsetTurnInput,
+    props: TurnToolsetBuildProps,
+  ) => TurnRosterToolFactoryInput;
   readonly createStateToolInputs?: (
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
@@ -1005,7 +1019,8 @@ export function createTurnMcpMetaToolFactory(
 export function createTurnComputerToolFactory(
   input: TurnComputerToolFactoryInput,
 ): () => TurnTool {
-  return () => asTurnTool(createComputerTurnTool(input.dependencies));
+  // The factory input is context-agnostic; the turn tool contract runs under the core Context.
+  return () => asTurnTool(createComputerTurnTool(input.dependencies as ComputerToolDependencies<Context>));
 }
 
 export function createTurnScreenshotToolFactory(
@@ -1146,6 +1161,18 @@ export function createTurnUpdateAgentToolFactory(
   return () => asTurnTool(createUpdateAgentTool(input.dependencies));
 }
 
+export function createTurnListAgentsToolFactory(
+  input: TurnRosterToolFactoryInput,
+): () => TurnTool {
+  return () => asTurnTool(createListAgentsTool(input.dependencies));
+}
+
+export function createTurnListGroupsToolFactory(
+  input: TurnRosterToolFactoryInput,
+): () => TurnTool {
+  return () => asTurnTool(createListGroupsTool(input.dependencies));
+}
+
 export function createTurnStateToolFactory(
   input: TurnStateToolFactoryInput,
 ): () => TurnTool {
@@ -1191,7 +1218,7 @@ export function createTurnToolsetFactories(
   "task" | "mcpMeta" | "computer" | "browser" | "screenshot"
   | "fileTransfer" | "requestBoxHelp" | "generateImage" | "webSearch" | "webFetch" | "externalAwait"
   | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead" | "boxLs" | "boxDelete" | "boxGrep" | "boxEdit" | "boxWrite" | "boxGlob"
-  | "sendMessage" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState"
+  | "sendMessage" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "listAgents" | "listGroups" | "updateState"
   | "subagentManagement"
   | "mcpManagement" | "cloudAgent"
 > {
@@ -1279,6 +1306,12 @@ export function createTurnToolsetFactories(
       : {
         createAgent: createTurnCreateAgentToolFactory(input.agentManagement),
         updateAgent: createTurnUpdateAgentToolFactory(input.agentManagement),
+      }),
+    ...(input.roster === undefined
+      ? {}
+      : {
+        listAgents: createTurnListAgentsToolFactory(input.roster),
+        listGroups: createTurnListGroupsToolFactory(input.roster),
       }),
     ...(input.state === undefined
       ? {}
@@ -1399,6 +1432,9 @@ export function createTurnToolsetFactoriesForTurn(
     ...(provider.createAgentManagementToolInputs === undefined
       ? {}
       : { agentManagement: provider.createAgentManagementToolInputs(turn, props) }),
+    ...(provider.createRosterToolInputs === undefined
+      ? {}
+      : { roster: provider.createRosterToolInputs(turn, props) }),
     ...(provider.createStateToolInputs === undefined
       ? {}
       : { state: provider.createStateToolInputs(turn, props) }),
@@ -1561,6 +1597,10 @@ export function buildTurnTools(
     if (createAgent !== undefined) tools.push(createAgent);
     const updateAgent = factories.updateAgent?.();
     if (updateAgent !== undefined) tools.push(updateAgent);
+    const listAgents = factories.listAgents?.();
+    if (listAgents !== undefined) tools.push(listAgents);
+    const listGroups = factories.listGroups?.();
+    if (listGroups !== undefined) tools.push(listGroups);
     if (!host.isSystemPromptOverridden) {
       const updateState = factories.updateState?.();
       if (updateState !== undefined) tools.push(updateState);

@@ -9,6 +9,7 @@ import type {
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import { getSandRootDir } from "../../host-paths.js";
+import { effectiveContextWindowTokens } from "./context-window.js";
 import {
   BelmontPiCredentialStore,
   migrateLegacyCodexCredential,
@@ -184,7 +185,9 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
       // return undefined (background-summarization.ts: `if (maxTokens <= 0) return undefined`),
       // so proactive compaction never triggered and long conversations only compacted AFTER the
       // model threw "input exceeds the context window". Pi exposes contextWindow on the model.
-      extendedUsage.resolve({ ...recorded, maxTokens: resolved.model.contextWindow ?? 0 });
+      // The nominal window can be pinned/capped with SAND_CODEX_CONTEXT_WINDOW_TOKENS /
+      // SAND_CODEX_CONTEXT_WINDOW_MAX_TOKENS when the backend's real limit is lower (AUDIT-6B).
+      extendedUsage.resolve({ ...recorded, maxTokens: effectiveContextWindowTokens(resolved.model.contextWindow) });
       metadata.resolve({ openai: { responseId: authoritative.responseId, pi: true } });
       response.resolve(resultResponse(
         authoritative,

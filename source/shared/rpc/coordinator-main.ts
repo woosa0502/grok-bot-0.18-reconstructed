@@ -17,7 +17,13 @@ export const COORDINATOR_MAIN_METHOD_TABLE = {
   getConversationOutline: { args: "object" },
   getSubagents: { args: "object" },
   setDevGatewayOffline: { args: "object" },
-  setGatewayPaused: { args: "object" }
+  setGatewayPaused: { args: "object" },
+  // Pi Codex OAuth (local Codex mode account screen).
+  getProviderAuthStatus: { args: "none" },
+  startProviderLogin: { args: "none" },
+  getProviderLoginStatus: { args: "none" },
+  cancelProviderLogin: { args: "none" },
+  providerLogout: { args: "none" }
 } as const;
 
 export type CoordinatorMainMethod = keyof typeof COORDINATOR_MAIN_METHOD_TABLE;

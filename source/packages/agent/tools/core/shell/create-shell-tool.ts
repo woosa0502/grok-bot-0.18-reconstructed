@@ -504,7 +504,9 @@ function makeResultFromStream(command: string, workingDirectory: string, stdout:
   if (exit === undefined) throw new Error("Shell exec stream closed without an exit event; result is unknown");
   const value = exit.value;
   const success = value.code === 0 && !value.aborted;
-  const base = { command, workingDirectory, exitCode: value.code, signal: value.aborted ? "SIGTERM" : "", stdout, stderr, executionTime: value.localExecutionTimeMs ?? 0, interleavedOutput, ...(value.outputLocation === undefined ? {} : { outputLocation: value.outputLocation }), ...(value.abortReason === undefined ? {} : { abortReason: value.abortReason }), ...(value.aborted ? { aborted: true } : {}) };
+  // The exit event carries the shell's cwd after the command (persistent shell state);
+  // fall back to the requested directory when the executor did not report one.
+  const base = { command, workingDirectory: value.cwd.length > 0 ? value.cwd : workingDirectory, exitCode: value.code, signal: value.aborted ? "SIGTERM" : "", stdout, stderr, executionTime: value.localExecutionTimeMs ?? 0, interleavedOutput, ...(value.outputLocation === undefined ? {} : { outputLocation: value.outputLocation }), ...(value.abortReason === undefined ? {} : { abortReason: value.abortReason }), ...(value.aborted ? { aborted: true } : {}) };
   return new ShellResult({ result: success ? { case: "success", value: new ShellSuccess(base) } : { case: "failure", value: new ShellFailure(base) }, ...(policy === undefined ? {} : { sandboxPolicy: policy }) });
 }
 
@@ -531,7 +533,10 @@ async function executeStream(ctx: Context, executor: ShellStreamExecutor, args: 
         return new ShellResult({ result: { case: "success", value: new ShellSuccess({ command: event.event.value.command, workingDirectory: event.event.value.workingDirectory, shellId: event.event.value.shellId, ...(event.event.value.pid === undefined ? {} : { pid: event.event.value.pid }), ...(event.event.value.msToWait === undefined ? {} : { msToWait: event.event.value.msToWait }), ...(event.event.value.reason === undefined ? {} : { backgroundReason: event.event.value.reason }), stdout, stderr, interleavedOutput, executionTime: 0 }) }, isBackground: true, ...(policy === undefined ? {} : { sandboxPolicy: policy }) });
       }
       case "start": break;
-      case "hookContext": break;
+      // postToolUse / postToolUseFailure additional_context emitted by the box daemon
+      // after the command finished; the collector renders it as a hook reminder on
+      // the tool result (tool-stream-executor) and the next turn.
+      case "hookContext": meta.hookContextCollector?.push(...event.event.value.hookAdditionalContexts); break;
       case undefined: break;
     }
   }

@@ -24,6 +24,7 @@ import {
   SAND_CLOUD_AGENTS_DISABLED_PROMPT_SECTION,
   SAND_MCP_MULTI_ACCOUNT_PROMPT_SECTION,
   SAND_SYSTEM_PROMPT_CLOUD_AGENTS_DISABLED,
+  SAND_SYSTEM_PROMPT_LOCAL_CODEX,
 } from "./system-prompt.js";
 import { renderAutomationsSystemPrompt, type AutomationRecord } from "../automations/automation.js";
 import { renderTimeZoneSystemPrompt } from "../../shared/timezone.js";
@@ -91,6 +92,8 @@ export interface SystemPromptAssemblyDependencies {
   readonly mcpManagement: () => unknown;
   readonly isMcpMultiAccountEnabled?: () => boolean;
   readonly isCloudAgentsDisabledByTeam?: () => boolean;
+  /** Local Codex mode selects the base prompt without cloud agents or image generation. */
+  readonly isLocalCodexMode?: () => boolean;
   readonly mcpCustomInstructionsSection: () => string | null;
   readonly mcpDiscoveryStatusSection: () => string | null;
   readonly remoteBoxSection: () => string;
@@ -248,7 +251,11 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
 
   function getSystemPrompt(snapshot?: AgentProfilePromptSnapshot): string {
     const cloudDisabled = deps.isCloudAgentsDisabledByTeam?.() === true;
-    const base = !deps.isSystemPromptOverridden && cloudDisabled ? SAND_SYSTEM_PROMPT_CLOUD_AGENTS_DISABLED : deps.basePrompt;
+    const base = deps.isSystemPromptOverridden
+      ? deps.basePrompt
+      : deps.isLocalCodexMode?.() === true
+        ? SAND_SYSTEM_PROMPT_LOCAL_CODEX
+        : cloudDisabled ? SAND_SYSTEM_PROMPT_CLOUD_AGENTS_DISABLED : deps.basePrompt;
     const sections = [base];
     if (deps.isSpotlightEnabled?.() !== false) sections.push(spotlightPromptSection({ canSendMessage: !deps.isSubagentRunner }));
     const profile = deps.isSharedRoomRunner ? profileSection(resolveProfileForPrompt(), true) : snapshot?.profileSection ?? profileSection(resolveProfileForPrompt(), false);
