@@ -83,11 +83,20 @@ Task 도구가 subagent_type을 executor만 허용("Invalid value. Expected one 
 | GBF-AGT-000135 (Computer then-batch 후속액션) | UNAVAIL | **✅ PASS(코드+라이브)** | :347-348 primary+then[] 시퀀스 조립; 다중액션(클릭+타이핑) 라이브 입증 |
 | GBF-AGT-000206 (auto-review가 Computer 액션 거부) | UNAVAIL | **PARTIAL** | Computer 액션은 이제 존재하나 auto-review가 local서 강제OFF(AUDIT-W3)라 거부 게이트 미작동 |
 | GBF-AGT-000429 (no-monitor면 SandBoxNoMonitor throw) | PASS | PASS(유지) | 플래그 OFF면 여전히 throw, ON이면 Xvfb 모니터 존재 — 둘 다 정상 |
-| GBF-AGT-000297/420 (computerUse **서브에이전트** dispatch/GUI 조작) | UNAVAIL | **✅ PASS(라이브)** | ②구현: config 하드코딩 수정 → subagent_type "computerUse" 수락·dispatch→PLUM-55 판독 |
-| GBF-AGT-000298/235 (두 번째 computerUse 서브에이전트 단일화면 가드) | UNAVAIL/PASS | **✅ 코드경로 활성** | allocateComputerUseWindow(agent-adapters.ts:62) 락이 이제 도달가능 — dispatch가 되므로 가드도 실동작 |
-| **VNC 뷰어** (USR-237/242/243/391/456/235/236 등 ~10건) | UNAVAIL | **✅ PASS(라이브)** | ③구현: x11vnc+websockify+noVNC로 :99를 앱 "Open computer" 패널에 실시간 표시(MELON-33 확인). Xvfb는 있고 이제 노출 패널도 있음 |
+| GBF-AGT-000297 (computerUse 서브에이전트 dispatch) | UNAVAIL | **✅ PASS(라이브)** | ②: config 하드코딩 수정 → 수락·dispatch → PLUM-55 판독 |
+| GBF-AGT-000420 (서브에이전트로 **GUI 조작**) | UNAVAIL | **✅ PASS(라이브)** | 서브에이전트가 스크린샷→OK 버튼 클릭(좌표 자가조정 x463→x552)→창 닫힘(독립검증) |
+| GBF-AGT-000298 (두 번째 서브에이전트 disallow) | UNAVAIL | **✅ PASS(라이브)** | 메인에이전트가 규칙대로 두 번째 dispatch 거부("forbid dispatching a second while one is running") |
+| GBF-AGT-000235 (두 번째 → 데스크톱 할당 실패) | PASS | **코드경로 활성(유지)** | allocateComputerUseWindow(agent-adapters.ts:62) 하드 가드 존재·도달가능. 에이전트가 규칙 지켜 race 미생성 → 에러경로 자체는 미트리거 |
+| GBF-USR (VNC 화면 보기) | UNAVAIL | **✅ PASS(라이브)** | ③: x11vnc+websockify+noVNC → 앱 "Open computer"에 :99 실시간 표시(MELON-33) |
+| GBF-USR-000913 (VNC 줌 1x 고정) / USR-000456 (키 전달) | UNAVAIL | **✅ 코드배선** | electron VNC trust가 내 loopback `127.0.0.1/vnc.html`을 box desktop으로 인식(vnc-trust.ts:8) → installGuestInputGuard가 줌 1x 고정+before-input-event 라우팅 |
+| GBF-AGT-307/308 (readClipboard/writeClipboard), USR-452/453/758 (클립보드), AGT-354 (presence), USR-454 (Cmd→Ctrl) | UNAVAIL | **코드배선(미개별E2E)** | 같은 trust로 boxDesktopWebview에 클립보드/presence 핸들러 부착(vnc-trust.ts:84-86, electron.clipboard). 인프라는 활성이나 중첩 webview 통한 각 동작 개별검증은 못 함 |
+| GBF-USR-000390 (**다중 데스크톱 창** ensureWindow) | UNAVAIL | **미지원(정직)** | production.ts:107 maxWindows()=1 — 단일 Xvfb. 로컬은 한 화면만 |
+| GBF-USR-000897 (handoff-card 'Open computer') | UNAVAIL | 별도 UI | 카드 UI 케이스 — 컴퓨터 유즈 코어 아님 |
 
-**정직한 결론:** 컴퓨터 유즈 3그룹 전부 라이브 PASS — *에이전트 도구 실행*(스크린샷·클릭·타이핑·키·then-batch·trailing-screenshot), *computerUse 서브에이전트 dispatch*(②), *VNC 뷰어 패널*(③). 미구현 없음. (VNC는 x11vnc/websockify/novnc 설치 필요, 로컬 설치 완료.)
+**정직한 결론(검증 수준 구분):**
+- **라이브검증**: ① 도구 실행(스크린샷/클릭/타이핑/키/then-batch/trailing) · ② 서브에이전트 dispatch·GUI조작·disallow · ③ VNC 화면 표시.
+- **코드배선(개별 E2E 미검증)**: VNC 클립보드/presence/키보드/줌 — electron VNC 인프라(vnc-trust.ts)가 내 loopback vncUrl을 box desktop으로 인식해 자동 부착. 인프라 활성 확인·각 동작 개별검증은 중첩 webview 제약으로 못 함.
+- **실제 미지원**: 다중 데스크톱 창(USR-390, maxWindows=1) — 단일 화면 설계.
 
 ## 2. 감사 findings — P0 (심각)
 
