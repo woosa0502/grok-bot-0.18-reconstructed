@@ -6,7 +6,7 @@ import {
   type BoxEnvironmentControlClient,
   type BoxEnvironmentUpdate
 } from "./box-env.js";
-import { uploadFileViaExecDaemon, type FileTransferAccessor } from "./box-file-transfer.js";
+import { writeFileBytesViaExecDaemon, type FileTransferAccessor } from "./box-file-transfer.js";
 import { applySharedDesktop, createSandBox } from "./box-factory.js";
 import {
   loadBoxMcpServersViaTransport,
@@ -205,7 +205,13 @@ export function createProductionBoxInner<
         );
       },
       async uploadFile(ctx, accessor, path, data): Promise<void> {
-        await uploadFileViaExecDaemon(ctx, accessor, path, data);
+        // The loopback box IS this machine: its exec daemon maps the box's logical
+        // "/workspace/..." only for cwd and WriteArgs paths, not inside shell command
+        // text. The shell-based uploader (mkdir -p / mv on the literal /workspace path)
+        // therefore failed on every loopback upload — e.g. large MCP results were never
+        // spilled to .sand/tools. Write through the daemon's write executor instead: it
+        // maps the path and creates parent directories itself.
+        await writeFileBytesViaExecDaemon(ctx, accessor, path, data);
       }
     }
   });

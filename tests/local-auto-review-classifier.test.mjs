@@ -211,6 +211,18 @@ test("desktop and host derive the same account scope for the local Codex account
   assert.equal(account.isLocalCodexMode({}), false);
 });
 
+test("local MCP projection spills large tool results to a box file", async () => {
+  const host = await readFile(path.join(repositoryRoot, "source/host/host-runner-composition.ts"), "utf8");
+  assert.match(host, /textSpiller: isLargeOutputSpillEnabled\(\) && typeof method\(remoteBox, "uploadFile"\) === "function"/u, "the per-turn MCP projection must install the MCP text spiller instead of textSpiller: undefined");
+  assert.doesNotMatch(host, /textSpiller: undefined,/u);
+  // The loopback (in-box) upload must go through the daemon's path-mapped write executor:
+  // the shell-based uploader runs `mkdir -p -- /workspace/...` literally, and the local daemon
+  // only maps /workspace for cwd/WriteArgs paths, so every box upload (spills included) failed.
+  const production = await readFile(path.join(repositoryRoot, "source/host/box/production.ts"), "utf8");
+  assert.match(production, /async uploadFile\(ctx, accessor, path, data\): Promise<void> \{[\s\S]*?await writeFileBytesViaExecDaemon\(ctx, accessor, path, data\);/u, "loopback uploadFile must use writeFileBytesViaExecDaemon");
+  assert.doesNotMatch(production, /uploadFileViaExecDaemon/u, "the shell-based uploader must not be used for the loopback box");
+});
+
 test("local classifier module stays free of provider SDK imports so it bundles standalone", async () => {
   const source = await readFile(path.join(repositoryRoot, CLASSIFIER_ENTRY), "utf8");
   const valueImports = [...source.matchAll(/^import (?!type )[^;]*from "([^"]+)";/gmu)].map(match => match[1]);

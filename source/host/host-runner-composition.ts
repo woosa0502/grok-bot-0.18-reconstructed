@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
+import { createSandMcpTextSpiller, isLargeOutputSpillEnabled } from "./runner/large-output-spill.js";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -2380,7 +2381,16 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             : {}),
         },
         persistImage: hooks.persistImage,
-        textSpiller: undefined,
+        // Large MCP results (> MCP_TEXT_FILE_THRESHOLD_BYTES) are spilled to a box file
+        // under .sand/tools instead of being inlined — the same spiller the recovered
+        // prompt glue installs (createMcpTextSpiller). Without it the local build inlined
+        // a 60 KB result verbatim.
+        textSpiller: isLargeOutputSpillEnabled() && typeof method(remoteBox, "uploadFile") === "function"
+          ? createSandMcpTextSpiller({
+              uploadTextFile: (ctx, relativePath, data) =>
+                method(remoteBox, "uploadFile")!(ctx, session.id, relativePath, data) as Promise<void>,
+            })
+          : undefined,
         isSubagentRunner: false,
         beginObservation: () => () => {},
         boundedConnectorTag: (providerIdentifier: string) => providerIdentifier,

@@ -53,6 +53,15 @@ export function wslHostEnvironment({ profileDir, env = process.env }) {
     // false and Task fails with "No subagent types are available". resolveMultitaskEnabled
     // honours SAND_MULTITASK ahead of the gate, so set it on for the local build.
     SAND_MULTITASK: env.SAND_MULTITASK ?? "1",
+    // Require gateway auth. The gateway only serves the local-exec channel
+    // (/local-exec/requests|responses — how the desktop's local-exec daemon attaches
+    // as the "local machine") when it has an auth token; on a loopback bind it mints
+    // one only when this is set. Without it the daemon's attach is refused with 401,
+    // the host never sees a live computer, and every ExternalShell/ExternalRead call
+    // fails with "Your local machine isn't connected right now". The launcher already
+    // forwards gateway.json's token to Electron (SAND_HOST_GATEWAY_TOKEN) and uses it
+    // for its own settings POST.
+    SAND_GATEWAY_REQUIRE_AUTH: env.SAND_GATEWAY_REQUIRE_AUTH ?? "1",
   };
 }
 

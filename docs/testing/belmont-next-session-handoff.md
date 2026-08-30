@@ -10,8 +10,10 @@ _작성: 2026-08-30 · 갱신: 2026-08-30 저녁 (auto-review 로컬 배선 세�
 
 - **이전 세션의 "유일한 결함 클러스터"(auto-review 로컬 강제 OFF, AUDIT-W3) 해소.** 로컬 분류기(Pi gpt-5.5)로 Shell·컴퓨터 승인 카드, allow/block 규칙, Always allow가 라이브로 동작.
 - 그 과정에서 **추가 결함 1건 발견·수정(AUDIT-W4)**: 호스트/데스크톱의 계정 scope 불일치로 auto-review 규칙·모델 기본값·로컬 도구 권한이 **매 시작마다 초기화**되던 문제.
-- **작업트리 미커밋** (커밋은 사용자가 요청할 때만 — 아래 "변경 파일"). 앱은 최종 빌드로 실행 중(CDP 9347).
-- 남은 것: UNCLEAR 8건, routine 편집기 aria-invalid(USR-675, UI 불일치), (선택) VNC 세부 E2E·다중창, 브라우저/MCP 표면 개별 라이브.
+- 위 작업은 **커밋·푸시됨**(`7e65baa`, origin/main). 그 뒤 3차 작업(미커밋): "auto-review off라서 UNAVAIL"이던 **19건 재판정**(PASS 7·PARTIAL 2·ENV 2·UNAVAIL 8) + **AUDIT-W5 발견·수정** — 런처가 게이트웨이를 인증 없이 띄워 로컬 실행 채널이 401 → 호스트 셸 도구(ExternalShell)가 항상 "not connected"였음. 수정: `scripts/lib/wsl-runtime.mjs`에 `SAND_GATEWAY_REQUIRE_AUTH=1` (+ `tests/wsl-runtime.test.mjs`). 이제 로컬 도구 권한 카드(Always allow/Allow once/Never)가 실제로 뜬다.
+- 4차(미커밋): **UNCLEAR 12건 재판정**(PASS 11·UNAVAIL 1, 단위/코드/라이브) + **AUDIT-W6 발견·수정** — 로컬 MCP 투영에 spiller 연결(`host-runner-composition.ts`) + loopback 박스 `uploadFile`을 경로 매핑되는 write 실행기로 교체(`box/production.ts`). 60KB MCP 결과가 `.sand/tools/*.txt`로 spill됨(라이브). 테스트 110/110.
+- 앱은 최종 빌드로 실행 중(CDP 9347). 남은 것: routine 편집기 aria-invalid(USR-675), expired 로컬 도구 카드 UI 문구(USR-660), (선택) VNC 세부 E2E·다중창, 브라우저/MCP 표면 개별 라이브. **문서·테스트 파일이 빌드 이후 바뀌었으므로 다음 실행 전 재빌드 필요**(stale 검사).
+- 테스트 픽스처: `sand-data/box-workspace/.cursor/mcp-test-server.mjs`에 `big`(큰 출력) 도구 추가됨(저장소 밖).
 
 ---
 
@@ -40,6 +42,8 @@ _작성: 2026-08-30 · 갱신: 2026-08-30 저녁 (auto-review 로컬 배선 세�
 - **흐름(Shell)**: 모델 턴 → 분류(≈3s) → block이면 거부 사유 전달 → 모델이 `request_smart_mode_approval:true`로 재호출 → 분류 → 카드(Allow once/Always allow/Deny). 카드까지 21~25s.
 - **컴퓨터 표면**: 로컬은 `turn.computerAutoReview`(디스플레이 99, 규칙, 컨트롤러)를 대체 경로가 `autoReview`로 사용, `createComputerTurnTool`이 실행 전 `runComputerToolAutoReviewPreflight` 호출. 로컬엔 박스 Chrome 탐침이 없어 표시상태 identity는 상수(재확인 없음).
 - **규칙 저장**: 설정 화면 → `window.desktop.autoReviewInstructions.set()` → electron 저장소(=호스트와 같은 `sand-data/settings.json`) + 호스트 동기화. 재시작 시 electron 재동기화가 저장소 값을 호스트에 다시 밀어넣음(같은 값이라 무해). AUDIT-W4 수정 전엔 scope 뒤집힘으로 여기서 규칙이 사라졌음.
+- **로컬 도구 권한(내 컴퓨터에서 실행)**: 호스트 셸 도구 `ExternalShell`/`ExternalRead`는 `withLocalToolScope`로 감싸져 설정 `localToolPermission`(always/ask/never)을 탐. `ask`면 카드(`aria-label="Local tool permission"`, 버튼 Always allow/Allow once/Never) → 게이트웨이 `resolveLocalToolPermission`. 승인 기록은 `sand-data/local-tool-approvals.json`, 삭제는 `window.desktop.localToolPermission.clearApprovals()`. 관리자 상한 `localToolPermissionCeiling`은 **시작 시** 로드(실행 중 변경 무효). 박스 셸(Shell)은 이 권한의 대상이 아님(설계). 이 경로가 동작하려면 게이트웨이 인증이 필요(AUDIT-W5) — 런처가 기본으로 켬.
+- **빌드 계보 검사**: `run-wsl.mjs`는 빌드 시점의 git HEAD/트리와 현재가 다르면 "runtime is stale"로 거부 → **커밋 후엔 반드시 `node scripts/setup-wsl.mjs` 재빌드** 후 실행.
 
 ---
 

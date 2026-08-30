@@ -34,7 +34,7 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | ① 진짜 결함/무효화 (ISSUE) | ~~14~~ → **0** (12 PASS 재판정 · 675/676은 auto-review와 무관으로 재분류, §1.6) | ✅ 해소 |
 | ② 로컬에 원래 없는 기능 (UNAVAIL) | 501 | 아니오 (cursor/클라우드/외부 전용) |
 | ③ 환경·도구 한계 (ENV) | 65 | 아니오 (실사용자엔 작동, CDP로 테스트만 불가) |
-| ④ 미확정 (UNCLEAR) | 8 | 확인 필요 |
+| ④ 미확정 (UNCLEAR) | ~~8~~(실제 12) → **0** (PASS 11 · UNAVAIL 1, §1.6 후속 2) | ✅ 해소 |
 
 ### ✅ (해소) 진짜 문제 14개 = 사실상 뿌리 1개 (auto-review/smart-mode 강제 OFF — AUDIT-W3)
 `auto-review/extension.ts:52`가 local Codex서 강제 off → **"사용자가 켜도 무효"** 였던 것을 **로컬 분류기 배선으로 해소**(§1.6). 케이스별:
@@ -60,8 +60,8 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | 모델피커 (로컬 Pi 고정) | 2 |
 
 ### 남은 실행 항목 (안 한 것)
-1. ~~**auto-review Codex 배선**~~ → 완료(§1.6). 남은 것: 브라우저·MCP 표면 개별 라이브 확인(같은 분류기 공유라 코드경로는 활성), 분류기 정책 프롬프트 튜닝(현재 오프라인 탐침 8/8 정답).
-2. **UNCLEAR 8건 확인**.
+1. ~~**auto-review Codex 배선**~~ → 완료(§1.6). ~~UNAVAIL 중 "auto-review off라서" 19건 재판정~~ → 완료(§1.6 후속: PASS 7·PARTIAL 2·ENV 2·UNAVAIL 8, AUDIT-W5 발견·수정). 남은 것: 브라우저·MCP 표면 개별 라이브(같은 분류기 공유라 코드경로는 활성), 분류기 정책 프롬프트 튜닝(오프라인 탐침 8/8 정답), expired 로컬 도구 카드의 UI 문구(660).
+2. ~~**UNCLEAR 8건 확인**~~ → 완료(12건: PASS 11·UNAVAIL 1, §1.6 후속 2; AUDIT-W6 발견·수정).
 3. **routine 편집기 빈 이름 aria-invalid(USR-675)** — pinned 렌더러 UI 불일치, auto-review와 별개.
 4. (선택) 컴퓨터 유즈 VNC 세부(클립보드/키/줌) 개별 E2E 검증 · 다중창(USR-390, 현재 maxWindows=1 미지원).
 5. 기존 `npm run source:typecheck` 오류 4개(host-runner-composition.ts:2536-2537 subagent config 타입, host-computer-tool-dependencies.ts Context 타입) — 이번 작업 전부터 있던 것, 빌드(esbuild)엔 영향 없음.
@@ -183,6 +183,37 @@ Task 도구가 subagent_type을 executor만 허용("Invalid value. Expected one 
 - 브라우저/MCP/서브에이전트 표면은 같은 `smartModeClassifierExecutorResource`를 쓰므로 활성이나 개별 라이브는 미실행.
 - 테스트 흔적: 에이전트 "AutoReviewProbe"(전사에 카드 기록 보존). 테스트용 block 규칙은 정리(설정: auto-review ON, 규칙 없음).
 
+### 후속: "auto-review off라서 못 봤던" UNAVAIL 19건 재판정 + AUDIT-W5 (2026-08-30 3차)
+재판정하려다 **추가 결함(AUDIT-W5)** 발견·수정: 런처가 게이트웨이를 인증 없이 띄우는데, 게이트웨이는 로컬 실행 채널(`/local-exec/requests`)을 **토큰 없으면 401로 거부** → 데스크톱의 local-exec 데몬이 한 번도 등록되지 못해 호스트 셸 도구(ExternalShell/ExternalRead)가 항상 "Your local machine isn't connected right now"였음. 수정: `scripts/lib/wsl-runtime.mjs` 호스트 env에 `SAND_GATEWAY_REQUIRE_AUTH=1` (런처가 gateway.json 토큰을 Electron→데몬으로 이미 전달). 재시작 후 게이트웨이 "(auth required)", 데몬 연결 파일에 token, ExternalShell이 호스트(WSL-CODEX)에서 실행.
+
+| 묶음 | 케이스 | 판정 | 근거 |
+|---|---|---|---|
+| 로컬 도구 권한 카드 | 488, 566, 567, 659, 808, 489 | **PASS** | Allow once→"…this time." 문구·실행 / Never→전역 never·재요청 카드 없이 거부 / 재시작 시 낡은 ask settle(오류 없음) / clearApprovals→승인 파일 삭제 / 상한 `ask`→"Always allow" 비활성(툴팁 문구는 미확인) |
+| 〃 | 660, 673 | PARTIAL | 호스트는 pending ask를 재시작 시 `expired`로 갱신(TTL 10분 경로는 코드) — pinned 렌더러가 expired 결과 문구를 표시 안 함 / 버튼 비활성 조건은 코드(canAct), 낡은 카드에 버튼이 남지 않는 것은 라이브 |
+| 〃 | 486, 487 | ENV | 제출 실패·제출 중 상태는 유발/포착 불가 |
+| auto-review 카드 상태 | 674 | **PASS** | 해결된 카드가 버튼 대신 상태 라벨 표시 |
+| 도구 승인 요청 | 801, 802, 573, 574 | UNAVAIL(정밀) | 로컬 WebFetch/WebSearch(`createCodexWeb*Service`)에는 권한 프롬프트가 없음 — rejected 결과는 Cursor 박스 경로 전용. auto-review와 무관 |
+| 〃 | 571, 572, 575, 576 | UNAVAIL | GitHub SCM 연결 = 클라우드 커넥터, 이미지 생성 = Cursor 토큰(AUDIT-9) |
+
+합계: PASS 7 · PARTIAL 2 · ENV 2 · UNAVAIL 8(사유 정정). 이전 사유 (2) "Execution=Ask여도 박스 실행이 승인 카드를 안 띄움"은 설계상 정상(박스 셸은 로컬 권한 대상이 아님) — 호스트 셸 카드는 AUDIT-W5 수정 후 정상.
+
+### 후속 2: UNCLEAR 12건 재판정 + AUDIT-W6 (2026-08-30 4차)
+sweep이 "empty/timeout"으로 판정 못 한 AGENT 케이스 12건을 **단위(순수 함수 직접 호출)·코드·라이브**로 재판정. 라이브 중 **AUDIT-W6** 발견·수정: 로컬 MCP 투영이 `textSpiller: undefined`라 큰 결과를 인라인했고, spiller를 연결해도 loopback 박스의 `uploadFile`이 셸 명령 문자열의 리터럴 `/workspace` 경로(`mkdir -p`/`mv`)로 실패(로컬 데몬은 cwd/WriteArgs 경로만 매핑) → 경로 매핑되는 write 실행기로 교체. 이 업로드 경로는 spill뿐 아니라 loopback 박스로의 모든 파일 업로드가 쓰는 길이다.
+
+| 케이스 | 판정 | 방법 · 근거 |
+|---|---|---|
+| AGT-347 MCP 큰 결과 spill | **PASS**(수정 후 라이브) | 60000B → `.sand/tools/<uuid>.txt (58.6 KB, 1876 lines)` 파일 참조, 파일 실존 |
+| AGT-017 Task model 파라미터 | PASS(단위) | `resolveSubagentModel`: inherit→부모, 허용 슬러그→그 모델, 미허용→`ToolCallArgParseError "Invalid model selection … Allowed model slugs"`. 라이브는 로컬 허용 목록이 비어 모델이 Task 호출 자체를 거절 |
+| AGT-330 workspaceOpen pluginPaths | PASS(단위) | 배열 허용, 비배열/빈문자열/비문자열 → 인덱스별 오류 |
+| AGT-239 도구 타임아웃 | PASS(단위) | `wrapToolWithTimeout` 80ms → `ToolTimeoutError "… timed out after … and was terminated"`; 티어 5/15/30/60/120분 |
+| AGT-077/078 browser_drag/click 검증 | PASS(단위) | `'sourceRef is required'`, `'x is required'`/`'y is required'` (로컬엔 박스 브라우저 미노출) |
+| AGT-201 환경 전환 안내 | PASS(단위) | BACKGROUND→IDE: "operating as an agent locally… commit and push only when requested", 반대: "cloud agent… Manage your own Git state" |
+| AGT-381 멀티태스크 진입 안내 | PASS(단위) | `processModeSystemReminder(MULTITASK)` → "You are now in Multitask mode" + "The user has engaged **Multitask Mode**" 코디네이터 위임 안내 |
+| AGT-314 cloud/local 규칙 노출 | PASS(단위) | `filterByAgentEnvironment`: IDE/CLI=local, BACKGROUND=cloud, BUGBOT·미지정=무필터 |
+| AGT-373 plan frontmatter todo 동기화 | PASS(단위+코드) | `updateTodoStatusArray`+`stringifyPlanFrontmatter`; `syncLatestPlanTodosToFile`(todo.ts:174)은 로컬 호스트에 plan 도구/레지스트리 배선이 없어 실경로 미발생 |
+| AGT-262 429/5xx 재시도 분류 | PASS(코드) | `classifyWebSearchProviderError`: 429 또는 ≥500 → PROVIDER_ERROR "…may be temporary. Please try again." |
+| AGT-322 CI 조사 서브에이전트 | UNAVAIL | `createCiInvestigatorSubagentConfig`가 어디서도 등록되지 않음(클라우드 CI 연동 기능) |
+
 ## 2. 감사 findings — P0 (심각)
 
 | ID | 제목 | 판정 | 증거 |
@@ -200,6 +231,8 @@ Task 도구가 subagent_type을 executor만 허용("Invalid value. Expected one 
 | AUDIT-8 | 플러그인≠로컬MCP + 로컬MCP 4갭 | CONFIRMED | 플러그인 search/install/auth/delete는 Cursor backend(mcp-service.ts:126-149). 로컬MCP 갭: (a)cwd 누락 readLocalMcpServers(mcp-service.ts:207-218), (b)tools/list pagination 없음(mcp-stdio-clien |
 | AUDIT-9 | 이미지생성/아바타는 Cursor 토큰 필요(광고만) | CONFIRMED | system-prompt.ts:140 GenerateImage 광고; generate-image-service.ts:5 getAccessToken 요구; cursor-generate-image.ts:8 Cursor backend RPC. Codex-OAuth 로컬모드엔 토큰없어 실패. |
 | AUDIT-W3 | Auto-review가 Codex에서 강제 OFF | **FIXED** (2차 갱신) | 원인: 분류기가 Cursor 백엔드 RPC 전용. 수정: 로컬 분류기(`auto-review/local-smart-mode-classifier-exec.ts`, Pi gpt-5.5 reasoning low)를 `createClassifierExecutor`에 주입, 강제 off 제거, 로컬은 settings-on ⇒ enforce. 라이브: Shell/컴퓨터 카드·규칙·Always allow 전부 PASS. §1.6 |
+| AUDIT-W6 | loopback 박스 파일 업로드 실패 → MCP 큰 결과 spill 불가(항상 인라인) | **FIXED** (신규 발견, 4차) | (1) 로컬 MCP 투영 `textSpiller: undefined`(host-runner-composition) → `createSandMcpTextSpiller` 연결. (2) `box/production.ts` loopback `uploadFile`이 `uploadFileViaExecDaemon`(셸 `mkdir -p -- /workspace/…`·`mv`)를 써 리터럴 경로로 실패 — 데몬은 cwd/WriteArgs만 매핑 → `writeFileBytesViaExecDaemon`(매핑+상위 디렉터리 생성)으로 교체. 라이브: 60KB 결과가 `.sand/tools/*.txt`로 spill |
+| AUDIT-W5 | 로컬 실행 채널 401 → 호스트 셸 도구(ExternalShell/ExternalRead)가 항상 "local machine isn't connected" | **FIXED** (신규 발견, 3차) | `gateway-server.ts:51`은 토큰 없으면 `/local-exec/*`를 401. WSL 런처는 인증 없이 게이트웨이를 띄워 데몬 등록이 항상 실패. 수정: `wsl-runtime.mjs` `SAND_GATEWAY_REQUIRE_AUTH=1`. 라이브: 데몬 token 수신, ExternalShell 실행 + 로컬 도구 권한 카드 전 흐름(§1.6 후속) |
 | AUDIT-W4 | 계정 scope 불일치 → auto-review 규칙·모델 기본값·로컬 도구 권한이 매 시작마다 초기화 | **FIXED** (신규 발견, 2차 갱신) | 호스트 `mcp-service.ts:266`는 계정 없을 때 scope `"local"`, 데스크톱은 `accountCacheScope("local-codex")` → 시작마다 서로 뒤집으며 `scopeToAccount()`가 계정 범위 설정을 삭제(재시작 후 규칙 소실을 로그로 확인). 수정: 공용 `shared/node/local-codex-account.ts`로 양쪽 scope 통일. 라이브: 재시작 후 규칙 보존 확인. §1.6 |
 | DEFECT-3 | 이미지/파일 첨부 전송 시 앱 전체 크래시 (attachment kinds shape 불일치) | FIXED | session-projection.ts buildAttachmentLastEntry가 kinds를 countKinds()의 객체 {image:1}로 넣음. 렌더러 Yun/mergeKindCounts는 배열 [{kind,count}] 기대. 객체엔 .length=undefined라 빈-가드 통과 후 n.filter 폭발 - |
 

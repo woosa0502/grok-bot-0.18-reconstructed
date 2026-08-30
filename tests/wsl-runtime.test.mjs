@@ -69,6 +69,10 @@ test("WSL runtime owns an isolated local Codex host", () => {
   // backend here; an explicit env value still wins.
   assert.equal(host.SAND_MULTITASK, "1");
   assert.equal(wslHostEnvironment({ profileDir, env: { SAND_MULTITASK: "0" } }).SAND_MULTITASK, "0");
+  // Gateway auth is required so the local-exec daemon can attach (the channel is 401
+  // without a token, which left ExternalShell permanently "not connected").
+  assert.equal(host.SAND_GATEWAY_REQUIRE_AUTH, "1");
+  assert.equal(wslHostEnvironment({ profileDir, env: { SAND_GATEWAY_REQUIRE_AUTH: "0" } }).SAND_GATEWAY_REQUIRE_AUTH, "0");
   assert.equal(gatewayUrlFromDiscovery({ pid: 42, port: 15432, host: "127.0.0.1" }, 42), "http://127.0.0.1:15432");
   assert.equal(gatewayUrlFromDiscovery({ pid: 41, port: 15432 }, 42), null);
   assert.equal(gatewayUrlFromDiscovery({ pid: 42, port: 15432, host: "0.0.0.0" }, 42), null);
