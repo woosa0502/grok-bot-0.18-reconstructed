@@ -121,6 +121,7 @@ import {
 import { createStartOfTurnAckReminderMiddleware } from "./start-of-turn-ack-reminder-middleware.js";
 import { createSandBrowserUseSubagentConfig } from "./tools/sand-browser-use-subagent.js";
 import { createSandComputerUseSubagentConfig } from "./tools/sand-computer-use-subagent.js";
+import { createHostComputerToolDependencies } from "./host-computer-tool-dependencies.js";
 import { createSandExecutorSubagentConfig } from "../sand-multitask.js";
 import {
   buildSandSubagentLaunchReviewTarget,
@@ -380,7 +381,8 @@ export function createTurnAgentToolsHandoff(input: {
 
     const perTurnProvider = {
       ...(provider ?? {}),
-      ...(provider?.createComputerToolInputs !== undefined || !hasDirectComputerInputs
+      ...(provider?.createComputerToolInputs !== undefined
+        || (!hasDirectComputerInputs && process.env.SAND_LOCAL_COMPUTER_USE !== "1")
         ? {}
         : {
             createComputerToolInputs: (
@@ -388,10 +390,15 @@ export function createTurnAgentToolsHandoff(input: {
               currentProps: TurnToolsetBuildProps,
             ) => {
               const createDependencies = currentProps.createComputerToolDependencies;
-              if (createDependencies === undefined) {
-                throw new TypeError("computer tool dependencies are not bound");
-              }
-              return { dependencies: createDependencies(currentProps) };
+              // Local computer-use: the per-turn projection may not bind the deps on this
+              // path, so build them directly from the resource accessor (which resolves the
+              // local Xvfb-backed computer-use executor through the box).
+              const dependencies = createDependencies !== undefined
+                ? createDependencies(currentProps)
+                : createHostComputerToolDependencies({
+                    resourceAccessor: currentProps.resourceAccessor as { get(resource: unknown): unknown },
+                  });
+              return { dependencies };
             },
           }),
       ...(provider?.createMultitaskToolInputs !== undefined || !hasDirectMultitaskInputs

@@ -28,6 +28,7 @@ import type {
   PingResult
 } from "./loopback-sand-box.js";
 import type { ShellAccessor } from "./box-windows.js";
+import { LOCAL_COMPUTER_USE_ENABLED, withLocalComputerUse } from "./local-computer-use.js";
 
 export type ProductionBoxControlClient = BoxPingControlClient &
   BoxEnvironmentControlClient &
@@ -212,7 +213,9 @@ export function createProductionBoxInner<
   if (options.sharedDesktop === false) {
     return createStandaloneProductionBoxInner(
       loopback,
-      accessor => generated.withNoMonitorComputerUse(accessor)
+      LOCAL_COMPUTER_USE_ENABLED
+        ? accessor => withLocalComputerUse(accessor)
+        : accessor => generated.withNoMonitorComputerUse(accessor)
     );
   }
 

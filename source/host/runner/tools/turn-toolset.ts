@@ -47,6 +47,7 @@ import {
   createScreenshotTool,
   type ComputerToolDependencies,
 } from "./sand-computer-tool.js";
+import { createComputerTurnTool } from "../host-computer-tool-dependencies.js";
 import {
   createSandBrowserTools,
   type BrowserDriverDependencies,
@@ -998,7 +999,7 @@ export function createTurnMcpMetaToolFactory(
 export function createTurnComputerToolFactory(
   input: TurnComputerToolFactoryInput,
 ): () => TurnTool {
-  return () => asTurnTool(createComputerTool(input.dependencies));
+  return () => asTurnTool(createComputerTurnTool(input.dependencies));
 }
 
 export function createTurnScreenshotToolFactory(
@@ -1628,10 +1629,16 @@ export function buildTurnTools(
     }
   }
 
+  // Computer-use is normally delegated to a dedicated computerUse subagent. In local
+  // mode (SAND_LOCAL_COMPUTER_USE=1) there is no cloud subagent runtime, so expose the
+  // Computer tool to the agent directly whenever its factory is bound (backed by the
+  // local Xvfb executor).
+  const localComputerUse = process.env.SAND_LOCAL_COMPUTER_USE === "1";
   if (
-    host.isComputerUseSubagent
-    && host.remoteBoxHasDesktop
-    && host.getRemoteBoxAvailable()
+    localComputerUse
+    || (host.isComputerUseSubagent
+      && host.remoteBoxHasDesktop
+      && host.getRemoteBoxAvailable())
   ) {
     const computer = factories.computer?.();
     if (computer !== undefined) tools.push(computer);

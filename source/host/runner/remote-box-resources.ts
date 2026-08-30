@@ -311,6 +311,7 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
       options,
     ): Promise<ComputerUseResult> => {
       const connection = await connect(context);
+      const localComputerUse = process.env.SAND_LOCAL_COMPUTER_USE === "1";
       let ownsMonitorForNavigationAudit = false;
       try {
         const inner = connection.remoteAccessor.get(computerUseExecutorResource);
@@ -318,6 +319,14 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
           throw new SandBoxNoMonitorAvailableError();
         }
         ownsMonitorForNavigationAudit = true;
+        // Local computer-use drives a bare Xvfb with no monitor-lease / navigation-probe
+        // infrastructure; skip those box-desktop-only steps and call the executor directly.
+        if (localComputerUse) {
+          guardAutoReviewBarrier();
+          const result = await inner.execute(context, args, options);
+          host.computerUse.recordAuditIntent(args.actions[0]?.action.case);
+          return result;
+        }
         const windowIndex = boxAgentWindowIndex(box, boxId) ?? 1;
         void host.computerUse.getOrCreateNavigationProbe()?.captureBaseline(
           context.withDetached(),
@@ -340,6 +349,9 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
         }
         throw error;
       } finally {
+        if (localComputerUse) {
+          // No navigation probe in local mode.
+        } else
         if (ownsMonitorForNavigationAudit) {
           host.probeNavigationAfterComputerUse(context, connection);
         }

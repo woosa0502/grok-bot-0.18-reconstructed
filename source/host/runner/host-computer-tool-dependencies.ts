@@ -15,15 +15,25 @@ import {
   ScreenshotAction,
   TypeAction,
   WaitAction,
+  ComputerUseToolCall,
+  ComputerUseError,
   type ComputerUseResult as GeneratedComputerUseResult,
 } from "../../packages/proto/generated/agent/v1/computer_use_tool_pb.js";
+import { ToolCall } from "../../packages/proto/generated/agent/v1/agent_pb.js";
 import { computerUseExecutorResource } from "../../packages/agent-exec/computer-use.js";
 import { shellExecutorResource } from "../../packages/agent-exec/shell.js";
 import type { Executor, ExecutorOptions } from "../../packages/agent-exec/remote.js";
 import type { Context } from "../../packages/context/core.js";
+import { withSafeParsedArgs } from "../../packages/agent/tools/common.js";
+import { createImageResult, createStringResult } from "../../packages/chat-inference/prompt-executor.js";
 import { buildHostShellArgs, type HostShellArgsInput } from "../box/box-shell-command.js";
 import type { ShellArgs, ShellResult } from "../../packages/proto/generated/agent/v1/shell_exec_pb.js";
+import {
+  buildComputerParameters,
+  toAction,
+} from "./tools/sand-computer-tool.js";
 import type {
+  ComputerActionArgs,
   ComputerProtocolAction,
   ComputerToolDependencies,
   ComputerUseResult,
@@ -280,6 +290,99 @@ export function createHostComputerToolDependencies<Context = unknown>(
     ...(input.isUnicodeTypingEnabled === undefined ? {} : { isUnicodeTypingEnabled: input.isUnicodeTypingEnabled }),
     ...(input.onComputerAction === undefined ? {} : { onComputerAction: input.onComputerAction }),
     ...(input.autoReview === undefined ? {} : { autoReview: input.autoReview }),
+  };
+}
+
+function computerUseToolCall(value: ComputerUseToolCall): ToolCall {
+  return new ToolCall({ tool: { case: "computerUseToolCall", value } });
+}
+
+/** The turn framework's tool-execution contract (streaming args + transcript emission). */
+interface ComputerInteractionHandler {
+  emitPartialToolCall(ctx: unknown, toolCallId: string, toolCall: ToolCall): void;
+  executeToolCall(
+    ctx: Context,
+    toolCall: ToolCall,
+    toolCallId: string,
+    run: (ctx: Context) => Promise<GeneratedComputerUseResult>,
+    merge: (result: GeneratedComputerUseResult) => ToolCall,
+  ): Promise<GeneratedComputerUseResult>;
+}
+
+type ComputerToolMeta = { readonly toolCallId?: string; readonly signal?: AbortSignal };
+
+function renderComputerUseResult(result: GeneratedComputerUseResult | undefined) {
+  if (result?.result?.case === "success") {
+    const value = result.result.value;
+    const summary = `Computer action completed (${value.actionCount} action(s), ${value.durationMs}ms).`;
+    if (value.screenshot !== undefined && value.screenshot.length > 0) {
+      return createImageResult(value.screenshot, "image/png", summary);
+    }
+    return createStringResult(summary);
+  }
+  if (result?.result?.case === "error") {
+    return createStringResult(`Computer action failed: ${result.result.value.error}`, true);
+  }
+  return createStringResult("Computer action produced no result.");
+}
+
+/**
+ * Builds the framework-conformant Computer turn tool: streaming argument
+ * parsing (withSafeParsedArgs), a proto ToolCall result the transcript can
+ * serialize (toJson), a render that hands the model the screenshot as an image,
+ * and a serializeError so a thrown failure surfaces as a normal error result.
+ * The executor is resolved from the box resource accessor directly so the raw
+ * proto ComputerUseResult (carrying the screenshot) reaches render unchanged.
+ */
+export function createComputerTurnTool<Context = unknown>(deps: ComputerToolDependencies<Context>) {
+  const parameters = buildComputerParameters(deps.autoReview);
+
+  const coreExecute = async (
+    ctx: Context,
+    interactionHandler: ComputerInteractionHandler,
+    parsed: ComputerActionArgs,
+    meta: ComputerToolMeta,
+  ): Promise<GeneratedComputerUseResult> => {
+    const executor = deps.resourceAccessor.get(computerUseExecutorResource) as Executor<ComputerUseArgs, GeneratedComputerUseResult>;
+    const { then, ...primary } = parsed;
+    const sequence: ComputerActionArgs[] = [primary as ComputerActionArgs, ...(then ?? [])];
+    const protocolActions: ComputerProtocolAction[] = sequence.map(toAction);
+    // Always finish with a screenshot so the model sees the resulting screen.
+    if (sequence.at(-1)?.action !== "screenshot") {
+      protocolActions.push(toAction({ action: "screenshot" }));
+    }
+    const computerArgs = toGeneratedComputerUseArgs({
+      toolCallId: meta.toolCallId ?? "",
+      actions: protocolActions,
+    });
+    return interactionHandler.executeToolCall(
+      ctx,
+      computerUseToolCall(new ComputerUseToolCall({ args: computerArgs })),
+      meta.toolCallId ?? "",
+      (runCtx) => executor.execute(runCtx as never, computerArgs),
+      (result) => computerUseToolCall(new ComputerUseToolCall({ args: computerArgs, result })),
+    );
+  };
+
+  return {
+    id: "OPENAI_COMPUTER_USE",
+    name: "Computer",
+    parameters,
+    execute: withSafeParsedArgs(
+      parameters,
+      coreExecute as unknown as (ctx: Context, interactionHandler: unknown, args: unknown, meta: unknown) => Promise<unknown>,
+      computerUseToolCall(new ComputerUseToolCall()),
+    ),
+    render: (_ctx: unknown, result: GeneratedComputerUseResult) => renderComputerUseResult(result),
+    serializeError: (error: unknown): ToolCall =>
+      computerUseToolCall(new ComputerUseToolCall({
+        result: {
+          result: {
+            case: "error",
+            value: new ComputerUseError({ error: error instanceof Error ? error.message : String(error) }),
+          },
+        },
+      })),
   };
 }
 

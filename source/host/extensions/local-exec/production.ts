@@ -1,6 +1,7 @@
 import { RemoteResourceAccessor } from "../../../packages/agent-exec/resource-provider.js";
 import { ExecClientControlMessage, ExecClientMessage } from "../../../packages/proto/generated/agent/v1/exec_pb.js";
 import type { JsonValue } from "@bufbuild/protobuf";
+import { LOCAL_COMPUTER_USE_ENABLED, withLocalComputerUse } from "../../box/local-computer-use.js";
 import type { GatewayLocalExecCodec, GatewayLocalExecManager } from "./gateway-local-exec-sand-box.js";
 
 /**
@@ -38,6 +39,10 @@ export const productionLocalExecCodec: GatewayLocalExecCodec<
     }
   },
   createRemoteAccessor(manager: GatewayLocalExecManager<ExecClientMessage>): RemoteResourceAccessor<GatewayLocalExecManager<ExecClientMessage>> {
-    return new RemoteResourceAccessor(manager);
+    const accessor = new RemoteResourceAccessor(manager);
+    // Local computer-use: resolve the Computer executor to the local Xvfb-backed
+    // driver instead of the gateway passthrough, which cannot describe or run
+    // computer_use actions on the user's machine and would reject them.
+    return LOCAL_COMPUTER_USE_ENABLED ? withLocalComputerUse(accessor) : accessor;
   },
 });

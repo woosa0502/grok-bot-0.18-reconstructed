@@ -199,7 +199,14 @@ export function messagesToPi(messages: readonly PiProviderMessage[], now: () => 
           role: "toolResult",
           toolCallId: String(part.toolCallId ?? part.id),
           toolName: typeof (part.toolName ?? part.name) === "string" ? String(part.toolName ?? part.name) : "tool",
-          content: toolResultContent(part.result ?? part.content),
+          // Prefer experimental_content: it carries the full content array (text +
+          // image parts, e.g. a Computer screenshot). part.result is only the text
+          // summary, so using it alone drops tool-result images before they reach Pi.
+          content: toolResultContent(
+            Array.isArray(part.experimental_content) && part.experimental_content.length > 0
+              ? part.experimental_content
+              : (part.result ?? part.content),
+          ),
           isError: part.isError === true,
           timestamp,
         });

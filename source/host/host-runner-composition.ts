@@ -1011,9 +1011,25 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       }
       : undefined;
 
+    // Local computer-use (SAND_LOCAL_COMPUTER_USE=1): the Computer tool's dependencies
+    // normally ride along with the auto-review projection, which is null in local Codex
+    // mode (auto-review is forced off). Provide a minimal projection so the Computer tool
+    // is still exposed — auto-review preflight is simply skipped (deps.autoReview omitted).
+    const localComputerUseEnabled = process.env.SAND_LOCAL_COMPUTER_USE === "1";
     const createTurnToolProjections =
       autoReviewGate == null
-        ? undefined
+        ? (localComputerUseEnabled
+          ? (input: ProductionTurnToolInputs): ProductionTurnHostToolProjections => ({
+              createComputerToolDependencies: () => createHostComputerToolDependencies({
+                resourceAccessor: input.resourceAccessor,
+                ...(persistImageForTurn === undefined
+                  ? {}
+                  : { persistImage: persistImageForTurn }),
+                isUnicodeTypingEnabled: () =>
+                  method(experiments, "isUnicodeTypingEnabled")?.() ?? false,
+              }),
+            })
+          : undefined)
         : (input: ProductionTurnToolInputs): ProductionTurnHostToolProjections => {
           const shell = createHostShellExecutor({
             resourceAccessor: input.resourceAccessor,

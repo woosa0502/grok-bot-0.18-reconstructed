@@ -169,6 +169,7 @@ export type ComputerUseResult =
   | { readonly result: { readonly case: string; readonly value?: unknown } };
 
 export function describeOutcome(result: ComputerUseResult, operation: "screenshot" | "computer"): string {
+  if (result?.result?.case === undefined) return operation === "screenshot" ? "Screenshot pending." : "Computer action pending.";
   if (result.result.case === "error") return `${operation === "screenshot" ? "Screenshot" : "Computer action"} failed: ${(result.result.value as { error: string }).error}`;
   const heading = operation === "screenshot" ? "Screenshot captured from the box desktop." : "Computer action ran on the box desktop.";
   if (result.result.case !== "success") return heading;
@@ -251,6 +252,28 @@ export function createComputerTool<Context>(deps: ComputerToolDependencies<Conte
   return {
     id: "OPENAI_COMPUTER_USE", name: "Computer", parameters,
     async execute(raw: unknown, meta: { context: Context; toolCallId?: string; signal?: AbortSignal; stateHandler?: unknown; workspacePaths?: readonly string[] }): Promise<ComputerUseResult> {
+      try {
+        return await runComputerToolExecute(deps, parameters, raw, meta);
+      } catch (error) {
+        // The turn framework calls tool.serializeError() on a throw, which this
+        // tool does not define; surface the failure as a normal error result so
+        // the host does not crash and the model sees what went wrong. A genuine
+        // turn abort is re-thrown so cancellation still propagates.
+        if (meta.signal?.aborted === true) throw error;
+        return { result: { case: "error", value: { error: error instanceof Error ? error.message : String(error) } } };
+      }
+    },
+    render: (output: ComputerUseResult) => ({ content: describeOutcome(output, "computer") }),
+  };
+}
+
+async function runComputerToolExecute<Context>(
+  deps: ComputerToolDependencies<Context>,
+  parameters: ReturnType<typeof buildComputerParameters>,
+  raw: unknown,
+  meta: { context: Context; toolCallId?: string; signal?: AbortSignal; stateHandler?: unknown; workspacePaths?: readonly string[] },
+): Promise<ComputerUseResult> {
+  {
       const parsed = parameters.parse(raw) as ComputerActionArgs;
       const { then, ...primary } = parsed;
       const sequence = [primary, ...(then ?? [])];
@@ -285,7 +308,5 @@ export function createComputerTool<Context>(deps: ComputerToolDependencies<Conte
         ...(deps.isUnicodeTypingEnabled?.() === true ? { bindUnmappedCharacters: true } : {}),
         ...(description == null || description.length === 0 ? {} : { description }),
       });
-    },
-    render: (output: ComputerUseResult) => ({ content: describeOutcome(output, "computer") }),
-  };
+  }
 }

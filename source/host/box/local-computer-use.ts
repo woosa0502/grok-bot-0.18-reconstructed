@@ -1,0 +1,48 @@
+// Shared local computer-use wiring. When SAND_LOCAL_COMPUTER_USE=1 the standalone
+// WSL/Linux build exposes a real Computer tool backed by a dedicated Xvfb display
+// driven by xdotool (input) + ffmpeg (capture), instead of routing computer
+// actions through the local-exec gateway (which only understands shell/file ops)
+// or the "no monitor" stub.
+//
+// Both box layers resolve the executor from a resource accessor, so wrapping that
+// accessor here — the local override wins over the base via CombinedResourceAccessor —
+// makes computer-use work regardless of which box is active.
+import { CombinedResourceAccessor, resourceEntry, type ResourceAccessor } from "../../packages/agent-exec/resource-provider.js";
+import { computerUseExecutorResource } from "../../packages/agent-exec/computer-use.js";
+import { LocalComputerUseExecutor } from "../../packages/local-exec/computer-use/executor.js";
+import { LocalDisplayManager } from "../../packages/local-exec/computer-use/display-manager.js";
+
+export const LOCAL_COMPUTER_USE_ENABLED = process.env.SAND_LOCAL_COMPUTER_USE === "1";
+const LOCAL_COMPUTER_DISPLAY = { width: 1280, height: 800 } as const;
+
+let sharedLocalDisplayManager: LocalDisplayManager | undefined;
+
+function localDisplayManager(): LocalDisplayManager {
+  if (sharedLocalDisplayManager === undefined) {
+    sharedLocalDisplayManager = new LocalDisplayManager({
+      width: LOCAL_COMPUTER_DISPLAY.width,
+      height: LOCAL_COMPUTER_DISPLAY.height,
+      log: (message) => console.error(message),
+    });
+    // Start the virtual display eagerly so the first Computer action is fast.
+    void sharedLocalDisplayManager.ensure().catch((error) =>
+      console.error(`[local-computer] display start failed: ${error instanceof Error ? error.message : String(error)}`));
+  }
+  return sharedLocalDisplayManager;
+}
+
+/**
+ * Wraps a box resource accessor so `computerUseExecutorResource` resolves to the
+ * local Xvfb-backed executor. The local entry takes precedence over the base
+ * accessor's own computer-use resource (gateway passthrough / no-monitor stub).
+ */
+export function withLocalComputerUse<A>(accessor: A): A {
+  const executor = new LocalComputerUseExecutor({
+    display: localDisplayManager().display,
+    displaySize: { width: LOCAL_COMPUTER_DISPLAY.width, height: LOCAL_COMPUTER_DISPLAY.height },
+  });
+  return new CombinedResourceAccessor(
+    accessor as unknown as ResourceAccessor<unknown>,
+    [resourceEntry(computerUseExecutorResource, executor)],
+  ) as unknown as A;
+}
