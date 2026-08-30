@@ -30,6 +30,7 @@ import { buildHostShellArgs, type HostShellArgsInput } from "../box/box-shell-co
 import type { ShellArgs, ShellResult } from "../../packages/proto/generated/agent/v1/shell_exec_pb.js";
 import {
   buildComputerParameters,
+  runComputerToolAutoReviewPreflight,
   toAction,
 } from "./tools/sand-computer-tool.js";
 import type {
@@ -309,7 +310,13 @@ interface ComputerInteractionHandler {
   ): Promise<GeneratedComputerUseResult>;
 }
 
-type ComputerToolMeta = { readonly toolCallId?: string; readonly signal?: AbortSignal };
+type ComputerToolMeta = {
+  readonly toolCallId?: string;
+  readonly signal?: AbortSignal;
+  /** Conversation state for the auto-review classifier's context (supplied by the turn framework). */
+  readonly stateHandler?: unknown;
+  readonly workspacePaths?: readonly string[];
+};
 
 function renderComputerUseResult(result: GeneratedComputerUseResult | undefined) {
   if (result?.result?.case === "success") {
@@ -351,6 +358,15 @@ export function createComputerTurnTool<Context = unknown>(deps: ComputerToolDepe
     if (sequence.at(-1)?.action !== "screenshot") {
       protocolActions.push(toAction({ action: "screenshot" }));
     }
+    // Auto-review (classifier + approval card) runs before the action reaches the display —
+    // the same preflight the generated Computer tool performs. No-op when review is off.
+    await runComputerToolAutoReviewPreflight(deps, parsed, {
+      context: ctx,
+      ...(meta.toolCallId === undefined ? {} : { toolCallId: meta.toolCallId }),
+      ...(meta.signal === undefined ? {} : { signal: meta.signal }),
+      ...(meta.stateHandler === undefined ? {} : { stateHandler: meta.stateHandler }),
+      ...(meta.workspacePaths === undefined ? {} : { workspacePaths: meta.workspacePaths }),
+    });
     const computerArgs = toGeneratedComputerUseArgs({
       toolCallId: meta.toolCallId ?? "",
       actions: protocolActions,

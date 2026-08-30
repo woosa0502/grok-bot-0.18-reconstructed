@@ -24,7 +24,7 @@ type RoutedProvider = Exclude<SandInferenceProvider, "cursor">;
 type UsageRecord = { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number };
 type RoutedToolExecutor = (tool: Loose, args: unknown, toolCallId: string) => Promise<unknown>;
 export type CodexReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
-type ProviderExecutorContext = { readonly signal?: AbortSignal; readonly modelId?: string; readonly reasoning?: CodexReasoningEffort };
+type ProviderExecutorContext = { readonly signal?: AbortSignal; readonly modelId?: string; readonly reasoning?: CodexReasoningEffort; readonly systemPrompt?: string };
 type PiRuntimeModule = typeof import("./pi-codex-runtime.js");
 
 const GROK_ROUTER_SYSTEM_PROMPT = [
@@ -63,11 +63,12 @@ function openRouterCredential(): string {
   return value;
 }
 
-function providerPrompt(messages: readonly ProviderMessage[]): string {
+function providerPrompt(messages: readonly ProviderMessage[], systemPrompt?: string): string {
   const rendered = messages.map(message => {
     const content = typeof message.content === "string" ? message.content : JSON.stringify(message.content);
     return `${message.role.toUpperCase()}: ${content}`;
   }).join("\n\n");
+  if (systemPrompt != null) return `${systemPrompt}\n\n${rendered}`;
   return `${GROK_ROUTER_SYSTEM_PROMPT}\n\nContinue this Grok Bot conversation.\n\n${rendered}`;
 }
 
@@ -118,11 +119,12 @@ function reasoningFromContext(context: unknown): CodexReasoningEffort | undefine
   return isCodexReasoningEffort(reasoning) ? reasoning : undefined;
 }
 
-function providerContext(signal: AbortSignal | undefined, modelId: string | undefined, reasoning?: CodexReasoningEffort): ProviderExecutorContext {
+function providerContext(signal: AbortSignal | undefined, modelId: string | undefined, reasoning?: CodexReasoningEffort, systemPrompt?: string): ProviderExecutorContext {
   return {
     ...(signal == null ? {} : { signal }),
     ...(modelId == null ? {} : { modelId }),
     ...(reasoning == null ? {} : { reasoning }),
+    ...(systemPrompt == null ? {} : { systemPrompt }),
   };
 }
 
@@ -169,10 +171,11 @@ function codexExecutor(
     ...(reasoning == null ? {} : { reasoning }),
     ...(context?.signal == null ? {} : { signal: context.signal }),
     ...(onUsage == null ? {} : { onUsage }),
+    ...(context?.systemPrompt == null ? {} : { systemPrompt: context.systemPrompt }),
   });
 }
 
-function claudeExecutor(messages: readonly ProviderMessage[], invocationId: string, onUsage?: (usage: UsageRecord) => void, mcpServerUrl?: string) {
+function claudeExecutor(messages: readonly ProviderMessage[], invocationId: string, onUsage?: (usage: UsageRecord) => void, mcpServerUrl?: string, systemPrompt?: string) {
   const executable = resolveClaudeCodeCliPath();
   if (executable == null) throw new Error("Claude Code is not installed. Install and sign in to Claude Code, then reopen Grok Bot.");
   const usage = deferred<{ promptTokens: number; completionTokens: number; totalTokens: number }>();
@@ -184,7 +187,7 @@ function claudeExecutor(messages: readonly ProviderMessage[], invocationId: stri
       let final: SDKResultMessage | undefined;
       const selectedModel = process.env.SAND_CLAUDE_MODEL?.trim();
       for await (const message of queryClaude({
-        prompt: providerPrompt(messages),
+        prompt: providerPrompt(messages, systemPrompt),
         options: {
           pathToClaudeCodeExecutable: executable,
           cwd: getSandRootDir(),
@@ -257,6 +260,7 @@ function openRouterExecutor(
   definitions?: readonly Loose[],
   executeTool?: RoutedToolExecutor,
   onUsage?: (usage: UsageRecord) => void,
+  systemPrompt?: string,
 ) {
   const id = process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
   const model: LanguageModelV1 = createOpenAI({
@@ -269,7 +273,7 @@ function openRouterExecutor(
   const tools = toToolSet(definitions, executeTool);
   const result = streamText({
     model,
-    system: GROK_ROUTER_SYSTEM_PROMPT,
+    system: systemPrompt ?? GROK_ROUTER_SYSTEM_PROMPT,
     messages: messages as CoreMessage[],
     ...(tools === undefined ? {} : { tools }),
     toolCallStreaming: true,
@@ -376,14 +380,18 @@ export async function runRoutedProviderText(provider: RoutedProvider, messages: 
   readonly onTextDelta?: (delta: string, accumulated: string) => void;
   readonly signal?: AbortSignal;
   readonly modelId?: string;
+  /** Codex/Pi only: per-request reasoning effort (e.g. "low" for a latency-bound classifier). */
+  readonly reasoning?: CodexReasoningEffort;
+  /** Replaces the Grok Bot assistant persona for single-purpose requests. */
+  readonly systemPrompt?: string;
 }): Promise<string> {
   const invocationId = crypto.randomUUID();
   const onUsage = (usage: UsageRecord) => recordRoutedUsage(provider, usage);
   const result = provider === "codex"
-    ? codexExecutor(messages, invocationId, options?.tools, onUsage, providerContext(options?.signal, options?.modelId))
+    ? codexExecutor(messages, invocationId, options?.tools, onUsage, providerContext(options?.signal, options?.modelId, options?.reasoning, options?.systemPrompt))
     : provider === "claude-code"
-      ? claudeExecutor(messages, invocationId, onUsage, options?.mcpServerUrl)
-      : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage);
+      ? claudeExecutor(messages, invocationId, onUsage, options?.mcpServerUrl, options?.systemPrompt)
+      : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage, options?.systemPrompt);
   let text = "";
   for await (const event of result.fullStream) {
     if (event.type === "text-delta" && typeof event.textDelta === "string") {

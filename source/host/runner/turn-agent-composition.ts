@@ -392,11 +392,14 @@ export function createTurnAgentToolsHandoff(input: {
               const createDependencies = currentProps.createComputerToolDependencies;
               // Local computer-use: the per-turn projection may not bind the deps on this
               // path, so build them directly from the resource accessor (which resolves the
-              // local Xvfb-backed computer-use executor through the box).
+              // local Xvfb-backed computer-use executor through the box). The turn carries
+              // the computer auto-review options (turn.computerAutoReview) so local actions
+              // still go through the classifier / approval-card preflight.
               const dependencies = createDependencies !== undefined
                 ? createDependencies(currentProps)
                 : createHostComputerToolDependencies({
                     resourceAccessor: currentProps.resourceAccessor as { get(resource: unknown): unknown },
+                    ...(turn.computerAutoReview === undefined ? {} : { autoReview: turn.computerAutoReview }),
                   });
               return { dependencies };
             },

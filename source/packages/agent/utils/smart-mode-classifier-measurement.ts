@@ -18,6 +18,10 @@ export const smartModeClassifierModeKey = createKey<string | undefined>(Symbol("
 export const smartModeClassifierWorkspacePathsKey = createKey<readonly string[] | undefined>(Symbol("smartModeClassifierWorkspacePaths"), undefined);
 
 function getSmartModeClassifierTimeoutMs(): number {
+  // Local (non-Cursor) hosts serve the classifier from a general-purpose model whose latency
+  // is not tuned like the backend classifier; the launcher can widen the budget per host.
+  const override = typeof process === "undefined" ? Number.NaN : Number.parseInt(process.env.SAND_SMART_MODE_CLASSIFIER_TIMEOUT_MS ?? "", 10);
+  if (Number.isFinite(override) && override > 0) return override;
   if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
     return SMART_MODE_CLASSIFIER_TIMEOUT_MS * SMART_MODE_CLASSIFIER_LOCAL_DEV_TIMEOUT_MULTIPLIER;
   }

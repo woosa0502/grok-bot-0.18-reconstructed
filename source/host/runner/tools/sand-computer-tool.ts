@@ -204,6 +204,10 @@ async function captureComputerDisplayStateIdentity(
     );
   }
   if (displayNumber === undefined) throw new SandComputerAutoReviewBlockedError(SAND_BOX_NO_MONITOR_AVAILABLE_MESSAGE);
+  // Local computer-use drives a bare Xvfb: there is no box Chrome with a CDP navigation
+  // probe behind the display, so the page-state identity is the constant "unreachable"
+  // value (same as a box whose Chrome is down) instead of a shell probe against /workspace.
+  if (process.env.SAND_LOCAL_COMPUTER_USE === "1") return SAND_COMPUTER_PAGE_STATE_CHROME_UNREACHABLE;
   let result: any;
   try {
     result = await (resourceAccessor.get(shellExecutorResource) as { execute(ctx: Context, args: unknown): Promise<any> }).execute(
@@ -267,11 +271,51 @@ export function createComputerTool<Context>(deps: ComputerToolDependencies<Conte
   };
 }
 
+export interface ComputerToolPreflightMeta<Context> {
+  readonly context: Context;
+  readonly toolCallId?: string;
+  readonly signal?: AbortSignal;
+  readonly stateHandler?: unknown;
+  readonly workspacePaths?: readonly string[];
+}
+
+/**
+ * Computer auto-review preflight shared by every Computer tool projection: classifies the
+ * primary action (and raises the approval card in enforce mode) before anything touches the
+ * display. A no-op when the dependencies carry no auto-review options (review off).
+ */
+export async function runComputerToolAutoReviewPreflight<Context>(
+  deps: ComputerToolDependencies<Context>,
+  parsed: ComputerActionArgs,
+  meta: ComputerToolPreflightMeta<Context>,
+): Promise<void> {
+  if (deps.autoReview == null) return;
+  await runSandComputerAutoReviewPreflight({
+    ctx: meta.context as unknown as import("../../../packages/context/core.js").Context,
+    resourceAccessor: deps.resourceAccessor as ResourceAccessor<RemoteExecManager>,
+    exactAction: toExactActionArgs(parsed),
+    ...(parsed.description == null ? {} : { description: parsed.description }),
+    toolCallId: meta.toolCallId ?? "",
+    ...(meta.stateHandler === undefined ? {} : { stateHandler: meta.stateHandler }),
+    ...(meta.workspacePaths === undefined ? {} : { workspacePaths: meta.workspacePaths }),
+    ...(meta.signal == null ? {} : { signal: meta.signal }),
+    options: {
+      ...deps.autoReview,
+      captureDisplayStateIdentity: (ctx, toolCallId) => captureComputerDisplayStateIdentity(
+        ctx,
+        deps.resourceAccessor as ResourceAccessor<RemoteExecManager>,
+        toolCallId,
+        deps.autoReview!.resolveDisplayNumber,
+      ),
+    },
+  });
+}
+
 async function runComputerToolExecute<Context>(
   deps: ComputerToolDependencies<Context>,
   parameters: ReturnType<typeof buildComputerParameters>,
   raw: unknown,
-  meta: { context: Context; toolCallId?: string; signal?: AbortSignal; stateHandler?: unknown; workspacePaths?: readonly string[] },
+  meta: ComputerToolPreflightMeta<Context>,
 ): Promise<ComputerUseResult> {
   {
       const parsed = parameters.parse(raw) as ComputerActionArgs;
@@ -279,27 +323,7 @@ async function runComputerToolExecute<Context>(
       const sequence = [primary, ...(then ?? [])];
       const actions = sequence.map(toAction);
       if (sequence.at(-1)?.action !== "screenshot") actions.push(toAction({ action: "screenshot" }));
-      if (deps.autoReview != null) {
-        await runSandComputerAutoReviewPreflight({
-          ctx: meta.context as unknown as import("../../../packages/context/core.js").Context,
-          resourceAccessor: deps.resourceAccessor as ResourceAccessor<RemoteExecManager>,
-          exactAction: toExactActionArgs(parsed),
-          ...(parsed.description == null ? {} : { description: parsed.description }),
-          toolCallId: meta.toolCallId ?? "",
-          ...(meta.stateHandler === undefined ? {} : { stateHandler: meta.stateHandler }),
-          ...(meta.workspacePaths === undefined ? {} : { workspacePaths: meta.workspacePaths }),
-          ...(meta.signal == null ? {} : { signal: meta.signal }),
-          options: {
-            ...deps.autoReview,
-            captureDisplayStateIdentity: (ctx, toolCallId) => captureComputerDisplayStateIdentity(
-              ctx,
-              deps.resourceAccessor as ResourceAccessor<RemoteExecManager>,
-              toolCallId,
-              deps.autoReview!.resolveDisplayNumber,
-            ),
-          },
-        });
-      }
+      await runComputerToolAutoReviewPreflight(deps, parsed, meta);
       const reported = reportedBatchPosition(sequence);
       if (reported != null) deps.onComputerAction?.(reported);
       const description = parsed.description?.trim();

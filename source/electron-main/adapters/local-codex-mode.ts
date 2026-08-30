@@ -3,12 +3,17 @@ import {
   EXPERIMENTS,
   FLAGS,
 } from "../../shared/node/experiments/experiment-config.gen.js";
+import {
+  LOCAL_CODEX_AUTH_ID,
+  LOCAL_CODEX_DISPLAY_NAME,
+  LOCAL_CODEX_EMAIL,
+} from "../../shared/node/local-codex-account.js";
 
 export const LOCAL_CODEX_STATUS = Object.freeze({
   kind: "logged-in",
-  authId: "local-codex",
-  email: "local@codex",
-  displayName: "Belmont Local",
+  authId: LOCAL_CODEX_AUTH_ID,
+  email: LOCAL_CODEX_EMAIL,
+  displayName: LOCAL_CODEX_DISPLAY_NAME,
   isAnysphereUser: false,
 } as const);
 

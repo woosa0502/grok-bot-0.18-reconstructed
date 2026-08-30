@@ -42,6 +42,11 @@ export interface PiCodexExecutorOptions {
   readonly reasoning?: ThinkingLevel;
   readonly signal?: AbortSignal;
   readonly onUsage?: (usage: PiUsageRecord) => void;
+  /**
+   * Replaces the Grok Bot assistant persona for single-purpose requests (e.g. the local
+   * auto-review classifier), which must not answer as the desktop assistant.
+   */
+  readonly systemPrompt?: string;
 }
 
 const CODEX_PROVIDER = "openai-codex";
@@ -146,7 +151,7 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
     try {
       options.signal?.throwIfAborted();
       const resolved = await resolveModel(options.modelId, options.signal);
-      const context = createPiContext(options.messages, options.definitions, GROK_ROUTER_SYSTEM_PROMPT);
+      const context = createPiContext(options.messages, options.definitions, options.systemPrompt ?? GROK_ROUTER_SYSTEM_PROMPT);
       const stream = resolved.runtime.streamSimple(resolved.model, context, {
         ...(options.signal == null ? {} : { signal: options.signal }),
         ...(options.reasoning == null ? {} : { reasoning: options.reasoning }),

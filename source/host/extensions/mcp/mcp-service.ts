@@ -19,6 +19,7 @@ import {
   getSandInferenceBackendUrl,
 } from "../../../shared/node/cursor-backend/cursor-inference.js";
 import { SandMcpManager } from "../../../shared/node/mcp/mcp-manager.js";
+import { isLocalCodexMode, localCodexAccountCacheScope } from "../../../shared/node/local-codex-account.js";
 import {
   createMcpToolsDiscovery,
   SandMcpExecutor,
@@ -263,7 +264,13 @@ export class McpHostService {
         // fetchAccountMcpServers typically returns null (no backend account); still
         // surface the local servers so box-stdio MCP works.
         const servers = [...(account?.servers ?? []), ...local];
-        return { servers, cacheScope: account?.cacheScope ?? "local" };
+        // The cache scope is applied to the settings store as the account scope
+        // (SandMcpManager → scopeToAccount). In local Codex mode the desktop scopes the
+        // same store to accountCacheScope("local-codex"); the host must use that exact
+        // value — a different fallback made the two sides flip the stored scope on every
+        // launch, and each flip dropped the account-scoped settings (auto-review
+        // instructions, agent/computer model defaults, local tool permission).
+        return { servers, cacheScope: account?.cacheScope ?? (isLocalCodexMode() ? localCodexAccountCacheScope() : "local") };
       },
       accountMcpWriter: createAccountMcpWriter(accountMcpDeps),
       effectivePluginsProvider: () => fetchEffectiveUserPlugins(accountMcpDeps),

@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
-import { LOCAL_COMPUTER_USE_ENABLED } from "./box/local-computer-use.js";
+import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -2642,6 +2642,39 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             "isolated_box",
             "box_shell",
           );
+          // Local computer-use exposes the Computer tool to this agent directly (no box
+          // desktop, no computerUse subagent), so its dependencies are built from the
+          // resource accessor rather than the box projection above. Hand the turn the same
+          // computer auto-review options that projection would carry, bound to the single
+          // local Xvfb display, so clicks/typing/keys still go through the classifier and
+          // the approval card. Off (or auto-review disabled) ⇒ no preflight, as before.
+          const localComputerAutoReview: TurnToolsetTurnInput["computerAutoReview"] =
+            LOCAL_COMPUTER_USE_ENABLED && liveAutoReviewModes.computer !== "off"
+              ? {
+                  mode: liveAutoReviewModes.computer,
+                  agentId: session.id,
+                  boxIdentity: {
+                    boxId: session.id,
+                    windowGeneration: `${autoReviewController?.hostGeneration ?? "host"}:${session.id}`,
+                  },
+                  ...(autoReviewController === undefined
+                    ? {}
+                    : { autoReviewController }),
+                  extractConversationContext:
+                    extractProductionTurnAutoReviewConversationContext,
+                  getApprovalExpiryPolicy: () =>
+                    sandAutoReviewApprovalExpiryPolicy("turn"),
+                  resolveDisplayNumber: async () => localComputerDisplayNumber(),
+                  ...(autoReviewInstructions === undefined
+                    ? {}
+                    : {
+                        userAutoRunInstructions: {
+                          allowInstructions: autoReviewInstructions.allowInstructions,
+                          blockInstructions: autoReviewInstructions.blockInstructions,
+                        },
+                      }),
+                }
+              : undefined;
           const turn: TurnToolsetTurnInput = {
             ...baseTurn,
             emitUpdate,
@@ -2661,6 +2694,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                       : { box: boxShellReview }),
                   },
                 }),
+            ...(localComputerAutoReview === undefined
+              ? {}
+              : { computerAutoReview: localComputerAutoReview }),
           };
           // A subagent turn runs under its own conversation id (the child threads it through
           // runOptions.conversationId; the parent passes none and keeps session.id). Derive the

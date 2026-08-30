@@ -1,6 +1,6 @@
 # Belmont — 풀 테스트 & 감사 종합 문서
 
-_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 단일 통합본 (이전 산재 문서/임시 원장 대체)_
+_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 2차 갱신: 2026-08-30 저녁 (auto-review 로컬 분류기 배선 + 계정 scope 초기화 결함 수정 — §1.6) · 단일 통합본 (이전 산재 문서/임시 원장 대체)_
 
 이 문서는 두 검증 활동을 하나로 합친다: (1) **행위 단위 라이브 sweep** — 에이전트에 각 테스트 케이스를 주입해 실제 도구 실행 증거로 판정, (2) **소스 코드 감사** — production 배선/통합 여부를 코드로 확인. sweep은 '도구가 개별로 작동하는가'를 보고, 감사는 '실제로 production에 연결됐는가'를 본다. 후자가 전자의 여러 PASS를 false-green으로 뒤집었다.
 
@@ -15,10 +15,10 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | — UNAVAIL (이 버전엔 기능 없음) | 641 |
 | — ENV / UI_ONLY / EXPECTED | 83 / 13 / 1 |
 | 감사 findings | 26 (CONFIRMED 19 · FIXED 3 · PARTIAL 3) |
-| 확정 실결함 | 3 (update_state, Pi maxTokens, 첨부전송 크래시 — 셋 다 수정+재빌드+라이브검증+커밋) |
-| 신규 기능 | **컴퓨터 유즈** (스크린샷·클릭·타이핑·키 — 라이브검증+커밋, §1.5) |
+| 확정 실결함 | 5 (update_state, Pi maxTokens, 첨부전송 크래시 — 셋 다 수정+재빌드+라이브검증+커밋 · **auto-review 로컬 강제OFF(AUDIT-W3)** · **계정 scope 불일치로 설정 초기화(AUDIT-W4, 신규 발견)** — 둘 다 수정+재빌드+라이브검증, §1.6, 미커밋) |
+| 신규 기능 | **컴퓨터 유즈** (스크린샷·클릭·타이핑·키 — 라이브검증+커밋, §1.5) · **로컬 auto-review 분류기**(Pi gpt-5.5로 approve/block 판정 — 라이브검증, §1.6) |
 
-**핵심 결론:** 다중 봇 *기반*은 있으나, Belmont의 핵심 연결부 — 기억 자동회수 · 봇 발견 · 위임 내구성 · child 상태 격리 · 결과 검토 — 가 아직 production에 끊겨 있다. sweep의 PASS 수치는 false-green으로 부풀려져 있었다. (2026-08-30 갱신: 컴퓨터 유즈 신규 구현+검증 §1.5, 확정 실결함 3건 커밋·병합 완료.)
+**핵심 결론:** 다중 봇 *기반*은 있으나, Belmont의 핵심 연결부 — 기억 자동회수 · 봇 발견 · 위임 내구성 · child 상태 격리 · 결과 검토 — 가 아직 production에 끊겨 있다. sweep의 PASS 수치는 false-green으로 부풀려져 있었다. (2026-08-30 갱신: 컴퓨터 유즈 신규 구현+검증 §1.5, 확정 실결함 3건 커밋·병합 완료. 2차 갱신: 마지막 결함 클러스터(auto-review)가 해소되어 §0.5 ①은 0건 — §1.6.)
 
 ## 0.5 완료 vs 남은 것 — 실행 관점 (USER 라우트 823 기준)
 
@@ -26,23 +26,24 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 - **235** USER 케이스: CDP로 직접 눌러/쳐서 실작동 확인.
 - **실결함 3개 수정+검증+커밋**: 첨부전송 앱 크래시(DEFECT-3) · update_state 결과 오보고(DEFECT-1/AUDIT-2) · Pi maxTokens:0 선제압축 무력화(DEFECT-2/AUDIT-6).
 - **컴퓨터 유즈 신규 구현+라이브검증**(§1.5): 도구(스크린샷/클릭/타이핑/키) · computerUse 서브에이전트 dispatch·GUI조작 · VNC 뷰어. → 아래 ②의 "컴퓨터/박스 80" 상당수 해소.
+- **auto-review/Smart Mode 로컬 배선+라이브검증**(§1.6, 2차 갱신): 로컬 분류기(Pi) · Shell/컴퓨터 승인 카드(Allow once/Always allow/Deny) · 사용자 allow/block 규칙 · 규칙의 재시작 보존. → 아래 ①의 14건 해소.
 
 ### ❌ 非PASS 588 — "진짜 문제"는 몇 개?
 | 구분 | 수 | 진짜 문제? |
 |---|---|---|
-| ① 진짜 결함/무효화 (ISSUE) | 14 | ⚠️ **예 — 실제 문제** |
+| ① 진짜 결함/무효화 (ISSUE) | ~~14~~ → **0** (12 PASS 재판정 · 675/676은 auto-review와 무관으로 재분류, §1.6) | ✅ 해소 |
 | ② 로컬에 원래 없는 기능 (UNAVAIL) | 501 | 아니오 (cursor/클라우드/외부 전용) |
 | ③ 환경·도구 한계 (ENV) | 65 | 아니오 (실사용자엔 작동, CDP로 테스트만 불가) |
 | ④ 미확정 (UNCLEAR) | 8 | 확인 필요 |
 
-### ⚠️ 진짜 문제 14개 = 사실상 뿌리 1개 (auto-review/smart-mode 강제 OFF — AUDIT-W3)
-`auto-review/extension.ts:52`가 local Codex서 강제 off → **"사용자가 켜도 무효"**:
-- 도구/권한 승인 카드 미발화: **852, 647, 648**
-- Smart Mode 권한 무효: **778, 779, 780**
-- Auto-review 계열: **473, 475, 476, 805, 809, 811**
-- routine 편집기 저장 검증: **675, 676**
+### ✅ (해소) 진짜 문제 14개 = 사실상 뿌리 1개 (auto-review/smart-mode 강제 OFF — AUDIT-W3)
+`auto-review/extension.ts:52`가 local Codex서 강제 off → **"사용자가 켜도 무효"** 였던 것을 **로컬 분류기 배선으로 해소**(§1.6). 케이스별:
+- 도구/권한 승인 카드: **852, 647, 648** → PASS(라이브)
+- Smart Mode 권한: **778, 779, 780** → PASS(778 라이브 · 779/780 코드경로)
+- Auto-review 계열: **473, 475, 476, 805, 809, 811** → PASS(라이브; 805 브라우저·811 MCP 표면은 같은 분류기 공유, 개별 라이브는 Shell·컴퓨터로 대체)
+- routine 편집기 저장 검증: **675, 676** → **auto-review와 무관**(재분류). 675 = pinned 렌더러가 빈 Name에 aria-invalid를 안 붙임(복원 소스와 불일치, 별도 UI 항목) · 676 = 저장 실패 유발 불가(ENV)
 
-→ 고치려면 **auto-review를 Codex에서도 켜지게 배선**(단일 뿌리). 이게 남은 유일한 실제 결함 클러스터.
+수정 중 **추가 결함 1건 발견·수정**(AUDIT-W4): 로컬 모드에서 호스트와 데스크톱이 계정 scope를 다르게 계산해 **매 시작마다 auto-review 규칙·모델 기본값·로컬 도구 권한이 초기화**되던 문제 — §1.6.
 
 ### ② UNAVAIL 501 사유별 (문제 아님 — 로컬에 원래 없음)
 | 사유 | 수 |
@@ -59,9 +60,11 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | 모델피커 (로컬 Pi 고정) | 2 |
 
 ### 남은 실행 항목 (안 한 것)
-1. **auto-review Codex 배선** — 14개 ISSUE의 단일 뿌리, 유일한 실제 결함 클러스터.
+1. ~~**auto-review Codex 배선**~~ → 완료(§1.6). 남은 것: 브라우저·MCP 표면 개별 라이브 확인(같은 분류기 공유라 코드경로는 활성), 분류기 정책 프롬프트 튜닝(현재 오프라인 탐침 8/8 정답).
 2. **UNCLEAR 8건 확인**.
-3. (선택) 컴퓨터 유즈 VNC 세부(클립보드/키/줌) 개별 E2E 검증 · 다중창(USR-390, 현재 maxWindows=1 미지원).
+3. **routine 편집기 빈 이름 aria-invalid(USR-675)** — pinned 렌더러 UI 불일치, auto-review와 별개.
+4. (선택) 컴퓨터 유즈 VNC 세부(클립보드/키/줌) 개별 E2E 검증 · 다중창(USR-390, 현재 maxWindows=1 미지원).
+5. 기존 `npm run source:typecheck` 오류 4개(host-runner-composition.ts:2536-2537 subagent config 타입, host-computer-tool-dependencies.ts Context 타입) — 이번 작업 전부터 있던 것, 빌드(esbuild)엔 영향 없음.
 
 ## 1. 확정 실결함 (수정 완료)
 
@@ -124,7 +127,7 @@ Task 도구가 subagent_type을 executor만 허용("Invalid value. Expected one 
 |---|---|---|---|
 | GBF-AGT-000141 (시퀀스가 screenshot로 안 끝나면 자동 screenshot 추가) | UI_ONLY | **✅ PASS(라이브)** | move만 시켜도 screenshot 반환·FIG-11 판독. host-computer-tool-dependencies.ts:351 |
 | GBF-AGT-000135 (Computer then-batch 후속액션) | UNAVAIL | **✅ PASS(코드+라이브)** | :347-348 primary+then[] 시퀀스 조립; 다중액션(클릭+타이핑) 라이브 입증 |
-| GBF-AGT-000206 (auto-review가 Computer 액션 거부) | UNAVAIL | **PARTIAL** | Computer 액션은 이제 존재하나 auto-review가 local서 강제OFF(AUDIT-W3)라 거부 게이트 미작동 |
+| GBF-AGT-000206 (auto-review가 Computer 액션 거부) | UNAVAIL | **✅ PASS(라이브, 2차 갱신)** | §1.6: 클릭이 auto-review preflight를 타고 차단 규칙으로 카드(surface computer) 발화 → Deny면 실행 안 됨/Allow once면 실행. `createComputerTurnTool`에 preflight 연결 |
 | GBF-AGT-000429 (no-monitor면 SandBoxNoMonitor throw) | PASS | PASS(유지) | 플래그 OFF면 여전히 throw, ON이면 Xvfb 모니터 존재 — 둘 다 정상 |
 | GBF-AGT-000297 (computerUse 서브에이전트 dispatch) | UNAVAIL | **✅ PASS(라이브)** | ②: config 하드코딩 수정 → 수락·dispatch → PLUM-55 판독 |
 | GBF-AGT-000420 (서브에이전트로 **GUI 조작**) | UNAVAIL | **✅ PASS(라이브)** | 서브에이전트가 스크린샷→OK 버튼 클릭(좌표 자가조정 x463→x552)→창 닫힘(독립검증) |
@@ -140,6 +143,45 @@ Task 도구가 subagent_type을 executor만 허용("Invalid value. Expected one 
 - **라이브검증**: ① 도구 실행(스크린샷/클릭/타이핑/키/then-batch/trailing) · ② 서브에이전트 dispatch·GUI조작·disallow · ③ VNC 화면 표시.
 - **코드배선(개별 E2E 미검증)**: VNC 클립보드/presence/키보드/줌 — electron VNC 인프라(vnc-trust.ts)가 내 loopback vncUrl을 box desktop으로 인식해 자동 부착. 인프라 활성 확인·각 동작 개별검증은 중첩 webview 제약으로 못 함.
 - **실제 미지원**: 다중 데스크톱 창(USR-390, maxWindows=1) — 단일 화면 설계.
+
+## 1.6 auto-review / Smart Mode 로컬 배선 ✅ (2026-08-30 2차 갱신 · 미커밋)
+
+### 무엇이 막혀 있었나
+- **AUDIT-W3**: approve/block 판정기(`ClassifySandAutoReview`)가 Cursor 클라우드 RPC 전용 → 로컬엔 판정기가 없어 `auto-review/extension.ts`가 provider≠cursor면 `isEnabled:false`를 강제. 사용자가 켜도 카드·규칙 전부 무효(14개 ISSUE의 뿌리).
+- **AUDIT-W4(신규)**: 규칙을 넣어도 앱을 재시작하면 사라짐. 추적(설정 저장소에 호출 스택 로그) 결과 호스트(`mcp-service.ts` 계정 없음 → scope `"local"`)와 데스크톱(`accountCacheScope("local-codex")`)이 서로 다른 계정 scope를 저장소에 적용 → `scopeToAccount()`가 scope 변경 시 계정 범위 항목(autoReviewInstructions·agentDefaultModel·computerUseModel·localToolPermission)을 삭제. 매 시작마다 양쪽이 번갈아 삭제.
+- **컴퓨터 표면 누락**: 이전 세션의 `createComputerTurnTool`(host-computer-tool-dependencies.ts)이 규격(파라미터·전사·렌더)은 맞췄지만 auto-review preflight를 호출하지 않았고, 프로덕션 턴 경로에선 Computer 의존성이 `autoReview` 없이 만들어짐(turn-agent-composition.ts 대체 경로).
+
+### 구현 (원인별)
+| 파일 | 변경 |
+|---|---|
+| `host/extensions/auto-review/local-smart-mode-classifier-exec.ts` (신규) | 분류기 순수 모듈: 시스템 프롬프트(허용/차단 정책, 규칙 우선순위: block > allow > 대화 문맥) + `SmartModeClassifierArgs → SmartModeClassifierResult`, JSON 응답 파싱(펜스/잡문 허용), 실패 시 error 결과(→ 도구는 "review errored"로 거부), abort 전파 |
+| `.../local-smart-mode-classifier-provider.ts` (신규) | 분류기를 라우팅 provider(Pi/Codex, Claude Code, OpenRouter)에 연결 + Pi 런타임 예열 |
+| `.../auto-review/extension.ts` | 강제 off 제거. provider≠cursor면 로컬 분류기 주입, `sand_auto_review` 게이트를 로컬에서 true(settings-on ⇒ enforce; `SAND_AUTO_REVIEW_MODE`로 여전히 재정의 가능) |
+| `host/extensions/inference/{pi-codex-runtime,provider-session}.ts` | `systemPrompt`·`reasoning` 옵션을 `runRoutedProviderText`까지 관통 |
+| `packages/agent/utils/smart-mode-classifier-measurement.ts` | `SAND_SMART_MODE_CLASSIFIER_TIMEOUT_MS` env 재정의(기본 10s 유지) |
+| `host/runner/tools/sand-computer-tool.ts` | preflight를 `runComputerToolAutoReviewPreflight`로 분리(공용) · 로컬은 박스 Chrome 탐침 대신 상수 표시상태 |
+| `host/runner/host-computer-tool-dependencies.ts` | `createComputerTurnTool`이 실행 전 preflight 호출 |
+| `host/runner/tools/turn-toolset.ts` · `host/runner/turn-agent-composition.ts` · `host/host-runner-composition.ts` · `host/box/local-computer-use.ts` | 턴 입력에 `computerAutoReview`(로컬 디스플레이 99·규칙·컨트롤러) 전달, 대체 경로가 이를 `autoReview`로 사용 |
+| `shared/node/local-codex-account.ts` (신규) · `electron-main/adapters/local-codex-mode.ts` · `host/extensions/mcp/mcp-service.ts` | 로컬 계정 상수·해시 scope 통일(AUDIT-W4) |
+| `tests/local-auto-review-classifier.test.mjs` (신규, 10건) | 프롬프트 구성·절단, 응답 파싱, 실행기 계약(allow/block/error/abort), 모델·추론 재정의, 배선 회귀 방지(강제off 부재·컴퓨터 preflight·계정 scope 일치) |
+
+### 라이브 검증 (CDP + 게이트웨이 API, 최종 빌드)
+| 시나리오 | 결과 |
+|---|---|
+| 무해 명령 `ls -1 \| head -5` | 카드 없이 실행 |
+| block 규칙("날짜 출력 명령은 항상 물어볼 것") + `date` | 카드 발화(21~25s) → **Allow once** → 실행(`Sun Aug 30 21:01:35 KST 2026`) / **Deny** → 미실행, 에이전트가 차단 사유 보고 |
+| 정책상 위험(`sudo -n true`) | 규칙 없이도 카드("Runs a sudo command, which requires approval for root-level actions.") → **Always allow** → 설정에 규칙 자동 추가 → 재실행 시 카드 없음 |
+| 컴퓨터 클릭 + block 규칙 | 카드("Auto-review Paused This Action", surface `computer`, 요약 "Click at (640, 400) on Grok Bot's computer to …") → Allow once → 실행 |
+| 규칙 재시작 보존 | 브리지(설정 화면 경로)로 규칙 저장 → 재시작 → 규칙 유지(AUDIT-W4 수정 전엔 매번 소실) |
+| 분류기 오프라인 탐침(Pi gpt-5.5, low) | 8/8 정답(ls·npm test·재설치 허용 / force-push·curl\|sh·ssh키 읽기 차단 / allow 규칙 허용·block 규칙 차단), 2.4~5.2s |
+| 단위 테스트 | `npm test` 109/109 · `source:typecheck` 기존 4개 오류 외 신규 없음 |
+
+### 한계 / 주의
+- 카드까지 21~25s: 모델 턴 → 분류(≈3s) → 거부 → 모델이 `request_smart_mode_approval`로 재호출 → 분류 → 카드. Cursor 설계와 동일한 2회 왕복.
+- 분류기 예산 10s(측정 래퍼): 로컬 모델이 느리면 `SAND_SMART_MODE_CLASSIFIER_TIMEOUT_MS`로 확장. 분류 실패 시 안전 방향(거부)으로 동작.
+- 로컬 컴퓨터 표면은 표시상태 재확인(recheck)이 상수(박스 Chrome 없음) → "검토 후 화면 변경" 감지는 없음.
+- 브라우저/MCP/서브에이전트 표면은 같은 `smartModeClassifierExecutorResource`를 쓰므로 활성이나 개별 라이브는 미실행.
+- 테스트 흔적: 에이전트 "AutoReviewProbe"(전사에 카드 기록 보존). 테스트용 block 규칙은 정리(설정: auto-review ON, 규칙 없음).
 
 ## 2. 감사 findings — P0 (심각)
 
@@ -157,7 +199,8 @@ Task 도구가 subagent_type을 executor만 허용("Invalid value. Expected one 
 | AUDIT-7 | 예약 루틴이 로컬 WSL에서 실행 안 됨 | CONFIRMED | cron은 Cursor cloud 경로(sand-automation-cloud-sync.ts:274 createSandAutomation); 발화는 backend poll(sand-automation-fire-consumer.ts:84); shouldScheduleLocally(:370)는 cron에 false; 로컬 트 |
 | AUDIT-8 | 플러그인≠로컬MCP + 로컬MCP 4갭 | CONFIRMED | 플러그인 search/install/auth/delete는 Cursor backend(mcp-service.ts:126-149). 로컬MCP 갭: (a)cwd 누락 readLocalMcpServers(mcp-service.ts:207-218), (b)tools/list pagination 없음(mcp-stdio-clien |
 | AUDIT-9 | 이미지생성/아바타는 Cursor 토큰 필요(광고만) | CONFIRMED | system-prompt.ts:140 GenerateImage 광고; generate-image-service.ts:5 getAccessToken 요구; cursor-generate-image.ts:8 Cursor backend RPC. Codex-OAuth 로컬모드엔 토큰없어 실패. |
-| AUDIT-W3 | Auto-review가 Codex에서 강제 OFF | CONFIRMED | auto-review/extension.ts:52-55 localCodexMode면 isEnabled:false 강제; sand-auto-review.ts:66 off. 사용자가 켜도 무효. |
+| AUDIT-W3 | Auto-review가 Codex에서 강제 OFF | **FIXED** (2차 갱신) | 원인: 분류기가 Cursor 백엔드 RPC 전용. 수정: 로컬 분류기(`auto-review/local-smart-mode-classifier-exec.ts`, Pi gpt-5.5 reasoning low)를 `createClassifierExecutor`에 주입, 강제 off 제거, 로컬은 settings-on ⇒ enforce. 라이브: Shell/컴퓨터 카드·규칙·Always allow 전부 PASS. §1.6 |
+| AUDIT-W4 | 계정 scope 불일치 → auto-review 규칙·모델 기본값·로컬 도구 권한이 매 시작마다 초기화 | **FIXED** (신규 발견, 2차 갱신) | 호스트 `mcp-service.ts:266`는 계정 없을 때 scope `"local"`, 데스크톱은 `accountCacheScope("local-codex")` → 시작마다 서로 뒤집으며 `scopeToAccount()`가 계정 범위 설정을 삭제(재시작 후 규칙 소실을 로그로 확인). 수정: 공용 `shared/node/local-codex-account.ts`로 양쪽 scope 통일. 라이브: 재시작 후 규칙 보존 확인. §1.6 |
 | DEFECT-3 | 이미지/파일 첨부 전송 시 앱 전체 크래시 (attachment kinds shape 불일치) | FIXED | session-projection.ts buildAttachmentLastEntry가 kinds를 countKinds()의 객체 {image:1}로 넣음. 렌더러 Yun/mergeKindCounts는 배열 [{kind,count}] 기대. 객체엔 .length=undefined라 빈-가드 통과 후 n.filter 폭발 - |
 
 ## 3. 감사 findings — P1
@@ -222,6 +265,8 @@ Task 도구가 subagent_type을 executor만 허용("Invalid value. Expected one 
 | GBF-USR-000648-N01 | PASS→ISSUE | permissions.json의 autoReview allow/block 규칙은 auto-review가 local Codex서 강제OFF(AUDIT-W3)라 무효. |
 | GBF-USR-000675-N01 | PASS→ISSUE | routine 편집기 검증(빈 이름 aria-invalid/저장 실패 메시지)은 저장 검증 실패 상태 — auto-review off/저장경로 제약으로 유발 제한. 편집기 자체는 실측. |
 | GBF-USR-000676-N01 | PASS→ISSUE | routine 편집기 검증(빈 이름 aria-invalid/저장 실패 메시지)은 저장 검증 실패 상태 — auto-review off/저장경로 제약으로 유발 제한. 편집기 자체는 실측. |
+
+**2026-08-30 2차 갱신 — AUDIT-W3 근거 행의 재판정** (§1.6 라이브 검증 기준): USR-852/809/473/475/476/805/811/778/779/780/647/648 → **PASS**, AGT-101/102/105/149/151/154/155/116/321 → **PASS**(auto-review 컨트롤러·분류기 로컬 활성), AGT-152(no-retry 안내)/233(서브에이전트 fail path) → **활성(개별 미실측)**, USR-675 → **ISSUE(재분류: 렌더러 aria-invalid 미발화, auto-review 무관)**, USR-676 → **ENV(저장 실패 유발 불가)**.
 
 ## 6. sweep 결과 — 성격별 분포 (전체 2075건)
 

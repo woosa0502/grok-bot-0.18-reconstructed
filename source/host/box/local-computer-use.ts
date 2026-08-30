@@ -46,6 +46,17 @@ export function localComputerVncUrl(): string | undefined {
 }
 
 /**
+ * X display number of the local computer-use desktop (":99" → 99). Computer auto-review
+ * identifies the reviewed display by number; locally there is exactly one, owned by the
+ * shared display manager.
+ */
+export function localComputerDisplayNumber(): number {
+  const display = localDisplayManager().display;
+  const parsed = Number.parseInt(display.replace(/^:/u, ""), 10);
+  return Number.isFinite(parsed) ? parsed : 99;
+}
+
+/**
  * Wraps a box resource accessor so `computerUseExecutorResource` resolves to the
  * local Xvfb-backed executor. The local entry takes precedence over the base
  * accessor's own computer-use resource (gateway passthrough / no-monitor stub).

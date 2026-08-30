@@ -154,6 +154,7 @@ import type {
 } from "../sand-auto-review.js";
 import type { RequestContext } from "../../../packages/proto/generated/agent/v1/request_context_exec_pb.js";
 import { SAND_AUTO_REVIEW_CLASSIFIER_MAX_ATTEMPTS } from "../sand-auto-review-classifier-run.js";
+import type { SandComputerAutoReviewOptions } from "../sand-computer-auto-review.js";
 import {
   createSandMultitaskTodoTool,
 } from "../../sand-multitask.js";
@@ -276,6 +277,11 @@ export interface TurnToolsetTurnInput {
     readonly host?: TurnShellAutoReviewInput;
     readonly box?: TurnShellAutoReviewInput;
   };
+  /**
+   * Computer auto-review options for a Computer tool built directly from the resource
+   * accessor (local computer-use), where no per-turn projection binds the dependencies.
+   */
+  readonly computerAutoReview?: SandComputerAutoReviewOptions;
 }
 
 export interface TurnShellAutoReviewInput {
