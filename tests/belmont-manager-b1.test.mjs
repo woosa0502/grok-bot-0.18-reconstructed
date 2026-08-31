@@ -19,6 +19,9 @@ async function loadModule(relativeEntry) {
   const result = await build({
     entryPoints: [entry],
     bundle: true, format: "esm", platform: "node", write: false, logLevel: "silent",
+    // The source uses `using` declarations (explicit resource management),
+    // which this Node cannot parse — esbuild must lower them in the bundle.
+    supported: { using: false },
     external: ["@earendil-works/pi-coding-agent", "@earendil-works/pi-ai"],
     // The bundle runs from a data: URL, but some modules feed import.meta.url to
     // createRequire/realpath — pin it to the real entry file — and CJS deps in

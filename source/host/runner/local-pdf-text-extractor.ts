@@ -51,8 +51,11 @@ export const PDF_EXTRACT_TIMEOUT_MS = 30_000;
 
 export function withDeadline<T>(work: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    // The timer stays ref'd: an unref'd deadline never fires once the event
+    // loop drains, leaving the caller awaiting forever — the exact hang this
+    // wrapper exists to prevent. It is bounded and cleared on settle, so the
+    // worst case is delaying process exit by one timeout.
     const timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
-    timer.unref?.();
     work.then(
       (value) => { clearTimeout(timer); resolve(value); },
       (error) => { clearTimeout(timer); reject(error); },
