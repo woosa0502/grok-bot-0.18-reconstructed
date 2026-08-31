@@ -179,6 +179,31 @@ export class SendPipeline {
           : undefined;
       const targetAgentId = options.agentId ?? ensuredSession?.id;
       invariant(targetAgentId != null, "A send target could not be resolved.");
+      // Manager-only chat (B-2 host-side half, opt-in): with a designated
+      // manager and SAND_MANAGER_ONLY_CHAT=1, user prompts to worker bots are
+      // refused with a visible notice instead of running a turn — the single
+      // point of contact becomes enforcement, not convention. Groups and the
+      // manager itself are unaffected; default is off.
+      if (process.env.SAND_MANAGER_ONLY_CHAT === "1") {
+        const managerId = process.env.SAND_DEFAULT_AGENT_ID?.trim();
+        if (
+          managerId != null && managerId.length > 0 && targetAgentId !== managerId &&
+          !(await this.tm.sessionStore.listAgents()).some((agent: { id: string; isGroup?: boolean }) => agent.id === targetAgentId && agent.isGroup === true)
+        ) {
+          const workerSession = (await this.tm.groupChat.pinMemberSessionForGroupTurn(targetAgentId)) as LiveTranscriptSession;
+          const entries = workerSession.db.getTranscriptEntries();
+          workerSession.db.appendTranscriptEntry({
+            kind: "message",
+            id: nextEntryId(entries, "assistant-message"),
+            role: "assistant",
+            content: "This team runs manager-only chat: please talk to the manager agent instead — it delegates to this bot and reports back. (Set SAND_MANAGER_ONLY_CHAT=0 to chat with workers directly.)",
+            isStreaming: false,
+            timestampMs: Date.now(),
+          });
+          void this.tm.roster.emitAgentUpdate(targetAgentId);
+          return;
+        }
+      }
       const wasInFlight = this.tm.runLifecycle
         .runningAgentIds()
         .has(targetAgentId);

@@ -348,7 +348,10 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
           actionCount += count;
         }
         host.actionAuditor.record({
-          agentId: host.getConversationId(),
+          // AUDIT-W6: the computer-use session belongs to the CHILD subagent,
+          // so the audit row is attributed to it (the parent stays traceable
+          // via turnId's subagent request id).
+          agentId: subagentAgentId,
           ...(meta.toolCallId.length === 0
             ? {}
             : { turnId: computeSubagentRequestId(meta.toolCallId) }),

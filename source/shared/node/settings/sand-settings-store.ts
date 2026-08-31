@@ -9,6 +9,18 @@ import { DEFAULT_SAND_AUTO_REVIEW_INSTRUCTIONS, normalizeSandAutoReviewInstructi
 import { SidebarSections, type SidebarSection } from "../../sidebar-sections.js";
 import { coerceToEnabledTrack, isSandUpdateTrack, type SandUpdateTrack } from "../../update-track.js";
 import { isSandAgentModelSelection, type SandAgentModelSelection } from "../../agents/sand-agent-model.js";
+
+/**
+ * Per-agent tool policy (managed-team least privilege): tools named in
+ * denyTools are not offered to that agent's turns. "SendMessage" is never
+ * denied (a mute bot is a footgun, not a policy).
+ */
+export interface SandAgentToolPolicy { readonly denyTools: readonly string[] }
+export function isSandAgentToolPolicy(value: unknown): value is SandAgentToolPolicy {
+  return typeof value === "object" && value != null && !Array.isArray(value)
+    && Array.isArray((value as { denyTools?: unknown }).denyTools)
+    && ((value as { denyTools: unknown[] }).denyTools).every((name) => typeof name === "string" && name.length > 0);
+}
 import { emptySandInferenceRouterUsage, isSandInferenceProvider, type SandInferenceProvider, type SandInferenceRouterUsage } from "../../inference-router.js";
 import { DEFAULT_SAND_BOX_RUNTIME, isSandBoxRuntime, type SandBoxRuntime } from "../../box-runtime.js";
 
@@ -23,7 +35,7 @@ export interface SandStoredSettings {
   mcpCustomInstructions: StringMap; mcpCustomInstructionsByServerId: StringMap; mcpDisabledToolsByServerId: StringListMap;
   conciergeConsent: "unset" | "allowed" | "denied"; settingsMigrations: string[];
   hasSeenOnboarding?: boolean; hasSeenOnboardingAccountScope?: string; updateTrackOverride?: SandUpdateTrack; themePreference?: SandThemePreference;
-  agentDefaultModel?: SandAgentModelSelection; computerUseModel?: SandAgentModelSelection; subagentDefaultModel?: SandAgentModelSelection; agentModelsBySubagentType?: Record<string, SandAgentModelSelection>; agentModelsByAgentId?: Record<string, SandAgentModelSelection>; notifications?: Record<string, unknown>;
+  agentDefaultModel?: SandAgentModelSelection; computerUseModel?: SandAgentModelSelection; subagentDefaultModel?: SandAgentModelSelection; agentModelsBySubagentType?: Record<string, SandAgentModelSelection>; agentModelsByAgentId?: Record<string, SandAgentModelSelection>; agentToolPolicyByAgentId?: Record<string, SandAgentToolPolicy>; notifications?: Record<string, unknown>;
   userTimeZone?: string; userTimeZoneOverride?: string; autoReviewInstructions?: SandAutoReviewInstructions;
   localToolPermission?: SandLocalToolPermission; localToolPermissionCeiling?: SandLocalToolPermission;
   inferenceProvider?: SandInferenceProvider; inferenceRouterUsage?: SandInferenceRouterUsage;
@@ -76,6 +88,11 @@ function parseSettings(value: unknown): SandStoredSettings | null {
     const byAgent: Record<string, SandAgentModelSelection> = {};
     for (const [agentId, selection] of Object.entries(raw.agentModelsByAgentId as Record<string, unknown>)) if (agentId.length > 0 && isSandAgentModelSelection(selection)) byAgent[agentId] = selection;
     if (Object.keys(byAgent).length > 0) result.agentModelsByAgentId = byAgent;
+  }
+  if (typeof raw.agentToolPolicyByAgentId === "object" && raw.agentToolPolicyByAgentId != null && !Array.isArray(raw.agentToolPolicyByAgentId)) {
+    const policyByAgent: Record<string, SandAgentToolPolicy> = {};
+    for (const [agentId, policy] of Object.entries(raw.agentToolPolicyByAgentId as Record<string, unknown>)) if (agentId.length > 0 && isSandAgentToolPolicy(policy)) policyByAgent[agentId] = { denyTools: (policy as SandAgentToolPolicy).denyTools.filter((name) => name !== "SendMessage") };
+    if (Object.keys(policyByAgent).length > 0) result.agentToolPolicyByAgentId = policyByAgent;
   }
   if (typeof raw.notifications === "object" && raw.notifications != null && !Array.isArray(raw.notifications)) result.notifications = raw.notifications as Record<string, unknown>;
   for (const key of ["userTimeZone", "userTimeZoneOverride", "mcpCustomInstructionsAccountScope"] as const) if (typeof raw[key] === "string" && raw[key].length > 0) result[key] = raw[key];
@@ -137,6 +154,16 @@ export class SandSettingsStore {
   getSubagentDefaultModel(): SandAgentModelSelection | undefined { return this.load().subagentDefaultModel; }
   getAgentModelForSubagentType(subagentType: string): SandAgentModelSelection | undefined { return this.load().agentModelsBySubagentType?.[subagentType]; }
   getAgentModelForAgentId(agentId: string): SandAgentModelSelection | undefined { return this.load().agentModelsByAgentId?.[agentId]; }
+  getAgentToolPolicy(agentId: string): SandAgentToolPolicy | undefined { return this.load().agentToolPolicyByAgentId?.[agentId]; }
+  setAgentToolPolicy(agentId: string, policy: SandAgentToolPolicy | undefined): void {
+    this.update((s) => {
+      const map = { ...(s.agentToolPolicyByAgentId ?? {}) };
+      if (policy === undefined || policy.denyTools.length === 0) delete map[agentId];
+      else map[agentId] = { denyTools: policy.denyTools.filter((name) => name !== "SendMessage") };
+      const { agentToolPolicyByAgentId: _old, ...rest } = s;
+      return Object.keys(map).length === 0 ? rest : { ...rest, agentToolPolicyByAgentId: map };
+    });
+  }
   setAgentModelForAgentId(agentId: string, model: SandAgentModelSelection | undefined): void {
     this.update((s) => {
       const map = { ...(s.agentModelsByAgentId ?? {}) };

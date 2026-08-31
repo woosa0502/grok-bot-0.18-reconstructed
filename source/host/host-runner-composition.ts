@@ -1357,6 +1357,11 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           : store.getAgentDefaultModel()?.modelId ?? process.env.SAND_CODEX_MODEL?.trim() ?? "gpt-5.5";
         store.setAgentModelForAgentId(agentId, { modelId, maxMode: selection.maxMode, parameters: selection.parameters.map((p) => ({ ...p })) });
       },
+      // Per-agent tool deny-list (least privilege for workers): the toolset
+      // simply never offers denied tools to that agent's turns.
+      setAgentToolPolicy: (agentId: string, policy: { readonly denyTools: readonly string[] }) => {
+        new SandSettingsStore(join(getSandRootDir(), "settings.json")).setAgentToolPolicy(agentId, { denyTools: [...policy.denyTools] });
+      },
       create: async (input: { name: string; description: string }) => {
         const result = await method(
           transcript,

@@ -95,18 +95,35 @@ export class SharedRooms {
       Date.now(),
     );
     this.tm.groupChat.postGroupMemberMessage(roomSession, member, message);
+    // Durable group-turn wake: the message is already in the room transcript,
+    // but the members' response turn was only an in-memory enqueue — a crash
+    // before/inside it left the post unanswered forever. The marker survives
+    // until the group turn actually ran; restart rearm re-runs the turn.
+    const wakeId = randomUUID();
+    this.tm.pendingWakeStore?.markPending({
+      agentId: groupId,
+      kind: "agent-message",
+      workId: wakeId,
+      markedAtMs: Date.now(),
+      title: `Group post in ${groupName}`,
+      agentMessage: { from: { id: fromAgentId, name: member.name }, text: message, displayed: true, group: true },
+    });
     const epoch = this.tm.sendPipeline.nextTurnEpoch(roomSession);
     this.tm.runLifecycle.beginSessionRun(roomSession);
     void this.tm.runLifecycle.enqueueExclusiveRun(
       roomSession.id,
-      () => {
+      async () => {
         this.tm.turnRuntime.activeRequestSources.set(roomSession.id, "agent");
-        return this.tm.groupChat.runGroupTurn(
-          roomSession,
-          epoch,
-          undefined,
-          "agent",
-        );
+        try {
+          return await this.tm.groupChat.runGroupTurn(
+            roomSession,
+            epoch,
+            undefined,
+            "agent",
+          );
+        } finally {
+          this.tm.pendingWakes.clearSettledPendingWake({ agentId: groupId, kind: "agent-message", workId: wakeId });
+        }
       },
       { lane: "agent", source: "agent" },
     );

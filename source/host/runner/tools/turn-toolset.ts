@@ -10,7 +10,21 @@ import {
   SAND_EXTERNAL_READ_TOOL_NAME,
   SAND_EXTERNAL_SHELL_TOOL_NAME,
 } from "../../sand-activity.js";
+import { join as joinPath } from "node:path";
+
 import { resolveSandExternalMachine } from "../../../shared/agents/agent-tool-names.js";
+import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
+import { getSandRootDir } from "../../host-paths.js";
+
+/** Per-agent denied tool names (empty when the agent has no policy). */
+function agentToolDenySet(agentId: string): Set<string> {
+  try {
+    const policy = new SandSettingsStore(joinPath(getSandRootDir(), "settings.json")).getAgentToolPolicy(agentId);
+    return new Set(policy?.denyTools ?? []);
+  } catch {
+    return new Set();
+  }
+}
 import { SAND_REACT_TO_MESSAGE_TOOL_NAME } from "./sand-reaction-tool.js";
 import { SAND_UPDATE_STATE_TOOL_NAME } from "./sand-state-tool.js";
 import { SAND_SEND_MESSAGE_TOOL_NAME } from "./send-message-tool.js";
@@ -1737,9 +1751,16 @@ export function buildTurnTools(
       ? SHARED_ROOM_TEXT_ONLY_TOOL_NAMES
       : SHARED_ROOM_TOOL_NAMES
     : undefined;
-  const offered = sharedRoomAllowed == null
+  const roomFiltered = sharedRoomAllowed == null
     ? tools
     : tools.filter((tool) => sharedRoomAllowed.has(tool.name));
+  // Per-agent tool policy (managed-team least privilege): tools the user or
+  // manager denied for this bot are simply not offered. SendMessage is exempt
+  // (a mute bot is a footgun); the store enforces that too.
+  const denyPolicy = agentToolDenySet(host.getConversationId());
+  const offered = denyPolicy.size === 0
+    ? roomFiltered
+    : roomFiltered.filter((tool) => tool.name === "SendMessage" || !denyPolicy.has(tool.name));
 
   const placed = dynamicToolsEnabled
     ? offered.map(withDynamicToolPlacement)

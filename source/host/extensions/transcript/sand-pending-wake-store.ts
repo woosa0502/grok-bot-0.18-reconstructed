@@ -22,6 +22,12 @@ export interface DurableAgentMessagePayload {
   priority?: boolean;
   /** The transcript entry was already appended before a crash — do not append again. */
   displayed?: boolean;
+  /**
+   * Group-turn wake: agentId is the GROUP id, the message already sits in the
+   * room transcript, and redelivery re-runs the group turn (members respond)
+   * instead of a 1:1 inbound wake.
+   */
+  group?: boolean;
 }
 /** Durable background completion payload (Phase B / P1-04): the result survives a restart. */
 export interface DurableCompletionPayload {
@@ -112,6 +118,7 @@ function coerceAgentMessage(value: unknown): DurableAgentMessagePayload | null {
     ...(images.length === 0 ? {} : { images }),
     ...(v.priority === true ? { priority: true } : {}),
     ...(v.displayed === true ? { displayed: true } : {}),
+    ...(v.group === true ? { group: true } : {}),
   };
 }
 function coerceCompletion(value: unknown): DurableCompletionPayload | null {

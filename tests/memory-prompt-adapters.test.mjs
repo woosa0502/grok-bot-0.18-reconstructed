@@ -68,3 +68,29 @@ test("project memory adapter builds one block per joined project and caps inject
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("memory E2E (AUDIT-F5): a fact written by one process instance is recalled by a fresh one, and removal sticks", async () => {
+  const { createPromptUserMemory, FileMemoryStore, getUserMemoryShardDir, createRealDebouncePolicy } = await loadModules();
+  const root = await mkdtemp(path.join(tmpdir(), "belmont-memory-e2e-"));
+  try {
+    const debounce = createRealDebouncePolicy({ name: "test", delayMs: 0 });
+    // "Process 1": the agent stores a durable preference (the same write path
+    // update_state's memory target uses).
+    const writer = new FileMemoryStore(getUserMemoryShardDir(root, "belmont"), debounce);
+    writer.addMemory("External uploads always need prior approval", 1_000, "profile");
+    // "Process 2" (fresh instances over the same files — a restart): recall
+    // through the prompt adapter must surface the fact.
+    const reader = createPromptUserMemory(root, createRealDebouncePolicy({ name: "test2", delayMs: 0 }), { agentId: "belmont", resolveAgentName: () => "Belmont" });
+    const recall = reader.recall({ profileLimit: 50, recentLimit: 15 });
+    assert.ok(recall.profile.some((memory) => memory.content === "External uploads always need prior approval"), "restart-surviving recall");
+    // Correction: removing the fact in a third instance is durable too.
+    const editor = new FileMemoryStore(getUserMemoryShardDir(root, "belmont"), createRealDebouncePolicy({ name: "test3", delayMs: 0 }));
+    const stored = editor.listMemories().find((memory) => memory.content === "External uploads always need prior approval");
+    assert.ok(stored != null);
+    editor.removeMemory(stored.id);
+    const reader2 = createPromptUserMemory(root, createRealDebouncePolicy({ name: "test4", delayMs: 0 }), { agentId: "belmont", resolveAgentName: () => "Belmont" });
+    assert.ok(!reader2.recall({ profileLimit: 50, recentLimit: 15 }).profile.some((memory) => memory.content.includes("External uploads")), "removal survives a fresh instance");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

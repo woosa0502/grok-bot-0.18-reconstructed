@@ -20,6 +20,7 @@ interface PendingWakeMarker {
     images?: readonly { url: string; alt?: string }[];
     priority?: boolean;
     displayed?: boolean;
+    group?: boolean;
   };
   completion?: { status: string; result?: string; detail?: string; outputPath?: string };
   taskPrompt?: string;
@@ -171,6 +172,13 @@ export class PendingWakeRearm {
       session = await this.tm.sessions.resolveBackgroundSession(marker.agentId);
     } catch {
       report("rearm_failed", "session_unavailable");
+      return;
+    }
+    // Durable group-turn wake (r bundle #4): a group post's marker targets the
+    // GROUP session — re-run the members' response turn before the generic
+    // group-session skip below would drop it.
+    if (marker.kind === "agent-message" && marker.agentMessage?.group === true) {
+      this.rerunGroupTurnWake(session, marker, report);
       return;
     }
     if (this.tm.groupChat.isGroupSession(session)) {
@@ -343,6 +351,32 @@ export class PendingWakeRearm {
         ? {}
         : { quietOrigin: marker.quietOrigin }),
     });
+  }
+
+  rerunGroupTurnWake(
+    session: any,
+    marker: PendingWakeMarker,
+    report: (outcome: string, reason?: string) => void,
+  ): void {
+    // The post itself already sits in the room transcript (durable); only the
+    // members' response turn was lost. Re-run it; the marker settles after the
+    // turn actually ran, mirroring the 1:1 delivery contract.
+    const groupId = marker.agentId;
+    const epoch = (this.tm as { sendPipeline: { nextTurnEpoch(session: unknown): number } }).sendPipeline.nextTurnEpoch(session);
+    this.tm.runLifecycle.beginSessionRun(session);
+    void this.tm.runLifecycle.enqueueExclusiveRun(
+      session.id,
+      async () => {
+        (this.tm as { turnRuntime: { activeRequestSources: Map<string, string> } }).turnRuntime.activeRequestSources.set(session.id, "agent");
+        try {
+          return await (this.tm.groupChat as unknown as { runGroupTurn(session: unknown, epoch: number, extra: unknown, source: string): Promise<unknown> }).runGroupTurn(session, epoch, undefined, "agent");
+        } finally {
+          this.clearSettledPendingWake({ agentId: groupId, kind: "agent-message", workId: marker.workId });
+        }
+      },
+      { lane: "agent", source: "agent" },
+    );
+    report("rearmed", "group_turn_rerun");
   }
 
   redeliverAgentMessageWake(

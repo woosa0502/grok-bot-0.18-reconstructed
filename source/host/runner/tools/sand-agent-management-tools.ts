@@ -49,6 +49,8 @@ export interface AgentManagementDependencies {
   }>;
   /** Persists a per-agent model/reasoning selection (AUDIT-W1). Optional; wired by the host. */
   setAgentModelSelection?(agentId: string, selection: { readonly modelId: string; readonly maxMode: boolean; readonly parameters: readonly { readonly id: string; readonly value: string }[] }): void;
+  /** Persists a per-agent tool deny-list (least privilege). Optional; wired by the host. */
+  setAgentToolPolicy?(agentId: string, policy: { readonly denyTools: readonly string[] }): void;
   update(
     agentId: string,
     patch: { readonly name?: string; readonly description?: string },
@@ -94,6 +96,9 @@ export const createAgentParameters = z.object({
   ),
   reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional().describe(
     "Optional reasoning effort for the new agent's model. Pick lower efforts (minimal/low) for quick mechanical workers and higher ones (high/xhigh) for analysis-heavy teammates; omit to inherit the default.",
+  ),
+  deny_tools: z.array(z.string().trim().min(1)).optional().describe(
+    'Optional least-privilege list: tool names the new agent must NOT get (e.g. ["ExternalShell","ExternalRead"] for a worker that should never touch the user\'s computer). SendMessage can never be denied. Omit for the full toolkit.',
   ),
 });
 
@@ -218,7 +223,17 @@ export function createCreateAgentTool(management: AgentManagementDependencies) {
           reasoningNote = " (Reasoning preference could not be saved; it will use the default.)";
         }
       }
-      return `Created agent "${created.name}" (id: ${created.id}).${reasoningNote} Message it with SendToAgent using that id.`;
+      let toolsNote = "";
+      if (args.deny_tools !== undefined && args.deny_tools.length > 0) {
+        try {
+          const denied = args.deny_tools.filter((name) => name !== "SendMessage");
+          resolved.setAgentToolPolicy?.(created.id, { denyTools: denied });
+          toolsNote = denied.length > 0 ? ` Denied tools: ${denied.join(", ")}.` : "";
+        } catch {
+          toolsNote = " (Tool restrictions could not be saved; it has the full toolkit.)";
+        }
+      }
+      return `Created agent "${created.name}" (id: ${created.id}).${reasoningNote}${toolsNote} Message it with SendToAgent using that id.`;
     },
   });
 }

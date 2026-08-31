@@ -340,6 +340,14 @@ export class AgentToAgentMessaging {
       const entries = isActive
         ? getTranscript()
         : session.db.getTranscriptEntries();
+      // Crash-window dedupe (r3 #2 follow-up): the durable marker id is stamped
+      // onto the entry, so a redelivery whose entry already landed before a
+      // crash (append happened, displayed-flag write did not) appends nothing.
+      if (
+        message.id != null &&
+        entries.slice(-80).some((existing: { agentMessageId?: string }) => existing?.agentMessageId === message.id)
+      )
+        continue;
       const entry = {
         kind: "message",
         id: nextEntryId(entries, "user-message"),
@@ -348,6 +356,7 @@ export class AgentToAgentMessaging {
         isStreaming: false,
         timestampMs: message.timestampMs,
         fromAgent: message.from,
+        ...(message.id == null ? {} : { agentMessageId: message.id }),
         ...(message.images?.length ? { images: message.images } : {}),
       };
       raisesActivity ||= entryRaisesUserActivitySignal(entry);

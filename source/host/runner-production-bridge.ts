@@ -309,6 +309,8 @@ export interface ProductionTurnHostDependencies {
     ): Promise<{ readonly id: string; readonly name: string } | null>;
     /** Persists a per-agent model/reasoning selection (AUDIT-W1). */
     setAgentModelSelection?(agentId: string, selection: { readonly modelId: string; readonly maxMode: boolean; readonly parameters: readonly { readonly id: string; readonly value: string }[] }): void;
+    /** Persists a per-agent tool deny-list (least privilege). */
+    setAgentToolPolicy?(agentId: string, policy: { readonly denyTools: readonly string[] }): void;
   };
   readonly state?: Pick<
     SandStateDependencies,
