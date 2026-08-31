@@ -9,6 +9,8 @@ import { dirname, join } from "node:path";
 import { SAND_PENDING_WAKE_FILE_NAME } from "../../durable-file-policy.js";
 import type { PendingWakeKind, PendingWakeMarker } from "./async-task-union.js";
 export const PENDING_WAKE_KINDS = ["cloud-agent", "subagent", "shell", "agent-message"] as const;
+/** Payload-bearing markers (messages, stored results) survive prune for 14 days. */
+export const PENDING_WAKE_PAYLOAD_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1_000;
 export interface QuietWakeOrigin {
   automation?: { id: string; name: string };
 }
@@ -217,13 +219,22 @@ export class SandPendingWakeStore {
   }
   pruneStale(maxAgeMs: number, nowMs = Date.now()): DurablePendingWakeMarker[] {
     try {
+      // Kind-aware retention (external review r3 #3): an undelivered agent
+      // message or an already-arrived completion RESULT is still valuable after
+      // a weekend off — only watch-style wakes (a cloud agent / shell / child
+      // that no longer exists after this long) age out at the caller's window;
+      // payload-bearing markers get a much longer cap.
+      const ageLimitFor = (entry: DurablePendingWakeMarker): number =>
+        entry.kind === "agent-message" || entry.completion != null
+          ? Math.max(maxAgeMs, PENDING_WAKE_PAYLOAD_MAX_AGE_MS)
+          : maxAgeMs;
       const existing = this.readPending(),
         pruned = existing.filter(
-          (entry) => nowMs - entry.markedAtMs > maxAgeMs,
+          (entry) => nowMs - entry.markedAtMs > ageLimitFor(entry),
         );
       if (pruned.length === 0) return [];
       const remaining = existing.filter(
-        (entry) => nowMs - entry.markedAtMs <= maxAgeMs,
+        (entry) => nowMs - entry.markedAtMs <= ageLimitFor(entry),
       );
       remaining.length === 0 ? this.deleteFile() : this.write(remaining);
       return pruned;

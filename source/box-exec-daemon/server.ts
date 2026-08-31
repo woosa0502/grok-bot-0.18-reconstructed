@@ -144,6 +144,7 @@ import {
 } from "../packages/proto/generated/agent/v1/shell_exec_pb.js";
 import { HookAdditionalContext } from "../packages/proto/generated/agent/v1/hook_additional_context_pb.js";
 import { buildShellStateWrappedCommand, isInsideWorkspace, SHELL_STATE_CWD_FILE, SHELL_STATE_DIRNAME, toLogicalWorkspacePath } from "./shell-state.js";
+import { projectGrepEvents } from "./grep-projection.js";
 
 // Recovered generated descriptors predate `satisfies ServiceType` and therefore
 // widen MethodKind during TypeScript reconstruction. Re-declaring only the
@@ -1135,50 +1136,24 @@ class BoxExecRuntime {
       const detail = outcome.stderr.trim();
       return new GrepResult({ result: { case: "error", value: new GrepError({ error: `ripgrep exited ${outcome.exitCode ?? "with a signal"}${detail.length > 0 ? `: ${detail}` : ""}` }) } });
     }
+    // Context/match grouping lives in the pure, behaviorally-tested projection
+    // (grep-projection.ts) — line-number attribution keeps a next match's -B
+    // lines from riding as the previous match's trailing context at the offset
+    // and head-limit boundaries (external review r3 #4).
+    const projection = projectGrepEvents(outcome.stdout, {
+      offset: Math.max(0, args.offset ?? 0),
+      headLimit,
+      contextBefore: Math.max(0, args.contextBefore ?? args.context ?? 0),
+      contextAfter: Math.max(0, args.contextAfter ?? args.context ?? 0),
+    });
     const byFile = new Map<string, GrepContentMatch[]>();
-    let totalSeen = 0;   // total match events emitted by ripgrep (post-offset)
-    let retained = 0;    // match lines kept within the head limit
-    const offset = Math.max(0, args.offset ?? 0);
-    let matchIndex = 0;
-    // Context lines are grouped with THEIR match (strict-review P1-08): leading
-    // (-B) context is buffered and flushed only when its match is retained, so
-    // context belonging to offset-skipped or over-limit matches never rides
-    // along, and trailing (-A) context after the last retained match survives.
-    const contextBeforeCount = Math.max(0, args.contextBefore ?? args.context ?? 0);
-    let keepTrailingContext = false;
-    let pendingContext: { file: string; lineNumber: number; content: string }[] = [];
-    const pushLine = (file: string, lineNumber: number, content: string, isContext: boolean): void => {
-      const list = byFile.get(file) ?? [];
-      if (list.length === 0) byFile.set(file, list);
-      list.push(new GrepContentMatch({ lineNumber, content: content.slice(0, 2000), contentTruncated: content.length > 2000, ...(isContext ? { isContextLine: true } : {}) }));
-    };
-    for (const line of outcome.stdout.split("\n")) {
-      if (line.length === 0) continue;
-      let event: { type?: string; data?: { path?: { text?: string }; line_number?: number; lines?: { text?: string } } };
-      try { event = JSON.parse(line); } catch { continue; }
-      const isMatch = event.type === "match";
-      const isContext = event.type === "context";
-      if (!isMatch && !isContext) continue;
-      const file = event.data?.path?.text ?? "";
-      const lineNumber = event.data?.line_number ?? 0;
-      const content = (event.data?.lines?.text ?? "").replace(/\n$/, "");
-      if (isContext) {
-        if (keepTrailingContext) pushLine(file, lineNumber, content, true);
-        else if (contextBeforeCount > 0) {
-          pendingContext.push({ file, lineNumber, content });
-          if (pendingContext.length > contextBeforeCount) pendingContext.shift();
-        }
-        continue;
-      }
-      if (matchIndex++ < offset) { keepTrailingContext = false; pendingContext = []; continue; }
-      totalSeen += 1;
-      if (retained >= headLimit) { keepTrailingContext = false; pendingContext = []; continue; }
-      for (const buffered of pendingContext) if (buffered.file === file) pushLine(buffered.file, buffered.lineNumber, buffered.content, true);
-      pendingContext = [];
-      pushLine(file, lineNumber, content, false);
-      retained += 1;
-      keepTrailingContext = true;
+    for (const line of projection.lines) {
+      const list = byFile.get(line.file) ?? [];
+      if (list.length === 0) byFile.set(line.file, list);
+      list.push(new GrepContentMatch({ lineNumber: line.lineNumber, content: line.content.slice(0, 2000), contentTruncated: line.content.length > 2000, ...(line.isContext ? { isContextLine: true } : {}) }));
     }
+    const totalSeen = projection.totalSeen;
+    const retained = projection.retained;
     const outputMode = args.outputMode ?? "content";
     // Truncated only when there were genuinely more matches than we retained.
     const clientTruncated = totalSeen > retained;

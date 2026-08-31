@@ -116,8 +116,21 @@ export class AgentToAgentMessaging {
     // Durable delivery (Phase B / AUDIT-5): the message is persisted as a
     // pending-wake marker before anything is delivered, and only cleared after
     // the recipient's wake turn actually ran. A host crash between enqueue and
-    // delivery re-arms it at the next start (at-least-once).
-    this.persistInboundMarker(toAgentId, inbound);
+    // delivery re-arms it at the next start (at-least-once). A persistence
+    // failure must not masquerade as a durable send (external review r3 #1):
+    // the sender's ack says so, and telemetry records it.
+    const persisted = this.persistInboundMarker(toAgentId, inbound);
+    if (!persisted) {
+      this.tm.telemetry.reportPendingWake({
+        conversationId: toAgentId,
+        outcome: "persist_failed",
+        kind: "agent-message",
+        workId: inbound.id ?? "",
+      });
+    }
+    const durabilityNote = persisted
+      ? ""
+      : " (warning: the message could not be saved for restart-safe delivery — if the app restarts before the recipient wakes, this message is lost)";
     const queued = this.pendingAgentInbound.get(toAgentId) ?? [];
     if (priority) {
       this.pendingAgentInbound.set(toAgentId, [inbound, ...queued]);
@@ -128,13 +141,13 @@ export class AgentToAgentMessaging {
     }
     void this.reviveForAgentInbound(toAgentId);
     return priority
-      ? `Sent to ${target.name} as a priority message — it will interrupt their current non-user work and wake them now. This is asynchronous — if they reply, it'll arrive later as a new message that wakes you; don't wait on it now.`
-      : `Sent to ${target.name}. This is asynchronous — if they reply, it'll arrive later as a new message that wakes you; don't wait on it now.`;
+      ? `Sent to ${target.name} as a priority message — it will interrupt their current non-user work and wake them now. This is asynchronous — if they reply, it'll arrive later as a new message that wakes you; don't wait on it now.${durabilityNote}`
+      : `Sent to ${target.name}. This is asynchronous — if they reply, it'll arrive later as a new message that wakes you; don't wait on it now.${durabilityNote}`;
   }
 
-  persistInboundMarker(toAgentId: string, inbound: AgentInboundMessage): void {
-    if (inbound.id == null) return;
-    this.tm.pendingWakeStore?.markPending({
+  persistInboundMarker(toAgentId: string, inbound: AgentInboundMessage): boolean {
+    if (inbound.id == null) return false;
+    return this.tm.pendingWakeStore?.markPending({
       agentId: toAgentId,
       kind: "agent-message",
       workId: inbound.id,
@@ -147,7 +160,7 @@ export class AgentToAgentMessaging {
         ...(inbound.priority === true ? { priority: true } : {}),
         ...(inbound.isDisplayed === true ? { displayed: true } : {}),
       },
-    });
+    }) ?? false;
   }
 
   clearInboundMarker(toAgentId: string, inbound: AgentInboundMessage): void {

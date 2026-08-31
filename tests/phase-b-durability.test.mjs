@@ -107,14 +107,53 @@ test("the designated manager cannot be deleted and workers get the managed-team 
 
 // ---------- quality fixes ----------
 
-test("grep groups context with its own match; delete previews without reading whole files; ls flags truncation", () => {
+test("delete previews without reading whole files; ls flags truncation; SIGKILL escalation; shell id seed", () => {
   const server = read("source/box-exec-daemon/server.ts");
-  assert.match(server, /let pendingContext: \{ file: string; lineNumber: number; content: string \}\[\] = \[\];/);
-  assert.match(server, /if \(matchIndex\+\+ < offset\) \{ keepTrailingContext = false; pendingContext = \[\]; continue; \}/);
   assert.match(server, /if \(info\.isFile\(\)\) \{[\s\S]{0,400}const handle = await open\(target, "r"\);/);
   assert.match(server, /if \(budget <= 0\) \{ node\.childrenWereProcessed = false; break; \}/);
   assert.match(server, /process\.kill\(-child\.pid, "SIGKILL"\)/);
   assert.match(server, /#nextShellId = Math\.floor\(Date\.now\(\) \/ 1000\) % 1_000_000_000;/);
+  assert.match(server, /projectGrepEvents\(outcome\.stdout, \{/);
+});
+
+// Behavioral grep-boundary tests against real rg --json event sequences
+// (external review r3 #4 — the earlier string guard missed the head-limit case).
+const rgEvent = (type, file, line, text) =>
+  JSON.stringify({ type, data: { path: { text: file }, line_number: line, lines: { text: `${text}\n` } } });
+
+test("grep: an over-limit match's -B lines never ride as the previous match's trailing context", async () => {
+  const { projectGrepEvents } = await loadModule("source/box-exec-daemon/grep-projection.ts");
+  const stdout = [
+    rgEvent("match", "f.txt", 10, "M1"),
+    rgEvent("context", "f.txt", 11, "M1-after"),
+    rgEvent("context", "f.txt", 19, "M2-before"), // far from M1: belongs to M2 only
+    rgEvent("match", "f.txt", 20, "M2"),
+  ].join("\n");
+  const projected = projectGrepEvents(stdout, { offset: 0, headLimit: 1, contextBefore: 1, contextAfter: 1 });
+  assert.deepEqual(projected.lines.map((line) => line.lineNumber), [10, 11], "line 19 (M2's -B) is dropped with M2");
+  assert.equal(projected.totalSeen, 2);
+  assert.equal(projected.retained, 1);
+});
+
+test("grep: overlapping context stays with the retained match; offset drops the skipped match's context", async () => {
+  const { projectGrepEvents } = await loadModule("source/box-exec-daemon/grep-projection.ts");
+  // Overlap: line 11 is within M1's after-window AND M2's before-window — it
+  // legitimately belongs to retained M1 and must appear exactly once.
+  const overlap = projectGrepEvents([
+    rgEvent("match", "f.txt", 10, "M1"),
+    rgEvent("context", "f.txt", 11, "shared"),
+    rgEvent("match", "f.txt", 12, "M2"),
+  ].join("\n"), { offset: 0, headLimit: 1, contextBefore: 1, contextAfter: 1 });
+  assert.deepEqual(overlap.lines.map((line) => line.lineNumber), [10, 11]);
+  // Offset: the skipped match's -B is dropped; the retained match keeps its own -B.
+  const offset = projectGrepEvents([
+    rgEvent("context", "f.txt", 9, "M1-before"),
+    rgEvent("match", "f.txt", 10, "M1"),
+    rgEvent("context", "f.txt", 11, "M1-after"),
+    rgEvent("context", "g.txt", 29, "M2-before"),
+    rgEvent("match", "g.txt", 30, "M2"),
+  ].join("\n"), { offset: 1, headLimit: 10, contextBefore: 1, contextAfter: 1 });
+  assert.deepEqual(offset.lines.map((line) => `${line.file}:${line.lineNumber}`), ["g.txt:29", "g.txt:30"]);
 });
 
 test("MCP client answers server-initiated requests instead of hanging them", () => {

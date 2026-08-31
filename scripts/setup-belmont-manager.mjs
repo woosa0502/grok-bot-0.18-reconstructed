@@ -63,15 +63,20 @@ if (!existsSync(gatewayPath)) {
 }
 const gateway = JSON.parse(readFileSync(gatewayPath, "utf8"));
 
-// 1. Manager bot (create only if a bot with the manager name does not exist).
+// 1. Manager bot: create when absent; when present, RECONCILE the persona so a
+//    pre-existing bot that merely shares the name still becomes a real manager
+//    (external review r3 #5 — adopt-without-update was not a recovery).
 const agents = await api(gateway, "listAgents");
 let manager = (Array.isArray(agents) ? agents : []).find((agent) => agent?.name === managerName && agent?.isGroup !== true);
 if (manager == null) {
   const created = await api(gateway, "createAgent", { name: managerName, description: MANAGER_PERSONA });
   manager = created.agent ?? created;
   console.log(`created manager bot "${managerName}" (${manager.id})`);
+} else if (manager.description === MANAGER_PERSONA) {
+  console.log(`manager bot "${managerName}" already up to date (${manager.id})`);
 } else {
-  console.log(`manager bot "${managerName}" already exists (${manager.id})`);
+  await api(gateway, "updateAgent", { id: manager.id, profile: { name: managerName, description: MANAGER_PERSONA } });
+  console.log(`manager bot "${managerName}" persona reconciled (${manager.id})`);
 }
 
 // 2. Job-ledger hook in the box workspace.
@@ -93,16 +98,24 @@ for (const step of ["preToolUse", "postToolUse"]) {
 writeFileSync(hooksPath, `${JSON.stringify(hooksConfig, null, 2)}\n`);
 console.log("job-ledger hook installed (box-workspace/.cursor)");
 
-// 3. Sweeper routine on the manager (create only when absent).
+// 3. Sweeper routine on the manager: create when absent, RECONCILE when its
+//    prompt/schedule/enabled state drifted (external review r3 #5).
+const sweeperSpec = { name: "Job sweeper", prompt: SWEEPER_PROMPT, trigger: { type: "cron", schedule: "@every 15m" }, isEnabled: true };
 const automations = await api(gateway, "getAgentAutomations", { id: manager.id });
-if (!(Array.isArray(automations) ? automations : []).some((automation) => automation?.name === "Job sweeper")) {
-  await api(gateway, "createAgentAutomation", {
-    id: manager.id,
-    spec: { name: "Job sweeper", prompt: SWEEPER_PROMPT, trigger: { type: "cron", schedule: "@every 15m" }, isEnabled: true },
-  });
+const sweeper = (Array.isArray(automations) ? automations : []).find((automation) => automation?.name === "Job sweeper");
+if (sweeper == null) {
+  await api(gateway, "createAgentAutomation", { id: manager.id, spec: sweeperSpec });
   console.log("job-sweeper routine created (@every 15m)");
+} else if (
+  sweeper.prompt === sweeperSpec.prompt &&
+  sweeper.isEnabled === true &&
+  sweeper.trigger?.type === "cron" &&
+  sweeper.trigger?.schedule === sweeperSpec.trigger.schedule
+) {
+  console.log("job-sweeper routine already up to date");
 } else {
-  console.log("job-sweeper routine already present");
+  await api(gateway, "updateAgentAutomation", { id: manager.id, automationId: sweeper.id, spec: sweeperSpec });
+  console.log("job-sweeper routine reconciled (prompt/schedule/enabled)");
 }
 
 // 4. Durable designation: wsl:start reads this and sets SAND_DEFAULT_AGENT_ID.

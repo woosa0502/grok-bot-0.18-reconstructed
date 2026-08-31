@@ -1,6 +1,6 @@
 # Belmont — 풀 테스트 & 감사 종합 문서
 
-_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 2차 갱신: 2026-08-30 저녁 (auto-review 로컬 분류기 배선 + 계정 scope 초기화 결함 수정 — §1.6) · 3차 갱신: 2026-08-31 (남은 문제 전부 처리 — TS 회귀·원장 이관·UNCLEAR 29건·첨부 스테이징 AUDIT-W7·훅 배선 AUDIT-W8, §1.6 후속 3) · 4차 갱신: 2026-08-31 (0.18.0 설치파일 기준 parity 회차 — 기억 회수·roster·루틴·플러그인·PDF·셸 상태·로그인 상태 등 15건 구현+라이브, §1.6 후속 4 · `belmont-018-parity-inventory-2026-08-31.md`) · 5차 갱신: 2026-08-31 (후속 8건+PARTIAL 4건 전부 해결 — MCP/WebFetch 훅·MCP 표면 auto-review(AUDIT-W11)·OS 알림 fallback·660/673 만료 알림·241·386·첨부 정리·pagination·그룹 채팅 라이브·컨텍스트 창 실측·AUDIT-4 settle 격리, §1.6 후속 5) · 6차 갱신: 2026-08-31 (외부 엄격 코드리뷰 검토 — 4건 재검증 후 AUDIT-W13~W17 등재, §1.6 후속 5.2) · 7차 갱신: 2026-08-31 (후속 6 — **AUDIT-W12~W17 전부 수정+라이브** + 품질 5종(캐시 친화성·cron 재시도·봇별 셸 상태·웹 충실도·PDF 수명주기), §1.6 후속 6) · 8차 갱신: 2026-08-31 (후속 7 — **벨몬트 관리자 B-1**: 기존 봇을 Belmont로 정의 + SendToAgent 훅 원장 + 스위퍼 루틴 + 기본 대화 + 봇별 reasoning(AUDIT-W1) + W18 수정 + **AUDIT-W19 발견·수정**; 왕복·재시작 생존 라이브, §1.6 후속 7) · 9차 갱신: 2026-08-31 (후속 8 — **Phase B 본공사**: durable 수신함(AUDIT-5 근본, 크래시 라이브)·완료 내구(P1-04)·자식 재파견·B-2 부분(삭제 보호+Managed team 절 라이브) + 품질 세부(Grep 문맥·Delete·LS·SIGKILL·셸 id·MCP 서버요청·Pi 모델 카탈로그) + 테스트 부채 F1~F4, §1.6 후속 8) · 10차 갱신: 2026-08-31 (후속 9 — 2차 외부 검토 7건 전부 확인·수정: settle 순서 rev2·B-1 부트스트랩 스크립트·원장 실패 판정·모델 상속·대화 단위 캐시 키·스키마 서명·pdfjs 데드라인, §1.6 후속 9) · 단일 통합본 (이전 산재 문서/임시 원장 대체; 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`, `node scripts/verdict-ledger.mjs summary`)_
+_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 2차 갱신: 2026-08-30 저녁 (auto-review 로컬 분류기 배선 + 계정 scope 초기화 결함 수정 — §1.6) · 3차 갱신: 2026-08-31 (남은 문제 전부 처리 — TS 회귀·원장 이관·UNCLEAR 29건·첨부 스테이징 AUDIT-W7·훅 배선 AUDIT-W8, §1.6 후속 3) · 4차 갱신: 2026-08-31 (0.18.0 설치파일 기준 parity 회차 — 기억 회수·roster·루틴·플러그인·PDF·셸 상태·로그인 상태 등 15건 구현+라이브, §1.6 후속 4 · `belmont-018-parity-inventory-2026-08-31.md`) · 5차 갱신: 2026-08-31 (후속 8건+PARTIAL 4건 전부 해결 — MCP/WebFetch 훅·MCP 표면 auto-review(AUDIT-W11)·OS 알림 fallback·660/673 만료 알림·241·386·첨부 정리·pagination·그룹 채팅 라이브·컨텍스트 창 실측·AUDIT-4 settle 격리, §1.6 후속 5) · 6차 갱신: 2026-08-31 (외부 엄격 코드리뷰 검토 — 4건 재검증 후 AUDIT-W13~W17 등재, §1.6 후속 5.2) · 7차 갱신: 2026-08-31 (후속 6 — **AUDIT-W12~W17 전부 수정+라이브** + 품질 5종(캐시 친화성·cron 재시도·봇별 셸 상태·웹 충실도·PDF 수명주기), §1.6 후속 6) · 8차 갱신: 2026-08-31 (후속 7 — **벨몬트 관리자 B-1**: 기존 봇을 Belmont로 정의 + SendToAgent 훅 원장 + 스위퍼 루틴 + 기본 대화 + 봇별 reasoning(AUDIT-W1) + W18 수정 + **AUDIT-W19 발견·수정**; 왕복·재시작 생존 라이브, §1.6 후속 7) · 9차 갱신: 2026-08-31 (후속 8 — **Phase B 본공사**: durable 수신함(AUDIT-5 근본, 크래시 라이브)·완료 내구(P1-04)·자식 재파견·B-2 부분(삭제 보호+Managed team 절 라이브) + 품질 세부(Grep 문맥·Delete·LS·SIGKILL·셸 id·MCP 서버요청·Pi 모델 카탈로그) + 테스트 부채 F1~F4, §1.6 후속 8) · 10차 갱신: 2026-08-31 (후속 9 — 2차 외부 검토 7건 전부 확인·수정: settle 순서 rev2·B-1 부트스트랩 스크립트·원장 실패 판정·모델 상속·대화 단위 캐시 키·스키마 서명·pdfjs 데드라인, §1.6 후속 9) · 11차 갱신: 2026-08-31 (후속 10 — 3차 외부 검토 6건: 영속 실패 표면화·at-least-once 정밀 명시·kind-인지 prune(14일)·grep 줄번호 귀속+동작 테스트·부트스트랩 완전 멱등·문서 정합, §1.6 후속 10) · 단일 통합본 (이전 산재 문서/임시 원장 대체; 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`, `node scripts/verdict-ledger.mjs summary`)_
 
 이 문서는 두 검증 활동을 하나로 합친다: (1) **행위 단위 라이브 sweep** — 에이전트에 각 테스트 케이스를 주입해 실제 도구 실행 증거로 판정, (2) **소스 코드 감사** — production 배선/통합 여부를 코드로 확인. sweep은 '도구가 개별로 작동하는가'를 보고, 감사는 '실제로 production에 연결됐는가'를 본다. 후자가 전자의 여러 PASS를 false-green으로 뒤집었다.
 
@@ -15,10 +15,10 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | — UNAVAIL (이 버전엔 기능 없음 — 사유별 EXCLUDED_HIDDEN 분류는 parity 목록 문서 §4) | 631 |
 | — ENV / UI_ONLY / EXPECTED | 87 / 13 / 1 |
 | — PARTIAL / FIXED / UNCLEAR | **0** / 2 / **0** (PARTIAL 4건은 후속 5에서 전부 PASS 재판정: 241·386·660·673) |
-| 감사 findings | 42개 id, 최신 판정 기준 FIXED 34 · RESOLVED 1 · DOCUMENTED 2 · CONFIRMED 1 · PARTIAL 3 · POSITIVE 1. **AUDIT-5 근본 수정(durable 수신함)·P1-04·자식 재파견·B-2 부분까지 후속 8에서 완료.** 잔여: AUDIT-9(이미지 — 사용자 제외 지시) · AUDIT-B2(PARTIAL — 워커 UI 잠금은 고정 렌더러 한계) · AUDIT-W6/F5(PARTIAL, 경미) |
+| 감사 findings | 43개 id, 최신 판정 기준 FIXED 35 · RESOLVED 1 · DOCUMENTED 2 · CONFIRMED 1 · PARTIAL 3 · POSITIVE 1. **AUDIT-5 근본 수정(durable 수신함)·P1-04·자식 재파견·B-2 부분까지 후속 8에서 완료.** 잔여: AUDIT-9(이미지 — 사용자 제외 지시) · AUDIT-B2(PARTIAL — 워커 UI 잠금은 고정 렌더러 한계) · AUDIT-W6/F5(PARTIAL, 경미) |
 | 확정 실결함 | 19 — 전부 수정+재빌드+라이브검증: update_state, Pi maxTokens, 첨부전송 크래시(커밋) · AUDIT-W3~W8(§1.6) · **4차 갱신(§1.6 후속 4, 0.18 parity 회차)**: AUDIT-1 기억 회수 · AUDIT-3 roster · AUDIT-7 예약 루틴 · AUDIT-8 플러그인 · AUDIT-10 로그인 상태 · AUDIT-11 PDF · AUDIT-W2 셸 상태 · AUDIT-EPOCH · **AUDIT-W9 로컬 준비 상태 게이트** · **AUDIT-W10 데몬 PDF 거부** — 4차분 미커밋 |
 | 신규 기능 | **컴퓨터 유즈**(§1.5) · **로컬 auto-review 분류기**(§1.6) · **hooks.json Shell 경로**(§1.6 후속 3) · **4차**: 장기 기억 자동 회수 · ListAgents/ListGroups · 로컬 cron 루틴 · 로컬 플러그인 저장소/카탈로그 · PDF 읽기 · Shell cwd/env 유지 · 앱 내 Pi OAuth 로그인/상태 · 클라우드 에이전트/이미지 생성 정직 숨김 — 전부 라이브검증(`docs/testing/belmont-018-parity-inventory-2026-08-31.md`) |
-| 게이트 | `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 191/191) — 10차 갱신(후속 9, 2차 외부 검토 7건 수정) |
+| 게이트 | `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 196/196) — 11차 갱신(후속 10, 3차 외부 검토 6건 수정) |
 
 **핵심 결론:** 다중 봇 *기반*은 있으나, Belmont의 핵심 연결부 — 기억 자동회수 · 봇 발견 · 위임 내구성 · child 상태 격리 · 결과 검토 — 가 아직 production에 끊겨 있다. sweep의 PASS 수치는 false-green으로 부풀려져 있었다. (2026-08-30 갱신: 컴퓨터 유즈 신규 구현+검증 §1.5, 확정 실결함 3건 커밋·병합 완료. 2차 갱신: 마지막 결함 클러스터(auto-review)가 해소되어 §0.5 ①은 0건 — §1.6. 3차 갱신: 남은 문제 목록을 전부 처리해 UNCLEAR 0건·typecheck 0오류, 그 과정에서 첨부 스테이징(AUDIT-W7)·훅 배선(AUDIT-W8) 결함 2건 추가 발견·수정 — §1.6 후속 3.)
 
@@ -426,6 +426,19 @@ hooks.json에 preToolUse/beforeShellExecution/postToolUse를 넣고 에이전트
 
 게이트: `npm run check` exit 0 — 테스트 **191/191**(신규 tests/external-review-fixes.test.mjs 6). 검토의 방법론 교훈 수용: 가드가 "코드 문자열"이 아니라 **순서 사실**(settle<prepare)을 고정하도록 작성.
 
+### 후속 10: 3차 외부 검토 6건 — 전부 확인·수정 (2026-08-31, 11차 갱신)
+
+| # | 지적 | 판정·수정 |
+|---|---|---|
+| 1 | markPending 실패 무시(디스크 오류 시 조용히 휘발성 복귀) | **사실** — 실패 시 발신 ack에 경고 + telemetry persist_failed |
+| 2 | "전사 중복 방지"는 보장 아님(전사 추가↔displayed 기록 사이 크래시 창) + 정산 전 크래시 시 워커 재실행 | **사실** — at-least-once 의미론과 두 크래시 창을 원장·§2에 정확 명시(원자화는 단일 트랜잭션 저장 필요, 유보) |
+| 3 | 48h prune이 미전달 메시지·저장 결과까지 삭제(주말 꺼두면 유실) | **사실** — kind-인지 보존: payload 보유 마커(메시지·결과)는 14일, 감시형 wake만 48h. 동작 테스트 |
+| 4 | grep 경계 잔여(헤드리밋 직전 다음 매치의 -B가 이전 매치 trailing으로 오염) + 문자열 테스트의 한계 | **사실** — 순수 함수(grep-projection.ts)로 추출, **줄번호 기반 귀속**으로 재작성, 검토자 사례 그대로 rg --json 이벤트 동작 테스트 3건 |
+| 5 | 부트스트랩이 기존 봇 persona·드리프트된 스위퍼를 안 고침 | **사실** — updateAgent/updateAgentAutomation으로 재조정(진짜 멱등 복구) |
+| 6 | 문서 모순(§2 AUDIT-5 CONFIRMED 잔존, §7 우선순위 낡음) | **사실** — §2 행 정정(+의미론), §7 전항목 종결 분류 |
+
+게이트: `npm run check` exit 0 — 테스트 **196/196**. kill-9 재전달 라이브는 후속 8의 기록이며 이번 회차에서 재실행하지 않음(검토자의 documented_prior_claim 분류 수용).
+
 ## 2. 감사 findings — P0 (심각)
 
 | ID | 제목 | 판정 | 증거 |
@@ -436,7 +449,7 @@ hooks.json에 preToolUse/beforeShellExecution/postToolUse를 넣고 에이전트
 | AUDIT-2 | update_state 결과 오보고 | FIXED | agent-state.ts {message} vs tool {detail/reason}; any boundary hid it. FIXED this session + built. |
 | AUDIT-3 | 봇 목록이 빈 배열 + ListAgents/ListGroups 도구 없음 | **FIXED** (4차 갱신: 실제 roster provider + 그룹 필드 + 두 도구 신설) | host-runner-composition.ts:1436-1437 agentDirectory/agentGroups: ()=>[] (빈), :2826 이게 실제 프롬프트 생성; agent-messaging.ts:54 "no other agents yet" 출력. 올바른 roster provider(:1534)는 아무도 안  |
 | AUDIT-4 | 서브에이전트 settle이 부모 상태 사용 | **FIXED** (5차: settle host 턴-대화 매개변수화 — 자식은 자기 러너/전사로 settle, 부모 root slot·프로필 불침범; 자식 재시작 내구는 Phase B) | turn-run-shell.ts:637 settle이 createSettleHost/getConversationId 사용; host-runner-composition.ts:2409-2459가 부모 session/builtRunner에 바인딩(transcriptId=session.id, 부모 agentStore/blob/r |
-| AUDIT-5 | SendToAgent 휘발성 + marker만 영속 | CONFIRMED | agent-to-agent-messaging.ts:48 in-memory Map, 영속 wake-kind에 agent-message 없음; AgentInboundMessage(:14-22)에 task/result 필드 없음; pending-wake-rearm.ts:8-17 marker에 result 없음; :257 크래시 |
+| AUDIT-5 | SendToAgent 휘발성 + marker만 영속 | **FIXED** (후속 8·9: 'agent-message' 영속 wake-kind — 송신 시 전문 영속·전달 후 정산·재시작 재전달, 크래시 라이브 검증. 의미론 at-least-once: 좁은 중복 창 존재 — 전사 추가↔displayed 기록 사이, wake 완료↔정산 사이 크래시 시 재전달/워커 재실행 가능. 영속 실패는 ack에 경고·telemetry 기록, payload 마커는 14일 보존) | (원 근거) agent-to-agent-messaging.ts:48 in-memory Map, 영속 wake-kind에 agent-message 없음 |
 | AUDIT-6 | Pi maxTokens:0 -> 선제압축 무력화 | FIXED | pi-codex-runtime.ts:177 hardcoded 0; background-summarization.ts:27 maxTokens<=0 => no threshold. FIXED (resolved.model.contextWindow=272000) + built. |
 | AUDIT-6B | maxTokens fix 불충분 — catalog 272000이 실제 Codex OAuth 한도 과대평가 | **해소** (5차 실측: 90k/150k/220k/260k 전부 수락 — 과대평가 주장 기각, 272k 유지) | maxTokens fix는 배선까지 맞으나(usedTokens=usage.totalTokens 실측), aa1a1169가 transcript ~48k+시스템/도구 ~35k ≈ 55-83k에서 초과, 압축 미발화. 카탈로그 272000이 실제 OAuth 한도(~60-80k 관측)를 3-4배 과대평가 → 압축 임계(245k) |
 | AUDIT-7 | 예약 루틴이 로컬 WSL에서 실행 안 됨 | **FIXED** (4차 갱신: 로컬 cron 스케줄러 + AUDIT-W9 준비 상태 게이트) | cron은 Cursor cloud 경로(sand-automation-cloud-sync.ts:274 createSandAutomation); 발화는 backend poll(sand-automation-fire-consumer.ts:84); shouldScheduleLocally(:370)는 cron에 false; 로컬 트 |
@@ -531,16 +544,18 @@ hooks.json에 preToolUse/beforeShellExecution/postToolUse를 넣고 에이전트
 | EXPECTED | 1 | 설계상 정상 동작 |
 | FIXED | 2 | 실결함이었고 수정됨 |
 
-## 7. 수정 우선순위 (감사 제안 + 현 상태)
+## 7. 수정 우선순위 (감사 제안 + 현 상태 — **2026-08-31 후속 9 기준 전부 종결/유보 분류**)
 
-1. **미커밋 maxTokens·update_state 수정 검증 및 커밋** — 수정+빌드 완료, 커밋만 남음
-2. **production memory store·자동 추출·새 대화 recall 실제 연결** (AUDIT-1) — system prompt 조립에 실제 store 전달 (host-runner-composition.ts:1414 null → 실제 store)
-3. **실제 agent directory·manager routing 연결** (AUDIT-3) — :1436 빈배열 대신 :1534의 실제 roster provider 배선 + ListAgents/ListGroups 도구 추가 또는 프롬프트 수정
-4. **child settle/store/transcript 완전 분리** (AUDIT-4)
-5. **durable task ledger + worker delivery/result/retry 구현** (AUDIT-5)
-6. **Pi OAuth 경로·UI 상태·provider 진실원 통합** (AUDIT-10)
-7. **WSL 미지원 routine/plugin/image 기능 숨기거나 로컬 구현** (AUDIT-7/8/9)
-8. **false-green 테스트를 실제 production E2E로 교체** (AUDIT-F1/F3/F4, 메모리 E2E 추가)
+역사적 우선순위 목록(아래)은 전부 처리됐다. 현 상태: 1(커밋 완료) · 2=AUDIT-1 FIXED(후속 4) · 3=AUDIT-3 FIXED(후속 4) · 4=AUDIT-4 FIXED(후속 5→8→9 rev2, 자식 완전 재개만 재파견으로 대체) · 5=AUDIT-5 FIXED(후속 8·9, at-least-once — durable ledger의 goal/review 확장은 Phase B 유보) · 6=AUDIT-10 FIXED(후속 4·6) · 7=AUDIT-7/8 FIXED·9는 사용자 제외 지시 · 8=F1~F4 정리(후속 8). 잔여는 §0 요약의 유보/제외 목록이 유일한 진실원.
+
+1. ~~미커밋 maxTokens·update_state 수정 검증 및 커밋~~
+2. ~~production memory store·자동 추출·새 대화 recall 실제 연결 (AUDIT-1)~~
+3. ~~실제 agent directory·manager routing 연결 (AUDIT-3)~~
+4. ~~child settle/store/transcript 완전 분리 (AUDIT-4)~~
+5. ~~durable task ledger + worker delivery/result/retry 구현 (AUDIT-5)~~ — goal/review 원장 확장은 Phase B
+6. ~~Pi OAuth 경로·UI 상태·provider 진실원 통합 (AUDIT-10)~~
+7. ~~WSL 미지원 routine/plugin/image 기능 숨기거나 로컬 구현 (AUDIT-7/8/9)~~
+8. ~~false-green 테스트를 실제 production E2E로 교체 (AUDIT-F1/F3/F4)~~
 
 ## 8. 검증 방법론 & 한계
 

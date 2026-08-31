@@ -88,3 +88,43 @@ test("#2: the B-1 manager setup is reproducible (bootstrap script + durable desi
   const pkg = JSON.parse(read("package.json"));
   assert.equal(pkg.scripts["belmont:manager"], "node scripts/setup-belmont-manager.mjs");
 });
+
+// ---------- round 3 findings ----------
+
+test("r3#1: a failed durable persist is surfaced in the ack and telemetry, not silently ignored", () => {
+  const messaging = read("source/host/extensions/transcript/agent-to-agent-messaging.ts");
+  assert.match(messaging, /const persisted = this\.persistInboundMarker\(toAgentId, inbound\);/);
+  assert.match(messaging, /outcome: "persist_failed",\s*kind: "agent-message"/);
+  assert.match(messaging, /could not be saved for restart-safe delivery/);
+  assert.match(messaging, /\}\) \?\? false;/);
+});
+
+test("r3#3: payload-bearing markers survive the 48h prune for 14 days", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { SandPendingWakeStore, PENDING_WAKE_PAYLOAD_MAX_AGE_MS } = await loadModule("source/host/extensions/transcript/sand-pending-wake-store.ts");
+  const root = await mkdtemp(path.join(tmpdir(), "belmont-prune-"));
+  try {
+    const now = Date.now();
+    const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1_000;
+    const fifteenDaysAgo = now - 15 * 24 * 60 * 60 * 1_000;
+    const store = new SandPendingWakeStore(root);
+    store.markPending({ agentId: "a", kind: "agent-message", workId: "m1", markedAtMs: threeDaysAgo, agentMessage: { from: { id: "x", name: "X" }, text: "hello" } });
+    store.markPending({ agentId: "a", kind: "subagent", workId: "c1", markedAtMs: threeDaysAgo, title: "t", completion: { status: "success", result: "r" } });
+    store.markPending({ agentId: "a", kind: "shell", workId: "s1", markedAtMs: threeDaysAgo, title: "watch" });
+    store.markPending({ agentId: "a", kind: "agent-message", workId: "m2", markedAtMs: fifteenDaysAgo, agentMessage: { from: { id: "x", name: "X" }, text: "old" } });
+    const pruned = store.pruneStale(48 * 60 * 60 * 1_000, now);
+    assert.deepEqual(pruned.map((marker) => marker.workId).sort(), ["m2", "s1"], "plain watch wake prunes at 48h; payload markers only past 14d");
+    assert.deepEqual(store.listPending().map((marker) => marker.workId).sort(), ["c1", "m1"]);
+    assert.ok(PENDING_WAKE_PAYLOAD_MAX_AGE_MS > 13 * 24 * 60 * 60 * 1_000);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("r3#5: the manager bootstrap reconciles a drifted persona and sweeper, not just creates-when-absent", () => {
+  const bootstrap = read("scripts/setup-belmont-manager.mjs");
+  assert.match(bootstrap, /api\(gateway, "updateAgent", \{ id: manager\.id, profile: \{ name: managerName, description: MANAGER_PERSONA \} \}\)/);
+  assert.match(bootstrap, /api\(gateway, "updateAgentAutomation", \{ id: manager\.id, automationId: sweeper\.id, spec: sweeperSpec \}\)/);
+  assert.match(bootstrap, /sweeper\.prompt === sweeperSpec\.prompt/);
+});
