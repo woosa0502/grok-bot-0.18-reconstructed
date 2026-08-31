@@ -128,3 +128,23 @@ test("r3#5: the manager bootstrap reconciles a drifted persona and sweeper, not 
   assert.match(bootstrap, /api\(gateway, "updateAgentAutomation", \{ id: manager\.id, automationId: sweeper\.id, spec: sweeperSpec \}\)/);
   assert.match(bootstrap, /sweeper\.prompt === sweeperSpec\.prompt/);
 });
+
+// ---------- round 4 findings ----------
+
+test("r4#1: payload-bearing markers are never pre-cleared during rearm (no loss window)", () => {
+  const rearm = read("source/host/extensions/transcript/pending-wake-rearm.ts");
+  assert.match(rearm, /const carriesPayload = marker\.kind === "agent-message" \|\| marker\.completion != null;/);
+  assert.match(rearm, /if \(!carriesPayload && !\(marker\.kind === "shell" && marker\.interruptedByRecreate === true\)\)\s*store\.clearOne/);
+  // The redeliver path no longer needs (and must not rely on) a late re-persist,
+  // and the lost-child path must not strip a stored completion via upsert.
+  assert.doesNotMatch(rearm, /Re-persist first \(rearmPendingWakes cleared/);
+  assert.match(rearm, /if \(marker\.completion == null\)\s*this\.persistPendingWake\(\{/);
+});
+
+test("r4#2: multiline (-U) matches keep their after-context", async () => {
+  const { projectGrepEvents } = await loadModule("source/box-exec-daemon/grep-projection.ts");
+  const multilineMatch = JSON.stringify({ type: "match", data: { path: { text: "f.txt" }, line_number: 2, lines: { text: "l2\nl3\nl4\nl5\n" } } });
+  const afterContext = JSON.stringify({ type: "context", data: { path: { text: "f.txt" }, line_number: 6, lines: { text: "l6\n" } } });
+  const projected = projectGrepEvents([multilineMatch, afterContext].join("\n"), { offset: 0, headLimit: 10, contextBefore: 1, contextAfter: 1 });
+  assert.deepEqual(projected.lines.map((line) => [line.lineNumber, line.isContext]), [[2, false], [6, true]], "line 6 is the -A of the match ending at line 5");
+});

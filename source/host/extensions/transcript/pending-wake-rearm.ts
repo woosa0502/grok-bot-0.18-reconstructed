@@ -135,7 +135,13 @@ export class PendingWakeRearm {
         });
         continue;
       }
-      if (!(marker.kind === "shell" && marker.interruptedByRecreate === true))
+      // Payload-bearing markers (an undelivered agent message, a stored
+      // completion result) are NOT pre-cleared: the old clear→async-rearm→
+      // re-persist sequence left a genuine LOSS window if the process died
+      // during session recovery (external review r4). Their delivery paths
+      // settle the marker only after the wake turn actually ran.
+      const carriesPayload = marker.kind === "agent-message" || marker.completion != null;
+      if (!carriesPayload && !(marker.kind === "shell" && marker.interruptedByRecreate === true))
         store.clearOne(marker.agentId, marker.kind, marker.workId);
       void this.rearmPendingWake(marker, now);
     }
@@ -265,19 +271,23 @@ export class PendingWakeRearm {
     marker: PendingWakeMarker,
     report: (outcome: string, reason?: string) => void,
   ): void {
-    this.persistPendingWake({
-      parentAgentId: marker.agentId,
-      kind: "subagent",
-      workId: marker.workId,
-      title: marker.title ?? "Background task",
-      ...(marker.subagentType == null
-        ? {}
-        : { subagentType: marker.subagentType }),
-      ...(marker.taskPrompt == null ? {} : { taskPrompt: marker.taskPrompt }),
-      ...(marker.quietOrigin == null
-        ? {}
-        : { quietOrigin: marker.quietOrigin }),
-    });
+    // A completion-carrying marker was NOT pre-cleared (r4) and must not be
+    // overwritten here — this event shape has no completion field, so an upsert
+    // would strip the stored result from disk mid-flight.
+    if (marker.completion == null)
+      this.persistPendingWake({
+        parentAgentId: marker.agentId,
+        kind: "subagent",
+        workId: marker.workId,
+        title: marker.title ?? "Background task",
+        ...(marker.subagentType == null
+          ? {}
+          : { subagentType: marker.subagentType }),
+        ...(marker.taskPrompt == null ? {} : { taskPrompt: marker.taskPrompt }),
+        ...(marker.quietOrigin == null
+          ? {}
+          : { quietOrigin: marker.quietOrigin }),
+      });
     // Phase B: a completion that arrived before the restart survives in the
     // marker — deliver the REAL result instead of an "unknown state" apology.
     if (marker.completion?.result != null) {
@@ -326,10 +336,9 @@ export class PendingWakeRearm {
       report("rearm_skipped", "missing_payload");
       return;
     }
-    // Re-persist first (rearmPendingWakes cleared the marker before dispatch),
-    // then hand the message back to the normal inbound queue: the regular
-    // delivery path settles the marker only after the wake turn ran (AUDIT-5).
-    this.tm.pendingWakeStore?.markPending(marker);
+    // The marker was intentionally NOT pre-cleared (r4: pre-clear + async
+    // recovery was a loss window) — it stays on disk until the regular
+    // delivery path settles it after the wake turn ran (AUDIT-5).
     const messaging = (this.tm.backgroundWakes as {
       agentToAgent: {
         pendingAgentInbound: Map<string, unknown[]>;

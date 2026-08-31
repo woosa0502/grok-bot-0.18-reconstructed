@@ -35,7 +35,10 @@ export function projectGrepEvents(
   let totalSeen = 0;
   let retained = 0;
   let matchIndex = 0;
-  let lastRetained: { file: string; lineNumber: number } | null = null;
+  // endLineNumber accounts for multiline (-U) matches: a match spanning lines
+  // 2–5 reports line_number=2, but its -A window starts after line 5 — measuring
+  // from the START line dropped multiline after-context (external review r4).
+  let lastRetained: { file: string; endLineNumber: number } | null = null;
   let pendingContext: GrepProjectedLine[] = [];
   for (const raw of stdout.split("\n")) {
     if (raw.length === 0) continue;
@@ -51,8 +54,8 @@ export function projectGrepEvents(
       const withinTrailingWindow =
         lastRetained != null &&
         lastRetained.file === file &&
-        lineNumber > lastRetained.lineNumber &&
-        lineNumber - lastRetained.lineNumber <= contextAfter;
+        lineNumber > lastRetained.endLineNumber &&
+        lineNumber - lastRetained.endLineNumber <= contextAfter;
       if (withinTrailingWindow) {
         lines.push({ file, lineNumber, content, isContext: true });
       } else if (contextBefore > 0) {
@@ -68,7 +71,7 @@ export function projectGrepEvents(
     pendingContext = [];
     lines.push({ file, lineNumber, content, isContext: false });
     retained += 1;
-    lastRetained = { file, lineNumber };
+    lastRetained = { file, endLineNumber: lineNumber + (content.match(/\n/g)?.length ?? 0) };
   }
   return { lines, totalSeen, retained };
 }
