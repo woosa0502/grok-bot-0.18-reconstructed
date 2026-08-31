@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { prependPath } from "./local-browser-runtime.mjs";
+
 export const BELMONT_WSL_DEBUG_PORT_ENV = "BELMONT_WSL_DEBUG_PORT";
 
 export function assertSupportedNodeRuntime(version = process.versions.node) {
@@ -70,10 +72,13 @@ export function readManagerAgentId(profileDir) {
   }
 }
 
-export function wslHostEnvironment({ profileDir, env = process.env }) {
+export function wslHostEnvironment({ profileDir, env = process.env, localBinDir }) {
   const managerAgentId = env.SAND_DEFAULT_AGENT_ID?.trim() || readManagerAgentId(profileDir);
   return {
     ...wslRuntimeEnvironment(env),
+    // The browser driver spawns bare command names ("box-chrome") that only a
+    // container box ships. Provisioned shims live here, ahead of the system PATH.
+    ...(localBinDir == null ? {} : { PATH: prependPath(env.PATH, localBinDir) }),
     ...(managerAgentId == null ? {} : { SAND_DEFAULT_AGENT_ID: managerAgentId }),
     SAND_DATA_ROOT: wslDataRoot(profileDir),
     SAND_GATEWAY_BIND_HOST: "127.0.0.1",

@@ -63,9 +63,10 @@ import {
 } from "./sand-computer-tool.js";
 import { createComputerTurnTool } from "../host-computer-tool-dependencies.js";
 import {
-  createSandBrowserTools,
+  SAND_BROWSER_TOOL_NAMES,
   type BrowserDriverDependencies,
 } from "./sand-browser-tools.js";
+import { createSandBrowserTurnTools } from "./sand-browser-turn-tools.js";
 import {
   createFileTransferTools,
   type FileTransferController,
@@ -175,6 +176,7 @@ import type { SandComputerAutoReviewOptions } from "../sand-computer-auto-review
 import {
   createSandMultitaskTodoTool,
 } from "../../sand-multitask.js";
+import { LOCAL_BROWSER_USE_ENABLED } from "../../box/local-browser-use.js";
 
 export const SAND_EXTERNAL_MACHINE = resolveSandExternalMachine()!;
 
@@ -204,6 +206,17 @@ export const SHARED_ROOM_TEXT_ONLY_TOOL_NAMES = new Set([
 export const SAND_FORCED_STATIC_TOOL_NAMES = new Set([
   SAND_UPDATE_STATE_TOOL_NAME,
   SAND_REACT_TO_MESSAGE_TOOL_NAME,
+  // The browser/computer tool objects carry an `id` but no `toolIdentifier`,
+  // so under the dynamic-tools gate the "final" offload profile hides every
+  // one of them behind the dynamic registry — the model's visible list is the
+  // static side only, and it never sees browser_navigate or Computer. The
+  // container never hit this: those tools ship to the browserUse/computerUse
+  // subagents, where the offload does not run. The shipped offload rules pin
+  // OPENAI_COMPUTER_USE/RECORD_SCREEN static by identifier, so a static pin
+  // by name preserves that intent wherever these tools reach a main agent.
+  ...SAND_BROWSER_TOOL_NAMES,
+  "Computer",
+  "Screenshot",
 ]);
 
 export const SAND_DYNAMIC_TOOL_HINTS: Readonly<Record<string, string>> = {
@@ -1046,7 +1059,12 @@ export function createTurnScreenshotToolFactory(
 export function createTurnBrowserToolFactory(
   input: TurnBrowserToolFactoryInput,
 ): () => readonly TurnTool[] {
-  return () => createSandBrowserTools(input.dependencies).map(asTurnTool);
+  // The raw createSandBrowserTools definitions carry no parameters schema and
+  // use a parsed-args execute, so the model projection would silently drop
+  // them; the turn-tool adapter supplies the framework contract.
+  return () => createSandBrowserTurnTools(
+    input.dependencies as BrowserDriverDependencies<Context>,
+  ).map(asTurnTool);
 }
 
 export function createTurnFileTransferToolFactory(
@@ -1703,10 +1721,15 @@ export function buildTurnTools(
     const computer = factories.computer?.();
     if (computer !== undefined) tools.push(computer);
   }
+  // Local WSL build: there is no container box to report a desktop, so the
+  // shipped condition can never hold. The browser draws on the same single Xvfb
+  // display computer-use uses, and the host only binds the browser factory once
+  // that display, box-chrome and playwright-core are all present.
   if (
-    host.isBrowserUseSubagent
-    && host.remoteBoxHasDesktop
-    && host.getRemoteBoxAvailable()
+    LOCAL_BROWSER_USE_ENABLED
+    || (host.isBrowserUseSubagent
+      && host.remoteBoxHasDesktop
+      && host.getRemoteBoxAvailable())
   ) {
     const browser = factories.browser?.();
     if (browser !== undefined) tools.push(...browser);

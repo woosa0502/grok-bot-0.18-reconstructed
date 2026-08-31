@@ -1,7 +1,29 @@
-export const SAND_BROWSER_DRIVER_VERSION = 2;
+export const SAND_BROWSER_DRIVER_VERSION = 3;
 export const SAND_BROWSER_DRIVER_BOX_DIR = "/tmp/.sand-browser";
 export const SAND_BROWSER_DRIVER_BOX_PATH = SAND_BROWSER_DRIVER_BOX_DIR + "/driver-v" + String(SAND_BROWSER_DRIVER_VERSION) + ".mjs";
 export const SAND_BROWSER_RESULT_MARKER = "__SAND_BROWSER_RESULT__";
+/**
+ * The only CDP methods `browser_cdp` will forward. This is an allowlist, not a
+ * denylist: the driver drives a browser holding the user's live logged-in
+ * sessions, so any command that can run script (`Runtime.evaluate`,
+ * `Page.addScriptToEvaluateOnNewDocument`), rewrite traffic (`Fetch.*`), read
+ * response bodies, or drive the debugger is equivalent to acting as the user,
+ * and a denylist of prefixes left every one of those reachable. Perception
+ * commands the driver itself needs are issued by the ops below against a
+ * session it owns, never through a model-supplied method name.
+ */
+export const SAND_BROWSER_MODEL_CDP_ALLOWLIST: readonly string[] = [
+  "Accessibility.getFullAXTree",
+  "Accessibility.getPartialAXTree",
+  "DOM.describeNode",
+  "DOM.getBoxModel",
+  "DOM.getDocument",
+  "DOM.resolveNode",
+  "DOMSnapshot.captureSnapshot",
+  "Page.getFrameTree",
+  "Page.getLayoutMetrics",
+  "Page.getNavigationHistory",
+];
 export const SAND_BROWSER_DRIVER_SOURCE = `
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -10,6 +32,7 @@ const RESULT_MARKER = "__SAND_BROWSER_RESULT__";
 const STATE_DIR = "/tmp/.sand-browser";
 const ACTION_TIMEOUT_MS = 10000;
 const NAVIGATE_TIMEOUT_MS = 25000;
+const MODEL_CDP_ALLOWLIST = ${JSON.stringify(SAND_BROWSER_MODEL_CDP_ALLOWLIST)};
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -26,11 +49,12 @@ function loadState(display) {
       return {
         views: parsed.views && typeof parsed.views === "object" ? parsed.views : {},
         urls: parsed.urls && typeof parsed.urls === "object" ? parsed.urls : {},
+        refMeta: parsed.refMeta && typeof parsed.refMeta === "object" ? parsed.refMeta : {},
         lastViewId: typeof parsed.lastViewId === "string" ? parsed.lastViewId : undefined,
       };
     }
   } catch {}
-  return { views: {}, urls: {}, lastViewId: undefined };
+  return { views: {}, urls: {}, refMeta: {}, lastViewId: undefined };
 }
 
 function saveState(display, state) {
@@ -39,15 +63,19 @@ function saveState(display, state) {
     const current = loadState(display);
     const views = { ...current.views, ...state.views };
     const urls = { ...current.urls, ...state.urls };
+    // Ref fingerprints merge per VIEW, not per ref: a new snapshot renumbers
+    // every ref in that view, so its whole fingerprint map is replaced.
+    const refMeta = { ...current.refMeta, ...state.refMeta };
     for (const removed of state.deletedViews ?? []) {
       delete views[removed];
       delete urls[removed];
+      delete refMeta[removed];
     }
     let lastViewId = state.lastViewId ?? current.lastViewId;
     if (lastViewId !== undefined && (state.deletedViews ?? []).includes(lastViewId)) {
       lastViewId = undefined;
     }
-    const merged = { views, urls, lastViewId };
+    const merged = { views, urls, refMeta, lastViewId };
     const tmp = statePath(display) + "." + String(process.pid) + ".tmp";
     writeFileSync(tmp, JSON.stringify(merged));
     renameSync(tmp, statePath(display));
@@ -361,27 +389,132 @@ async function resolvePage(request, context, state) {
   return { page, viewId };
 }
 
-async function refHandle(page, ref) {
-  const handle = await page.evaluateHandle((r) => {
+// Fingerprint of a ref persisted at snapshot time, used to re-find the element
+// when the live ref map is gone (navigation wiped the page globals) or the
+// element was replaced by a framework re-render. Returns undefined when this
+// view has no snapshot fingerprints or the ref was never handed out.
+function refMetaFor(state, viewId, ref) {
+  const entry = state !== null && state.refMeta !== undefined ? state.refMeta[viewId] : undefined;
+  if (entry === undefined || entry.refs === undefined) return undefined;
+  const meta = entry.refs[ref];
+  if (meta === undefined) return undefined;
+  return { opts: entry.opts ?? {}, role: meta.role, name: meta.name, nth: meta.nth };
+}
+
+// Refs recovered by fingerprint during this driver call; surfaced in the
+// summary so the model knows the target was re-resolved, not the original node.
+const recoveredRefs = [];
+
+async function refHandle(page, ref, meta) {
+  const lookup = () => page.evaluateHandle((r) => {
     const map = globalThis.__sandRefs;
     return map instanceof Map ? map.get(r) : undefined;
   }, ref);
-  const element = handle.asElement();
-  if (element === null) {
-    throw new Error(
-      "Unknown or stale ref " + JSON.stringify(ref) + ". Take a fresh browser_snapshot and use a ref from it."
-    );
+  let element = (await lookup()).asElement();
+  if (element !== null) {
+    // A handle can survive while its node left the document (framework
+    // re-render); acting on it silently does nothing, so treat it as stale.
+    const connected = await element.evaluate((el) => el.isConnected).catch(() => false);
+    if (connected) return element;
+    element = null;
   }
-  return element;
+  // Identity recovery: re-run the snapshot walk and match the persisted
+  // role/name fingerprint. nth disambiguates same-labelled siblings; a single
+  // survivor matches regardless of position.
+  if (meta !== undefined && typeof meta.role === "string") {
+    const recovery = Object.assign({}, meta.opts || {}, {
+      recover: { ref, role: meta.role, name: meta.name, nth: meta.nth },
+    });
+    const result = await page.evaluate(SNAPSHOT_FN, recovery).catch(() => undefined);
+    if (result !== undefined && result.recovered === true) {
+      element = (await lookup()).asElement();
+      if (element !== null) {
+        recoveredRefs.push(ref);
+        return element;
+      }
+    }
+  }
+  throw new Error(
+    "Unknown or stale ref " + JSON.stringify(ref) + ". Take a fresh browser_snapshot and use a ref from it."
+  );
+}
+
+// Never type into these, confirmed or not: credentials and card secrets must
+// not pass through the model or land in the transcript. The user types them
+// directly in the browser window (the profile usually holds live logins).
+const SECRET_FIELD_FN = (el) => {
+  if (!el || !el.getAttribute) return null;
+  const tag = (el.tagName || "").toLowerCase();
+  const type = (el.getAttribute("type") || "").toLowerCase();
+  const auto = (el.getAttribute("autocomplete") || "").toLowerCase();
+  if (tag === "input" && type === "password") return "input type=password";
+  if (auto === "current-password" || auto === "new-password") return "autocomplete=" + auto;
+  if (auto === "one-time-code") return "one-time-code field";
+  if (auto === "cc-number" || auto === "cc-csc") return "payment card field (" + auto + ")";
+  return null;
+};
+
+// Deterministic sensitive-action detector: only payment/money controls and
+// login/signup submissions are gated — ordinary clicks run free (the middle
+// path between approving everything and nothing). The container build runs a
+// cloud classifier for this; locally the check is this in-page heuristic, and
+// a false positive costs one confirmed retry, never a lost capability.
+// Accepts an element (element.evaluate), viewport coordinates, or neither —
+// the last resolves document.activeElement for Enter-key submissions, where
+// only the password-form check applies (keyword-matching the whole focused
+// container would false-positive on page text).
+const SENSITIVE_ACTION_FN = (target, extra) => {
+  const doc = globalThis.document;
+  let el = null;
+  let viaKeyboard = extra !== null && extra !== undefined && extra.viaEnter === true;
+  if (target && target.nodeType === 1) el = target;
+  else if (target && typeof target.x === "number" && typeof target.y === "number") {
+    el = doc ? doc.elementFromPoint(target.x, target.y) : null;
+  } else {
+    el = doc ? doc.activeElement : null;
+    viaKeyboard = true;
+  }
+  if (!el || !el.closest) return null;
+  const passwordForm = (node) => {
+    const form = node.closest("form");
+    return form && form.querySelector('input[type="password"]') !== null ? form : null;
+  };
+  if (viaKeyboard) {
+    return passwordForm(el) !== null
+      ? "pressing Enter submits a form containing a password field (login/signup)"
+      : null;
+  }
+  const control = el.closest('button, a[href], input, select, summary, [role="button"], [role="link"], [onclick]');
+  if (!control) return null;
+  const tag = control.tagName.toLowerCase();
+  const type = (control.getAttribute("type") || "").toLowerCase();
+  const role = (control.getAttribute("role") || "").toLowerCase();
+  const label = ((control.getAttribute("aria-label") || "") + " "
+    + (typeof control.value === "string" ? control.value : "") + " "
+    + (control.innerText || "")).replace(/\\s+/g, " ").trim().slice(0, 120).toLowerCase();
+  const money = /(결제|구매|주문하기|주문\\s*완료|송금|이체|출금|충전|후원|구독하기|정기\\s*구독|\\bpay\\b|payment|purchase|\\bbuy\\b|checkout|place\\s+order|order\\s+now|subscribe|donate|send\\s+money|transfer\\s+(money|funds)|confirm\\s+(purchase|payment|order))/;
+  if (money.test(label)) return 'payment/money control "' + label.slice(0, 60) + '"';
+  const submitLike = tag === "button" || (tag === "input" && (type === "submit" || type === "image")) || role === "button";
+  if (submitLike && passwordForm(control) !== null) {
+    return "submit control of a form containing a password field (login/signup)";
+  }
+  const login = /(로그인|회원가입|log\\s*in|\\blogin\\b|sign\\s*in|sign\\s*up|\\bregister\\b)/;
+  if (login.test(label)) return 'login/signup control "' + label.slice(0, 60) + '"';
+  return null;
+};
+
+function sensitiveBlockMessage(reason) {
+  return "Sensitive action blocked (" + reason + "). Payment, money-transfer, and login/signup submissions run only with the user's explicit go-ahead: ask the user to approve this exact step, then retry the same call with \\"confirmed\\": true.";
 }
 
 const SNAPSHOT_FN = (opts) => {
   const doc = globalThis.document;
   const win = globalThis.window;
   const root = opts.selector ? doc.querySelector(opts.selector) : doc.body;
-  if (!root) return { lines: ["(no matching element for selector)"], refCount: 0 };
+  if (!root) return { lines: ["(no matching element for selector)"], refCount: 0, refMeta: [] };
   const refs = new Map();
-  globalThis.__sandRefs = refs;
+  const refMeta = [];
+  const refElements = [];
   let refCounter = 0;
   const lines = [];
   const maxNodes = 400;
@@ -443,6 +576,8 @@ const SNAPSHOT_FN = (opts) => {
       refCounter += 1;
       const ref = "e" + String(refCounter);
       refs.set(ref, el);
+      refMeta.push({ ref, role, name });
+      refElements.push(el);
       line += " [ref=" + ref + "]";
     }
     if (el.disabled) line += " disabled";
@@ -479,7 +614,27 @@ const SNAPSHOT_FN = (opts) => {
   };
   walk(root, 0);
   if (nodeCount >= maxNodes) lines.push("(snapshot truncated at " + String(maxNodes) + " elements)");
-  return { lines, refCount: refCounter };
+  // Recovery mode: same walk, same enumeration order, but the live ref map is
+  // NOT renumbered — other still-valid refs must keep pointing where they do.
+  // Only the recovered ref is (re)registered.
+  if (opts.recover) {
+    const wanted = opts.recover;
+    const candidates = [];
+    for (let i = 0; i < refMeta.length; i++) {
+      if (refMeta[i].role === wanted.role && refMeta[i].name === wanted.name) {
+        candidates.push(refElements[i]);
+      }
+    }
+    const pick = candidates.length === 1
+      ? candidates[0]
+      : typeof wanted.nth === "number" ? candidates[wanted.nth] : undefined;
+    if (pick === undefined) return { recovered: false, candidateCount: candidates.length };
+    if (!(globalThis.__sandRefs instanceof Map)) globalThis.__sandRefs = new Map();
+    globalThis.__sandRefs.set(wanted.ref, pick);
+    return { recovered: true, candidateCount: candidates.length };
+  }
+  globalThis.__sandRefs = refs;
+  return { lines, refCount: refCounter, refMeta };
 };
 
 function clickOptionsFor(args) {
@@ -510,11 +665,25 @@ const OPS = {
   },
   snapshot: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
-    const result = await page.evaluate(SNAPSHOT_FN, {
+    const opts = {
       interactive: request.interactive === true,
       maxDepth: typeof request.maxDepth === "number" ? request.maxDepth : 20,
       selector: typeof request.selector === "string" && request.selector.length > 0 ? request.selector : undefined,
-    });
+    };
+    const result = await page.evaluate(SNAPSHOT_FN, opts);
+    // Persist each ref's identity fingerprint (role/name plus its position
+    // among same-labelled refs) and the snapshot options that produced the
+    // enumeration, so a later call can re-find the element after the live ref
+    // map is gone. Whole-view replacement: a new snapshot renumbers every ref.
+    const captured = {};
+    const counts = {};
+    for (const entry of result.refMeta ?? []) {
+      const key = JSON.stringify([entry.role, entry.name]);
+      const nth = counts[key] ?? 0;
+      counts[key] = nth + 1;
+      captured[entry.ref] = { role: entry.role, name: entry.name, nth };
+    }
+    state.refMeta = { ...state.refMeta, [viewId]: { opts, refs: captured } };
     const data = result.lines.join("\\n");
     return {
       page,
@@ -525,7 +694,11 @@ const OPS = {
   },
   click: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
-    const element = await refHandle(page, request.ref);
+    const element = await refHandle(page, request.ref, refMetaFor(state, viewId, request.ref));
+    const sensitive = await element.evaluate(SENSITIVE_ACTION_FN).catch(() => null);
+    if (sensitive !== null && request.confirmed !== true) {
+      throw new Error(sensitiveBlockMessage(sensitive));
+    }
     const options = clickOptionsFor(request);
     if (typeof request.offsetX === "number" || typeof request.offsetY === "number") {
       const box = await element.boundingBox();
@@ -542,6 +715,10 @@ const OPS = {
   },
   mouse_click_xy: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
+    const sensitive = await page.evaluate(SENSITIVE_ACTION_FN, { x: request.x, y: request.y }).catch(() => null);
+    if (sensitive !== null && request.confirmed !== true) {
+      throw new Error(sensitiveBlockMessage(sensitive));
+    }
     await page.mouse.click(request.x, request.y, {
       button: request.button === "right" || request.button === "middle" ? request.button : "left",
     });
@@ -550,7 +727,19 @@ const OPS = {
   },
   type: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
-    const element = await refHandle(page, request.ref);
+    const element = await refHandle(page, request.ref, refMetaFor(state, viewId, request.ref));
+    const secret = await element.evaluate(SECRET_FIELD_FN).catch(() => null);
+    if (secret !== null) {
+      throw new Error(
+        "Refusing to type into a credential field (" + secret + "). Secrets must never pass through the model or the transcript: ask the user to enter it directly in the browser window (the profile usually keeps live logins)."
+      );
+    }
+    if (request.submit === true && request.confirmed !== true) {
+      // submit:true presses Enter in this field, so the question is not what
+      // the field looks like but what Enter submits: the password-form check.
+      const sensitive = await element.evaluate(SENSITIVE_ACTION_FN, { viaEnter: true }).catch(() => null);
+      if (sensitive !== null) throw new Error(sensitiveBlockMessage(sensitive));
+    }
     await element.click({ timeout: ACTION_TIMEOUT_MS });
     if (request.clear === true) {
       await element.fill("").catch(() => {});
@@ -564,13 +753,19 @@ const OPS = {
   },
   fill: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
-    const element = await refHandle(page, request.ref);
+    const element = await refHandle(page, request.ref, refMetaFor(state, viewId, request.ref));
+    const secret = await element.evaluate(SECRET_FIELD_FN).catch(() => null);
+    if (secret !== null) {
+      throw new Error(
+        "Refusing to fill a credential field (" + secret + "). Secrets must never pass through the model or the transcript: ask the user to enter it directly in the browser window (the profile usually keeps live logins)."
+      );
+    }
     await element.fill(request.value);
     return { page, viewId, summary: "Filled " + (request.element ?? request.ref) };
   },
   select_option: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
-    const element = await refHandle(page, request.ref);
+    const element = await refHandle(page, request.ref, refMetaFor(state, viewId, request.ref));
     const values = Array.isArray(request.values) ? request.values : [];
     let selected;
     try {
@@ -586,6 +781,10 @@ const OPS = {
   },
   press_key: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
+    if ((request.key === "Enter" || request.key === "NumpadEnter") && request.confirmed !== true) {
+      const sensitive = await page.evaluate(SENSITIVE_ACTION_FN, { viaEnter: true }).catch(() => null);
+      if (sensitive !== null) throw new Error(sensitiveBlockMessage(sensitive));
+    }
     await page.keyboard.press(request.key);
     await page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {});
     return { page, viewId, summary: "Pressed " + request.key };
@@ -593,7 +792,7 @@ const OPS = {
   scroll: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
     if (typeof request.ref === "string" && request.ref.length > 0) {
-      const element = await refHandle(page, request.ref);
+      const element = await refHandle(page, request.ref, refMetaFor(state, viewId, request.ref));
       await element.scrollIntoViewIfNeeded();
       return { page, viewId, summary: "Scrolled " + (request.element ?? request.ref) + " into view" };
     }
@@ -690,14 +889,14 @@ const OPS = {
   },
   drag: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
-    const source = await refHandle(page, request.sourceRef);
+    const source = await refHandle(page, request.sourceRef, refMetaFor(state, viewId, request.sourceRef));
     await source.scrollIntoViewIfNeeded();
     const sourceBox = await source.boundingBox();
     if (sourceBox === null) throw new Error("The drag source has no visible bounding box.");
     let targetX;
     let targetY;
     if (typeof request.targetRef === "string" && request.targetRef.length > 0) {
-      const target = await refHandle(page, request.targetRef);
+      const target = await refHandle(page, request.targetRef, refMetaFor(state, viewId, request.targetRef));
       const targetBox = await target.boundingBox();
       if (targetBox === null) throw new Error("The drag target has no visible bounding box.");
       targetX = targetBox.x + targetBox.width / 2;
@@ -729,7 +928,7 @@ const OPS = {
   },
   get_bounding_box: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
-    const element = await refHandle(page, request.ref);
+    const element = await refHandle(page, request.ref, refMetaFor(state, viewId, request.ref));
     const box = await element.boundingBox();
     if (box === null) throw new Error("The element has no visible bounding box.");
     return {
@@ -747,7 +946,7 @@ const OPS = {
   highlight: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
     await page.bringToFront().catch(() => {});
-    const element = await refHandle(page, request.ref);
+    const element = await refHandle(page, request.ref, refMetaFor(state, viewId, request.ref));
     await element.scrollIntoViewIfNeeded();
     const durationMs = Math.min(
       typeof request.durationMs === "number" && request.durationMs > 0 ? request.durationMs : 2000,
@@ -770,32 +969,9 @@ const OPS = {
   },
   cdp: async ({ request, context, state }) => {
     const method = typeof request.method === "string" ? request.method : "";
-    const deniedPrefixes = [
-      "Browser.",
-      "Target.",
-      "Storage.",
-      "SystemInfo.",
-      "Security.",
-      "Input.",
-      "Tethering.",
-      "Cast.",
-    ];
-    const deniedMethods = [
-      "Network.setCookie",
-      "Network.setCookies",
-      "Network.getCookies",
-      "Network.getAllCookies",
-      "Network.deleteCookies",
-      "Network.clearBrowserCookies",
-      "Network.clearBrowserCache",
-    ];
-    if (
-      method.length === 0 ||
-      deniedPrefixes.some((p) => method.startsWith(p)) ||
-      deniedMethods.includes(method)
-    ) {
+    if (!MODEL_CDP_ALLOWLIST.includes(method)) {
       throw new Error(
-        "CDP method " + JSON.stringify(method) + " is denied. Browser-wide, storage, cookie, cache, permission, target-management, and input commands are not allowed; use the dedicated browser tools instead."
+        "CDP method " + JSON.stringify(method) + " is not available. Only read-only page-inspection commands are allowed here (" + MODEL_CDP_ALLOWLIST.join(", ") + "); use the dedicated browser tools for navigation, clicks, text input, key presses, scrolling, drag-and-drop, and screenshots."
       );
     }
     const { page, viewId } = await resolvePage(request, context, state);
@@ -827,6 +1003,7 @@ async function run(request) {
     const state = loadState(request.display);
     const loadedViews = { ...state.views };
     const loadedUrls = { ...state.urls };
+    const loadedRefMeta = { ...state.refMeta };
     const loadedLastViewId = state.lastViewId;
     const op = OPS[request.op];
     if (op === undefined) throw new Error("Unknown op: " + String(request.op));
@@ -848,16 +1025,26 @@ async function run(request) {
     for (const key of Object.keys(state.urls)) {
       if (state.urls[key] !== loadedUrls[key]) dirtyUrls[key] = state.urls[key];
     }
+    const dirtyRefMeta = {};
+    for (const key of Object.keys(state.refMeta)) {
+      if (state.refMeta[key] !== loadedRefMeta[key]) dirtyRefMeta[key] = state.refMeta[key];
+    }
     saveState(request.display, {
       views: dirtyViews,
       urls: dirtyUrls,
+      refMeta: dirtyRefMeta,
       deletedViews: state.deletedViews,
       // Only when THIS op changed it: an op that never resolves a view (e.g.
       // tabs list) must not write the loaded value back over a concurrent
       // call's fresher one.
       lastViewId: state.lastViewId !== loadedLastViewId ? state.lastViewId : undefined,
     });
-    const out = { ok: true, summary: result.summary };
+    const out = {
+      ok: true,
+      summary: recoveredRefs.length > 0
+        ? result.summary + " (stale ref " + recoveredRefs.join(", ") + " re-resolved by role/name fingerprint; take a fresh browser_snapshot before further ref-based actions)"
+        : result.summary,
+    };
     if (result.data !== undefined) out.data = result.data;
     if (result.viewId !== undefined) out.viewId = result.viewId;
     if (result.page !== undefined) {

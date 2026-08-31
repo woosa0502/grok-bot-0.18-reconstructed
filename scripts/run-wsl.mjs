@@ -6,6 +6,7 @@ import { repoRoot } from "./lib/config.mjs";
 import { acquireBelmontRuntimeLock } from "./lib/wsl-runtime-lock.mjs";
 import { assertWslBuildSourceIdentity, captureWslBuildSourceIdentity } from "./lib/wsl-build-lineage.mjs";
 import { collectWslRuntimeLineage, writeWslRuntimeLineage } from "./lib/wsl-runtime-lineage.mjs";
+import { ensureLocalBrowserRuntime } from "./lib/local-browser-runtime.mjs";
 import {
   assertSupportedNodeRuntime,
   assertWslGuiRuntime,
@@ -57,10 +58,20 @@ try {
   const autoReviewSeeded = await access(autoReviewSeedMarker).then(() => true).catch(() => false);
   const initialSettings = initialLocalSettingsUpdate(storedSettings, { seedAutoReviewOff: !autoReviewSeeded });
 
+  // Provision the browser driver's execution base before the host starts: it
+  // decides at startup whether the browser tools are ready to be offered.
+  const localBinDir = path.join(dataRoot, "local-bin");
+  await ensureLocalBrowserRuntime({
+    binDir: localBinDir,
+    profileDir: path.join(dataRoot, "box-chrome-profile"),
+    workspaceDir: path.join(dataRoot, "box-workspace"),
+    log: message => process.stderr.write(`${message}\n`),
+  });
+
   const hostStartedAt = new Date().toISOString();
   const host = spawn(process.execPath, [hostEntry], {
     cwd: repoRoot,
-    env: wslHostEnvironment({ profileDir }),
+    env: wslHostEnvironment({ profileDir, localBinDir }),
     stdio: "inherit",
   });
   const hostExit = new Promise((resolve, reject) => {

@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
+import { LOCAL_BROWSER_USE_ENABLED, localBrowserWindowIndex } from "./box/local-browser-use.js";
 import { createSandMcpTextSpiller, isLargeOutputSpillEnabled } from "./runner/large-output-spill.js";
 import { createLocalPdfTextExtractor } from "./runner/local-pdf-text-extractor.js";
 
@@ -1069,6 +1070,33 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 isUnicodeTypingEnabled: () =>
                   method(experiments, "isUnicodeTypingEnabled")?.() ?? false,
               }),
+              // The browser driver rides this same minimal projection, and without
+              // it the tools are gated on but never built. Auto-review is absent
+              // here for the same reason the Computer tool's is — local Codex mode
+              // forces review off — so the driver's shell calls are audited but not
+              // held for approval.
+              ...(LOCAL_BROWSER_USE_ENABLED
+                ? {
+                  createBrowserDriverDependencies: () => createHostBrowserDriverDependencies({
+                    resourceAccessor: input.resourceAccessor,
+                    box: remoteBox as unknown as HostBrowserBoxOwner<unknown>,
+                    getBoxId: () => session.id,
+                    getDefaultViewId: () => session.id,
+                    getLocalWindowIndex: () => localBrowserWindowIndex(),
+                    executeShell: createHostShellExecutor({
+                      resourceAccessor: input.resourceAccessor,
+                      assertNoPendingApproval: () => {},
+                      auditShellCommand: command => {
+                        method(actionAuditor as DynamicApi, "record")?.({
+                          agentId: session.id,
+                          occurredAtMs: Date.now(),
+                          action: { kind: "shellCommand", command, shellKind: "foreground", target: "box" },
+                        });
+                      },
+                    }),
+                  }),
+                }
+                : {}),
             })
           : undefined)
         : (input: ProductionTurnToolInputs): ProductionTurnHostToolProjections => {
@@ -1142,6 +1170,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               getBoxId: () => session.id,
               getDefaultViewId: () => session.id,
               executeShell: shell,
+              ...(LOCAL_BROWSER_USE_ENABLED
+                ? { getLocalWindowIndex: () => localBrowserWindowIndex() }
+                : {}),
               autoReview: {
                 mode: projectionAutoReviewModes.computer,
                 agentId: session.id,

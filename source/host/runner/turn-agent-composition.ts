@@ -139,6 +139,10 @@ import type {
   SandAutoReviewMode,
 } from "./sand-auto-review.js";
 import type { SmartModeClassifierConversationMessage } from "../../packages/proto/generated/agent/v1/smart_mode_classifier_exec_pb.js";
+import {
+  createLocalBrowserDriverDependencies,
+  LOCAL_BROWSER_USE_ENABLED,
+} from "../box/local-browser-use.js";
 
 export const SAND_AGENT_MAX_STEPS = 5_000;
 
@@ -434,7 +438,8 @@ export function createTurnAgentToolsHandoff(input: {
               return { dependencies: createDependencies(currentProps) };
             },
           }),
-      ...(provider?.createBrowserToolInputs !== undefined || !hasDirectBrowserInputs
+      ...(provider?.createBrowserToolInputs !== undefined
+        || (!hasDirectBrowserInputs && !LOCAL_BROWSER_USE_ENABLED)
         ? {}
         : {
             createBrowserToolInputs: (
@@ -442,10 +447,22 @@ export function createTurnAgentToolsHandoff(input: {
               currentProps: TurnToolsetBuildProps,
             ) => {
               const createDependencies = currentProps.createBrowserDriverDependencies;
-              if (createDependencies === undefined) {
+              // Local browser-use: this runner's props carry no browser
+              // projection (the same gap the Computer tool works around above),
+              // so build the dependencies against the local desktop and the
+              // host's own driver directory instead of a container box.
+              if (createDependencies !== undefined) {
+                return { dependencies: createDependencies(currentProps) };
+              }
+              if (!LOCAL_BROWSER_USE_ENABLED) {
                 throw new TypeError("browser tool dependencies are not bound");
               }
-              return { dependencies: createDependencies(currentProps) };
+              return {
+                dependencies: createLocalBrowserDriverDependencies({
+                  resourceAccessor: currentProps.resourceAccessor as { get(resource: unknown): unknown },
+                  agentId: input.toolHost.getConversationId(),
+                }),
+              };
             },
           }),
       ...(provider?.createMcpMetaToolInputs !== undefined || !hasDirectMcpMetaInputs

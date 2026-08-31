@@ -82,6 +82,12 @@ export interface HostBrowserDriverProjectionInput<Context = unknown> {
   readonly getBoxId: () => string;
   readonly getDefaultViewId: () => string;
   readonly executeShell: HostShellExecutor;
+  /**
+   * Local build only: the display the browser should drive, standing in for the
+   * box's window assignment. The driver derives the X display and the CDP port
+   * from this single number, so it must be the display that is actually running.
+   */
+  readonly getLocalWindowIndex?: () => number | undefined;
   readonly getPersistImage?: BrowserDriverDependencies<Context>["getPersistImage"];
   readonly autoReview?: SandBrowserAutoReviewOptions;
 }
@@ -436,6 +442,12 @@ export function createHostBrowserDriverDependencies<Context = unknown>(
   return {
     resourceAccessor: input.resourceAccessor,
     async getWindowIndex(context) {
+      // Local build: the box owns no desktop and assigns no windows, so it would
+      // report undefined here and the driver would refuse every call. The one
+      // display that exists is computer-use's, and readying a container box that
+      // is not running would only stall the turn.
+      const local = input.getLocalWindowIndex?.();
+      if (local !== undefined) return local;
       const boxId = input.getBoxId();
       await input.box.ensureReady(context, boxId);
       return input.box.getAgentWindowIndex(boxId);
