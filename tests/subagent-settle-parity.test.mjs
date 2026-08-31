@@ -12,7 +12,7 @@ import { build } from "esbuild";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(path.join(repoRoot, relativePath), "utf8");
 
-test("subagent turns settle against their own runner/transcript and never the parent root slot (AUDIT-4)", () => {
+test("subagent turns settle against their own runner/transcript and never the parent root slot (AUDIT-4 rev 2)", () => {
   const source = read("source/host/host-runner-composition.ts");
   assert.match(source, /const createProductionTurnSettleHost = \(turnConversationId: string = session\.id\): TurnSettleHost => \{/);
   assert.match(source, /const isChildTurn = turnConversationId !== session\.id;/);
@@ -20,11 +20,17 @@ test("subagent turns settle against their own runner/transcript and never the pa
   assert.match(source, /agentStore: \(\) => isChildTurn \? null : \(\{/);
   assert.match(source, /isSubagentRunner: isChildTurn \|\| isSharedRoomTurn,/);
   assert.match(source, /if \(isChildTurn\) return; \/\/ a child must not rewrite the parent's announced profile/);
-  assert.match(source, /createSettleHost: \(\) => createProductionTurnSettleHost\(activeTurnConversationId \?\? session\.id\),/);
-  assert.match(source, /getConversationId: \(\) => activeTurnConversationId \?\? session\.id,/);
-  assert.match(source, /activeTurnConversationId = turnConversationId;/);
-  // Child base state resolves the child runner; child identity unshadowed.
-  assert.match(source, /const turnId = activeTurnConversationId \?\? session\.id;\s*const runner = \(turnId !== session\.id \? runnerByConversationId\.get\(turnId\) : builtRunner\)/);
+  // rev 2 (external review #1): turn-run-shell creates the settle host BEFORE
+  // prepareTurn runs, so identity must never flow through a shared per-prepare
+  // stamp. The parent adapter is pinned to session.id; each child runner gets
+  // its own override pinned to its own id.
+  assert.match(source, /createSettleHost: \(\) => createProductionTurnSettleHost\(session\.id\),/);
+  assert.match(source, /getConversationId: \(\) => session\.id,/);
+  assert.match(source, /createSettleHost: \(\) => createProductionTurnSettleHost\(agentId\),/);
+  assert.match(source, /getConversationId: \(\) => agentId,/);
+  assert.match(source, /getConversationState: childConversationState,/);
+  assert.doesNotMatch(source, /activeTurnConversationId \?\?/, "the shared mutable turn-id stamp is gone");
+  assert.doesNotMatch(source, /activeTurnConversationId = /, "no per-prepare identity stamping");
   assert.match(source, /getAgentId: \(\) => agentId,/);
 });
 

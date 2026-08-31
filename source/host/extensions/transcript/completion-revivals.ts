@@ -96,6 +96,46 @@ export class CompletionRevivals {
 
   constructor(readonly tm: TranscriptManagerLike) {}
 
+  /** Marker key for a subagent completion (cursor-agent children wake as cloud-agent). */
+  private subagentWakeKind(subagentType: string): "cloud-agent" | "subagent" {
+    return subagentType === "cursor-agent" ? "cloud-agent" : "subagent";
+  }
+
+  /**
+   * Phase B (P1-04): the arrived result is persisted INTO the pending-wake
+   * marker before delivery, merging with whatever the dispatch already stored
+   * (title, quietOrigin, taskPrompt) — so a crash between arrival and parent
+   * revival redelivers the real result at the next start instead of losing it.
+   */
+  private persistCompletionIntoMarker(completion: SubagentCompletion): void {
+    const store = this.tm.pendingWakeStore;
+    if (store == null) return;
+    const kind = this.subagentWakeKind(completion.subagentType);
+    const existing = (store.listPending() as Record<string, unknown>[]).find(
+      (marker) =>
+        marker.agentId === completion.parentAgentId &&
+        marker.kind === kind &&
+        marker.workId === completion.subagentAgentId,
+    );
+    store.markPending({
+      ...(existing ?? {}),
+      agentId: completion.parentAgentId,
+      kind,
+      workId: completion.subagentAgentId,
+      markedAtMs:
+        typeof existing?.markedAtMs === "number" ? existing.markedAtMs : Date.now(),
+      title: completion.title,
+      subagentType: completion.subagentType,
+      ...(completion.quietOrigin == null
+        ? {}
+        : { quietOrigin: completion.quietOrigin }),
+      completion: {
+        status: completion.status,
+        result: completion.result.slice(0, 20_000),
+      },
+    });
+  }
+
   handleBackgroundSubagentCompletion(completion: SubagentCompletion): void {
     if (this.tm.sessions.deletedAgentIds.has(completion.parentAgentId)) {
       this.tm.telemetry.reportSubagentRevival({
@@ -114,6 +154,7 @@ export class CompletionRevivals {
       queue.some((item) => item.subagentAgentId === completion.subagentAgentId)
     )
       return;
+    this.persistCompletionIntoMarker(completion);
     queue.push(completion);
     this.pendingSubagentCompletions.set(completion.parentAgentId, queue);
     void this.reviveForSubagentCompletions(completion.parentAgentId);
@@ -130,16 +171,17 @@ export class CompletionRevivals {
       while ((this.pendingSubagentCompletions.get(agentId)?.length ?? 0) > 0) {
         const completions = this.pendingSubagentCompletions.get(agentId) ?? [];
         this.pendingSubagentCompletions.delete(agentId);
-        for (const completion of completions)
-          this.tm.pendingWakes.clearSettledPendingWake({
-            agentId,
-            kind:
-              completion.subagentType === "cursor-agent"
-                ? "cloud-agent"
-                : "subagent",
-            workId: completion.subagentAgentId,
-          });
         const result = await this.runSubagentRevival(agentId, completions);
+        // Phase B (P1-04): the durable marker settles only after the parent's
+        // revival turn actually ran (or its own resume path owns it). A crash
+        // before that leaves the stored result to be redelivered at next start.
+        if (result.outcome !== "dropped" || result.reason === "quiesced")
+          for (const completion of completions)
+            this.tm.pendingWakes.clearSettledPendingWake({
+              agentId,
+              kind: this.subagentWakeKind(completion.subagentType),
+              workId: completion.subagentAgentId,
+            });
         this.tm.telemetry.reportSubagentRevival({
           parentAgentId: agentId,
           ...result,
@@ -217,7 +259,37 @@ export class CompletionRevivals {
     return result;
   }
 
+  /** Phase B (P1-04): persist the shell outcome into its wake marker on arrival. */
+  private persistShellCompletionIntoMarker(completion: ShellCompletion): void {
+    const store = this.tm.pendingWakeStore;
+    if (store == null) return;
+    const existing = (store.listPending() as Record<string, unknown>[]).find(
+      (marker) =>
+        marker.agentId === completion.agentId &&
+        marker.kind === "shell" &&
+        marker.workId === completion.shellId,
+    );
+    store.markPending({
+      ...(existing ?? {}),
+      agentId: completion.agentId,
+      kind: "shell",
+      workId: completion.shellId,
+      markedAtMs:
+        typeof existing?.markedAtMs === "number" ? existing.markedAtMs : Date.now(),
+      title: completion.title,
+      ...(completion.quietOrigin == null
+        ? {}
+        : { quietOrigin: completion.quietOrigin }),
+      completion: {
+        status: completion.status,
+        ...(completion.detail == null ? {} : { detail: completion.detail.slice(0, 20_000) }),
+        ...(completion.outputPath == null ? {} : { outputPath: completion.outputPath }),
+      },
+    });
+  }
+
   handleBackgroundShellCompletion(completion: ShellCompletion): void {
+    this.persistShellCompletionIntoMarker(completion);
     if (
       !this.tm.pendingWakes.enqueuePendingWake(
         this.pendingShellCompletions,
@@ -247,13 +319,15 @@ export class CompletionRevivals {
       while ((this.pendingShellCompletions.get(agentId)?.length ?? 0) > 0) {
         const completions = this.pendingShellCompletions.get(agentId) ?? [];
         this.pendingShellCompletions.delete(agentId);
-        for (const completion of completions)
-          this.tm.pendingWakes.clearSettledPendingWake({
-            agentId,
-            kind: "shell",
-            workId: completion.shellId,
-          });
-        await this.runShellRevival(agentId, completions);
+        const outcome = await this.runShellRevival(agentId, completions);
+        // Phase B (P1-04): settle the durable marker only after delivery.
+        if (outcome !== "dropped")
+          for (const completion of completions)
+            this.tm.pendingWakes.clearSettledPendingWake({
+              agentId,
+              kind: "shell",
+              workId: completion.shellId,
+            });
       }
     } finally {
       this.revivingShellAgentIds.delete(agentId);
@@ -262,9 +336,12 @@ export class CompletionRevivals {
   async runShellRevival(
     agentId: string,
     completions: readonly ShellCompletion[],
-  ): Promise<void> {
-    if (completions.length === 0) return;
-    const report = (outcome: string, extras: Record<string, unknown> = {}) =>
+  ): Promise<string> {
+    if (completions.length === 0) return "delivered";
+    let lastOutcome = "delivered";
+    const report = (outcome: string, extras: Record<string, unknown> = {}) => {
+      // Quiesced-for-upgrade has its own resume path — treat it as settled here.
+      lastOutcome = extras.reason === "quiesced" ? "quiesced" : outcome;
       this.tm.telemetry.reportShellRevival({
         conversationId: agentId,
         outcome,
@@ -272,14 +349,17 @@ export class CompletionRevivals {
         isQuietOrigin: isAllQuietOrigin(completions),
         ...extras,
       });
-    if (!this.tm.execution.canExecute)
-      return report("dropped", { reason: "no_runner" });
+    };
+    if (!this.tm.execution.canExecute) {
+      report("dropped", { reason: "no_runner" });
+      return lastOutcome;
+    }
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(agentId);
     } catch {
       report("dropped", { reason: "session_unavailable" });
-      return;
+      return lastOutcome;
     }
     const runner = this.tm.runnerRegistry.getRunner(session);
     this.tm.runLifecycle.beginSessionRun(session);
@@ -327,6 +407,7 @@ export class CompletionRevivals {
       },
       { lane: "background", source: "shell-revival" },
     );
+    return lastOutcome;
   }
 
   private reportRevivalError(

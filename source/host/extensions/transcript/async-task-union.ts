@@ -1,5 +1,5 @@
 export const LEDGER_ONLY_DETAIL = "from the durable pending-wake ledger";
-export type PendingWakeKind = "cloud-agent" | "shell" | "subagent";
+export type PendingWakeKind = "cloud-agent" | "shell" | "subagent" | "agent-message";
 export interface PendingWakeMarker {
   agentId: string;
   kind: PendingWakeKind;
@@ -25,6 +25,8 @@ export function markerLabel(marker: PendingWakeMarker): string {
       return `Background command ${marker.workId}`;
     case "subagent":
       return `Background task ${marker.workId}`;
+    case "agent-message":
+      return "Message from another agent";
   }
 }
 export function pendingWakeMarkerToAsyncTask(

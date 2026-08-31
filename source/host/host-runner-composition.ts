@@ -1348,7 +1348,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       // Per-agent model/reasoning selection (AUDIT-W1): CreateAgent's optional
       // reasoning parameter persists here; turn-run-shell reads it by agent id.
       setAgentModelSelection: (agentId: string, selection: { readonly modelId: string; readonly maxMode: boolean; readonly parameters: readonly { readonly id: string; readonly value: string }[] }) => {
-        new SandSettingsStore(join(getSandRootDir(), "settings.json")).setAgentModelForAgentId(agentId, { modelId: selection.modelId, maxMode: selection.maxMode, parameters: selection.parameters.map((p) => ({ ...p })) });
+        const store = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
+        // modelId "" = inherit the current global default (falling back to the
+        // env/model-catalog default) so a reasoning-only selection never moves a
+        // new bot off the model the user actually runs (external review #4).
+        const modelId = selection.modelId.length > 0
+          ? selection.modelId
+          : store.getAgentDefaultModel()?.modelId ?? process.env.SAND_CODEX_MODEL?.trim() ?? "gpt-5.5";
+        store.setAgentModelForAgentId(agentId, { modelId, maxMode: selection.maxMode, parameters: selection.parameters.map((p) => ({ ...p })) });
       },
       create: async (input: { name: string; description: string }) => {
         const result = await method(
@@ -1533,6 +1540,17 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           userMemory: promptUserMemoryProvider,
           projectMemory: promptProjectMemoryProvider,
           isLocalCodexMode: () => isLocalCodexMode(process.env),
+          // Phase B (B-2 subset): when a manager is designated, every OTHER
+          // persistent agent is told it works in a managed team — delegated-job
+          // results go back to the manager, who reports to the user.
+          managedTeamSection: () => {
+            const managerId = process.env.SAND_DEFAULT_AGENT_ID?.trim();
+            if (managerId == null || managerId.length === 0 || managerId === session.id) return null;
+            return [
+              "## Managed team",
+              `This user runs their agents as a managed team: the agent with id ${managerId} is the manager (their single point of contact). When the manager delegates a job to you (its message starts with a [job:<id>] tag), treat the manager as the requester: do the work, then send the result BACK TO THE MANAGER with SendToAgent, starting your reply with the same [job:<id>] tag and including the requested evidence. Do not consider a delegated job done until that reply is sent. Talk to the user directly only when they message you here themselves.`,
+            ].join("\n");
+          },
           isBoxScopedSubagent: () => false,
           requestContext: {
             resolve: () => {
@@ -2731,10 +2749,15 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       // createAgentOwnerInput stamps it per run; the settle host and base-state
       // reader bind it so a subagent turn resolves ITS runner, not the parent's
       // (AUDIT-4). Node's single thread keeps setup windows from interleaving.
-      let activeTurnConversationId: string | undefined;
+      // AUDIT-4 (rev 2): turn identity must NOT flow through a shared mutable.
+      // The first cut stamped a per-prepare turn-id variable, but
+      // turn-run-shell creates the settle host BEFORE prepareTurn runs — so a
+      // child's first turn settled under the previous turn's id, and a parent
+      // turn right after a child used the child's id (and concurrent turns raced
+      // on the stamp). The parent adapter is now pinned to session.id and every
+      // child runner gets its own override pinned to its own id.
       const getProductionConversationState = () => {
-        const turnId = activeTurnConversationId ?? session.id;
-        const runner = (turnId !== session.id ? runnerByConversationId.get(turnId) : builtRunner) as {
+        const runner = builtRunner as {
           getAgentConversationStateStructure?: () => unknown;
         } | undefined;
         if (typeof runner?.getAgentConversationStateStructure === "function") {
@@ -2756,7 +2779,6 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           const turnConversationId = typeof (runOptions as { conversationId?: unknown }).conversationId === "string"
             ? (runOptions as { conversationId: string }).conversationId
             : session.id;
-          activeTurnConversationId = turnConversationId;
           if (session.agentStore == null || typeof session.agentStore.getBlobStore !== "function") {
             throw new TypeError("production Agent blob store is not bound");
           }
@@ -2915,6 +2937,15 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 if (typeof args.subagentType === "string" && args.subagentType.length > 0) {
                   subagentTypeByConversationId.set(agentId, args.subagentType);
                 }
+                const childConversationState = () => {
+                  const runner = runnerByConversationId.get(agentId) as {
+                    getAgentConversationStateStructure?: () => unknown;
+                  } | undefined;
+                  if (typeof runner?.getAgentConversationStateStructure === "function") {
+                    return runner.getAgentConversationStateStructure();
+                  }
+                  throw new TypeError("child conversation state is not bound");
+                };
                 const child = deps.buildRunner({
                   ...runnerOptions,
                   conversationId: agentId,
@@ -2932,9 +2963,19 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   },
                   // Inherit the parent's production turn-run shell (Belmont's built-in turn
                   // engine — codex-HTTP inference + the full toolset), reused via the spread
-                  // above. The child's turn runs under its OWN conversation id (injected into
-                  // run() below), so it reads its own fresh transcript rather than the parent's
-                  // — Roo/Cline's isolated-subtask model, on Belmont's existing engine.
+                  // above — but with the turn IDENTITY pinned to this child (AUDIT-4 rev 2):
+                  // the settle host is created before prepareTurn runs, so identity must not
+                  // come from any shared per-prepare stamp.
+                  productionTurnRunShell: {
+                    ...(runnerOptions.productionTurnRunShell as Record<string, unknown>),
+                    createSettleHost: () => createProductionTurnSettleHost(agentId),
+                    getConversationId: () => agentId,
+                    getConversationState: childConversationState,
+                    compactionEpoch: () => {
+                      try { return compactionEpochFromConversationState(childConversationState()); }
+                      catch { return 0; }
+                    },
+                  } as typeof runnerOptions.productionTurnRunShell,
                 });
                 bindSessionOwnedRunner(child);
                 ownedRunners.add(child);
@@ -3088,11 +3129,13 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           getExecutor: () => createTextExecutor(owner.runContext.toolSession.getExecutor()),
         }),
         context: () => productionContext,
-        createSettleHost: () => createProductionTurnSettleHost(activeTurnConversationId ?? session.id),
+        // Parent adapter identity is PINNED to the session (AUDIT-4 rev 2);
+        // child runners override these with their own fixed id below.
+        createSettleHost: () => createProductionTurnSettleHost(session.id),
         profilePromptSnapshots: () => session.db,
         isSubagentRunner: false,
         subagents: { sessions: new Map() },
-        getConversationId: () => activeTurnConversationId ?? session.id,
+        getConversationId: () => session.id,
         runGeneration: () => (builtRunner as { currentRunGeneration?: number } | undefined)?.currentRunGeneration ?? 0,
         setActiveTurnRequestSource: () => {},
         beginAutoReviewUserMessageEpoch: () => {},

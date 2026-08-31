@@ -61,3 +61,13 @@ test("resolution picks main, per-subagent-type, subagent default, and runner fal
   // executor fills it from the global high default.
   assert.deepEqual(resolve(true, "executor", { agentDefaultModel: mainSelection }, "gpt-5.5"), { modelId: "gpt-5.5", reasoning: undefined });
 });
+
+test("the local resolver mirror above matches the production resolution text (AUDIT-F3)", async () => {
+  // The mirror is only valid while production keeps this exact resolution order;
+  // pin the source so drift fails here instead of leaving a false-green mirror.
+  const { readFile } = await import("node:fs/promises");
+  const shell = await readFile(new URL("../source/host/runner/turn-run-shell.ts", import.meta.url), "utf8");
+  assert.match(shell, /input\.isSubagentRunner\s*\?\s*\(input\.subagentType != null && input\.subagentType\.length > 0\s*\?\s*settingsStore\.getAgentModelForSubagentType\(input\.subagentType\)\s*:\s*undefined\)\s*\?\? settingsStore\.getSubagentDefaultModel\(\)/);
+  assert.match(shell, /: settingsStore\.getAgentModelForAgentId\(input\.conversationId\) \?\? settingsStore\.getAgentDefaultModel\(\);/);
+  assert.match(shell, /const resolvedModelId = agentSelection\?\.modelId \?\? input\.modelId;/);
+});

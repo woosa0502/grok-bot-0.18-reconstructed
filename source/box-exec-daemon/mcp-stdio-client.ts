@@ -219,6 +219,18 @@ export class McpStdioClient {
         }
         continue;
       }
+      if (message.method !== undefined) {
+        // Server-initiated REQUEST (sampling, roots, elicitation, …). This client
+        // offers none of those capabilities; answering with a JSON-RPC error lets
+        // the server move on instead of hanging on a reply that never comes
+        // (strict-review P1-06 protocol breadth). Ping is answered for liveness.
+        try {
+          this.#child?.stdin.write(JSON.stringify(message.method === "ping"
+            ? { jsonrpc: "2.0", id: message.id, result: {} }
+            : { jsonrpc: "2.0", id: message.id, error: { code: -32601, message: `Method not supported by this client: ${message.method}` } }) + "\n");
+        } catch { /* server may be shutting down */ }
+        continue;
+      }
       const pending = this.#pending.get(message.id);
       if (pending === undefined) continue;
       this.#pending.delete(message.id);

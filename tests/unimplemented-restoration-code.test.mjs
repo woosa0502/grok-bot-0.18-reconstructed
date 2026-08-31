@@ -1,3 +1,9 @@
+// ⚠ SCOPE (AUDIT-F1/F2): every module exercised here is RECOVERED reference code
+// that is intentionally NOT wired into the production composition (stream retry
+// runs through stream-attempt.ts; video subagents are dormant in local mode).
+// These tests pin the recovered sources against drift — they are NOT evidence
+// that the features work in the product. Product evidence lives in the live
+// verification ledgers (docs/testing/belmont-full-test-report.md).
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import os from "node:os";

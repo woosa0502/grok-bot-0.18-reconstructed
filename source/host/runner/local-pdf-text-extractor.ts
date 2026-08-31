@@ -33,7 +33,10 @@ export function createLocalPdfTextExtractor(options: LocalPdfTextExtractorOption
       firstError = error;
     }
     try {
-      return finishText(await extractWithPdfjs(importPdfjs, bytes));
+      // The pdfjs fallback gets the same hard deadline as pdftotext (external
+      // review #7): its parsing runs in-process, so we cannot kill it, but the
+      // caller must not wait past the deadline for a malformed document.
+      return finishText(await withDeadline(extractWithPdfjs(importPdfjs, bytes), PDF_EXTRACT_TIMEOUT_MS, "pdfjs"));
     } catch (error) {
       const detail = (value: unknown) => value instanceof Error ? value.message : String(value);
       throw new Error(`PDF text extraction failed (pdftotext: ${detail(firstError)}; pdfjs: ${detail(error)})`);
@@ -45,6 +48,17 @@ export function createLocalPdfTextExtractor(options: LocalPdfTextExtractorOption
 // (strict-review P1-10): the subprocess gets a hard deadline and is killed past
 // it, and both extractors stop at a generous output cap.
 export const PDF_EXTRACT_TIMEOUT_MS = 30_000;
+
+export function withDeadline<T>(work: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+    timer.unref?.();
+    work.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
 export const PDF_EXTRACT_MAX_CHARS = 4_000_000;
 export const PDF_EXTRACT_MAX_PAGES = 1_000;
 

@@ -4,7 +4,7 @@ export function isRecreateWakeCarryDisabled(): boolean {
   return process.env.SAND_DISABLE_RECREATE_WAKE_CARRY === "1";
 }
 export const PENDING_WAKE_STALE_MAX_AGE_MS = 48 * 60 * 60 * 1_000;
-type WakeKind = "cloud-agent" | "shell" | "subagent";
+type WakeKind = "cloud-agent" | "shell" | "subagent" | "agent-message";
 interface PendingWakeMarker {
   agentId: string;
   kind: WakeKind;
@@ -14,6 +14,15 @@ interface PendingWakeMarker {
   title?: string;
   subagentType?: string;
   interruptedByRecreate?: boolean;
+  agentMessage?: {
+    from: { id: string; name: string };
+    text: string;
+    images?: readonly { url: string; alt?: string }[];
+    priority?: boolean;
+    displayed?: boolean;
+  };
+  completion?: { status: string; result?: string; detail?: string; outputPath?: string };
+  taskPrompt?: string;
 }
 
 export class PendingWakeRearm {
@@ -26,6 +35,7 @@ export class PendingWakeRearm {
     quietOrigin?: unknown;
     title: string;
     subagentType?: string;
+    taskPrompt?: string;
   }): boolean {
     const store = this.tm.pendingWakeStore;
     if (
@@ -43,6 +53,9 @@ export class PendingWakeRearm {
       ...(event.subagentType == null
         ? {}
         : { subagentType: event.subagentType }),
+      ...(event.taskPrompt == null || event.taskPrompt.length === 0
+        ? {}
+        : { taskPrompt: event.taskPrompt }),
     });
     this.tm.telemetry.reportPendingWake({
       conversationId: event.parentAgentId,
@@ -176,6 +189,8 @@ export class PendingWakeRearm {
         this.rearmShellWake(session, marker, report);
       else if (marker.kind === "subagent")
         this.reviveParentForLostSubagentWake(marker, report);
+      else if (marker.kind === "agent-message")
+        this.redeliverAgentMessageWake(marker, report);
       else report("rearm_skipped", "unsupported_kind");
     } catch {
       report("rearm_failed", "error");
@@ -220,6 +235,22 @@ export class PendingWakeRearm {
     marker: PendingWakeMarker,
     report: (outcome: string, reason?: string) => void,
   ): void {
+    // Phase B (P1-04): a completion that arrived before the restart is stored in
+    // the marker — deliver it directly; re-watching an already-finished shell
+    // would never fire.
+    if (marker.completion != null) {
+      report("rearmed", "stored_completion_redelivered");
+      this.tm.backgroundWakes.handleBackgroundShellCompletion({
+        agentId: marker.agentId,
+        shellId: marker.workId,
+        title: marker.title ?? `Background command ${marker.workId}`,
+        status: marker.completion.status,
+        ...(marker.completion.detail == null ? {} : { detail: marker.completion.detail }),
+        ...(marker.completion.outputPath == null ? {} : { outputPath: marker.completion.outputPath }),
+        ...(marker.quietOrigin == null ? {} : { quietOrigin: marker.quietOrigin }),
+      });
+      return;
+    }
     this.tm.runnerRegistry
       .getRunner(session)
       .watchBackgroundShell(marker.workId, {
@@ -242,11 +273,35 @@ export class PendingWakeRearm {
       ...(marker.subagentType == null
         ? {}
         : { subagentType: marker.subagentType }),
+      ...(marker.taskPrompt == null ? {} : { taskPrompt: marker.taskPrompt }),
       ...(marker.quietOrigin == null
         ? {}
         : { quietOrigin: marker.quietOrigin }),
     });
+    // Phase B: a completion that arrived before the restart survives in the
+    // marker — deliver the REAL result instead of an "unknown state" apology.
+    if (marker.completion?.result != null) {
+      report("rearmed", "stored_completion_redelivered");
+      this.tm.backgroundWakes.handleBackgroundSubagentCompletion({
+        parentAgentId: marker.agentId,
+        subagentAgentId: marker.workId,
+        subagentType: marker.subagentType ?? "task",
+        toolCallId: "",
+        title: marker.title ?? "Background task",
+        status: marker.completion.status,
+        result: marker.completion.result,
+        ...(marker.quietOrigin == null
+          ? {}
+          : { quietOrigin: marker.quietOrigin }),
+      });
+      return;
+    }
     report("rearmed", "interrupted_completion");
+    // A-3 (lite): when the original task prompt was persisted at dispatch, hand
+    // it back so the parent can re-dispatch the lost child with one Task call.
+    const redispatchNote = marker.taskPrompt == null
+      ? "Check its transcript (Await with this task id) if you need what it got through, and dispatch a fresh background task if the work still matters."
+      : `Check its transcript (Await with this task id) if you need what it got through. Its original task is below — if the work still matters, re-dispatch it with a fresh Task call:\n---\n${marker.taskPrompt}\n---`;
     this.tm.backgroundWakes.handleBackgroundSubagentCompletion({
       parentAgentId: marker.agentId,
       subagentAgentId: marker.workId,
@@ -255,11 +310,46 @@ export class PendingWakeRearm {
       title: marker.title ?? "Background task",
       status: "error",
       result:
-        "A host restart interrupted this background task before its result could be delivered; its in-process run did not survive, so its final state is unknown. Check its transcript (Await with this task id) if you need what it got through, and dispatch a fresh background task if the work still matters.",
+        `A host restart interrupted this background task before its result could be delivered; its in-process run did not survive, so its final state is unknown. ${redispatchNote}`,
       ...(marker.quietOrigin == null
         ? {}
         : { quietOrigin: marker.quietOrigin }),
     });
+  }
+
+  redeliverAgentMessageWake(
+    marker: PendingWakeMarker,
+    report: (outcome: string, reason?: string) => void,
+  ): void {
+    const payload = marker.agentMessage;
+    if (payload == null) {
+      report("rearm_skipped", "missing_payload");
+      return;
+    }
+    // Re-persist first (rearmPendingWakes cleared the marker before dispatch),
+    // then hand the message back to the normal inbound queue: the regular
+    // delivery path settles the marker only after the wake turn ran (AUDIT-5).
+    this.tm.pendingWakeStore?.markPending(marker);
+    const messaging = (this.tm.backgroundWakes as {
+      agentToAgent: {
+        pendingAgentInbound: Map<string, unknown[]>;
+        reviveForAgentInbound(agentId: string): Promise<void>;
+      };
+    }).agentToAgent;
+    const inbound = {
+      id: marker.workId,
+      from: payload.from,
+      text: payload.text,
+      timestampMs: marker.markedAtMs,
+      ...(payload.images?.length ? { images: payload.images } : {}),
+      ...(payload.priority === true ? { priority: true } : {}),
+      ...(payload.displayed === true ? { isDisplayed: true } : {}),
+    };
+    const queued = messaging.pendingAgentInbound.get(marker.agentId) ?? [];
+    queued.push(inbound);
+    messaging.pendingAgentInbound.set(marker.agentId, queued);
+    void messaging.reviveForAgentInbound(marker.agentId);
+    report("rearmed", "agent_message_redelivered");
   }
   enqueuePendingWake<T>(
     queue: Map<string, T[]>,

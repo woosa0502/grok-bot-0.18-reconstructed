@@ -128,8 +128,13 @@ test("local Computer is default-on with a binary readiness gate, and the local p
 
 test("codex model calls reuse one cache session id instead of a per-call UUID", () => {
   const session = read("source/host/extensions/inference/provider-session.ts");
-  assert.match(session, /readonly #cacheSessionId: string = crypto\.randomUUID\(\);/);
+  // rev 2 (external review #5): executors are rebuilt every turn, so the key
+  // must come from the CONVERSATION — turn-run-shell threads its conversation id
+  // into the provider session; random stays only as a fallback.
+  assert.match(session, /this\.#cacheSessionId = cacheSessionId != null && cacheSessionId\.length > 0 \? cacheSessionId : crypto\.randomUUID\(\);/);
   assert.match(session, /this\.#cacheSessionId,\s*\);/);
+  const shellSource = read("source/host/runner/turn-run-shell.ts");
+  assert.match(shellSource, /createProviderPromptSession\(inferenceProvider, resolvedModelId, resolvedReasoning, input\.conversationId\)/);
   const runtime = read("source/host/extensions/inference/pi-codex-runtime.ts");
   assert.match(runtime, /sessionId: options\.cacheSessionId \?\? options\.invocationId,/);
 });

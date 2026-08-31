@@ -94,6 +94,12 @@ export interface SystemPromptAssemblyDependencies {
   readonly isCloudAgentsDisabledByTeam?: () => boolean;
   /** Local Codex mode selects the base prompt without cloud agents or image generation. */
   readonly isLocalCodexMode?: () => boolean;
+  /**
+   * Managed-team awareness (Phase B / B-2 subset): a section injected for
+   * worker agents when a manager agent is designated, so delegated-job results
+   * flow back to the manager instead of stopping in the worker's own chat.
+   */
+  readonly managedTeamSection?: () => string | null;
   readonly mcpCustomInstructionsSection: () => string | null;
   readonly mcpDiscoveryStatusSection: () => string | null;
   readonly remoteBoxSection: () => string;
@@ -268,6 +274,7 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     if (!deps.isSubagentRunner && deps.mcpManagement() != null && deps.isMcpMultiAccountEnabled?.() === true) add(SAND_MCP_MULTI_ACCOUNT_PROMPT_SECTION);
     add(getTimeZoneSection());
     add(getMemorySection()); add(getAutomationsSection()); add(getWorkflowsSection()); add(getChannelsSection()); add(getAgentDirectorySection());
+    if (!deps.isSubagentRunner) add(deps.managedTeamSection?.() ?? null);
     add(deps.mcpCustomInstructionsSection()); add(deps.mcpDiscoveryStatusSection()); add(deps.remoteBoxSection()); add(deps.computerSection());
     return sections.join("\n\n");
   }

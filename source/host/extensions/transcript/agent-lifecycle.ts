@@ -354,6 +354,16 @@ export class AgentLifecycle {
   }
   async deleteAgents(agentIds: readonly string[]): Promise<any> {
     const ids = new Set(agentIds);
+    // Manager protection (Phase B / B-2 subset): the designated manager agent
+    // cannot be deleted while it is designated — clear SAND_DEFAULT_AGENT_ID
+    // (or point it elsewhere) first. Prevents one stray click from destroying
+    // the team's single point of contact and its job ledger context.
+    const managerId = process.env.SAND_DEFAULT_AGENT_ID?.trim();
+    if (managerId != null && managerId.length > 0 && ids.has(managerId)) {
+      throw new Error(
+        "This agent is designated as the manager (SAND_DEFAULT_AGENT_ID). Change or clear that designation before deleting it.",
+      );
+    }
     if (ids.size === 0) return { transcript: getTranscript() };
     try {
       return await this.runDeleteAgents(ids);

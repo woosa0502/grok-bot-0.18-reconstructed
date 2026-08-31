@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isLocalCodexMode } from "../shared/node/local-codex-account.js";
 import type { ApplicationMenuElectronPort, ApplicationMenuItem } from "./application-menu.js";
 import { createCoordinatorMainLegs } from "./coordinator/coordinator-main-legs.js";
 import { createEgressConnectionObserver } from "./box/remote-connector-egress.js";
@@ -719,6 +720,26 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
         settings: requireValue(settings, "settings"), secretsStores: requireValue(secretsStores, "secrets-stores"), accountLifecycle, boxRecovery: requireValue(boxRecovery, "box-recovery"),
         shell, windowChrome, getMainWindow: () => runtime?.getMainWindow(), requireMainEdge: () => requireValue(mainEdge, "main-edge"),
         fetchAvailableModels: async () => {
+          // Local Codex mode (strict-review P1-12): there is no Cursor account to
+          // ask for a catalog, and the inherited backend call would just fail.
+          // Serve the Pi Codex catalog in the same AvailableModelsResponse JSON
+          // shape the renderer's picker parses.
+          if (isLocalCodexMode(process.env)) {
+            const piModels = ["gpt-5.3-codex-spark", "gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"];
+            const defaultModel = process.env.SAND_CODEX_MODEL?.trim() || "gpt-5.5";
+            return {
+              models: piModels.map((name) => ({
+                name,
+                defaultOn: name === defaultModel,
+                supportsAgent: true,
+                supportsMaxMode: false,
+                supportsNonMaxMode: true,
+                supportsThinking: true,
+                clientDisplayName: name,
+              })),
+              modelNames: piModels,
+            };
+          }
           const response = await fetchSandAvailableModels({
             getAccessToken: async ({ backendUrl }: { readonly backendUrl?: string }) => await (await requireValue(account, "account").getAuthService()).getValidAccessToken(backendUrl == null ? {} : { backendUrl }),
             getMachineId: async () => machineId,

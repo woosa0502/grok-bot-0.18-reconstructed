@@ -164,6 +164,16 @@ export function createSendToAgentTool(
             }),
             createRejectedResult: (_a: unknown, reason: string) => `Permission denied: ${reason}`,
             createSuccessOutput: (_a: unknown, result: unknown) => ({ status: "sent", ack: String(result).slice(0, 300) }),
+            // sendToAgent reports failures as plain strings, not exceptions — a
+            // ledger that records those as "sent" makes the sweeper wait forever
+            // on a job that never left (external review #3). Successful acks all
+            // start with "Sent to "/"Posted"; everything else is a failed send.
+            getFailureInfo: (result: unknown) => {
+              const text = String(result);
+              return /^(Sent to |Posted )/.test(text)
+                ? undefined
+                : { errorMessage: text.slice(0, 300), failureType: "error" };
+            },
           },
           requestContext: { toolCallId: randomUUID() },
           options: {
@@ -195,8 +205,11 @@ export function createCreateAgentTool(management: AgentManagementDependencies) {
       let reasoningNote = "";
       if (args.reasoning !== undefined) {
         try {
+          // modelId "" = inherit: the host resolves it against the CURRENT global
+          // default at save time (external review #4 — hardcoding gpt-5.5 here
+          // silently switched new bots off a customized default model).
           resolved.setAgentModelSelection?.(created.id, {
-            modelId: process.env.SAND_CODEX_MODEL?.trim() || "gpt-5.5",
+            modelId: "",
             maxMode: false,
             parameters: [{ id: "effort", value: args.reasoning }],
           });

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   buildAgentInboundWakePrompt,
   clampAgentMessage,
@@ -12,6 +14,8 @@ import { classifyAgentError } from "./turn-runtime.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
 
 export interface AgentInboundMessage {
+  /** Durable identity: keys the persisted pending-wake marker (Phase B / AUDIT-5). */
+  id?: string;
   from: { id: string; name: string };
   text: string;
   timestampMs: number;
@@ -102,12 +106,18 @@ export class AgentToAgentMessaging {
       images,
     );
     const inbound: AgentInboundMessage = {
+      id: randomUUID(),
       from: { id: fromAgentId, name: sender?.name ?? "An agent" },
       text: message,
       timestampMs: Date.now(),
       ...(images.length === 0 ? {} : { images }),
       ...(priority ? { priority: true } : {}),
     };
+    // Durable delivery (Phase B / AUDIT-5): the message is persisted as a
+    // pending-wake marker before anything is delivered, and only cleared after
+    // the recipient's wake turn actually ran. A host crash between enqueue and
+    // delivery re-arms it at the next start (at-least-once).
+    this.persistInboundMarker(toAgentId, inbound);
     const queued = this.pendingAgentInbound.get(toAgentId) ?? [];
     if (priority) {
       this.pendingAgentInbound.set(toAgentId, [inbound, ...queued]);
@@ -120,6 +130,33 @@ export class AgentToAgentMessaging {
     return priority
       ? `Sent to ${target.name} as a priority message — it will interrupt their current non-user work and wake them now. This is asynchronous — if they reply, it'll arrive later as a new message that wakes you; don't wait on it now.`
       : `Sent to ${target.name}. This is asynchronous — if they reply, it'll arrive later as a new message that wakes you; don't wait on it now.`;
+  }
+
+  persistInboundMarker(toAgentId: string, inbound: AgentInboundMessage): void {
+    if (inbound.id == null) return;
+    this.tm.pendingWakeStore?.markPending({
+      agentId: toAgentId,
+      kind: "agent-message",
+      workId: inbound.id,
+      markedAtMs: inbound.timestampMs,
+      title: `Message from ${inbound.from.name}`,
+      agentMessage: {
+        from: inbound.from,
+        text: inbound.text,
+        ...(inbound.images?.length ? { images: inbound.images } : {}),
+        ...(inbound.priority === true ? { priority: true } : {}),
+        ...(inbound.isDisplayed === true ? { displayed: true } : {}),
+      },
+    });
+  }
+
+  clearInboundMarker(toAgentId: string, inbound: AgentInboundMessage): void {
+    if (inbound.id == null) return;
+    this.tm.pendingWakes.clearSettledPendingWake({
+      agentId: toAgentId,
+      kind: "agent-message",
+      workId: inbound.id,
+    });
   }
 
   steerRecipientForPriorityPeer(agentId: string): void {
@@ -186,6 +223,11 @@ export class AgentToAgentMessaging {
       session,
       messages.filter((message) => message.isDisplayed !== true),
     );
+    // The transcript entry is in: if a crash interrupts delivery from here on,
+    // the re-armed message must not append a duplicate entry.
+    for (const message of messages)
+      if (message.isDisplayed !== true)
+        this.persistInboundMarker(agentId, { ...message, isDisplayed: true });
     const runner = this.tm.runnerRegistry.getRunner(session);
     this.tm.runLifecycle.beginSessionRun(session);
     await this.tm.runLifecycle.enqueueExclusiveRun(
@@ -247,6 +289,8 @@ export class AgentToAgentMessaging {
                 );
               return;
             }
+            // Delivered: only now does the durable marker settle (AUDIT-5).
+            this.clearInboundMarker(agentId, message);
           }
           await this.tm.roster.emitAgentUpdate(session.id);
         } catch (error) {

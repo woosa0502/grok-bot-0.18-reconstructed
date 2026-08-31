@@ -1,6 +1,6 @@
 # Belmont — 풀 테스트 & 감사 종합 문서
 
-_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 2차 갱신: 2026-08-30 저녁 (auto-review 로컬 분류기 배선 + 계정 scope 초기화 결함 수정 — §1.6) · 3차 갱신: 2026-08-31 (남은 문제 전부 처리 — TS 회귀·원장 이관·UNCLEAR 29건·첨부 스테이징 AUDIT-W7·훅 배선 AUDIT-W8, §1.6 후속 3) · 4차 갱신: 2026-08-31 (0.18.0 설치파일 기준 parity 회차 — 기억 회수·roster·루틴·플러그인·PDF·셸 상태·로그인 상태 등 15건 구현+라이브, §1.6 후속 4 · `belmont-018-parity-inventory-2026-08-31.md`) · 5차 갱신: 2026-08-31 (후속 8건+PARTIAL 4건 전부 해결 — MCP/WebFetch 훅·MCP 표면 auto-review(AUDIT-W11)·OS 알림 fallback·660/673 만료 알림·241·386·첨부 정리·pagination·그룹 채팅 라이브·컨텍스트 창 실측·AUDIT-4 settle 격리, §1.6 후속 5) · 6차 갱신: 2026-08-31 (외부 엄격 코드리뷰 검토 — 4건 재검증 후 AUDIT-W13~W17 등재, §1.6 후속 5.2) · 7차 갱신: 2026-08-31 (후속 6 — **AUDIT-W12~W17 전부 수정+라이브** + 품질 5종(캐시 친화성·cron 재시도·봇별 셸 상태·웹 충실도·PDF 수명주기), §1.6 후속 6) · 8차 갱신: 2026-08-31 (후속 7 — **벨몬트 관리자 B-1**: 기존 봇을 Belmont로 정의 + SendToAgent 훅 원장 + 스위퍼 루틴 + 기본 대화 + 봇별 reasoning(AUDIT-W1) + W18 수정 + **AUDIT-W19 발견·수정**; 왕복·재시작 생존 라이브, §1.6 후속 7) · 단일 통합본 (이전 산재 문서/임시 원장 대체; 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`, `node scripts/verdict-ledger.mjs summary`)_
+_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 2차 갱신: 2026-08-30 저녁 (auto-review 로컬 분류기 배선 + 계정 scope 초기화 결함 수정 — §1.6) · 3차 갱신: 2026-08-31 (남은 문제 전부 처리 — TS 회귀·원장 이관·UNCLEAR 29건·첨부 스테이징 AUDIT-W7·훅 배선 AUDIT-W8, §1.6 후속 3) · 4차 갱신: 2026-08-31 (0.18.0 설치파일 기준 parity 회차 — 기억 회수·roster·루틴·플러그인·PDF·셸 상태·로그인 상태 등 15건 구현+라이브, §1.6 후속 4 · `belmont-018-parity-inventory-2026-08-31.md`) · 5차 갱신: 2026-08-31 (후속 8건+PARTIAL 4건 전부 해결 — MCP/WebFetch 훅·MCP 표면 auto-review(AUDIT-W11)·OS 알림 fallback·660/673 만료 알림·241·386·첨부 정리·pagination·그룹 채팅 라이브·컨텍스트 창 실측·AUDIT-4 settle 격리, §1.6 후속 5) · 6차 갱신: 2026-08-31 (외부 엄격 코드리뷰 검토 — 4건 재검증 후 AUDIT-W13~W17 등재, §1.6 후속 5.2) · 7차 갱신: 2026-08-31 (후속 6 — **AUDIT-W12~W17 전부 수정+라이브** + 품질 5종(캐시 친화성·cron 재시도·봇별 셸 상태·웹 충실도·PDF 수명주기), §1.6 후속 6) · 8차 갱신: 2026-08-31 (후속 7 — **벨몬트 관리자 B-1**: 기존 봇을 Belmont로 정의 + SendToAgent 훅 원장 + 스위퍼 루틴 + 기본 대화 + 봇별 reasoning(AUDIT-W1) + W18 수정 + **AUDIT-W19 발견·수정**; 왕복·재시작 생존 라이브, §1.6 후속 7) · 9차 갱신: 2026-08-31 (후속 8 — **Phase B 본공사**: durable 수신함(AUDIT-5 근본, 크래시 라이브)·완료 내구(P1-04)·자식 재파견·B-2 부분(삭제 보호+Managed team 절 라이브) + 품질 세부(Grep 문맥·Delete·LS·SIGKILL·셸 id·MCP 서버요청·Pi 모델 카탈로그) + 테스트 부채 F1~F4, §1.6 후속 8) · 10차 갱신: 2026-08-31 (후속 9 — 2차 외부 검토 7건 전부 확인·수정: settle 순서 rev2·B-1 부트스트랩 스크립트·원장 실패 판정·모델 상속·대화 단위 캐시 키·스키마 서명·pdfjs 데드라인, §1.6 후속 9) · 단일 통합본 (이전 산재 문서/임시 원장 대체; 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`, `node scripts/verdict-ledger.mjs summary`)_
 
 이 문서는 두 검증 활동을 하나로 합친다: (1) **행위 단위 라이브 sweep** — 에이전트에 각 테스트 케이스를 주입해 실제 도구 실행 증거로 판정, (2) **소스 코드 감사** — production 배선/통합 여부를 코드로 확인. sweep은 '도구가 개별로 작동하는가'를 보고, 감사는 '실제로 production에 연결됐는가'를 본다. 후자가 전자의 여러 PASS를 false-green으로 뒤집었다.
 
@@ -15,10 +15,10 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | — UNAVAIL (이 버전엔 기능 없음 — 사유별 EXCLUDED_HIDDEN 분류는 parity 목록 문서 §4) | 631 |
 | — ENV / UI_ONLY / EXPECTED | 87 / 13 / 1 |
 | — PARTIAL / FIXED / UNCLEAR | **0** / 2 / **0** (PARTIAL 4건은 후속 5에서 전부 PASS 재판정: 241·386·660·673) |
-| 감사 findings | 39개 id, 최신 판정 기준 FIXED 29 · RESOLVED 1 · CONFIRMED 5 · PARTIAL 3 · POSITIVE 1 — `docs/testing/belmont-audit-findings.jsonl`(append-only, id별 최신 행이 유효). W12~W19 전부 수정+라이브(§1.6 후속 6·7), AUDIT-W1(봇별 모델/reasoning)도 후속 7에서 수정. 잔여 CONFIRMED/PARTIAL: AUDIT-9(이미지=Cursor 토큰, 사용자 제외 지시) · AUDIT-5(PARTIAL — B-1-lite 완화, 근본은 Phase B) · AUDIT-F1~F4(false-green 테스트 정리) · AUDIT-W6/F5(PARTIAL) |
+| 감사 findings | 42개 id, 최신 판정 기준 FIXED 34 · RESOLVED 1 · DOCUMENTED 2 · CONFIRMED 1 · PARTIAL 3 · POSITIVE 1. **AUDIT-5 근본 수정(durable 수신함)·P1-04·자식 재파견·B-2 부분까지 후속 8에서 완료.** 잔여: AUDIT-9(이미지 — 사용자 제외 지시) · AUDIT-B2(PARTIAL — 워커 UI 잠금은 고정 렌더러 한계) · AUDIT-W6/F5(PARTIAL, 경미) |
 | 확정 실결함 | 19 — 전부 수정+재빌드+라이브검증: update_state, Pi maxTokens, 첨부전송 크래시(커밋) · AUDIT-W3~W8(§1.6) · **4차 갱신(§1.6 후속 4, 0.18 parity 회차)**: AUDIT-1 기억 회수 · AUDIT-3 roster · AUDIT-7 예약 루틴 · AUDIT-8 플러그인 · AUDIT-10 로그인 상태 · AUDIT-11 PDF · AUDIT-W2 셸 상태 · AUDIT-EPOCH · **AUDIT-W9 로컬 준비 상태 게이트** · **AUDIT-W10 데몬 PDF 거부** — 4차분 미커밋 |
 | 신규 기능 | **컴퓨터 유즈**(§1.5) · **로컬 auto-review 분류기**(§1.6) · **hooks.json Shell 경로**(§1.6 후속 3) · **4차**: 장기 기억 자동 회수 · ListAgents/ListGroups · 로컬 cron 루틴 · 로컬 플러그인 저장소/카탈로그 · PDF 읽기 · Shell cwd/env 유지 · 앱 내 Pi OAuth 로그인/상태 · 클라우드 에이전트/이미지 생성 정직 숨김 — 전부 라이브검증(`docs/testing/belmont-018-parity-inventory-2026-08-31.md`) |
-| 게이트 | `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 175/175) — 8차 갱신(후속 7, 벨몬트 관리자 B-1) |
+| 게이트 | `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 191/191) — 10차 갱신(후속 9, 2차 외부 검토 7건 수정) |
 
 **핵심 결론:** 다중 봇 *기반*은 있으나, Belmont의 핵심 연결부 — 기억 자동회수 · 봇 발견 · 위임 내구성 · child 상태 격리 · 결과 검토 — 가 아직 production에 끊겨 있다. sweep의 PASS 수치는 false-green으로 부풀려져 있었다. (2026-08-30 갱신: 컴퓨터 유즈 신규 구현+검증 §1.5, 확정 실결함 3건 커밋·병합 완료. 2차 갱신: 마지막 결함 클러스터(auto-review)가 해소되어 §0.5 ①은 0건 — §1.6. 3차 갱신: 남은 문제 목록을 전부 처리해 UNCLEAR 0건·typecheck 0오류, 그 과정에서 첨부 스테이징(AUDIT-W7)·훅 배선(AUDIT-W8) 결함 2건 추가 발견·수정 — §1.6 후속 3.)
 
@@ -395,6 +395,36 @@ hooks.json에 preToolUse/beforeShellExecution/postToolUse를 넣고 에이전트
 - **재시작 생존**: [job:r91q]를 "재촉 전 회신 보류" 조건으로 위임 → 앱 재시작 → **재시작 후 스위퍼가 원장에서 미회신 job 발견·재촉**(03:00:53) → 워커 회신(03:01:00) → Belmont 검토·보고. 디스크 원장+스위퍼로 재시작 유실 복구 실증
 
 게이트: `npm run check` exit 0 — 테스트 **175/175**(신규 5: tests/belmont-manager-b1.test.mjs). 한계(명시): 검토·승인은 프롬프트 관례(코드 강제는 B-2), 재촉 지연=스위퍼 주기, 대기열 자체는 여전히 메모리(AUDIT-5 PARTIAL — 근본은 Phase B durable 수신함).
+
+### 후속 8: Phase B 본공사 + 품질·테스트 부채 (2026-08-31, 9차 갱신 — 사용자 지시 "B·D·F 빼고 마무리")
+범위: A(Phase B: durable 수신함·완료 내구·자식 재파견·B-2 부분)·C-1(브라우저 AR)·E(품질 세부)·G(테스트 부채). 제외 유지: B(비디오·이미지)·D(텔레그램 커넥터)·F(패키징).
+
+| # | 항목 | 결과 |
+|---|---|---|
+| A-1 | **SendToAgent durable 수신함** (AUDIT-5 근본) | **구현+라이브 크래시 테스트** — pending-wake에 'agent-message' kind: 송신 시 전문 영속 → 수신 wake 완료 후에만 정산 → 재시작 rearm이 재전달. 라이브: 전달 도중 kill -9 → 마커에 전문 잔존 → 재시작 → **정확히 1회 전달**(displayed 플래그로 전사 중복 방지)·마커 정리 |
+| A-2 | **완료 통지 내구** (P1-04) | **구현+동작 테스트** — 도착한 결과를 마커에 병합 저장, revival 후 정산; 재시작 rearm이 'unknown state' 대신 **실제 결과** 재전달(subagent·shell). shell은 죽은 프로세스 재감시 대신 직접 재생 |
+| A-3 | **자식 재파견 정보** (lite) | **구현** — dispatch 시 작업 원문(8k) 영속; 결과 없이 잃은 자식은 부모에게 원문 포함 알림 → Task 한 번으로 복구. 완전 재개는 미구현(명시) |
+| A-4 | **B-2 부분** | **구현+라이브** — ①관리자 삭제 보호 ②비관리자 봇 전원에 'Managed team' 절 주입. 라이브: **회신 지시 없는 [job:mt42] 위임에 워커가 12초 내 자발적으로 태그 달아 회신**. 워커 대화 잠금·게시 게이트는 고정 렌더러 한계로 불가(명시, AUDIT-B2 PARTIAL) |
+| C-1 | 브라우저 표면 auto-review | **분석 종결** — 로컬 모드에 독립 브라우저 표면 없음(BrowserUse dormant, P2-03); 브라우저 조작은 computerUse 경유라 computer 표면 라이브(§1.6)가 커버 |
+| E | 품질 세부 | Grep 문맥을 매치 그룹 기준으로 재작성(offset/head-limit 경계 오염 해소) · Delete 미리보기 100KB 부분 읽기+FIFO 차단 · LS 절단 시 childrenWereProcessed=false 계약 · kill SIGTERM→5초 후 SIGKILL 승격 · 셸 id 시계 시드(재시작 재사용 방지) · MCP 서버발 요청에 JSON-RPC 응답(ping=결과, 그 외 -32601 — 서버 hang 방지) · **P1-12**: 로컬 모드 데스크톱 모델 목록을 실제 Pi 카탈로그 7종으로 대체(Cursor 백엔드 호출 제거). Edit CAS는 미적용(oldString 대조가 동시성 앵커, ms급 잔여 창은 단일 사용자 로컬에서 무시 가능 — 명시) |
+| G | 테스트 부채 | F1/F2: 복원 참조 테스트임을 머리말로 명시(DOCUMENTED) · F3: production 해석식 고정 가드 추가 · F4: 실 로그인 경로 앵커 추가. 신규 tests/phase-b-durability.test.mjs(8: 저장소 round-trip·배선 가드) |
+
+게이트: `npm run check` exit 0 — 테스트 **185/185**. 내구성 의미론: **at-least-once**(전달 후·정산 전 크래시 시 재전달 가능, 전사 중복은 방지) — 개인용 트레이드오프로 명시. 그룹 게시는 durable 미포함(기존 그룹 wake 기제).
+
+### 후속 9: 2차 외부 검토 7건 — 전부 확인·수정 (2026-08-31, 10차 갱신)
+외부 검토가 7건을 지적했고 **7건 모두 사실**이었다(특히 #1은 wave-5/8 수정의 실제 순서 결함을 잡아냄 — 우리 라이브 테스트가 못 본 것).
+
+| # | 지적 | 수정 | 검증 |
+|---|---|---|---|
+| 1 | **settle host가 prepareTurn보다 먼저 생성**되는데 turn id는 prepareTurn에서 공유 가변에 스탬프 → 자식 첫 턴/자식 직후 부모 턴이 엉뚱한 id로 settle 가능(+동시 턴 레이스) | 공유 가변 제거: 부모 어댑터 session.id 고정, **자식 러너별 어댑터 오버라이드**(settle/conversationId/state/epoch 전부 자기 id·자기 러너 고정) | 가드가 순서 사실 자체를 고정(settle<prepare && 가변 부재) + 라이브 자식 왕복·부모 상태 온전 |
+| 2 | B-1이 런타임 fixture — 커밋만으론 재현 불가 | `npm run belmont:manager`(봇·persona·훅·스위퍼·manager.json 멱등 부트스트랩) + 런처가 manager.json에서 관리자 자동 지정 | **라이브**: 멱등 재실행 + env 없이 재시작해도 Belmont 기본 대화 |
+| 3 | 원장이 실패 전송("No agent found…")도 sent로 기록 → 스위퍼 영원 대기 | SendToAgent 훅에 getFailureInfo — ack 접두("Sent to "/"Posted ") 외에는 실패로 기록 | 가드(알려진 실패 문구가 접두와 불일치함도 고정) |
+| 4 | CreateAgent(reasoning)이 전역 기본 모델 무시하고 gpt-5.5 고정 | modelId ""=상속 규약 — 저장 시 현재 전역 기본(없으면 env/기본)으로 해석 | 가드 |
+| 5 | 캐시 친화성이 턴 내부만(executor가 턴마다 재생성) | cacheSessionId=**대화 id**를 turn-run-shell이 전달 — 턴을 넘어 동일 키 | 가드(생성자 계약+전달 지점) |
+| 6 | MCP 서명이 이름만 비교 — 제자리 스키마 변경 놓침 | 서명에 description+inputSchema JSON 포함 | 가드 |
+| 7 | pdfjs 폴백에 데드라인 없음 | withDeadline로 30초 상한(프로세스 킬 불가는 명시 — 대기만 차단) | 동작 테스트(100ms 데드라인 거부) |
+
+게이트: `npm run check` exit 0 — 테스트 **191/191**(신규 tests/external-review-fixes.test.mjs 6). 검토의 방법론 교훈 수용: 가드가 "코드 문자열"이 아니라 **순서 사실**(settle<prepare)을 고정하도록 작성.
 
 ## 2. 감사 findings — P0 (심각)
 

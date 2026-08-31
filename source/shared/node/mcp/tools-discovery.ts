@@ -543,7 +543,15 @@ export function createMcpToolsDiscovery(
         return false; // daemon unreachable — keep the cache as-is
       }
       const signature = (tools: Tool[]): string =>
-        tools.map((tool) => `${tool.providerIdentifier} ${tool.toolName}`).sort().join("\n");
+        // Name alone is not enough: a server that changes a tool's schema or
+        // description IN PLACE must also invalidate the cache (external review #6).
+        tools
+          .map((tool) => {
+            const loose = tool as { description?: unknown; inputSchema?: unknown };
+            return [tool.providerIdentifier, tool.toolName, typeof loose.description === "string" ? loose.description : "", JSON.stringify(loose.inputSchema ?? null)].join("\u0000");
+          })
+          .sort()
+          .join("\n");
       const stdioSet = new Set(stdioServerNames);
       const cachedBox = fulfilled.tools.filter((tool) => stdioSet.has(tool.providerIdentifier));
       if (signature(cachedBox) === signature(live)) return false;

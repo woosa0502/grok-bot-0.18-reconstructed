@@ -108,7 +108,7 @@ test("Router settings use the trusted backend and Pi-owned Codex runtime", async
   assert.match(cursorBackend, /createProviderPromptSession\(routedProvider, options\.requestedModel\.modelId\)/);
   assert.doesNotMatch(rendererPatch, /ANTHROPIC_API_KEY|OPENAI_API_KEY/);
   assert.match(turnShell, /inferenceProvider === "cursor"/);
-  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, resolvedModelId, resolvedReasoning\)/);
+  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, resolvedModelId, resolvedReasoning, input\.conversationId\)/);
   assert.match(turnShell, /settingsStore\.getAgentModelForSubagentType\(input\.subagentType\)/);
   assert.match(turnShell, /\?\? settingsStore\.getSubagentDefaultModel\(\)/);
   // Per-agent selection first (AUDIT-W1), then the global default.

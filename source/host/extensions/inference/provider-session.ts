@@ -301,12 +301,12 @@ function openRouterExecutor(
 
 class ProviderPromptExecutor implements PromptExecutor {
   readonly #messages: ProviderMessage[];
-  // Stable prompt-cache affinity key (strict-review P1-02): the Pi runtime maps
-  // sessionId to provider prompt-cache affinity, and passing the per-call
-  // invocation UUID gave every model call a fresh identity — repeated turns and
-  // tool round-trips could never deliberately share a cached prefix. One key per
-  // executor (whose #messages ARE the conversation) restores that affinity.
-  readonly #cacheSessionId: string = crypto.randomUUID();
+  // Stable prompt-cache affinity key (strict-review P1-02, rev 2): the Pi runtime
+  // maps sessionId to provider prompt-cache affinity. Executors are rebuilt every
+  // turn, so a per-executor random key only covered tool round-trips WITHIN a
+  // turn — the caller now passes the conversation id, making affinity stable
+  // across turns of the same conversation (random stays the fallback).
+  readonly #cacheSessionId: string;
 
   constructor(
     readonly provider: RoutedProvider,
@@ -314,8 +314,10 @@ class ProviderPromptExecutor implements PromptExecutor {
     readonly onUsage: ((usage: UsageRecord) => void) | undefined,
     readonly modelId: string | undefined,
     readonly reasoning?: CodexReasoningEffort,
+    cacheSessionId?: string,
   ) {
     this.#messages = initialMessages == null ? [] : [...initialMessages];
+    this.#cacheSessionId = cacheSessionId != null && cacheSessionId.length > 0 ? cacheSessionId : crypto.randomUUID();
   }
 
   appendMessages(messages: LabelMessage | readonly LabelMessage[]): this {
@@ -360,6 +362,7 @@ export function createProviderPromptSession(
   provider: RoutedProvider,
   requestedModelId?: string,
   requestedReasoning?: CodexReasoningEffort,
+  cacheSessionId?: string,
 ): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
   const requested = requestedModelId?.trim();
   const modelId = provider === "codex"
@@ -377,6 +380,7 @@ export function createProviderPromptSession(
         usage => recordRoutedUsage(provider, usage),
         parsed.modelId ?? modelId,
         requestedReasoning,
+        cacheSessionId,
       );
     },
   };

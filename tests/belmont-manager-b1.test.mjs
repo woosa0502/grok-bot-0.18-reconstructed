@@ -78,7 +78,11 @@ test("top-level turns consult the per-agent selection ahead of the global defaul
   assert.match(tool, /reasoning: z\.enum\(\["minimal", "low", "medium", "high", "xhigh"\]\)\.optional\(\)/);
   assert.match(tool, /resolved\.setAgentModelSelection\?\.\(created\.id, \{/);
   const composition = read("source/host/host-runner-composition.ts");
-  assert.match(composition, /setAgentModelForAgentId\(agentId, \{ modelId: selection\.modelId/);
+  // rev 2 (external review #4): reasoning-only selections inherit the CURRENT
+  // global default model instead of hardcoding gpt-5.5.
+  assert.match(tool, /modelId: "",/);
+  assert.match(composition, /selection\.modelId\.length > 0\s*\? selection\.modelId\s*: store\.getAgentDefaultModel\(\)\?\.modelId \?\? process\.env\.SAND_CODEX_MODEL\?\.trim\(\) \?\? "gpt-5\.5";/);
+  assert.match(composition, /store\.setAgentModelForAgentId\(agentId, \{ modelId, maxMode: selection\.maxMode/);
 });
 
 // ---------- B1 / AUDIT-W18: local-exec daemon orphan watchdog ----------

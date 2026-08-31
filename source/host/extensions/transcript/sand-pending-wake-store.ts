@@ -8,13 +8,33 @@ import {
 import { dirname, join } from "node:path";
 import { SAND_PENDING_WAKE_FILE_NAME } from "../../durable-file-policy.js";
 import type { PendingWakeKind, PendingWakeMarker } from "./async-task-union.js";
-export const PENDING_WAKE_KINDS = ["cloud-agent", "subagent", "shell"] as const;
+export const PENDING_WAKE_KINDS = ["cloud-agent", "subagent", "shell", "agent-message"] as const;
 export interface QuietWakeOrigin {
   automation?: { id: string; name: string };
+}
+/** Durable agent-to-agent message payload (Phase B / AUDIT-5): the marker IS the message. */
+export interface DurableAgentMessagePayload {
+  from: { id: string; name: string };
+  text: string;
+  images?: readonly { url: string; alt?: string }[];
+  priority?: boolean;
+  /** The transcript entry was already appended before a crash — do not append again. */
+  displayed?: boolean;
+}
+/** Durable background completion payload (Phase B / P1-04): the result survives a restart. */
+export interface DurableCompletionPayload {
+  status: string;
+  result?: string;
+  detail?: string;
+  outputPath?: string;
 }
 export interface DurablePendingWakeMarker extends PendingWakeMarker {
   quietOrigin?: QuietWakeOrigin;
   interruptedByRecreate?: boolean;
+  agentMessage?: DurableAgentMessagePayload;
+  completion?: DurableCompletionPayload;
+  /** Original task prompt persisted at dispatch, so a lost child can be re-dispatched. */
+  taskPrompt?: string;
 }
 export function coerceQuietOrigin(
   value: unknown,
@@ -59,6 +79,48 @@ export function coerceMarker(entry: unknown): DurablePendingWakeMarker | null {
     ...(e.interruptedByRecreate === true
       ? { interruptedByRecreate: true }
       : {}),
+    ...(coerceAgentMessage(e.agentMessage) == null
+      ? {}
+      : { agentMessage: coerceAgentMessage(e.agentMessage)! }),
+    ...(coerceCompletion(e.completion) == null
+      ? {}
+      : { completion: coerceCompletion(e.completion)! }),
+    ...(typeof e.taskPrompt === "string" && e.taskPrompt.length > 0
+      ? { taskPrompt: e.taskPrompt }
+      : {}),
+  };
+}
+function coerceAgentMessage(value: unknown): DurableAgentMessagePayload | null {
+  if (typeof value !== "object" || value == null) return null;
+  const v = value as Record<string, unknown>;
+  const from = v.from as Record<string, unknown> | undefined;
+  if (typeof v.text !== "string" || v.text.length === 0) return null;
+  if (typeof from?.id !== "string" || from.id.length === 0) return null;
+  const images = Array.isArray(v.images)
+    ? v.images.flatMap((image) => {
+        const i = image as Record<string, unknown>;
+        return typeof i?.url === "string" && i.url.length > 0
+          ? [{ url: i.url, ...(typeof i.alt === "string" ? { alt: i.alt } : {}) }]
+          : [];
+      })
+    : [];
+  return {
+    from: { id: from.id, name: typeof from.name === "string" ? from.name : "An agent" },
+    text: v.text,
+    ...(images.length === 0 ? {} : { images }),
+    ...(v.priority === true ? { priority: true } : {}),
+    ...(v.displayed === true ? { displayed: true } : {}),
+  };
+}
+function coerceCompletion(value: unknown): DurableCompletionPayload | null {
+  if (typeof value !== "object" || value == null) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.status !== "string" || v.status.length === 0) return null;
+  return {
+    status: v.status,
+    ...(typeof v.result === "string" ? { result: v.result } : {}),
+    ...(typeof v.detail === "string" ? { detail: v.detail } : {}),
+    ...(typeof v.outputPath === "string" ? { outputPath: v.outputPath } : {}),
   };
 }
 export function coercePendingWakeMarkers(

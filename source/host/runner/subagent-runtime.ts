@@ -101,6 +101,8 @@ export interface SubagentRuntimeHost {
     title: string;
     subagentType: string;
     quietOrigin?: string;
+    /** Original task prompt (clamped) so a restart-lost child can be re-dispatched (Phase B). */
+    taskPrompt?: string;
   }): void;
   onPendingWakeDisarmed?(event: {
     parentAgentId: string;
@@ -231,6 +233,7 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
       workId: params.subagentAgentId,
       title,
       subagentType: params.subagentType,
+      taskPrompt: params.prompt.slice(0, 8_000),
       ...(params.quietOrigin == null ? {} : { quietOrigin: params.quietOrigin }),
     });
     emitSubagentsChanged();

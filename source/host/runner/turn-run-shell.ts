@@ -209,7 +209,7 @@ export async function createTurnAgentRunContext<ContextValue>(
   })();
   const agent = inferenceProvider === "cursor"
     ? input.inference.createSession(input.onRequestId, sessionOptions)
-    : createProviderPromptSession(inferenceProvider, resolvedModelId, resolvedReasoning) as unknown as TurnAgentPromptSession;
+    : createProviderPromptSession(inferenceProvider, resolvedModelId, resolvedReasoning, input.conversationId) as unknown as TurnAgentPromptSession;
   const summarizationSession = inferenceProvider === "cursor" ? input.inference.createSummarizationSession?.(
     input.onRequestId,
     {

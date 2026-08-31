@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { appendFile, lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, lstat, mkdir, open, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -330,7 +330,9 @@ class BoxExecRuntime {
   readonly #foreground = new Set<ChildProcessWithoutNullStreams>();
   readonly #background = new Map<number, BackgroundProcess>();
   readonly #mcpServers = new Map<string, { client: McpStdioClient; configKey: string }>();
-  #nextShellId = 1;
+  // Seeded from the clock so ids never repeat across daemon restarts (a reused
+  // id could route Await/stdin to the wrong terminal file).
+  #nextShellId = Math.floor(Date.now() / 1000) % 1_000_000_000;
 
   readonly #shellStateDir: string;
 
@@ -1007,7 +1009,10 @@ class BoxExecRuntime {
         node.childrenWereProcessed = true;
         entries.sort((a, b) => a.name.localeCompare(b.name));
         for (const entry of entries) {
-          if (budget <= 0) break;
+          // Budget exhausted mid-directory: flag the node as incomplete instead
+          // of silently presenting a partial listing as the whole directory
+          // (strict-review P1-08 — truncation contract).
+          if (budget <= 0) { node.childrenWereProcessed = false; break; }
           if (isIgnored(path.relative(root, path.join(dir, entry.name)))) continue;
           budget -= 1;
           if (entry.isDirectory()) {
@@ -1053,8 +1058,22 @@ class BoxExecRuntime {
       const info = await lstat(target);
       if (info.isDirectory()) return new DeleteResult({ result: { case: "notFile", value: new DeleteNotFile({ path: args.path }) } });
       const fileSize = BigInt(info.size);
+      // Preview only regular files and only their first 100 KB: reading a huge
+      // file (or a FIFO, which blocks forever) whole just for the preview was a
+      // correctness/performance trap (strict-review P1-08).
       let prevContent = "";
-      try { prevContent = (await readFile(target)).toString("utf8").slice(0, 100_000); } catch {}
+      if (info.isFile()) {
+        try {
+          const previewBytes = Math.min(info.size, 100_000);
+          const handle = await open(target, "r");
+          try {
+            const { buffer, bytesRead } = await handle.read(Buffer.alloc(previewBytes), 0, previewBytes, 0);
+            prevContent = buffer.subarray(0, bytesRead).toString("utf8");
+          } finally {
+            await handle.close();
+          }
+        } catch {}
+      }
       await rm(target);
       return new DeleteResult({ result: { case: "success", value: new DeleteSuccess({ path: args.path, deletedFile: target, fileSize, prevContent }) } });
     } catch (error) {
@@ -1121,27 +1140,44 @@ class BoxExecRuntime {
     let retained = 0;    // match lines kept within the head limit
     const offset = Math.max(0, args.offset ?? 0);
     let matchIndex = 0;
+    // Context lines are grouped with THEIR match (strict-review P1-08): leading
+    // (-B) context is buffered and flushed only when its match is retained, so
+    // context belonging to offset-skipped or over-limit matches never rides
+    // along, and trailing (-A) context after the last retained match survives.
+    const contextBeforeCount = Math.max(0, args.contextBefore ?? args.context ?? 0);
+    let keepTrailingContext = false;
+    let pendingContext: { file: string; lineNumber: number; content: string }[] = [];
+    const pushLine = (file: string, lineNumber: number, content: string, isContext: boolean): void => {
+      const list = byFile.get(file) ?? [];
+      if (list.length === 0) byFile.set(file, list);
+      list.push(new GrepContentMatch({ lineNumber, content: content.slice(0, 2000), contentTruncated: content.length > 2000, ...(isContext ? { isContextLine: true } : {}) }));
+    };
     for (const line of outcome.stdout.split("\n")) {
       if (line.length === 0) continue;
       let event: { type?: string; data?: { path?: { text?: string }; line_number?: number; lines?: { text?: string } } };
       try { event = JSON.parse(line); } catch { continue; }
-      // Keep ripgrep "context" events (-A/-B lines) alongside matches so requested context reaches
-      // the model; begin/end/summary are still skipped. Offset, totalSeen, and the head-limit count
-      // apply to matches only — context lines ride along with the retained matches they surround.
       const isMatch = event.type === "match";
       const isContext = event.type === "context";
       if (!isMatch && !isContext) continue;
-      if (isMatch && matchIndex++ < offset) continue;
-      if (isMatch) totalSeen += 1;
       const file = event.data?.path?.text ?? "";
       const lineNumber = event.data?.line_number ?? 0;
       const content = (event.data?.lines?.text ?? "").replace(/\n$/, "");
-      const list = byFile.get(file) ?? [];
-      if (list.length === 0) byFile.set(file, list);
-      if (retained < headLimit) {
-        list.push(new GrepContentMatch({ lineNumber, content: content.slice(0, 2000), contentTruncated: content.length > 2000, ...(isContext ? { isContextLine: true } : {}) }));
-        if (isMatch) retained += 1;
+      if (isContext) {
+        if (keepTrailingContext) pushLine(file, lineNumber, content, true);
+        else if (contextBeforeCount > 0) {
+          pendingContext.push({ file, lineNumber, content });
+          if (pendingContext.length > contextBeforeCount) pendingContext.shift();
+        }
+        continue;
       }
+      if (matchIndex++ < offset) { keepTrailingContext = false; pendingContext = []; continue; }
+      totalSeen += 1;
+      if (retained >= headLimit) { keepTrailingContext = false; pendingContext = []; continue; }
+      for (const buffered of pendingContext) if (buffered.file === file) pushLine(buffered.file, buffered.lineNumber, buffered.content, true);
+      pendingContext = [];
+      pushLine(file, lineNumber, content, false);
+      retained += 1;
+      keepTrailingContext = true;
     }
     const outputMode = args.outputMode ?? "content";
     // Truncated only when there were genuinely more matches than we retained.
@@ -1435,6 +1471,17 @@ class BoxExecRuntime {
       if (process.platform !== "win32" && child.pid != null) process.kill(-child.pid, "SIGTERM");
       else child.kill("SIGTERM");
     } catch {}
+    // Escalate: a process that ignores SIGTERM must not linger (strict-review
+    // P1-07 tail — no SIGKILL escalation existed).
+    const escalate = setTimeout(() => {
+      if (child.exitCode != null || child.signalCode != null) return;
+      try {
+        if (process.platform !== "win32" && child.pid != null) process.kill(-child.pid, "SIGKILL");
+        else child.kill("SIGKILL");
+      } catch {}
+    }, 5_000);
+    escalate.unref?.();
+    child.once("exit", () => clearTimeout(escalate));
   }
 
   private async run(command: string, cwd: string, timeoutMs: number | undefined, signal: AbortSignal): Promise<ProcessOutcome> {

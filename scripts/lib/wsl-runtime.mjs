@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 export const BELMONT_WSL_DEBUG_PORT_ENV = "BELMONT_WSL_DEBUG_PORT";
@@ -44,9 +45,25 @@ export function wslDataRoot(profileDir) {
   return path.join(path.resolve(profileDir), "sand-data");
 }
 
+/**
+ * Manager designation persisted per profile (Belmont B-1 bootstrap): written by
+ * `npm run belmont:manager`, read at every start so the manager keeps working
+ * without hand-set environment variables. SAND_DEFAULT_AGENT_ID still overrides.
+ */
+export function readManagerAgentId(profileDir) {
+  try {
+    const parsed = JSON.parse(readFileSync(path.join(wslDataRoot(profileDir), "manager.json"), "utf8"));
+    return typeof parsed.managerAgentId === "string" && parsed.managerAgentId.length > 0 ? parsed.managerAgentId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function wslHostEnvironment({ profileDir, env = process.env }) {
+  const managerAgentId = env.SAND_DEFAULT_AGENT_ID?.trim() || readManagerAgentId(profileDir);
   return {
     ...wslRuntimeEnvironment(env),
+    ...(managerAgentId == null ? {} : { SAND_DEFAULT_AGENT_ID: managerAgentId }),
     SAND_DATA_ROOT: wslDataRoot(profileDir),
     SAND_GATEWAY_BIND_HOST: "127.0.0.1",
     SAND_HOST_PORT: "0",
