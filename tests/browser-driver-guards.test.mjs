@@ -145,6 +145,17 @@ function buildPage(dom) {
     body: dom.body,
     querySelector: (sel) => dom.body.querySelector(sel),
     elementFromPoint: () => page.pointTarget ?? null,
+    getElementById: (id) => {
+      const find = (node) => {
+        if (node.attrs.id === id) return node;
+        for (const child of node.childList) {
+          const hit = find(child);
+          if (hit) return hit;
+        }
+        return null;
+      };
+      return find(dom.body);
+    },
   };
   Object.defineProperty(fakeDocument, "activeElement", { get: () => page.activeElement ?? null });
 
@@ -217,8 +228,16 @@ function buildPage(dom) {
   return { page, context };
 }
 
-const freshState = () => ({ views: {}, urls: {}, refMeta: {}, lastViewId: undefined });
-const request = (fields) => ({ display: 0, viewId: "v", ...fields });
+// A dedicated display keeps the gate's block-time state writes away from any
+// real driver state under /tmp/.sand-browser.
+const TEST_DISPLAY = 700 + (process.pid % 97);
+import { rmSync } from "node:fs";
+const cleanTestState = () => rmSync(`/tmp/.sand-browser/views-${TEST_DISPLAY}.json`, { force: true });
+cleanTestState();
+process.on("exit", cleanTestState);
+
+const freshState = () => ({ views: {}, urls: {}, refMeta: {}, pendingApprovals: {}, lastViewId: undefined });
+const request = (fields) => ({ display: TEST_DISPLAY, viewId: "v", ...fields });
 
 async function snapshotInto(ops, context, state) {
   delete globalThis.__sandRefs;
@@ -252,20 +271,31 @@ test("payment and login clicks are gated until confirmed; ordinary clicks run fr
     throw new Error("node has no ref");
   };
 
+  // Self-approval is ignored: confirmed on a FIRST attempt still blocks (a
+  // live app run showed the model doing exactly this), and the block arms the
+  // retry instead of letting the flag skate through.
   await assert.rejects(
-    OPS.click({ request: request({ ref: refOf(dom.payButton) }), context, state }),
-    /Sensitive action blocked \(payment\/money control/,
+    OPS.click({ request: request({ ref: refOf(dom.payButton), confirmed: true }), context, state }),
+    /Sensitive action blocked \(payment\/money control.*confirmed was set without a prior block/s,
   );
   assert.equal(dom.payButton.clicks, 0);
 
-  // The login button trips the password-form submit check even before keywords.
+  // The login button trips the password-form submit check even before keywords
+  // — and its block must not clobber the pay button's arm (per-reason arms).
   await assert.rejects(
     OPS.click({ request: request({ ref: refOf(dom.loginButton) }), context, state }),
     /Sensitive action blocked/,
   );
 
-  // confirmed: true is the user-approved retry.
+  // confirmed: true is the user-approved retry after the block.
   await OPS.click({ request: request({ ref: refOf(dom.payButton), confirmed: true }), context, state });
+  assert.equal(dom.payButton.clicks, 1);
+
+  // The arm is consumed: the SAME confirmed click needs a fresh block first.
+  await assert.rejects(
+    OPS.click({ request: request({ ref: refOf(dom.payButton), confirmed: true }), context, state }),
+    /Sensitive action blocked/,
+  );
   assert.equal(dom.payButton.clicks, 1);
 
   // Ordinary controls never see the gate.
@@ -337,6 +367,13 @@ test("a stale ref is re-resolved by its persisted fingerprint", async () => {
   newPay.parent = dom.body;
   dom.payButton._connected = false;
 
+  // The stale ref is recovered on the (armed-then-approved) click pair: the
+  // first attempt re-resolves the node and blocks as sensitive, the confirmed
+  // retry lands on the replacement node.
+  await assert.rejects(
+    OPS.click({ request: request({ ref: payRef }), context, state }),
+    /Sensitive action blocked/,
+  );
   await OPS.click({ request: request({ ref: payRef, confirmed: true }), context, state });
   assert.equal(newPay.clicks, 1, "the replacement node should receive the click");
   assert.equal(dom.payButton.clicks, 0, "the detached node must not be clicked");
@@ -386,6 +423,62 @@ test("coordinate clicks and Enter presses hit the same gate", async () => {
   page.activeElement = dom.okButtonA;
   await OPS.press_key({ request: request({ key: "Enter" }), context, state });
   assert.deepEqual(page.pressed, ["Tab", "Enter", "Enter"]);
+});
+
+test("snapshot v2 walks open shadow DOM and same-origin iframes; recovery crosses the boundary", async () => {
+  const { OPS } = await driverPromise;
+  const dom = buildDom();
+  const shadowButton = new FakeElement({ tag: "button", text: "그림자 버튼", interactive: true });
+  const host = new FakeElement({ tag: "x-widget" });
+  host.shadowRoot = { children: [shadowButton] };
+  shadowButton.parent = host;
+  const frameButton = new FakeElement({ tag: "button", text: "프레임 버튼", interactive: true });
+  const frameBody = new FakeElement({ tag: "body", children: [frameButton] });
+  const sameOriginFrame = new FakeElement({ tag: "iframe", attrs: { src: "child.html" } });
+  sameOriginFrame.contentDocument = { body: frameBody };
+  const crossOriginFrame = new FakeElement({ tag: "iframe", attrs: { src: "https://other.example/" } });
+  crossOriginFrame.contentDocument = null;
+  dom.body.childList.push(host, sameOriginFrame, crossOriginFrame);
+  host.parent = dom.body;
+  sameOriginFrame.parent = dom.body;
+  crossOriginFrame.parent = dom.body;
+
+  const { context } = buildPage(dom);
+  const state = freshState();
+  const snap = await snapshotInto(OPS, context, state);
+  assert.match(snap.data, /button "그림자 버튼" \[ref=/, "shadow DOM content is captured");
+  assert.match(snap.data, /iframe src="child\.html"\n\s+- button "프레임 버튼" \[ref=/, "same-origin iframe content is captured");
+  assert.match(snap.data, /iframe src="https:\/\/other\.example\/" \(cross-origin, contents unavailable\)/);
+
+  const refOf = (node) => {
+    for (const [ref, el] of globalThis.__sandRefs) if (el === node) return ref;
+    throw new Error("node has no ref");
+  };
+  const shadowRef = refOf(shadowButton);
+  assert.equal(state.refMeta.v.refs[shadowRef]?.name, "그림자 버튼");
+
+  // Navigation wiped the page globals: the shadow-DOM ref recovers by
+  // fingerprint because the recovery walk crosses the same boundaries.
+  delete globalThis.__sandRefs;
+  await OPS.click({ request: request({ ref: shadowRef }), context, state });
+  assert.equal(shadowButton.clicks, 1);
+});
+
+test("snapshot v2 reports element states and aria-labelledby names", async () => {
+  const { OPS } = await driverPromise;
+  const caption = new FakeElement({ tag: "span", attrs: { id: "cap" }, text: "요금제 선택" });
+  const combo = new FakeElement({ tag: "select", attrs: { "aria-labelledby": "cap", "aria-expanded": "false" }, interactive: true });
+  const mixedBox = new FakeElement({ tag: "input", attrs: { type: "checkbox", "aria-checked": "mixed", "aria-label": "부분 선택" }, interactive: true });
+  const email = new FakeElement({ tag: "input", attrs: { type: "email", placeholder: "이메일" }, interactive: true });
+  email.required = true;
+  email.readOnly = true;
+  const body = new FakeElement({ tag: "body", children: [caption, combo, mixedBox, email] });
+  const { context } = buildPage({ body });
+  const state = freshState();
+  const snap = await snapshotInto(OPS, context, state);
+  assert.match(snap.data, /combobox "요금제 선택" \[ref=e\d+\] collapsed/, "aria-labelledby resolves and expanded=false reads as collapsed");
+  assert.match(snap.data, /checkbox "부분 선택" \[ref=e\d+\] mixed/);
+  assert.match(snap.data, /textbox "이메일" \[ref=e\d+\] required readonly type=email/);
 });
 
 test("the sensitive-action detector stays conservative on plain content", async () => {

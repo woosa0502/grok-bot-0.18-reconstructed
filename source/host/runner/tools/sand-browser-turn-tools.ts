@@ -60,21 +60,21 @@ const BROWSER_TOOL_PARAMETERS: Readonly<Record<string, ZodTypeAny>> = {
     doubleClick: z.boolean().optional(),
     button: z.string().optional().describe("left (default), right, or middle."),
     modifiers: z.array(z.string()).optional(),
-    confirmed: z.boolean().optional().describe("Set true ONLY after the user explicitly approved this exact sensitive action (payment/money or login/signup submission)."),
+    confirmed: z.boolean().optional().describe("Only valid on a RETRY after this exact action was blocked as sensitive (payment/money or login/signup submission). Send the first attempt WITHOUT it; after a block, report it and get the user's explicit approval in chat, then retry with confirmed: true. Setting it on a first attempt is ignored and still blocks."),
   }).passthrough(),
   browser_mouse_click_xy: z.object({
     x: z.number().describe("Viewport x coordinate."),
     y: z.number().describe("Viewport y coordinate."),
     doubleClick: z.boolean().optional(),
     button: z.string().optional(),
-    confirmed: z.boolean().optional().describe("Set true ONLY after the user explicitly approved this exact sensitive action (payment/money or login/signup submission)."),
+    confirmed: z.boolean().optional().describe("Only valid on a RETRY after this exact action was blocked as sensitive (payment/money or login/signup submission). Send the first attempt WITHOUT it; after a block, report it and get the user's explicit approval in chat, then retry with confirmed: true. Setting it on a first attempt is ignored and still blocks."),
   }).passthrough(),
   browser_type: z.object({
     ref: z.string(),
     text: z.string(),
     slowly: z.boolean().optional().describe("Type character by character."),
     submit: z.boolean().optional().describe("Press Enter after typing."),
-    confirmed: z.boolean().optional().describe("Set true ONLY after the user explicitly approved a sensitive submit (login/signup form)."),
+    confirmed: z.boolean().optional().describe("Only valid on a RETRY after a blocked sensitive submit (login/signup form): get the user's explicit approval in chat first. Ignored on a first attempt."),
   }).passthrough(),
   browser_fill: z.object({
     ref: z.string(),
@@ -88,7 +88,7 @@ const BROWSER_TOOL_PARAMETERS: Readonly<Record<string, ZodTypeAny>> = {
     key: z.string().describe("Key name, e.g. Enter, Escape, Tab, ArrowDown, or a character."),
     holdDurationMs: z.number().optional(),
     modifiers: z.array(z.string()).optional(),
-    confirmed: z.boolean().optional().describe("Set true ONLY after the user explicitly approved a sensitive Enter-submit (login/signup form)."),
+    confirmed: z.boolean().optional().describe("Only valid on a RETRY after a blocked sensitive Enter-submit (login/signup form): get the user's explicit approval in chat first. Ignored on a first attempt."),
   }).passthrough(),
   browser_scroll: z.object({
     ref: z.string().optional().describe("Scroll this element into view instead of the page."),

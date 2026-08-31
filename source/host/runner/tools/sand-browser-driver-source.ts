@@ -1,4 +1,4 @@
-export const SAND_BROWSER_DRIVER_VERSION = 3;
+export const SAND_BROWSER_DRIVER_VERSION = 4;
 export const SAND_BROWSER_DRIVER_BOX_DIR = "/tmp/.sand-browser";
 export const SAND_BROWSER_DRIVER_BOX_PATH = SAND_BROWSER_DRIVER_BOX_DIR + "/driver-v" + String(SAND_BROWSER_DRIVER_VERSION) + ".mjs";
 export const SAND_BROWSER_RESULT_MARKER = "__SAND_BROWSER_RESULT__";
@@ -50,11 +50,12 @@ function loadState(display) {
         views: parsed.views && typeof parsed.views === "object" ? parsed.views : {},
         urls: parsed.urls && typeof parsed.urls === "object" ? parsed.urls : {},
         refMeta: parsed.refMeta && typeof parsed.refMeta === "object" ? parsed.refMeta : {},
+        pendingApprovals: parsed.pendingApprovals && typeof parsed.pendingApprovals === "object" ? parsed.pendingApprovals : {},
         lastViewId: typeof parsed.lastViewId === "string" ? parsed.lastViewId : undefined,
       };
     }
   } catch {}
-  return { views: {}, urls: {}, refMeta: {}, lastViewId: undefined };
+  return { views: {}, urls: {}, refMeta: {}, pendingApprovals: {}, lastViewId: undefined };
 }
 
 function saveState(display, state) {
@@ -66,16 +67,23 @@ function saveState(display, state) {
     // Ref fingerprints merge per VIEW, not per ref: a new snapshot renumbers
     // every ref in that view, so its whole fingerprint map is replaced.
     const refMeta = { ...current.refMeta, ...state.refMeta };
+    // Pending sensitive-action approvals merge per view; a null entry is an
+    // explicit clear (the arm was consumed by an approved retry).
+    const pendingApprovals = { ...current.pendingApprovals, ...state.pendingApprovals };
+    for (const key of Object.keys(pendingApprovals)) {
+      if (pendingApprovals[key] === null || pendingApprovals[key] === undefined) delete pendingApprovals[key];
+    }
     for (const removed of state.deletedViews ?? []) {
       delete views[removed];
       delete urls[removed];
       delete refMeta[removed];
+      delete pendingApprovals[removed];
     }
     let lastViewId = state.lastViewId ?? current.lastViewId;
     if (lastViewId !== undefined && (state.deletedViews ?? []).includes(lastViewId)) {
       lastViewId = undefined;
     }
-    const merged = { views, urls, refMeta, lastViewId };
+    const merged = { views, urls, refMeta, pendingApprovals, lastViewId };
     const tmp = statePath(display) + "." + String(process.pid) + ".tmp";
     writeFileSync(tmp, JSON.stringify(merged));
     renameSync(tmp, statePath(display));
@@ -504,7 +512,47 @@ const SENSITIVE_ACTION_FN = (target, extra) => {
 };
 
 function sensitiveBlockMessage(reason) {
-  return "Sensitive action blocked (" + reason + "). Payment, money-transfer, and login/signup submissions run only with the user's explicit go-ahead: ask the user to approve this exact step, then retry the same call with \\"confirmed\\": true.";
+  return "Sensitive action blocked (" + reason + "). Payment, money-transfer, and login/signup submissions run only with the user's explicit go-ahead: report this block to the user, wait for their approval in chat, then retry the same call with \\"confirmed\\": true.";
+}
+
+// The confirmed flag is ARMED, not trusted: it only counts after the driver
+// itself blocked the same sensitive target on this view, so a model that sets
+// confirmed: true on its FIRST attempt is still blocked (live app run
+// 2026-09-01: the model self-approved a payment click exactly that way). The
+// arm is recorded in the persisted state, consumed by the approved retry, and
+// expires so a stale block cannot license a much later action.
+const SENSITIVE_ARM_TTL_MS = 10 * 60 * 1000;
+
+function sensitiveGate(state, request, viewId, reason) {
+  if (reason === null || reason === undefined) return;
+  const confirmedFlag = request.confirmed === true;
+  // Arms are keyed per view AND per block reason: two different sensitive
+  // targets blocked back to back must not clobber each other's arm.
+  const viewArms = (state.pendingApprovals !== undefined ? state.pendingApprovals[viewId] : undefined) ?? {};
+  const armedAt = viewArms[reason];
+  const armed = typeof armedAt === "number" && Date.now() - armedAt < SENSITIVE_ARM_TTL_MS;
+  if (confirmedFlag && armed) {
+    // Consume the arm (one approval, one action); run() persists this via its
+    // dirty tracking when the op succeeds.
+    const rest = { ...viewArms };
+    delete rest[reason];
+    state.pendingApprovals = {
+      ...state.pendingApprovals,
+      [viewId]: Object.keys(rest).length > 0 ? rest : null,
+    };
+    return;
+  }
+  // A blocked op throws before run() reaches its persistence pass, so the arm
+  // must be written HERE or the retry would never find it.
+  const updated = { ...viewArms, [reason]: Date.now() };
+  state.pendingApprovals = { ...state.pendingApprovals, [viewId]: updated };
+  saveState(request.display, { pendingApprovals: { [viewId]: updated } });
+  throw new Error(
+    sensitiveBlockMessage(reason)
+    + (confirmedFlag
+      ? ' (confirmed was set without a prior block for this exact action, so it was ignored: confirmed only counts on a retry AFTER a block, with the user\\'s explicit approval in between.)'
+      : "")
+  );
 }
 
 const SNAPSHOT_FN = (opts) => {
@@ -527,7 +575,10 @@ const SNAPSHOT_FN = (opts) => {
     '[role="slider"], [contenteditable="true"], [onclick]';
   const isVisible = (el) => {
     if (el.getAttribute("aria-hidden") === "true") return false;
-    const style = win.getComputedStyle(el);
+    // Same-origin iframe nodes belong to another window; getComputedStyle must
+    // come from THEIR view or Chrome reports empty styles.
+    const view = el.ownerDocument && el.ownerDocument.defaultView ? el.ownerDocument.defaultView : win;
+    const style = view.getComputedStyle(el);
     if (style.display === "none" || style.visibility === "hidden") return false;
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
@@ -537,6 +588,18 @@ const SNAPSHOT_FN = (opts) => {
     return t.length > max ? t.slice(0, max) + "\u2026" : t;
   };
   const nameOf = (el) => {
+    // Accessible-name precedence: aria-labelledby outranks aria-label.
+    const labelledby = el.getAttribute("aria-labelledby");
+    if (labelledby) {
+      const ownerDoc = el.ownerDocument ?? doc;
+      const parts = [];
+      for (const id of labelledby.split(/\\s+/)) {
+        const target = ownerDoc.getElementById ? ownerDoc.getElementById(id) : null;
+        if (target) parts.push(target.innerText ?? target.textContent ?? "");
+      }
+      const joined = parts.join(" ").trim();
+      if (joined) return trim(joined, 80);
+    }
     const aria = el.getAttribute("aria-label");
     if (aria) return trim(aria, 80);
     if (el.labels && el.labels.length > 0) return trim(el.labels[0].innerText, 80);
@@ -582,7 +645,20 @@ const SNAPSHOT_FN = (opts) => {
     }
     if (el.disabled) line += " disabled";
     if (el.checked === true) line += " checked";
+    if (el.getAttribute("aria-checked") === "mixed") line += " mixed";
+    const expanded = el.getAttribute("aria-expanded");
+    if (expanded === "true") line += " expanded";
+    else if (expanded === "false") line += " collapsed";
+    if (el.selected === true || el.getAttribute("aria-selected") === "true") line += " selected";
+    if (el.required === true || el.getAttribute("aria-required") === "true") line += " required";
+    if (el.readOnly === true) line += " readonly";
     const tag = el.tagName.toLowerCase();
+    if (tag === "input") {
+      const inputType = (el.getAttribute("type") ?? "").toLowerCase();
+      if (["email", "tel", "number", "search", "url", "date", "time", "file", "color"].includes(inputType)) {
+        line += " type=" + inputType;
+      }
+    }
     if ((tag === "input" || tag === "textarea") && typeof el.value === "string" && el.value.length > 0) {
       const inputType = (el.getAttribute("type") ?? "").toLowerCase();
       const isSecret = inputType === "password" || el.getAttribute("autocomplete") === "current-password" || el.getAttribute("autocomplete") === "new-password";
@@ -596,10 +672,32 @@ const SNAPSHOT_FN = (opts) => {
   };
   const walk = (el, depth) => {
     if (nodeCount >= maxNodes || depth > (opts.maxDepth ?? 20)) return;
-    if (!(el instanceof win.HTMLElement)) return;
+    // Duck-typed instead of "instanceof win.HTMLElement": nodes inside a
+    // same-origin iframe belong to ANOTHER window whose HTMLElement is a
+    // different constructor, and would all be skipped.
+    if (!el || el.nodeType !== 1 || typeof el.matches !== "function") return;
+    if (el.namespaceURI && el.namespaceURI !== "http://www.w3.org/1999/xhtml") return;
     const tag = el.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "noscript") return;
     if (!isVisible(el)) return;
+    // Same-origin iframes are part of the page the user sees, so their content
+    // is walked in place; a cross-origin frame has no reachable document and is
+    // listed as opaque rather than silently dropped.
+    if (tag === "iframe" || tag === "frame") {
+      let childDoc = null;
+      try { childDoc = el.contentDocument; } catch {}
+      const frameName = nameOf(el);
+      const src = el.getAttribute("src") ?? "";
+      nodeCount += 1;
+      lines.push(
+        "  ".repeat(Math.min(depth, 6)) + "- iframe"
+        + (frameName ? " " + JSON.stringify(frameName) : "")
+        + (src ? " src=" + JSON.stringify(trim(src, 80)) : "")
+        + (childDoc && childDoc.body ? "" : " (cross-origin, contents unavailable)")
+      );
+      if (childDoc && childDoc.body) walk(childDoc.body, depth + 1);
+      return;
+    }
     const isInteractive = el.matches(interactiveMatcher);
     const isHeading = /^h[1-6]$/.test(tag);
     const isTextual = !opts.interactive && (tag === "p" || tag === "li" || tag === "label" || tag === "td" || tag === "th");
@@ -609,6 +707,12 @@ const SNAPSHOT_FN = (opts) => {
       lines.push(describe(el, depth));
       childDepth = depth + 1;
       if (isInteractive || isTextual) return;
+    }
+    // An open shadow root renders alongside slotted light children; walking the
+    // shadow tree first and the light tree second captures each exactly once
+    // (assigned nodes stay children of the host, never of the slot).
+    if (el.shadowRoot) {
+      for (const child of el.shadowRoot.children) walk(child, childDepth);
     }
     for (const child of el.children) walk(child, childDepth);
   };
@@ -636,6 +740,56 @@ const SNAPSHOT_FN = (opts) => {
   globalThis.__sandRefs = refs;
   return { lines, refCount: refCounter, refMeta };
 };
+
+// An element inside a same-origin iframe was adopted into the MAIN frame's
+// context by the snapshot walk, and playwright's element.click() hit-tests it
+// against the main document with child-viewport coordinates — the click point
+// lands on the wrong spot and times out ("<html> intercepts pointer events").
+// For those elements, compute the true top-viewport point by accumulating each
+// ancestor frame's offset and click with the raw mouse instead. Returns null
+// for main-document elements (and any element without a reachable document),
+// which keep the native, actionability-checked path.
+const FOREIGN_CLICK_POINT_FN = (el) => {
+  if (!el || !el.ownerDocument || el.ownerDocument === globalThis.document) return null;
+  el.scrollIntoView({ block: "center", inline: "center" });
+  const rect = el.getBoundingClientRect();
+  let x = rect.left + rect.width / 2;
+  let y = rect.top + rect.height / 2;
+  let view = el.ownerDocument.defaultView;
+  while (view && view.frameElement) {
+    const frameRect = view.frameElement.getBoundingClientRect();
+    x += frameRect.left;
+    y += frameRect.top;
+    view = view.parent;
+  }
+  return { x, y };
+};
+
+async function foreignAwareClick(page, element, args) {
+  const point = await element.evaluate(FOREIGN_CLICK_POINT_FN).catch(() => null);
+  if (point === null) {
+    const options = clickOptionsFor(args);
+    if (typeof args.offsetX === "number" || typeof args.offsetY === "number") {
+      const box = await element.boundingBox();
+      if (box !== null) {
+        options.position = {
+          x: box.width / 2 + (typeof args.offsetX === "number" ? args.offsetX : 0),
+          y: box.height / 2 + (typeof args.offsetY === "number" ? args.offsetY : 0),
+        };
+      }
+    }
+    await element.click(options);
+    return;
+  }
+  await page.mouse.click(
+    point.x + (typeof args.offsetX === "number" ? args.offsetX : 0),
+    point.y + (typeof args.offsetY === "number" ? args.offsetY : 0),
+    {
+      button: args.button === "right" || args.button === "middle" ? args.button : "left",
+      clickCount: args.doubleClick === true ? 2 : 1,
+    },
+  );
+}
 
 function clickOptionsFor(args) {
   const options = { timeout: ACTION_TIMEOUT_MS };
@@ -696,29 +850,15 @@ const OPS = {
     const { page, viewId } = await resolvePage(request, context, state);
     const element = await refHandle(page, request.ref, refMetaFor(state, viewId, request.ref));
     const sensitive = await element.evaluate(SENSITIVE_ACTION_FN).catch(() => null);
-    if (sensitive !== null && request.confirmed !== true) {
-      throw new Error(sensitiveBlockMessage(sensitive));
-    }
-    const options = clickOptionsFor(request);
-    if (typeof request.offsetX === "number" || typeof request.offsetY === "number") {
-      const box = await element.boundingBox();
-      if (box !== null) {
-        options.position = {
-          x: box.width / 2 + (request.offsetX ?? 0),
-          y: box.height / 2 + (request.offsetY ?? 0),
-        };
-      }
-    }
-    await element.click(options);
+    sensitiveGate(state, request, viewId, sensitive);
+    await foreignAwareClick(page, element, request);
     await page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {});
     return { page, viewId, summary: "Clicked " + (request.element ?? request.ref) };
   },
   mouse_click_xy: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
     const sensitive = await page.evaluate(SENSITIVE_ACTION_FN, { x: request.x, y: request.y }).catch(() => null);
-    if (sensitive !== null && request.confirmed !== true) {
-      throw new Error(sensitiveBlockMessage(sensitive));
-    }
+    sensitiveGate(state, request, viewId, sensitive);
     await page.mouse.click(request.x, request.y, {
       button: request.button === "right" || request.button === "middle" ? request.button : "left",
     });
@@ -734,13 +874,14 @@ const OPS = {
         "Refusing to type into a credential field (" + secret + "). Secrets must never pass through the model or the transcript: ask the user to enter it directly in the browser window (the profile usually keeps live logins)."
       );
     }
-    if (request.submit === true && request.confirmed !== true) {
+    if (request.submit === true) {
       // submit:true presses Enter in this field, so the question is not what
       // the field looks like but what Enter submits: the password-form check.
       const sensitive = await element.evaluate(SENSITIVE_ACTION_FN, { viaEnter: true }).catch(() => null);
-      if (sensitive !== null) throw new Error(sensitiveBlockMessage(sensitive));
+      sensitiveGate(state, request, viewId, sensitive);
     }
-    await element.click({ timeout: ACTION_TIMEOUT_MS });
+    // Focus click; iframe-internal fields need the frame-offset mouse path.
+    await foreignAwareClick(page, element, {});
     if (request.clear === true) {
       await element.fill("").catch(() => {});
     }
@@ -781,9 +922,9 @@ const OPS = {
   },
   press_key: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
-    if ((request.key === "Enter" || request.key === "NumpadEnter") && request.confirmed !== true) {
+    if (request.key === "Enter" || request.key === "NumpadEnter") {
       const sensitive = await page.evaluate(SENSITIVE_ACTION_FN, { viaEnter: true }).catch(() => null);
-      if (sensitive !== null) throw new Error(sensitiveBlockMessage(sensitive));
+      sensitiveGate(state, request, viewId, sensitive);
     }
     await page.keyboard.press(request.key);
     await page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {});
@@ -1004,6 +1145,7 @@ async function run(request) {
     const loadedViews = { ...state.views };
     const loadedUrls = { ...state.urls };
     const loadedRefMeta = { ...state.refMeta };
+    const loadedPendingApprovals = { ...state.pendingApprovals };
     const loadedLastViewId = state.lastViewId;
     const op = OPS[request.op];
     if (op === undefined) throw new Error("Unknown op: " + String(request.op));
@@ -1029,10 +1171,15 @@ async function run(request) {
     for (const key of Object.keys(state.refMeta)) {
       if (state.refMeta[key] !== loadedRefMeta[key]) dirtyRefMeta[key] = state.refMeta[key];
     }
+    const dirtyPendingApprovals = {};
+    for (const key of Object.keys(state.pendingApprovals)) {
+      if (state.pendingApprovals[key] !== loadedPendingApprovals[key]) dirtyPendingApprovals[key] = state.pendingApprovals[key];
+    }
     saveState(request.display, {
       views: dirtyViews,
       urls: dirtyUrls,
       refMeta: dirtyRefMeta,
+      pendingApprovals: dirtyPendingApprovals,
       deletedViews: state.deletedViews,
       // Only when THIS op changed it: an op that never resolves a view (e.g.
       // tabs list) must not write the loaded value back over a concurrent
