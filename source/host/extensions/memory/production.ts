@@ -65,11 +65,25 @@ export function createMemoryProductionExtras(
           agentId,
           target: store
         })),
-        createExecutor: () => context.deps.inference.port.createSession(() => {}, {
-          modelId: SAND_SUMMARIZATION_MODEL_ID,
-          isSummarizationSession: true,
-          skipLabeling: true
-        }).getExecutor(),
+        createExecutor: () => {
+          // Synthesis runs on the summarization channel. createSummarizationSession is
+          // provider-aware: the Cursor path keeps the artifact's gemini-2.5-flash
+          // request, while a routed local provider (Pi Codex) substitutes its own
+          // configured model — the raw createSession call forwarded the gemini id
+          // verbatim and Pi rejects it ("Unknown Pi Codex model") on every attempt.
+          const port = context.deps.inference.port;
+          const session = port.createSummarizationSession != null
+            ? port.createSummarizationSession(() => {}, {
+                modelId: SAND_SUMMARIZATION_MODEL_ID,
+                skipLabeling: true
+              })
+            : port.createSession(() => {}, {
+                modelId: SAND_SUMMARIZATION_MODEL_ID,
+                isSummarizationSession: true,
+                skipLabeling: true
+              });
+          return session.getExecutor();
+        },
         report: event => context.deps.telemetry.logs.reportMemorySynthesis(memorySynthesisTelemetryReport(event))
       });
     }

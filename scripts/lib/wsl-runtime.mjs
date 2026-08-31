@@ -46,6 +46,17 @@ export function wslDataRoot(profileDir) {
 }
 
 /**
+ * Append a `name=value` default to a SAND_FEATURE_GATE_OVERRIDES list unless the
+ * list already mentions the gate — an explicit user value (on or off) always wins.
+ */
+export function mergeGateOverrides(raw, name, value) {
+  const existing = typeof raw === "string" && raw.length > 0 ? raw : "";
+  const mentioned = existing.split(",").some(pair => pair.split("=", 2)[0]?.trim() === name);
+  if (mentioned) return existing;
+  return existing.length === 0 ? `${name}=${value}` : `${existing},${name}=${value}`;
+}
+
+/**
  * Manager designation persisted per profile (Belmont B-1 bootstrap): written by
  * `npm run belmont:manager`, read at every start so the manager keeps working
  * without hand-set environment variables. SAND_DEFAULT_AGENT_ID still overrides.
@@ -74,6 +85,13 @@ export function wslHostEnvironment({ profileDir, env = process.env }) {
     // false and Task fails with "No subagent types are available". resolveMultitaskEnabled
     // honours SAND_MULTITASK ahead of the gate, so set it on for the local build.
     SAND_MULTITASK: env.SAND_MULTITASK ?? "1",
+    // Enable the replacement memory pipeline (background synthesis, "dreaming") locally.
+    // The gate normally pins on the first AUTHENTICATED Statsig bootstrap, which never
+    // happens without a Cursor account; the experiments extension pins local Codex mode
+    // from the local evaluation instead, and this default turns the gate on there.
+    // Opt out with SAND_FEATURE_GATE_OVERRIDES=sand_memory_dreaming=0 (an explicit
+    // value in the variable always wins over this default).
+    SAND_FEATURE_GATE_OVERRIDES: mergeGateOverrides(env.SAND_FEATURE_GATE_OVERRIDES, "sand_memory_dreaming", "1"),
     // Require gateway auth. The gateway only serves the local-exec channel
     // (/local-exec/requests|responses — how the desktop's local-exec daemon attaches
     // as the "local machine") when it has an auth token; on a loopback bind it mints

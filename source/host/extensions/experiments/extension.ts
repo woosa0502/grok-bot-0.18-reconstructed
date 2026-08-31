@@ -7,6 +7,22 @@ import { HostExtensions } from "../extension-ids.generated.js";
 import { isLocalCodexMode } from "../../../shared/node/local-codex-account.js";
 
 interface AuthApi { getAccessToken(options: { backendUrl: string }): Promise<string>; getMachineId(): Promise<string>; peekAccessToken(): string | null; subscribeToRenewal(listener: (event: { outcome: string; isFirstCredential: boolean }) => void): () => void; }
+
+/**
+ * "Pin on authenticated bootstrap" waits for a Cursor-backed Statsig bootstrap that
+ * never arrives in local Codex mode, so any gate pinned this way (memory dreaming)
+ * stayed off forever regardless of overrides. The local evaluation chain
+ * (override store → SAND_FEATURE_GATE_OVERRIDES → bundled default) IS the lifetime
+ * value there, so pin it immediately.
+ */
+export function pinGateWithLocalFallback(
+  deps: { isLocalMode: boolean; checkFeatureGate(name: string): boolean; pinOnAuthenticatedBootstrap(name: string, pin: (value: boolean) => void): void },
+  name: string,
+  pin: (value: boolean) => void,
+): void {
+  if (deps.isLocalMode) { pin(deps.checkFeatureGate(name)); return; }
+  deps.pinOnAuthenticatedBootstrap(name, pin);
+}
 interface SettingsApi { subscribeToFeatureFlagOverrides(listener: (overrides: Record<string, boolean>) => void): () => void; }
 export const experimentsExtension = defineHostExtension({
   id: HostExtensions.Experiments, dependencies: [HostExtensions.Auth, HostExtensions.Settings],
@@ -18,7 +34,7 @@ export const experimentsExtension = defineHostExtension({
     return {
       checkFeatureGate: (name: Parameters<typeof service.checkFeatureGate>[0]) => service.checkFeatureGate(name), getFeatureGateProperty: (name: Parameters<typeof service.getFeatureGateProperty>[0]) => service.getFeatureGateProperty(name),
       checkGate: (name: Parameters<typeof service.checkGate>[0], options?: { timeoutMs?: number }) => service.checkGate(name, options), getDynamicConfig: (name: Parameters<typeof service.getDynamicConfig>[0]) => service.getDynamicConfig(name), subscribe: (listener: Parameters<typeof service.subscribe>[0]) => service.subscribe(listener),
-      pinGateOnAuthenticatedBootstrap: (name: Parameters<typeof service.pinGateOnAuthenticatedBootstrap>[0], pin: (value: boolean) => void) => service.pinGateOnAuthenticatedBootstrap(name, pin), hasHydratedStatsigUserId: () => service.hasHydratedStatsigUserId(), waitForHydratedStatsigUserId: (timeoutMs?: number) => service.waitForHydratedStatsigUserId(timeoutMs),
+      pinGateOnAuthenticatedBootstrap: (name: Parameters<typeof service.pinGateOnAuthenticatedBootstrap>[0], pin: (value: boolean) => void) => pinGateWithLocalFallback({ isLocalMode: isLocalCodexMode(process.env), checkFeatureGate: (gate) => service.checkFeatureGate(gate as typeof name), pinOnAuthenticatedBootstrap: (gate, listener) => service.pinGateOnAuthenticatedBootstrap(gate as typeof name, listener) }, name, pin), hasHydratedStatsigUserId: () => service.hasHydratedStatsigUserId(), waitForHydratedStatsigUserId: (timeoutMs?: number) => service.waitForHydratedStatsigUserId(timeoutMs),
       hasAuthenticatedStatsigBootstrap: () => service.hasAuthenticatedStatsigBootstrap(), getSandModelExperimentState: () => service.getSandModelExperimentState(), logSandModelExperimentExposure: () => service.logSandModelExperimentExposure(), getConfiguredDefaultModel: () => service.getConfiguredDefaultModel(), getConfiguredAutomationsModel: () => service.getConfiguredAutomationsModel(), getComputerUseModelOverride: () => service.getComputerUseModelOverride(), getBrowserUseModelOverride: () => service.getBrowserUseModelOverride(),
       // Cloud agents are a Cursor-account feature; treat local Codex mode as "disabled by team"
       // so the prompt and toolset stop advertising CloudAgent (see host-runner-composition).

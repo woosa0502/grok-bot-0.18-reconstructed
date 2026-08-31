@@ -40,6 +40,7 @@ import {
   createProductionTurnRunShellAdapter,
   type ProductionTurnRunShellAdapterInput,
 } from "./production-turn-run-shell-adapter.js";
+import { isMemorableExchange } from "./sand-memory.js";
 import type { ForwardedUpdate } from "./agent-adapters.js";
 import type {
   InactiveTurnAgentStreamPath,
@@ -454,6 +455,16 @@ export class SandAgentRunner<T = unknown> {
     if (options.productionTurnRunShell !== undefined) {
       this.#productionTurnRunShell = createProductionTurnRunShellAdapter({
         ...options.productionTurnRunShell,
+        // Turn-end memory write path: the registry injects session.memory /
+        // session.db via setMemoryStore/setEpisodeProgress AFTER construction,
+        // so these must read the fields lazily at settle time.
+        memoryStore: (() => this.#memoryStore ?? null) as NonNullable<
+          ProductionTurnRunShellAdapterInput["memoryStore"]
+        >,
+        episodeProgress: (() => this.#episodeProgress) as NonNullable<
+          ProductionTurnRunShellAdapterInput["episodeProgress"]
+        >,
+        isMemorableExchange,
         isSubagentRunner: this.isSubagentRunner,
         ...(this.subagentType === undefined ? {} : { subagentType: this.subagentType }),
         ...(this.inheritedRequestSource === undefined

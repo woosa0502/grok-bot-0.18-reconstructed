@@ -41,7 +41,7 @@ export function createPromptProjectMemory(sandRoot: string, debounce: DebouncePo
 }
 export interface MemoryExtensionContext {
   sandRoot:string;agentsRootDir:string;debounce:DebouncePolicy;
-  deps:{experiments:{pinGateOnAuthenticatedBootstrap(name:string,listener:(enabled:boolean)=>void):void};inference:{port:{createSession(onRequestId:(requestId:string)=>void,options:{modelId:string;isSummarizationSession:boolean;skipLabeling:boolean}):{getExecutor():import("../../../packages/chat-inference/base.js").PromptExecutor<Record<string,any>>}}};telemetry:{logs:{reportMemorySynthesis(event:unknown):void}}};
+  deps:{experiments:{pinGateOnAuthenticatedBootstrap(name:string,listener:(enabled:boolean)=>void):void};inference:{port:{createSession(onRequestId:(requestId:string)=>void,options:{modelId:string;isSummarizationSession:boolean;skipLabeling:boolean}):{getExecutor():import("../../../packages/chat-inference/base.js").PromptExecutor<Record<string,any>>};createSummarizationSession?(onRequestId:(requestId:string)=>void,options:{modelId:string;skipLabeling:boolean}):{getExecutor():import("../../../packages/chat-inference/base.js").PromptExecutor<Record<string,any>>}}};telemetry:{logs:{reportMemorySynthesis(event:unknown):void}}};
   createSynthesis(service:MemoryService):{start():void;dispose():void;recordTurn?(agentId:string,exchange:unknown):void};
   onStop(fn:()=>void):void;
 }

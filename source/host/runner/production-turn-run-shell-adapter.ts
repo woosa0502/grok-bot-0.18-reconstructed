@@ -80,6 +80,15 @@ export interface ProductionTurnRunShellAdapterInput {
   readonly context: () => Context;
   readonly createSettleHost: () => TurnSettleHost;
   readonly profilePromptSnapshots: () => unknown;
+  /**
+   * Turn-end memory write path. Without these the settle scope has no memory
+   * store at all, so neither dreaming evidence nor legacy extraction ever ran
+   * after a turn — recall worked (prompt assembly wires its own store) but
+   * nothing new was ever written back.
+   */
+  readonly memoryStore?: TurnRunShellHost["memoryStore"];
+  readonly episodeProgress?: TurnRunShellHost["episodeProgress"];
+  readonly isMemorableExchange?: TurnRunShellHost["isMemorableExchange"];
   readonly isSubagentRunner: boolean;
   readonly subagentType?: string;
   readonly inheritedRequestSource?: string;
@@ -332,6 +341,9 @@ export function createProductionTurnRunShellAdapter(
     },
     createSettleHost: input.createSettleHost,
     profilePromptSnapshots: input.profilePromptSnapshots,
+    ...(input.memoryStore == null ? {} : { memoryStore: input.memoryStore }),
+    ...(input.episodeProgress == null ? {} : { episodeProgress: input.episodeProgress }),
+    ...(input.isMemorableExchange == null ? {} : { isMemorableExchange: input.isMemorableExchange }),
     onRunUnwind: () => {
       const owner = activeOwner;
       activeOwner = undefined;
