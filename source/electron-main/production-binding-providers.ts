@@ -30,6 +30,7 @@ import {
   SandOsNotificationManager,
   type DesktopNotificationPort,
 } from "./notifications/os-notification-manager.js";
+import { createFallbackNotification, detectLinuxNotifier } from "./notifications/linux-notification-fallback.js";
 import {
   SandThemeController,
   type NativeThemePort,
@@ -417,11 +418,18 @@ export function createProductionNotificationsBinding(
     create(context) {
       if (created) throw new Error("Electron production notifications service was created more than once.");
       created = true;
+      // Linux/WSL: Electron notifications ride libnotify/D-Bus and are usually
+      // unsupported under WSLg — fall back to notify-send, or a Windows balloon
+      // tip via powershell.exe interop (linux-notification-fallback.ts).
+      const fallbackNotifier = detectLinuxNotifier();
       const osNotifications = new SandOsNotificationManager({
         getWindow: () => context.getMainWindow() ?? null,
-        isSupported: () => ports.Notification.isSupported(),
-        createNotification: (options) => new ports.Notification(options),
+        isSupported: () => ports.Notification.isSupported() || fallbackNotifier !== undefined,
+        createNotification: (options) => ports.Notification.isSupported()
+          ? new ports.Notification(options)
+          : createFallbackNotification(fallbackNotifier!, options),
         openAgent: (agentId) => context.requireMainEdge().emit("focus-agent", { id: agentId }),
+        reportFailure: (operation, error) => reportDesktopEdgeFailure("os-notification", operation, error),
       });
       const dockBadge = new SandDockBadgeManager({
         setBadgeCount: (count) => { ports.app.setBadgeCount(count); },

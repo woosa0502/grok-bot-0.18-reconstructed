@@ -6,6 +6,8 @@
  * extraction only for binary PDF results. The worker body is intentionally a
  * typed injected boundary here; no Piscina or pdf-worker fallback is supplied.
  */
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 import type { Context } from "../../../../context/core.js";
@@ -127,7 +129,11 @@ interface ReadInteractionHandler {
 const UNSUPPORTED_BINARY_EXTENSIONS = /\.(zip|tar|gz|exe|dll|so|dylib|bin|mp4|webm|mov|avi|mkv|wmv|flv|m4v)$/i;
 const READ_LINE_NUMBER_INTERVAL = 10;
 const MAX_CONVERSATION_ID_LENGTH = 200;
+// Keyed by path + content hash, not path alone: replacing a PDF at the same
+// path must not serve stale text (strict-review P1-10). Insertion-ordered Map
+// doubles as a small FIFO so long sessions cannot grow the cache unboundedly.
 const pdfTextCache = new Map<string, string>();
+const PDF_TEXT_CACHE_MAX_ENTRIES = 32;
 const relatedSkillsBySuccess = new WeakMap<object, readonly ReadSkill[]>();
 
 const readErrorsDistribution = createHistogram("agent.tools.read.errors", {
@@ -372,9 +378,17 @@ export function createReadTool(
         if (isPdfBinary(output.value, resolvedPath)) {
           const extractor = options.pdfTextExtractor;
           if (extractor === undefined) throw new TypeError("Read PDF worker is not bound");
-          const cached = pdfTextCache.get(resolvedPath);
+          const cacheKey = `${resolvedPath} ${createHash("sha256").update(output.value).digest("hex")}`;
+          const cached = pdfTextCache.get(cacheKey);
           pdfContentOverride = cached ?? normalizeLineEndings(await extractor(output.value));
-          if (cached === undefined) pdfTextCache.set(resolvedPath, pdfContentOverride);
+          if (cached === undefined) {
+            pdfTextCache.set(cacheKey, pdfContentOverride);
+            while (pdfTextCache.size > PDF_TEXT_CACHE_MAX_ENTRIES) {
+              const oldest = pdfTextCache.keys().next().value;
+              if (oldest === undefined) break;
+              pdfTextCache.delete(oldest);
+            }
+          }
         } else {
           const blobStore = meta.stateHandler?.getBlobStore?.();
           if (blobStore !== undefined) {

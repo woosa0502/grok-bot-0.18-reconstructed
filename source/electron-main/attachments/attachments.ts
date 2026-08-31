@@ -122,6 +122,13 @@ export function createAttachmentEdgePort(deps: AttachmentEdgeDeps) {
     async commitStaged(rawPaths: unknown, rawFilenames: unknown): Promise<string[] | null> {
       const paths = Array.isArray(rawPaths) ? rawPaths : []; const filenames = Array.isArray(rawFilenames) ? rawFilenames : []; const committed: string[] = [];
       for (let index = 0; index < paths.length; index += 1) { const stagedPath = paths[index]; const filename = filenames[index]; if (typeof stagedPath !== "string" || stagedPath.length === 0 || !isSafeFilename(filename) || !deps.isWithinStagingDir(stagedPath)) return null; let bytes: Buffer; try { bytes = await readFile(stagedPath); } catch (error) { report("commit", error); return null; } if (bytes.byteLength === 0) return null; try { committed.push((await deps.legs.uploadAttachment({ filename, bytesBase64: bytes.toString("base64") })).path); } catch (error) { report("commit", error); return null; } }
+      // Every item is durable in the per-agent attachments dir and the renderer is
+      // about to swap in the permanent paths — the staged copies are dead weight now.
+      // (On partial failure we returned null above and staged files stay for resend;
+      // the 1-hour startup sweep remains the backstop.)
+      await Promise.all(paths.map((stagedPath) => typeof stagedPath === "string" && deps.isWithinStagingDir(stagedPath)
+        ? rm(stagedPath, { force: true }).catch((error: unknown) => report("commit-cleanup", error))
+        : undefined));
       return committed;
     },
     async discardStaged(stagedPath: unknown): Promise<void> { if (typeof stagedPath !== "string" || stagedPath.length === 0 || !deps.isWithinStagingDir(stagedPath)) return; await rm(stagedPath, { force: true }).catch((error: unknown) => report("discard", error)); },

@@ -159,6 +159,7 @@ function codexExecutor(
   definitions?: readonly Loose[],
   onUsage?: (usage: UsageRecord) => void,
   context?: ProviderExecutorContext,
+  cacheSessionId?: string,
 ) {
   // Per-turn reasoning (resolved from the agent's model selection — e.g. a computer-use subagent's
   // effort=low) overrides the global default; the env fallback keeps the "high" the original name carried.
@@ -166,6 +167,7 @@ function codexExecutor(
   return lazyPiCodexExecutor({
     messages,
     invocationId,
+    ...(cacheSessionId == null ? {} : { cacheSessionId }),
     ...(definitions == null ? {} : { definitions }),
     modelId: context?.modelId ?? configuredCodexModel(),
     ...(reasoning == null ? {} : { reasoning }),
@@ -299,6 +301,12 @@ function openRouterExecutor(
 
 class ProviderPromptExecutor implements PromptExecutor {
   readonly #messages: ProviderMessage[];
+  // Stable prompt-cache affinity key (strict-review P1-02): the Pi runtime maps
+  // sessionId to provider prompt-cache affinity, and passing the per-call
+  // invocation UUID gave every model call a fresh identity — repeated turns and
+  // tool round-trips could never deliberately share a cached prefix. One key per
+  // executor (whose #messages ARE the conversation) restores that affinity.
+  readonly #cacheSessionId: string = crypto.randomUUID();
 
   constructor(
     readonly provider: RoutedProvider,
@@ -340,6 +348,7 @@ class ProviderPromptExecutor implements PromptExecutor {
         definitions,
         this.onUsage,
         providerContext(signalFromContext(ctx), modelFromContext(ctx) ?? this.modelId, reasoningFromContext(ctx) ?? this.reasoning),
+        this.#cacheSessionId,
       );
     }
     if (this.provider === "claude-code") return claudeExecutor(this.getMessages(), invocationId, this.onUsage);

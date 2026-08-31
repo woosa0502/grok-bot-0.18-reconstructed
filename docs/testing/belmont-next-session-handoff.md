@@ -1,22 +1,40 @@
 # Belmont — 다음 세션 인수인계
 
-_작성: 2026-08-30 · 갱신: 2026-08-31 (0.18.0 parity 회차 종료 시점 기준)_
+_작성: 2026-08-30 · 갱신: 2026-08-31 (후속 5 — "후속 8건+PARTIAL 4건 전부 해결" 회차 종료 시점 기준)_
 
-전체 현황은 `docs/testing/belmont-full-test-report.md`(단일 SSOT, §1.6 후속 4가 이번 작업). 이번 회차의 재파악·판정표는 `docs/testing/belmont-018-parity-inventory-2026-08-31.md`. 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`(케이스별 최신 판정이 유효, `node scripts/verdict-ledger.mjs summary`), 감사 원장은 `docs/testing/belmont-audit-findings.jsonl`(id별 최신 행이 유효). 이 문서는 **다음 세션이 바로 이어받도록** 한 곳에 요약.
+전체 현황은 `docs/testing/belmont-full-test-report.md`(단일 SSOT, §1.6 후속 5가 이번 작업). 이번 회차의 재파악·판정표는 `docs/testing/belmont-018-parity-inventory-2026-08-31.md`. 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`(케이스별 최신 판정이 유효, `node scripts/verdict-ledger.mjs summary`), 감사 원장은 `docs/testing/belmont-audit-findings.jsonl`(id별 최신 행이 유효). 이 문서는 **다음 세션이 바로 이어받도록** 한 곳에 요약.
 
 ---
 
 ## TL;DR
 
-- 지시: "0.18.0 설치파일(SHA-256 a253ccd8…/464079a1…) 기준으로 구현 안 된 것 재파악·구현·테스트, 플러그인은 로컬로, Cursor 계정 없이 Pi OAuth로도 원본과 같은 기능". 결과: **핵심 연결부 15건 구현 + 전부 라이브 검증** — 장기 기억 자동 회수(AUDIT-1), roster+ListAgents/ListGroups(AUDIT-3), 로컬 cron 루틴(AUDIT-7), 로컬 플러그인 저장소/카탈로그(AUDIT-8), 앱 내 Pi 로그인 상태/로그인/로그아웃(AUDIT-10), PDF 읽기(AUDIT-11), Shell cwd/env 유지(AUDIT-W2), compaction epoch, 컨텍스트 창 knob(AUDIT-6B), 클라우드 에이전트·이미지 생성 정직 숨김, 게이트 고정.
-- 라이브 중 **신규 결함 2건 발견·수정**: **AUDIT-W9** 로컬 모드 추론 준비 상태(`inference.isReady`)가 항상 false → 루틴/훅/wake 게이트 영구 차단(루틴이 200s 미발화하던 원인) · **AUDIT-W10** 박스 데몬이 PDF를 invalidFile로 거부.
-- 게이트: `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 143/143). 원장: PASS 537 · UNAVAIL 631 · ISSUE 17 · PARTIAL 4 · UNCLEAR 0.
-- 커밋 상태: `c34fd63` 이후 **미커밋** 변경(3차·4차 전부). 사용자 요청 시에만 커밋. **`upstream` 푸시 금지, `origin`만.**
-- 앱은 최종 빌드(cycle20)로 실행 중(CDP 9347). 저장소 파일(문서 포함)을 바꾸면 다음 실행 전 재빌드 필요(stale 검사가 작업 트리 전체를 봄).
+- 직전 회차(후속 4, 커밋 `c466160`): 0.18.0 설치파일 기준 핵심 연결부 15건 구현+라이브 — 기억 회수·roster·루틴·플러그인·Pi 로그인·PDF·Shell 상태 등.
+- **이번 회차(후속 5, 미커밋)**: 사용자 지시 "후속 8건 + PARTIAL 4건 전부 해결" → **전부 완료**: beforeMCPExecution 훅 · WebFetch 훅 · MCP 표면 auto-review(**AUDIT-W11 신규 발견·수정** — callOptions {}로 분류기 꺼져 있었음) · OS 알림 Linux/WSL fallback(windows-powershell 풍선 라이브) · 660/673 만료 트레이+전사 알림 · 241 박스 원문 오류 문구+오류 클래스 · 386 alias/옵션 유지 · 첨부 staging 즉시 정리 · MCP pagination/list_changed · 그룹 채팅 라이브(GROUP-PING→PONG) · 컨텍스트 창 실측(90k~260k 전부 수락, AUDIT-6B 해소) · AUDIT-4 settle 격리(자식 재시작 내구만 Phase B).
+- 게이트: `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 170/170). 원장: PASS 541 · UNAVAIL 631 · ISSUE 17 · PARTIAL 0 · UNCLEAR 0. 감사: FIXED 26 · RESOLVED 1 · CONFIRMED 8(대부분 의도적 제외/Phase B; 실질 수정 대기는 AUDIT-W18 하나) · PARTIAL 2.
+- **후속 6**: "비디오·이미지·중앙관리자 빼고 다 개선" → AUDIT-W12~W17 전부 수정+라이브, 품질 5종(캐시 친화성·cron 재시도·봇별 셸 상태·웹 충실도·PDF 캐시/타임아웃) 동반 수정. tests/wave6-remediation.test.mjs(15).
+- **후속 7 (최신)**: 벨몬트 관리자 B-1 — Belmont 봇 정의·SendToAgent 훅 배선·작업 원장·스위퍼 루틴·SAND_DEFAULT_AGENT_ID·CreateAgent reasoning(AUDIT-W1 수정)·W18 수정(+WSL 서브리퍼 대응)·**AUDIT-W19 발견·수정**(automation 완료 보고 언바운드 크래시). 라이브: 위임 왕복(b1h7, Belmont가 재검증까지)·재시작 생존(r91q, 스위퍼 복구). 게이트 175/175. tests/belmont-manager-b1.test.mjs(5).
+- "다 실테스트까지 했니?" 후속: 남았던 3건도 라이브 완료 — 첨부 staging(생성 3.3초 뒤 삭제 감시+박스 판독), pagination(belmont-page 2페이지 앱 경유), AUDIT-4(Task 자식 dispatch 후 root slot 단일·부모 기억/이력 온전). 그 과정에서 **AUDIT-W12 발견(CONFIRMED, 수정 대기)**: list_changed가 데몬까지만 전파, 호스트 도구 캐시(24h TTL) 미무효화 → 동적 추가 도구는 refreshMcp 전까지 발견·호출 불가.
+- 커밋 상태: `c466160` 이후 **미커밋** 변경(후속 5 전부). 사용자 요청 시에만 커밋. **`upstream` 푸시 금지, `origin`만.**
+- 앱은 wave-5 빌드로 실행 중(CDP 9347). 저장소 파일(문서 포함)을 바꾸면 다음 실행 전 재빌드 필요(stale 검사가 작업 트리 전체를 봄). ⚠️ 다른 체크아웃(예: `belmont-018-restore-*`)의 인스턴스가 동시에 떠 있으면 호스트가 기동 직후 exit(1)할 수 있음 — `ss -ltnp`로 확인.
+- 텔레그램: 내장 Claude Code 플러그인 채널(@agc_sebas_bot) 점검 완료·발신 테스트 전송. Belmont 봇용 별도 커넥터는 미구현(사용자 결정 대기).
 
 ---
 
-## ✅ 이번 회차에 한 것 (미커밋 — `git status` 참고)
+## ✅ 이번 회차(후속 5)에 한 것 (미커밋 — `git status` 참고)
+
+| 항목 | 파일 |
+|---|---|
+| beforeMCPExecution·preToolUse(MCP) 게이트 + 241 문구 | `source/box-exec-daemon/server.ts` |
+| MCP pagination/list_changed | `source/box-exec-daemon/mcp-stdio-client.ts`, `tests/fixtures/mcp-paginated-server.mjs` |
+| Shell 별칭/옵션/함수 스냅샷(386) | `source/box-exec-daemon/shell-state.ts` |
+| WebFetch 훅 | `source/packages/agent/tools/core/web-fetch.ts`, `host-runner-composition.ts`(hookOptions) |
+| MCP 표면 auto-review(AUDIT-W11) · 241 오류 클래스 · 660 만료 알림 · AUDIT-4 settle 격리 | `source/host/host-runner-composition.ts` |
+| 첨부 staging 정리 | `source/electron-main/attachments/attachments.ts` |
+| OS 알림 fallback | `source/electron-main/notifications/{linux-notification-fallback(신규),os-notification-manager}.ts`, `production-binding-providers.ts` |
+| 테스트(신규 2 + 갱신 1) | `tests/{mcp-stdio-extras,subagent-settle-parity}.test.mjs`(신규), `tests/box-shell-state.test.mjs` |
+| 문서 | full-test 보고서 §0/§0.5/§1.6 후속 5/§2/§3/§4, parity 목록 §1/§4, 원장 2종, 이 문서 |
+
+### 직전 회차(후속 4, 커밋 `c466160`)에 한 것
 
 | 항목 | 파일 |
 |---|---|
@@ -38,7 +56,7 @@ _작성: 2026-08-30 · 갱신: 2026-08-31 (0.18.0 parity 회차 종료 시점 �
 
 - **기억**: `update_state`가 쓰는 `<agentDir>/memory`(agent), `<sandRoot>/user-memory/agents/<id>`(user), `<sandRoot>/projects/<slug>/memory/agents/<id>`(project) 샤드를 프롬프트 조립이 읽음. 메모리 섹션은 compaction epoch별로 스냅샷 동결(`SAND_DISABLE_MEMORY_FREEZE=1`로 해제) — 같은 에이전트에서 방금 저장한 사실은 아직 스냅샷이 없을 때(사실이 0개였을 때) 다음 턴에 바로 보임, 그 뒤엔 압축 후 재렌더.
 - **roster**: `listAgentsSync()` 캐시 기반(사이드바 로드 후 채워짐). 그룹은 `<agentDir>/group.json`.
-- **Shell 상태**: 데몬 `terminalsDirectory/shell-state/{cwd,env.sh}`. 에이전트 Shell(스트리밍)만 읽고/쓴다. `working_directory`를 주면 그 디렉터리가 우선(스키마 "defaults to current directory"). 중단(SIGTERM) 시 초기화. 함수/별칭은 유지 안 됨.
+- **Shell 상태**: 데몬 `terminalsDirectory/shell-state/{cwd,env.sh}`. 에이전트 Shell(스트리밍)만 읽고/쓴다. `working_directory`를 주면 그 디렉터리가 우선(스키마 "defaults to current directory"). 중단(SIGTERM) 시 초기화. 후속 5부터 별칭(`aliases.sh`)·셸 옵션(`options.sh`)·함수(`functions.sh`, bash 박스 한정 — 기본 /bin/sh=dash에선 함수만 미유지)도 스냅샷·복원.
 - **PDF**: `pdftotext`(poppler, 호스트에 설치됨) → 없으면 `pdfjs-dist`. 빈 텍스트면 안내문. `SAND_PDFTOTEXT_PATH`로 바이너리 지정.
 - **루틴**: 로컬 cron 스케줄러 30s tick, 앵커 `lastRunAt ?? createdAt`, 6h 초과 누락은 재앵커(로그 `[local-cron]`), 발화는 `runServerScheduledAutomation`(수동 실행과 같은 경로). 준비 상태 = `inference.isReady`(로컬: Pi 자격증명).
 - **플러그인(로컬)**: `<sandRoot>/mcp.json`(stdio: command/args/env/cwd, url 항목 보존하나 로컬 실행은 stdio-only), `plugin-catalog.json`(`{"plugins":[…]}`, 없으면 기본 3종: Filesystem/Knowledge graph memory/Sequential thinking — npx로 실행), `plugin-installs.json`. 설치 = 카탈로그 fragment의 `${VAR}`를 폼 값으로 치환해 mcp.json에 병합. 서버 id = 이름 해시의 숫자열. Connect(인증)는 not-configured로 강등.
@@ -57,7 +75,9 @@ _작성: 2026-08-30 · 갱신: 2026-08-31 (0.18.0 parity 회차 종료 시점 �
 ## (선택) 잔여 — parity 목록 문서 §4 참조
 
 - EXCLUDED_HIDDEN(숨김 완료): Cursor 클라우드 에이전트, GenerateImage/AI 아바타, Teams/SSO/조직도/공유룸, Usage & Billing, iPhone/모바일 푸시, updater, Update/Reset Agent Computer, Teach by demonstration, 공개 공유 링크, 오디오/비디오 이해, Slack/GitHub 이벤트 루틴.
-- 후속: OS 알림 라이브 검증 · beforeMCPExecution/WebFetch 훅 · 브라우저/MCP auto-review 라이브 · 컨텍스트 창 실측 후 기본값 · Shell 함수/별칭 유지 · MCP `tools/list` pagination·`list_changed` · 그룹 채팅 라이브 · 첨부 staging 즉시 정리 · 서브에이전트 settle 경계(AUDIT-4) · PARTIAL 4건(660/673/241/386).
+- 후속: ~~OS 알림 · MCP/WebFetch 훅 · MCP auto-review · 컨텍스트 창 실측 · Shell 별칭/옵션 · pagination/list_changed · 그룹 채팅 · 첨부 정리 · AUDIT-4 · PARTIAL 4건~~ → **후속 5에서 전부 완료.** 잔여: 브라우저 표면 auto-review 개별 라이브 · **Phase B 본공사**(durable 수신함=AUDIT-5 근본, Task 완료 내구 P1-04, 자식 재시작 내구, 검토·승인 코드 강제 B-2) · 봇별 도구 제한/MCP 집합(AUDIT-W1의 미구현 범위) · 파일 도구 충실도 세부(P1-08)·모델 카탈로그 경로(P1-12)·패키징(RELEASE-01/02) · AUDIT-F1~F5 false-green 테스트 정리. ~~W12~W18, W1~~ → 후속 6·7에서 수정+라이브.
+
+**벨몬트 관리자(B-1, 후속 7) 운영 정보**: Belmont id `8bebd5e2-55a4-416d-80d7-343af595371f`(관리자 지침 persona) · 런처 env `SAND_DEFAULT_AGENT_ID`로 시작 시 기본 대화 · 원장 `box-workspace/.jobs/ledger.jsonl`(훅 .cursor/h-jobs.sh + hooks.json의 SendToAgent matcher) · 스위퍼 루틴 job-sweeper(@every 15m) · 워커: QA Bot(b2d1c233…), Clerk(97ab5a3d…, reasoning low). 위임 규약: [job:<id>] 태그 + 증거 요구 + 회신 의무. 라이브 검증: 왕복(b1h7)·재시작 생존(r91q) — 보고서 §1.6 후속 7.
 
 ---
 
@@ -69,7 +89,7 @@ _작성: 2026-08-30 · 갱신: 2026-08-31 (0.18.0 parity 회차 종료 시점 �
 - **정지**: run-wsl node 프로세스에 SIGTERM(자식 정리됨). `kill -9` 전엔 `prlimit --pid <p> --core=0`. Xvfb :99는 살려두면 재사용.
 - **CDP**: 9347 고정. `scripts/ax-ui.mjs`. 승인 카드 AX: `region "Auto-review approval"` / `"Local tool permission"`. Plugins 화면: Ctrl+K → "Plugins" → 탭 Marketplace/Yours, 항목 버튼 `Open <name>`, 상세의 **Add**가 설치.
 - **게이트웨이 API**: `sand-data/gateway.json`의 port·token → `POST /api/{…, getProviderAuthStatus, startProviderLogin, getProviderLoginStatus, cancelProviderLogin, providerLogout, createAgentAutomation({id, spec:{name,prompt,trigger:{type:"cron",schedule},isEnabled}}), getAgentAutomations({id}), deleteAgentAutomation({id, automationId})}` (`authorization: Bearer <token>`).
-- **테스트**: `npm run check` (= frontend typecheck + source:typecheck + `npm test` 143).
+- **테스트**: `npm run check` (= frontend typecheck + source:typecheck + `npm test` 155).
 - **케이스/판정 데이터**: `docs/testing/belmont-wsl-test-queue.jsonl`(1292), `belmont-sweep-verdicts.jsonl`, `belmont-audit-findings.jsonl`.
 - **테스트 픽스처(저장소 밖, `sand-data/`)**: `mcp.json`(belmont-test + 이번에 UI로 설치한 `sequential-thinking`), `plugin-installs.json`(900003), `box-workspace/parity-test.pdf`, `box-workspace/parity-sub/`, `box-workspace/.cursor/{mcp-test-server.mjs, h-*.sh, hooks.json(비어 있음)}`, 에이전트 ParityProbe(`5dbad30c…`)·HooksProbe(`8df23a70…`)의 user 메모리 샤드에 테스트 사실("teal-7731").
 

@@ -27,7 +27,7 @@ _기준 설치파일: `research-archives/original/0.18.0/` — macOS arm64 `Grok
 | **Bot 한도 50** | 코드(`isAgentCapReached`) | EXACT(코드) |
 | **Bot memory** ("stable working preferences, important facts, summaries") | **AUDIT-1 CONFIRMED** — 저장은 되나 system prompt에 `memoryStore/…` 전부 null → 회수 안 됨 | **WSL_EQUIVALENT→EXACT 수정** — 프롬프트 조립에 실제 store(agent/user/project) 연결, `createUserMemory/createProjectMemory` 신규(§2 M1) · 라이브 §3 |
 | **채팅** (텍스트·링크·이미지·파일·`/`스킬·`@`멘션·답글·반응·Stop) | PASS 다수(라이브) | EXACT — 유지 |
-| **그룹 채팅** (2~6 Bot, `@everyone`, 스레드, 가시적 handoff) | PARTIAL — roster가 `isGroup:false`만 보고해 그룹 배송 분기 미도달 | **수정** — roster 요약이 `group.json`으로 그룹/멤버를 채움(§2 R2) · 라이브는 후속(그룹 생성 UI 경로 확인 필요) |
+| **그룹 채팅** (2~6 Bot, `@everyone`, 스레드, 가시적 handoff) | PARTIAL — roster가 `isGroup:false`만 보고해 그룹 배송 분기 미도달 | **수정+라이브(후속 5)** — roster 요약이 `group.json`으로 그룹/멤버를 채움(§2 R2) · 라이브: createGroup(2봇) → GROUP-PING → 상대 봇 GROUP-PONG 자동 응답(그룹 전사 왕복) |
 | **Bot 간 메시지** (비동기, 수신 Bot wake, 답장) | PASS(SendToAgent) / AUDIT-5 휘발성(재시작 비내구) | EXACT(원본도 fire-and-forget) — 재시작 내구성은 Phase B 항목으로 유지 |
 | **Bot roster 발견** (다른 Bot/그룹 찾기, ListAgents/ListGroups) | **AUDIT-3 CONFIRMED** — 프롬프트에 빈 배열, 도구 부재 | **수정** — 실제 roster provider 연결 + `ListAgents`/`ListGroups` 도구 신설(§2 R1,R3) · 라이브 §3 |
 | **검색 · command palette** | PASS(라이브) | EXACT |
@@ -52,14 +52,14 @@ _기준 설치파일: `research-archives/original/0.18.0/` — macOS arm64 `Grok
 | **Team Setup / Teams·Enterprise / SSO / 관리자 명령 거부목록** | UNAVAIL | EXCLUDED_HIDDEN(단일 사용자) — 111 UNAVAIL 유지 |
 | **Check for Updates / Restart to Update** | INTENTIONAL_DIFFERENCE(updater 비활성) | EXCLUDED_HIDDEN — `sand_auto_update_when_idle` false 고정 |
 | **Update/Reset Agent Computer** | UNAVAIL(managed VM) | EXCLUDED_HIDDEN(로컬 박스는 파일 시스템) |
-| **Notifications** (OS 알림 토글, 모바일 푸시, 포커스 시 억제, 읽음 표시) | PARTIAL/UNVERIFIED | 후속 — OS 알림 라이브 검증 필요(코드 존재); 모바일 푸시 EXCLUDED |
+| **Notifications** (OS 알림 토글, 모바일 푸시, 포커스 시 억제, 읽음 표시) | PARTIAL/UNVERIFIED | **수정+라이브(후속 5)** — Linux/WSL fallback(notify-send → WSL powershell 풍선) 신설·배선, 라이브 발사 확인; 모바일 푸시 EXCLUDED |
 | **Error display above composer / Copy request ID** | PASS(트레이) | EXACT |
 | **Cloud agents (Cursor)** | 프롬프트·도구가 계속 광고(map-gates) | **EXCLUDED_HIDDEN 수정** — 로컬 모드에서 CloudAgent 도구 제거 + 프롬프트 변형(§2 G2) |
 | **GenerateImage / AI 아바타** (Cursor 토큰) | AUDIT-9 — 프롬프트가 광고, 도구 없음 | **EXCLUDED_HIDDEN 수정** — 로컬 프롬프트 변형이 "이미지 생성 불가"를 명시(§2 G2); 아바타 생성 RPC는 토큰 오류로 정직 실패 |
 | **iPhone / mobile** | MISSING | EXCLUDED_HIDDEN(`sand_get_grok_bot_ios` false) |
 | **X connector** | UNVERIFIED | 후속 — 로컬 MCP/플러그인 카탈로그에 항목 추가 시 |
-| **Hooks** (preToolUse/beforeShellExecution/postToolUse 등) | AUDIT-W8 FIXED(라이브) | EXACT(박스 Shell) — beforeMCPExecution·WebFetch 훅은 후속 |
-| **대화 압축(compaction)·컨텍스트 창** | AUDIT-EPOCH(항상 0)·AUDIT-6B(창 과대평가) | **수정** — epoch = 요약 아카이브 수(§2 C1) · 창 크기 env 고정/상한(§2 C2, 측정은 후속) |
+| **Hooks** (preToolUse/beforeShellExecution/postToolUse 등) | AUDIT-W8 FIXED(라이브) | **EXACT(전 표면, 후속 5)** — Shell 스트림 + beforeMCPExecution(라이브 deny/allow) + WebFetch(withRemoteHooks, 라이브 deny) |
+| **대화 압축(compaction)·컨텍스트 창** | AUDIT-EPOCH(항상 0)·AUDIT-6B(창 과대평가) | **수정+실측(후속 5)** — epoch = 요약 아카이브 수(§2 C1) · 창 실측: 90k/150k/220k/260k 전부 수락 → 272k 카탈로그 유지, AUDIT-6B 해소(env knob은 운영자용 존치) |
 ## 2. 이번 회차 구현·수정 목록
 
 | # | 결함/공백 | 수정 | 근거 파일 |
@@ -113,4 +113,15 @@ _기준 설치파일: `research-archives/original/0.18.0/` — macOS arm64 `Grok
 | Slack/GitHub 이벤트 루틴 | 커넥터 미연결 시 connect 카드만; 로컬 커넥터는 요구 시 |
 
 ### 후속(코드는 있으나 라이브 미검증 / 확장)
-- OS 알림 배달·포커스 억제(코드 존재) 라이브 검증 · beforeMCPExecution/WebFetch 훅 · 브라우저/MCP 표면 auto-review 개별 라이브 · Codex 백엔드 실제 컨텍스트 한도 실측 후 `SAND_CODEX_CONTEXT_WINDOW_TOKENS` 기본값 결정 · Shell 함수/별칭 유지(현재 cwd·env만; AGT-386 PARTIAL) · 로컬 플러그인 카탈로그 확장(url/http MCP 서버는 로컬 모드 stdio-only) · 그룹 채팅 라이브(그룹 생성 UI 경로) · 첨부 staging 즉시 정리(P2) · 서브에이전트 settle 경계(AUDIT-4, Phase B와 겹침) · SendToAgent 재시작 내구성(Phase B)
+**2026-08-31 후속 5 회차에서 대부분 마감** (상세: `belmont-full-test-report.md` §1.6 후속 5):
+- ~~OS 알림~~ → 완료(Linux/WSL fallback 신설: notify-send → WSL powershell 풍선; 라이브 발사 확인)
+- ~~beforeMCPExecution/WebFetch 훅~~ → 완료(라이브 deny/allow)
+- ~~MCP 표면 auto-review~~ → 완료(AUDIT-W11 발견·수정 + 라이브: 분류기 규칙 인용 승인 카드)
+- ~~컨텍스트 한도 실측~~ → 완료(90k/150k/220k/260k 전부 수락 → 카탈로그 272k 유지, AUDIT-6B 해소)
+- ~~Shell 함수/별칭/옵션~~ → 완료(alias·set±o 유지 라이브; 함수는 bash 박스 한정 — dash 한계)
+- ~~그룹 채팅 라이브~~ → 완료(createGroup → GROUP-PING → 상대 봇 GROUP-PONG 자동 응답)
+- ~~첨부 staging 즉시 정리~~ → 완료(commitStaged 성공 후 삭제)
+- ~~서브에이전트 settle 경계(AUDIT-4)~~ → 완료(settle host 턴-대화 매개변수화; 자식 재시작 내구만 Phase B 잔류)
+- ~~MCP tools/list pagination~~ → 완료(앱 경유 라이브: belmont-page 2페이지 3도구). list_changed는 데몬 클라이언트까지 완료 — 호스트 전파 갭은 **AUDIT-W12**(CONFIRMED)로 분리
+
+남은 후속: **AUDIT-W12**(list_changed 호스트 전파 — 동적 추가 도구가 refreshMcp 전까지 발견·호출 불가) · 브라우저 표면 auto-review 개별 라이브 · 로컬 플러그인 카탈로그 확장(url/http MCP 서버는 로컬 모드 stdio-only) · SendToAgent 재시작 내구성(AUDIT-5, Phase B) · 봇별 영구 모델 설정(AUDIT-W1) · X connector(카탈로그 항목 추가 시)

@@ -57,11 +57,29 @@ function htmlToText(html: string): string {
     .trim();
 }
 
+// Content types that must not be decoded as UTF-8 text (strict-review P1-09):
+// serving mojibake from a PDF/image/archive both wastes the context window and
+// misleads the model into "reading" garbage.
+function binaryContentTypeNote(contentType: string): string | undefined {
+  const type = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (type.length === 0) return undefined;
+  const binary = type.startsWith("image/") || type.startsWith("audio/") || type.startsWith("video/") || type.startsWith("font/")
+    || type === "application/pdf" || type === "application/octet-stream" || type === "application/zip"
+    || type === "application/gzip" || type === "application/x-tar" || type === "application/wasm";
+  return binary ? `Web fetch: the response is binary (${type}), not readable text. Download it with Shell (curl/wget) if the file itself is needed.` : undefined;
+}
+
 function extractText(contentType: string, body: string): string {
   const type = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
   if (type === "text/html" || type === "application/xhtml+xml") return htmlToText(body);
   // text/plain, application/json, text/markdown, application/xml, and other text/* pass through raw.
   return body.trim();
+}
+
+function signalFromContext(context: unknown): AbortSignal | undefined {
+  if (typeof context !== "object" || context == null) return undefined;
+  const signal = (context as { signal?: unknown }).signal;
+  return signal instanceof AbortSignal ? signal : undefined;
 }
 
 async function readBodyCapped(response: Response, maxBytes: number): Promise<string> {
@@ -97,7 +115,7 @@ function concat(chunks: readonly Uint8Array[], length: number): Uint8Array {
 }
 
 export function createCodexWebFetchService() {
-  return async (_ctx: unknown, url: string): Promise<WebFetchResult> => {
+  return async (ctx: unknown, url: string): Promise<WebFetchResult> => {
     let parsed: URL;
     try {
       parsed = new URL(url);
@@ -109,16 +127,34 @@ export function createCodexWebFetchService() {
     }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    // Propagate caller cancellation (strict-review P1-09): an aborted turn must
+    // not leave the fetch running to the full timeout.
+    const callerSignal = signalFromContext(ctx);
+    const onCallerAbort = () => controller.abort();
+    if (callerSignal?.aborted) controller.abort();
+    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
     try {
       const response = await fetch(parsed.href, {
         redirect: "follow",
         signal: controller.signal,
         headers: { "user-agent": FETCH_USER_AGENT, accept: "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.8" },
       });
+      // Re-validate where the redirect chain actually landed (strict-review
+      // P1-09): the pre-flight check saw only the initial URL.
+      try {
+        const finalUrl = new URL(response.url || parsed.href);
+        if (finalUrl.protocol !== "http:" && finalUrl.protocol !== "https:") {
+          return { error: `Web fetch failed: redirect landed on unsupported protocol "${finalUrl.protocol}".` };
+        }
+      } catch {
+        return { error: "Web fetch failed: redirect landed on an unparsable URL." };
+      }
       if (!response.ok) {
         return { error: `Web fetch failed: HTTP ${response.status} ${response.statusText}`.trim() };
       }
       const contentType = response.headers.get("content-type") ?? "";
+      const binaryNote = binaryContentTypeNote(contentType);
+      if (binaryNote !== undefined) return { error: binaryNote };
       const body = await readBodyCapped(response, MAX_FETCH_BYTES);
       const text = extractText(contentType, body);
       const trimmed = text.length > MAX_CONTENT_CHARS
@@ -128,10 +164,12 @@ export function createCodexWebFetchService() {
       return { content: trimmed };
     } catch (error) {
       const aborted = controller.signal.aborted || (error as { name?: string })?.name === "AbortError";
+      if (callerSignal?.aborted === true) return { error: "Web fetch was canceled." };
       if (aborted) return { error: `Web fetch timed out after ${FETCH_TIMEOUT_MS / 1000}s.`, isTimeout: true };
       return { error: `Web fetch failed: ${(error as { message?: string })?.message ?? String(error)}` };
     } finally {
       clearTimeout(timeout);
+      callerSignal?.removeEventListener("abort", onCallerAbort);
     }
   };
 }
@@ -176,14 +214,20 @@ export function createCodexWebSearchService() {
       if (!response.ok) throw new Error(`web search HTTP ${response.status}`);
       const html = await readBodyCapped(response, MAX_FETCH_BYTES);
       const titles = [...html.matchAll(/<a\b[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
-      const snippets = [...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)];
+      // Pair each snippet with ITS result block (the HTML between this title and
+      // the next), not by global array index — a result without a snippet used to
+      // shift every later description onto the wrong title/URL (strict-review P1-09).
+      const snippetPattern = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/;
       const documents: WebSearchDocument[] = [];
       for (const [index, match] of titles.entries()) {
         if (documents.length >= SEARCH_MAX_RESULTS) break;
         const url = resolveResultUrl(match[1] ?? "");
         const title = stripToText(match[2] ?? "");
         if (url.length === 0 || !/^https?:/.test(url)) continue;
-        documents.push({ url, title, text: stripToText(snippets[index]?.[1] ?? "").slice(0, SEARCH_SNIPPET_CHARS) });
+        const blockStart = match.index ?? 0;
+        const blockEnd = titles[index + 1]?.index ?? html.length;
+        const snippet = snippetPattern.exec(html.slice(blockStart, blockEnd));
+        documents.push({ url, title, text: stripToText(snippet?.[1] ?? "").slice(0, SEARCH_SNIPPET_CHARS) });
       }
       return { answer: "", documents };
     } catch (error) {

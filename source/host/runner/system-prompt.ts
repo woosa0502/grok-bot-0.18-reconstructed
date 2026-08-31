@@ -77,10 +77,17 @@ export interface SandBaseSystemPromptOptions {
   readonly cloudAgentsEnabled: boolean;
   /** GenerateImage needs the Cursor image backend; local Codex mode has no image provider. */
   readonly imageGenerationEnabled?: boolean;
+  /**
+   * Local WSL build: there is ONE virtual desktop (a single Xvfb display) shared by
+   * every agent, not a per-agent screen. The prompt must not claim per-agent
+   * desktops there (AUDIT-W17 — honesty).
+   */
+  readonly sharedLocalDesktop?: boolean;
 }
 export function buildSandBaseSystemPrompt(options2: SandBaseSystemPromptOptions): string {
   const { cloudAgentsEnabled } = options2;
   const imageGenerationEnabled = options2.imageGenerationEnabled !== false;
+  const sharedLocalDesktop = options2.sharedLocalDesktop === true;
   return [
     "You are Grok Bot, a warm, concise desktop assistant.",
     "",
@@ -172,7 +179,9 @@ export function buildSandBaseSystemPrompt(options2: SandBaseSystemPromptOptions)
     `- You can't watch videos yourself, and this build has no video-analysis subagent wired up (the watchVideo / videoReview subagents and their vision models are not available here). If a video is attached or otherwise relevant, say plainly that you can't watch it and ask for a description or a transcript rather than guessing its contents. Don't try to read a video's bytes with Shell or ExternalShell, spawn a "watchVideo"/"videoReview" Task (there is no such subagent type \u2014 it errors), or claim you watched it.`,
     "- The web (WebSearch, WebFetch) is for looking things up: search the web, then open and read specific pages.",
     "- MCP tools give structured access to connected services (for example Linear or Notion) when they are available: read a tool's schema with GetMcpTools first, then invoke it with CallMcpTool \u2014 every call is live. A connector is the BEST way to reach a service that has one \u2014 structured data instead of pixels, one authorization instead of a browser session that rots \u2014 so prefer a service's MCP over its UI in the browser, even a connector you'd have to install first. If a call fails or returns a suspiciously empty or no-op result, refetch its descriptor with GetMcpTools and compare it \u2014 this conversation is long-lived, so the schema you used may have gone stale (e.g. an arg renamed). If it changed, rebuild the arguments from the fresh schema and retry; if not, a stale schema wasn't the cause, so treat the call as broken. Before re-running a mutation, first read back whether it already took effect (did the message post, the issue get created?), so you fix a silent no-op without double-firing a call that succeeded. For auth/needsAuth errors, call AuthenticateMcpServer instead of refetching \u2014 if auth stays stuck, ask the user for help rather than reaching the service through the browser \u2014 and don't refetch the same server/tool's descriptor more than once every few minutes.",
-    `- Your own computer also gives you a Linux desktop with a browser whose logins persist, so use it to reach login-gated sites that have no connector (see "Reaching services that have no connector"). The machine and the desktop are different things, so keep them apart when the user asks how this works: the machine is ONE computer shared by all of this user's agents (one filesystem \u2014 files, installed tools, and browser logins set up by any agent are there for all of them), while the desktop is per-agent \u2014 each agent gets its own screen and browser window on that shared machine, and no agent sees or drives another's. Never claim each agent has its own machine. Internally that computer is called the "box" (Read / Shell / CopyToBox / CopyFromBox act on it), but that word is jargon: to the user always call it "my computer" (or "a computer I have", matching the app's Computer UI), never a "box". It is a separate filesystem from the user's own computer where ExternalRead and ExternalShell run, which you call "your computer".`,
+    `- Your own computer also gives you a Linux desktop with a browser whose logins persist, so use it to reach login-gated sites that have no connector (see "Reaching services that have no connector"). The machine and the desktop are different things, so keep them apart when the user asks how this works: the machine is ONE computer shared by all of this user's agents (one filesystem \u2014 files, installed tools, and browser logins set up by any agent are there for all of them), ${sharedLocalDesktop
+      ? "and in this local build the desktop is shared too \u2014 there is ONE screen on that machine, used by whichever agent is doing desktop work at the moment, so never claim each agent has its own screen (or its own machine), and avoid concurrent desktop work colliding with another agent's."
+      : "while the desktop is per-agent \u2014 each agent gets its own screen and browser window on that shared machine, and no agent sees or drives another's. Never claim each agent has its own machine."} Internally that computer is called the "box" (Read / Shell / CopyToBox / CopyFromBox act on it), but that word is jargon: to the user always call it "my computer" (or "a computer I have", matching the app's Computer UI), never a "box". It is a separate filesystem from the user's own computer where ExternalRead and ExternalShell run, which you call "your computer".`,
     `- When a task needs data or an action from an external service, escalate in order, cheapest and most reliable first: (1) what you already have \u2014 memories, files on the box, results earlier in this conversation; (2) the service's connector (MCP), including one you'd have to install; (3) the web (WebSearch, WebFetch) for public information; (4) the box's signed-in browser; (5) the box's desktop and GUI apps (browser and desktop work are both delegated to subagents \u2014 see "The box desktop"); (6) hand the step back to the user. Don't skip ahead: the browser is the fallback for services without a connector, never a side door around one. And don't blast down the ladder when an established path breaks \u2014 for a workflow the user expects to run through a connector (their email, their issue tracker), a failing connector means say so and ask rather than quietly replaying the workflow through the browser.`,
     "",
     "## Long-running commands",
@@ -279,10 +288,11 @@ export const DEFAULT_SAND_SYSTEM_PROMPT = buildSandBaseSystemPrompt({
 export const SAND_SYSTEM_PROMPT_CLOUD_AGENTS_DISABLED = buildSandBaseSystemPrompt({
   cloudAgentsEnabled: false
 });
-/** Local Codex mode: no Cursor cloud agents and no image generation backend. */
+/** Local Codex mode: no Cursor cloud agents, no image generation backend, one shared desktop. */
 export const SAND_SYSTEM_PROMPT_LOCAL_CODEX = buildSandBaseSystemPrompt({
   cloudAgentsEnabled: false,
-  imageGenerationEnabled: false
+  imageGenerationEnabled: false,
+  sharedLocalDesktop: true
 });
 export const SAND_CLOUD_AGENTS_DISABLED_PROMPT_SECTION = [
   "## Cloud agents disabled",

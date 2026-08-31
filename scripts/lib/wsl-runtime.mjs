@@ -33,6 +33,10 @@ export function wslRuntimeEnvironment(env = process.env) {
     SAND_DISABLE_TELEMETRY: "1",
     SAND_DISABLE_SENTRY: "1",
     SAND_LOCAL_CODEX_MODE: "1",
+    // Local Computer is a default capability (AUDIT-W17): the host still checks
+    // that Xvfb/xdotool/ffmpeg exist and disables the tool (with a log line)
+    // when they are missing. Set SAND_LOCAL_COMPUTER_USE=0 to opt out.
+    SAND_LOCAL_COMPUTER_USE: env.SAND_LOCAL_COMPUTER_USE ?? "1",
   };
 }
 

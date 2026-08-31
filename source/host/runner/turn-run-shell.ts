@@ -198,7 +198,10 @@ export async function createTurnAgentRunContext<ContextValue>(
         ? settingsStore.getAgentModelForSubagentType(input.subagentType)
         : undefined)
       ?? settingsStore.getSubagentDefaultModel()
-    : settingsStore.getAgentDefaultModel();
+    // Top-level agents: a per-agent selection (AUDIT-W1 — set at CreateAgent or via
+    // settings) wins over the global default. The runner's conversation id IS the
+    // persistent agent id for top-level turns.
+    : settingsStore.getAgentModelForAgentId(input.conversationId) ?? settingsStore.getAgentDefaultModel();
   const resolvedModelId = agentSelection?.modelId ?? input.modelId;
   const resolvedReasoning = ((): CodexReasoningEffort | undefined => {
     const effort = reasoningEffortFromSelection(agentSelection);

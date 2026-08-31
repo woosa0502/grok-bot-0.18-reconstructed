@@ -187,6 +187,33 @@ export function defaultLegacyCodexAuthPath(): string {
   return join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "auth.json");
 }
 
+export function defaultBelmontCliAuthPath(): string {
+  return join(homedir(), ".grokbot", "pi-auth.json");
+}
+
+// One-time copy from another Belmont store file (the legacy CLI default
+// ~/.grokbot/pi-auth.json) into this profile's store, so a login made with the
+// CLI before the paths were unified still reaches the runtime (AUDIT-W14).
+export async function migrateBelmontCliCredential(
+  store: BelmontPiCredentialStore,
+  cliPath = defaultBelmontCliAuthPath(),
+  providerId = "openai-codex",
+): Promise<boolean> {
+  if (await store.read(providerId) !== undefined) return false;
+  let credential: Credential | undefined;
+  try {
+    const info = await lstat(cliPath);
+    if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) return false;
+    credential = parseStore(JSON.parse(await readFile(cliPath, "utf8")))[providerId];
+  } catch {
+    return false;
+  }
+  if (credential === undefined) return false;
+  const found = credential;
+  await store.modify(providerId, async current => current ?? found);
+  return true;
+}
+
 export async function migrateLegacyCodexCredential(
   store: BelmontPiCredentialStore,
   legacyPath = defaultLegacyCodexAuthPath(),

@@ -15,6 +15,7 @@ import type { ResourceAccessor } from "../../../agent-exec/resource-provider.js"
 import type { RemoteExecManager } from "../../../agent-exec/remote.js";
 import { writeExecutorResource } from "../../../agent-exec/write.js";
 import { queryWebFetch, type InteractionQueryListener } from "../../../agent-core/interaction-queries.js";
+import { withRemoteHooks } from "./remote-hooks.js";
 import { isLoopbackIpHost, isPrivateIpHost } from "../../utils/ip.js";
 import {
   ToolCallArgParseError,
@@ -42,6 +43,16 @@ export interface WebFetchToolDependencies {
   readonly osPlatform?: string;
   readonly resourceAccessor?: ResourceAccessor<RemoteExecManager>;
   readonly stripCredentialedUrls?: boolean;
+  /**
+   * Remote-hook wiring (preToolUse / postToolUse / postToolUseFailure), mirroring
+   * WebSearch. The accessor must be the remote-box accessor — the hook executor
+   * resource only resolves through it.
+   */
+  readonly hookOptions?: {
+    readonly resourceAccessor: unknown;
+    readonly enableExecuteHookExec?: boolean;
+    readonly configuredSteps?: readonly string[];
+  };
 }
 
 function createWebFetchToolCall(value: WebFetchToolCall): ToolCall {
@@ -99,7 +110,7 @@ function stripCredentials(url: string, enabled: boolean): string {
 export function createWebFetchTool(dependencies: WebFetchToolDependencies) {
   const promptVersion = dependencies.promptVersion ?? "latest";
   const parameters = z.object({ url: z.string().describe("The URL to fetch. The content will be converted to a readable markdown format.") });
-  const execute = async (context: Context, interactionHandler: { readonly listener: InteractionQueryListener<Context>; executeToolCall: (context: Context, toolCall: ToolCall, id: string, run: (context: Context) => Promise<WebFetchResult>, merge: (result: WebFetchResult) => ToolCall) => Promise<WebFetchResult> }, rawArgs: z.infer<typeof parameters>, meta: { readonly toolCallId: string }): Promise<WebFetchResult> => {
+  const execute = async (context: Context, interactionHandler: { readonly listener: InteractionQueryListener<Context>; executeToolCall: (context: Context, toolCall: ToolCall, id: string, run: (context: Context) => Promise<WebFetchResult>, merge: (result: WebFetchResult) => ToolCall, hookContextCollector?: readonly unknown[]) => Promise<WebFetchResult> }, rawArgs: z.infer<typeof parameters>, meta: { readonly toolCallId: string; readonly hookContextCollector?: readonly unknown[] }): Promise<WebFetchResult> => {
     const url = stripCredentials(rawArgs.url, dependencies.stripCredentialedUrls === true);
     let parsed: URL;
     try { parsed = new URL(url); } catch { throw new ToolCallArgParseError("Invalid URL: must include http:// or https://"); }
@@ -109,7 +120,7 @@ export function createWebFetchTool(dependencies: WebFetchToolDependencies) {
     const args = new WebFetchArgs({ url, toolCallId: meta.toolCallId });
     const baseToolCall = new WebFetchToolCall({ args });
     const span = createSpan(context.withName("webFetchExecute"));
-    return interactionHandler.executeToolCall(span.ctx, createWebFetchToolCall(baseToolCall), meta.toolCallId, async innerContext => {
+    const executeCore = async (coreContext: Context, _coreArgs: { readonly url: string }): Promise<WebFetchResult> => interactionHandler.executeToolCall(coreContext, createWebFetchToolCall(baseToolCall), meta.toolCallId, async innerContext => {
       const response = await queryWebFetch(interactionHandler.listener, innerContext, args);
       if (response.result.case === "rejected") throw new ToolCallRejectedError(response.result.value.reason || "User rejected the web fetch");
       const fetched = await dependencies.webFetchService(innerContext, url);
@@ -123,7 +134,33 @@ export function createWebFetchTool(dependencies: WebFetchToolDependencies) {
         if (location !== undefined) return new WebFetchResult({ result: { case: "success", value: new WebFetchSuccess({ url, markdown: content, outputLocation: location }) } });
       }
       return new WebFetchResult({ result: { case: "success", value: new WebFetchSuccess({ url, markdown: truncateContent(content) }) } });
-    }, result => createWebFetchToolCall(new WebFetchToolCall({ ...baseToolCall, result })));
+    }, result => createWebFetchToolCall(new WebFetchToolCall({ ...baseToolCall, result })), meta.hookContextCollector);
+    // Remote hooks (preToolUse / postToolUse / postToolUseFailure), mirroring WebSearch.
+    const hookOptions = dependencies.hookOptions;
+    if (hookOptions?.resourceAccessor !== undefined && hookOptions.enableExecuteHookExec === true) {
+      const wrapped = withRemoteHooks({
+        executeFn: executeCore,
+        config: {
+          toolName: "WebFetch",
+          createToolInput: (a: { readonly url: string }) => ({ url: a.url }),
+          createRejectedResult: (_a: unknown, reason: string) => new WebFetchResult({ result: { case: "rejected", value: new WebFetchRejected({ reason }) } }),
+          createSuccessOutput: (_a: unknown, result: WebFetchResult) => result.result.case === "success"
+            ? { status: "success", url: result.result.value.url, content_bytes: Buffer.byteLength(result.result.value.markdown ?? "", "utf8") }
+            : { status: result.result.case ?? "unknown" },
+          getFailureInfo: (result: WebFetchResult) => {
+            switch (result.result.case) {
+              case "error": return { errorMessage: result.result.value.error, failureType: "error" };
+              case "rejected": return { errorMessage: result.result.value.reason.length > 0 ? result.result.value.reason : "Web fetch rejected", failureType: "permission_denied" };
+              default: return undefined;
+            }
+          },
+        },
+        requestContext: { toolCallId: meta.toolCallId },
+        options: { resourceAccessor: hookOptions.resourceAccessor, enableExecuteHookExec: true, configuredSteps: hookOptions.configuredSteps, hookContextCollector: meta.hookContextCollector },
+      });
+      return await wrapped(span.ctx, { url }) as WebFetchResult;
+    }
+    return executeCore(span.ctx, { url });
   };
   return createZodAgentTool("WEB_FETCH", {
     name: toolName(promptVersion),

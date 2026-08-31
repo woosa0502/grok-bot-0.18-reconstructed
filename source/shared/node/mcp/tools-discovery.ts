@@ -522,6 +522,37 @@ export function createMcpToolsDiscovery(
       firstCallReported.clear();
       void warmToolsCache(epoch).catch(() => {});
     },
+    // AUDIT-W12: a box stdio server can add/remove tools after connect
+    // (notifications/tools/list_changed). The daemon's client refreshes itself,
+    // but nothing told this cache — so GetMcpTools (and the descriptor gate in
+    // front of CallMcpTool) served a stale list until the next refreshMcp. This
+    // compares the daemon's live list against the cached box subset and
+    // invalidates on drift; the mcp extension calls it on a short interval.
+    async reconcileBoxTools(): Promise<boolean> {
+      const boxMcpExec = boxMcpExecSlot;
+      const fulfilled = toolsCacheEntry?.fulfilled;
+      if (boxMcpExec == null || fulfilled === undefined) return false;
+      const stdioServerNames = await stdioServerNamesForBox();
+      if (stdioServerNames.length === 0) return false;
+      let live: Tool[];
+      try {
+        live = (await boxMcpExec.listTools(stdioServerNames)).flatMap(
+          (server: ToolServer) => server.tools,
+        );
+      } catch {
+        return false; // daemon unreachable — keep the cache as-is
+      }
+      const signature = (tools: Tool[]): string =>
+        tools.map((tool) => `${tool.providerIdentifier} ${tool.toolName}`).sort().join("\n");
+      const stdioSet = new Set(stdioServerNames);
+      const cachedBox = fulfilled.tools.filter((tool) => stdioSet.has(tool.providerIdentifier));
+      if (signature(cachedBox) === signature(live)) return false;
+      const epoch = ++toolsCacheEpoch;
+      toolsCacheEntry = null;
+      firstCallReported.clear();
+      void warmToolsCache(epoch).catch(() => {});
+      return true;
+    },
     resetPushState(): void {
       lastPushedBoxConfigJson = null;
     },

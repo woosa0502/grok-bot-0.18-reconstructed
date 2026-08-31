@@ -428,12 +428,20 @@ export class SessionRuntime {
       (await this.tm.sessionStore.listAgentRecordIds()) as string[];
     const persistedId = this.tm.sessionStore.readActiveAgentId() as
       string | null;
+    // Optional manager default (Belmont B-1): when SAND_DEFAULT_AGENT_ID names an
+    // existing agent, the app opens that conversation at startup, ahead of the
+    // last-used pointer. A UI default only — the agent is otherwise ordinary.
+    const defaultId = process.env.SAND_DEFAULT_AGENT_ID?.trim();
+    const defaultRestorable =
+      defaultId != null && defaultId.length > 0 &&
+      (agents.some((agent) => agent.id === defaultId) || recordIds.includes(defaultId));
     const restorable =
       persistedId != null &&
       (agents.some((agent) => agent.id === persistedId) ||
         recordIds.includes(persistedId));
     const orderedIds = [
       ...new Set([
+        ...(defaultRestorable && defaultId != null ? [defaultId] : []),
         ...(restorable && persistedId != null ? [persistedId] : []),
         ...agents.map((agent) => agent.id),
         ...recordIds,

@@ -1,3 +1,4 @@
+import { isLocalCodexMode, LOCAL_CODEX_AUTH_ID } from "../../shared/node/local-codex-account.js";
 import type { CoordinatorRuntime } from "./coordinator-runtime.js";
 
 export interface CoordinatorAuthStatus {
@@ -94,7 +95,16 @@ function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 function cursorAccountSlot(status: CoordinatorAuthStatus): string | null {
-  if (status.kind !== "logged-in") return null;
+  if (status.kind !== "logged-in") {
+    // Local Codex mode (AUDIT-W13): the coordinator host needs no Cursor account —
+    // inference auth is the Pi credential, and signing IN goes THROUGH the
+    // coordinator (startProviderLogin). Gating the launch on logged-in made first
+    // login circular on a fresh profile: no credential → logged-out → no
+    // coordinator → the Sign-in leg had nothing to talk to. Local mode therefore
+    // always runs under the same fixed slot the logged-in status uses, so
+    // completing a login does not restart the coordinator either.
+    return isLocalCodexMode() ? LOCAL_CODEX_AUTH_ID : null;
+  }
   const slot = status.authId ?? status.email;
   return slot == null || slot.length === 0 ? null : slot;
 }

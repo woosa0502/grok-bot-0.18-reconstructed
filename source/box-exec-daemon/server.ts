@@ -416,6 +416,13 @@ class BoxExecRuntime {
     }
     const toolArgs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(args.args)) toolArgs[key] = value.toJson();
+    // Hook gates (.cursor/hooks.json): preToolUse (matcher = MCP tool name) and
+    // beforeMCPExecution run before the call; a deny surfaces as an MCP error result.
+    const hookDeny = await this.#preToolUseGate(toolName, { server: serverName, tool_input: toolArgs }, signal)
+      ?? await this.#beforeMcpExecutionGate(serverName, toolName, toolArgs, signal);
+    if (hookDeny !== undefined) {
+      return new McpResult({ result: { case: "error", value: new McpError({ error: hookDeny }) } });
+    }
     try {
       const result = await client.callTool(toolName, toolArgs, signal);
       const content = result.content.map(item =>
@@ -429,7 +436,9 @@ class BoxExecRuntime {
       }
       return new McpResult({ result: { case: "success", value: success } });
     } catch (error) {
-      return new McpResult({ result: { case: "error", value: new McpError({ error: error instanceof Error ? error.message : String(error) }) } });
+      // Transport/protocol failure (crash, timeout, abort) — same wording the box
+      // path uses so the model and ledger see the original contract (AGT-241).
+      return new McpResult({ result: { case: "error", value: new McpError({ error: `Box MCP execution failed for "${toolName}": ${error instanceof Error ? error.message : String(error)}` }) } });
     }
   }
 
@@ -784,6 +793,38 @@ class BoxExecRuntime {
     return undefined;
   }
 
+  // beforeMCPExecution gate for MCP tool calls, mirroring #beforeShellExecutionGate:
+  // permission allow/absent → run; deny (or exit 2 / failClosed non-zero) → blocked
+  // with user_message; "ask" is blocked too (no interactive hook prompt locally).
+  // The matcher, when present, is tested against the MCP tool name.
+  async #beforeMcpExecutionGate(serverName: string, toolName: string, toolArgs: Record<string, unknown>, signal?: AbortSignal): Promise<string | undefined> {
+    let scripts: HookScript[];
+    try { scripts = (await this.#readHooksConfig()).beforeMCPExecution ?? []; }
+    catch { return undefined; }
+    const matches = (matcher: unknown): boolean => {
+      if (matcher === undefined || matcher === "" || matcher === "*" || typeof matcher !== "string") return true;
+      try { return new RegExp(matcher).test(toolName); }
+      catch { console.error(`[box-hooks] invalid beforeMCPExecution matcher "${String(matcher)}", skipping`); return false; }
+    };
+    const commands = scripts.filter(entry => (entry.type === undefined || entry.type === "command") && typeof entry.command === "string" && matches(entry.matcher));
+    if (commands.length === 0) return undefined;
+    const inputJson = JSON.stringify({ hook_event_name: "beforeMCPExecution", server_name: serverName, tool_name: toolName, tool_input: toolArgs });
+    for (const entry of commands) {
+      const timeoutMs = typeof entry.timeout === "number" && entry.timeout > 0 ? Math.min(entry.timeout * 1000, 3_600_000) : DEFAULT_HOOK_TIMEOUT_MS;
+      const r = await this.#runHookCommand(entry.command!, inputJson, timeoutMs, signal);
+      let parsed: Record<string, unknown> = {};
+      try { parsed = r.stdout.trim() ? JSON.parse(r.stdout.trim()) as Record<string, unknown> : {}; } catch { /* non-JSON */ }
+      const rawPermission = typeof parsed.permission === "string" ? parsed.permission : typeof parsed.decision === "string" ? parsed.decision : undefined;
+      const userMessage = typeof parsed.user_message === "string" && parsed.user_message.length > 0 ? parsed.user_message
+        : typeof parsed.userMessage === "string" && parsed.userMessage.length > 0 ? parsed.userMessage
+        : undefined;
+      const denies = r.exitCode === 2 || (entry.failClosed === true && r.exitCode !== 0) || rawPermission === "block" || rawPermission === "deny";
+      if (denies) return userMessage ?? "Blocked by beforeMCPExecution hook";
+      if (rawPermission === "ask") return `${userMessage ?? "beforeMCPExecution hook asked for confirmation"} (the 'ask' permission is not supported in the local build and was treated as deny)`;
+    }
+    return undefined;
+  }
+
   // postToolUse / postToolUseFailure for the streaming Shell route. Reuses the
   // generic executeHook path (matcher, failClosed, timeouts, context merging) and
   // returns the merged additional_context as carriers for a `hookContext` stream
@@ -1028,7 +1069,11 @@ class BoxExecRuntime {
   async grep(args: GrepArgs, signal: AbortSignal): Promise<GrepResult> {
     let cwd: string;
     try {
-      cwd = this.resolvePath(args.path !== undefined && args.path.length > 0 ? args.path : "/workspace");
+      const requested = args.path !== undefined && args.path.length > 0 ? args.path : "/workspace";
+      cwd = this.resolvePath(requested);
+      // Same canonical fail-closed boundary the other file tools use: a symlink
+      // (final component or ancestor) must not let rg read outside the roots.
+      await this.#assertCanonicalWithinRoots(cwd, requested);
     } catch (error) {
       return new GrepResult({ result: { case: "error", value: new GrepError({ error: errorText(error) }) } });
     }
@@ -1179,7 +1224,8 @@ class BoxExecRuntime {
   }
 
   async *shellStream(request: ExecServerMessage, args: ShellArgs, signal: AbortSignal): AsyncGenerator<ExecStreamElement> {
-    const cwd = await this.#startingCwd(args.workingDirectory);
+    const stateOwner = args.conversationId;
+    const cwd = await this.#startingCwd(args.workingDirectory, stateOwner);
     // Hook gates (.cursor/hooks.json): preToolUse (matcher "Shell"/"*") and
     // beforeShellExecution run before anything is spawned; a deny surfaces to the
     // agent as a permissionDenied result ("Permission denied: <user_message>").
@@ -1190,7 +1236,7 @@ class BoxExecRuntime {
       return;
     }
     yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "start", value: new ShellStreamStart() } }) });
-    const child = this.spawnShell(this.#withShellState(args.command), cwd);
+    const child = this.spawnShell(this.#withShellState(args.command, stateOwner), cwd);
     this.#foreground.add(child);
     const startedAt = Date.now();
     const events: Array<{ case: "stdout" | "stderr"; data: string }> = [];
@@ -1275,11 +1321,11 @@ class BoxExecRuntime {
         const hookContexts = await this.#shellPostHooks(args, outputTail, exitCode, Date.now() - startedAt, signal);
         if (hookContexts.length > 0) yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "hookContext", value: new ShellStreamHookContext({ hookAdditionalContexts: hookContexts }) } }) });
       } else {
-        await this.#resetShellState();
+        await this.#resetShellState(stateOwner);
       }
       yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "exit", value: new ShellStreamExit({
         code: exitCode,
-        cwd: signal.aborted ? args.workingDirectory : (await this.#savedCwdLogical()) ?? args.workingDirectory,
+        cwd: signal.aborted ? args.workingDirectory : (await this.#savedCwdLogical(stateOwner)) ?? args.workingDirectory,
         aborted: signal.aborted,
         localExecutionTimeMs: Date.now() - startedAt,
       }) } }) });
@@ -1343,28 +1389,40 @@ class BoxExecRuntime {
   }
 
   // --- Persistent foreground-shell state (cwd + exported env), see shell-state.ts. ---
-  async #startingCwd(requested: string): Promise<string> {
+  // Shell state is namespaced by the calling conversation (strict-review P1-07):
+  // one daemon serves every persistent bot (and Task children), so a single
+  // shared cwd/env dir let one bot's `cd`/`export` (or a late-exiting child)
+  // rewrite another bot's shell state. Calls without a conversation id share the
+  // "default" namespace, which also keeps the pre-namespacing behavior for
+  // non-agent callers.
+  #shellStateDirFor(owner: string | undefined): string {
+    const key = (owner ?? "").trim();
+    const namespace = key.length === 0 ? "default" : key.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+    return path.join(this.#shellStateDir, namespace);
+  }
+
+  async #startingCwd(requested: string, owner?: string): Promise<string> {
     if (requested.length > 0) return this.resolvePath(requested);
     try {
-      const saved = (await readFile(path.join(this.#shellStateDir, SHELL_STATE_CWD_FILE), "utf8")).trim();
+      const saved = (await readFile(path.join(this.#shellStateDirFor(owner), SHELL_STATE_CWD_FILE), "utf8")).trim();
       if (saved.length > 0 && isInsideWorkspace(this.workspaceRoot, saved) && (await stat(saved)).isDirectory()) return saved;
     } catch { /* no saved state */ }
     return this.resolvePath(requested);
   }
 
-  #withShellState(command: string): string {
-    return buildShellStateWrappedCommand(this.#shellStateDir, command);
+  #withShellState(command: string, owner?: string): string {
+    return buildShellStateWrappedCommand(this.#shellStateDirFor(owner), command);
   }
 
-  async #savedCwdLogical(): Promise<string | undefined> {
+  async #savedCwdLogical(owner?: string): Promise<string | undefined> {
     try {
-      const saved = (await readFile(path.join(this.#shellStateDir, SHELL_STATE_CWD_FILE), "utf8")).trim();
+      const saved = (await readFile(path.join(this.#shellStateDirFor(owner), SHELL_STATE_CWD_FILE), "utf8")).trim();
       return saved.length > 0 ? toLogicalWorkspacePath(this.workspaceRoot, saved) : undefined;
     } catch { return undefined; }
   }
 
-  async #resetShellState(): Promise<void> {
-    await rm(this.#shellStateDir, { recursive: true, force: true }).catch(() => undefined);
+  async #resetShellState(owner?: string): Promise<void> {
+    await rm(this.#shellStateDirFor(owner), { recursive: true, force: true }).catch(() => undefined);
   }
 
   private spawnShell(command: string, cwd: string): ChildProcessWithoutNullStreams {

@@ -52,7 +52,10 @@ test("local Codex mode hides Cursor cloud agents and image generation honestly",
   const experiments = read("source/host/extensions/experiments/extension.ts");
   assert.match(experiments, /isCloudAgentsDisabledByTeam: \(\) => isLocalCodexMode\(process\.env\)/);
   const prompt = read("source/host/runner/system-prompt.ts");
-  assert.match(prompt, /export const SAND_SYSTEM_PROMPT_LOCAL_CODEX = buildSandBaseSystemPrompt\(\{\s*cloudAgentsEnabled: false,\s*imageGenerationEnabled: false\s*\}\)/);
+  assert.match(prompt, /export const SAND_SYSTEM_PROMPT_LOCAL_CODEX = buildSandBaseSystemPrompt\(\{\s*cloudAgentsEnabled: false,\s*imageGenerationEnabled: false,\s*sharedLocalDesktop: true\s*\}\)/);
+  // AUDIT-W17: the local build has ONE shared desktop; the local prompt must not
+  // claim per-agent screens, while the cloud prompt keeps the per-agent wording.
+  assert.match(prompt, /in this local build the desktop is shared too/);
   assert.match(prompt, /Image generation is not available in this setup: there is no GenerateImage tool/);
   const assembly = read("source/host/runner/system-prompt-assembly.ts");
   assert.match(assembly, /deps\.isLocalCodexMode\?\.\(\) === true\s*\? SAND_SYSTEM_PROMPT_LOCAL_CODEX/);

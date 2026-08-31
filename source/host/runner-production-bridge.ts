@@ -307,6 +307,8 @@ export interface ProductionTurnHostDependencies {
       agentId: string,
       patch: { readonly name?: string; readonly description?: string },
     ): Promise<{ readonly id: string; readonly name: string } | null>;
+    /** Persists a per-agent model/reasoning selection (AUDIT-W1). */
+    setAgentModelSelection?(agentId: string, selection: { readonly modelId: string; readonly maxMode: boolean; readonly parameters: readonly { readonly id: string; readonly value: string }[] }): void;
   };
   readonly state?: Pick<
     SandStateDependencies,

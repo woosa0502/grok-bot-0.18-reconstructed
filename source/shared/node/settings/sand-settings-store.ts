@@ -23,7 +23,7 @@ export interface SandStoredSettings {
   mcpCustomInstructions: StringMap; mcpCustomInstructionsByServerId: StringMap; mcpDisabledToolsByServerId: StringListMap;
   conciergeConsent: "unset" | "allowed" | "denied"; settingsMigrations: string[];
   hasSeenOnboarding?: boolean; hasSeenOnboardingAccountScope?: string; updateTrackOverride?: SandUpdateTrack; themePreference?: SandThemePreference;
-  agentDefaultModel?: SandAgentModelSelection; computerUseModel?: SandAgentModelSelection; subagentDefaultModel?: SandAgentModelSelection; agentModelsBySubagentType?: Record<string, SandAgentModelSelection>; notifications?: Record<string, unknown>;
+  agentDefaultModel?: SandAgentModelSelection; computerUseModel?: SandAgentModelSelection; subagentDefaultModel?: SandAgentModelSelection; agentModelsBySubagentType?: Record<string, SandAgentModelSelection>; agentModelsByAgentId?: Record<string, SandAgentModelSelection>; notifications?: Record<string, unknown>;
   userTimeZone?: string; userTimeZoneOverride?: string; autoReviewInstructions?: SandAutoReviewInstructions;
   localToolPermission?: SandLocalToolPermission; localToolPermissionCeiling?: SandLocalToolPermission;
   inferenceProvider?: SandInferenceProvider; inferenceRouterUsage?: SandInferenceRouterUsage;
@@ -69,6 +69,13 @@ function parseSettings(value: unknown): SandStoredSettings | null {
     const byType: Record<string, SandAgentModelSelection> = {};
     for (const [type, selection] of Object.entries(raw.agentModelsBySubagentType as Record<string, unknown>)) if (type.length > 0 && isSandAgentModelSelection(selection)) byType[type] = selection;
     if (Object.keys(byType).length > 0) result.agentModelsBySubagentType = byType;
+  }
+  // Per persistent-agent model/reasoning selection (AUDIT-W1): keyed by agent id,
+  // consulted ahead of agentDefaultModel for top-level runners.
+  if (typeof raw.agentModelsByAgentId === "object" && raw.agentModelsByAgentId != null && !Array.isArray(raw.agentModelsByAgentId)) {
+    const byAgent: Record<string, SandAgentModelSelection> = {};
+    for (const [agentId, selection] of Object.entries(raw.agentModelsByAgentId as Record<string, unknown>)) if (agentId.length > 0 && isSandAgentModelSelection(selection)) byAgent[agentId] = selection;
+    if (Object.keys(byAgent).length > 0) result.agentModelsByAgentId = byAgent;
   }
   if (typeof raw.notifications === "object" && raw.notifications != null && !Array.isArray(raw.notifications)) result.notifications = raw.notifications as Record<string, unknown>;
   for (const key of ["userTimeZone", "userTimeZoneOverride", "mcpCustomInstructionsAccountScope"] as const) if (typeof raw[key] === "string" && raw[key].length > 0) result[key] = raw[key];
@@ -129,6 +136,16 @@ export class SandSettingsStore {
   getComputerUseModel(): SandAgentModelSelection | undefined { return this.load().computerUseModel; }
   getSubagentDefaultModel(): SandAgentModelSelection | undefined { return this.load().subagentDefaultModel; }
   getAgentModelForSubagentType(subagentType: string): SandAgentModelSelection | undefined { return this.load().agentModelsBySubagentType?.[subagentType]; }
+  getAgentModelForAgentId(agentId: string): SandAgentModelSelection | undefined { return this.load().agentModelsByAgentId?.[agentId]; }
+  setAgentModelForAgentId(agentId: string, model: SandAgentModelSelection | undefined): void {
+    this.update((s) => {
+      const map = { ...(s.agentModelsByAgentId ?? {}) };
+      if (model === undefined) delete map[agentId];
+      else map[agentId] = { modelId: model.modelId, maxMode: model.maxMode, parameters: model.parameters.map((p) => ({ ...p })) };
+      const { agentModelsByAgentId: _old, ...rest } = s;
+      return Object.keys(map).length === 0 ? rest : { ...rest, agentModelsByAgentId: map };
+    });
+  }
   setSubagentDefaultModel(model: SandAgentModelSelection | undefined): void { this.update((s) => { const { subagentDefaultModel: _old, ...rest } = s; return model === undefined ? rest : { ...rest, subagentDefaultModel: { modelId: model.modelId, maxMode: model.maxMode, parameters: model.parameters.map((p) => ({ ...p })) } }; }); }
   setComputerUseModel(model: SandAgentModelSelection | undefined): void { this.update((s) => { const { computerUseModel: _old, ...rest } = s; return model === undefined ? rest : { ...rest, computerUseModel: { modelId: model.modelId, maxMode: model.maxMode, parameters: model.parameters.map((p) => ({ ...p })) } }; }); }
   getUpdateTrackOverride(): SandUpdateTrack | null { const stored = this.load().updateTrackOverride ?? null; if (stored == null) return null; const coerced = coerceToEnabledTrack(stored); if (coerced !== stored) { try { this.setUpdateTrackOverride(coerced); } catch {} } return coerced; }

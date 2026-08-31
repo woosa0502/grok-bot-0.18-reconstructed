@@ -111,7 +111,8 @@ test("Router settings use the trusted backend and Pi-owned Codex runtime", async
   assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, resolvedModelId, resolvedReasoning\)/);
   assert.match(turnShell, /settingsStore\.getAgentModelForSubagentType\(input\.subagentType\)/);
   assert.match(turnShell, /\?\? settingsStore\.getSubagentDefaultModel\(\)/);
-  assert.match(turnShell, /: settingsStore\.getAgentDefaultModel\(\)/);
+  // Per-agent selection first (AUDIT-W1), then the global default.
+  assert.match(turnShell, /: settingsStore\.getAgentModelForAgentId\(input\.conversationId\) \?\? settingsStore\.getAgentDefaultModel\(\)/);
   assert.match(providers, /context\?\.reasoning \?\? configuredCodexReasoningEffort\(\)/);
   // The coordinator's own per-provider local turn loop (execute), activity pulse
   // (beginActivity), routed-MCP bridge wiring, and JSON-transcript merge were unreachable —

@@ -65,9 +65,15 @@ export function withAutomationRunAnalytics<T extends TelemetryService>(
     return (...args: Parameters<Method>): ReturnType<Method> =>
       telemetry[name](...args) as ReturnType<Method>;
   };
-  const reportAutomationRun = telemetry.reportAutomationRun as unknown as (
-    report: AutomationRunAnalyticsReport,
-  ) => unknown;
+  // Must stay bound to the telemetry service: the class method reads
+  // `this.mapped`, and an unbound extraction crashed every automation-run
+  // report ("Cannot read properties of undefined (reading 'mapped')") — which
+  // took the whole automation fire down with it.
+  const reportAutomationRun = (report: AutomationRunAnalyticsReport): unknown =>
+    (telemetry.reportAutomationRun as unknown as (r: AutomationRunAnalyticsReport) => unknown).call(
+      telemetry,
+      report,
+    );
 
   return {
     startTurn: forward("startTurn"),

@@ -41,9 +41,16 @@ export function createLocalPdfTextExtractor(options: LocalPdfTextExtractorOption
   };
 }
 
-export function extractWithPdftotext(binary: string, bytes: Uint8Array): Promise<string> {
+// A malformed PDF must not hang the turn or buffer output forever
+// (strict-review P1-10): the subprocess gets a hard deadline and is killed past
+// it, and both extractors stop at a generous output cap.
+export const PDF_EXTRACT_TIMEOUT_MS = 30_000;
+export const PDF_EXTRACT_MAX_CHARS = 4_000_000;
+export const PDF_EXTRACT_MAX_PAGES = 1_000;
+
+export function extractWithPdftotext(binary: string, bytes: Uint8Array, timeoutMs = PDF_EXTRACT_TIMEOUT_MS): Promise<string> {
   return new Promise((resolve, reject) => {
-    let child;
+    let child: ReturnType<typeof spawn>;
     try {
       child = spawn(binary, ["-layout", "-enc", "UTF-8", "-", "-"], { stdio: ["pipe", "pipe", "pipe"] });
     } catch (error) {
@@ -52,17 +59,32 @@ export function extractWithPdftotext(binary: string, bytes: Uint8Array): Promise
     }
     let stdout = "";
     let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
-    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
-    child.on("error", reject);
+    let timedOut = false;
+    const deadline = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    deadline.unref?.();
+    child.stdout!.setEncoding("utf8");
+    child.stderr!.setEncoding("utf8");
+    child.stdout!.on("data", (chunk: string) => {
+      if (stdout.length < PDF_EXTRACT_MAX_CHARS) stdout += chunk;
+    });
+    child.stderr!.on("data", (chunk: string) => { if (stderr.length < 16_384) stderr += chunk; });
+    child.on("error", (error) => { clearTimeout(deadline); reject(error); });
+    // Settle on "exit", not "close": a killed extractor can leave grandchildren
+    // holding the stdio pipes, which delays "close" until THEY exit.
+    child.on("exit", () => {
+      if (timedOut) { clearTimeout(deadline); reject(new Error(`${binary} timed out after ${Math.round(timeoutMs / 1000)}s`)); }
+    });
     child.on("close", (code) => {
-      if (code === 0) resolve(stdout);
+      clearTimeout(deadline);
+      if (timedOut) reject(new Error(`${binary} timed out after ${Math.round(timeoutMs / 1000)}s`));
+      else if (code === 0) resolve(stdout.slice(0, PDF_EXTRACT_MAX_CHARS));
       else reject(new Error(`${binary} exited with code ${code}${stderr.trim() ? `: ${stderr.trim().split("\n").at(-1)}` : ""}`));
     });
-    child.stdin.on("error", () => { /* pdftotext may close stdin early on malformed input; the close handler reports it */ });
-    child.stdin.end(Buffer.from(bytes));
+    child.stdin!.on("error", () => { /* pdftotext may close stdin early on malformed input; the close handler reports it */ });
+    child.stdin!.end(Buffer.from(bytes));
   });
 }
 
@@ -70,7 +92,9 @@ export async function extractWithPdfjs(importPdfjs: () => Promise<PdfjsLike>, by
   const pdfjs = await importPdfjs();
   const document = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
   const pages: string[] = [];
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+  let totalChars = 0;
+  const pageLimit = Math.min(document.numPages, PDF_EXTRACT_MAX_PAGES);
+  for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
     const page = await document.getPage(pageNumber);
     const content = await page.getTextContent();
     let text = "";
@@ -79,7 +103,10 @@ export async function extractWithPdfjs(importPdfjs: () => Promise<PdfjsLike>, by
       if (item.hasEOL) text += "\n";
     }
     pages.push(text);
+    totalChars += text.length;
+    if (totalChars >= PDF_EXTRACT_MAX_CHARS) break;
   }
+  if (document.numPages > pages.length) pages.push(`(truncated: ${document.numPages - pages.length} more pages not extracted)`);
   return pages.join("\f");
 }
 

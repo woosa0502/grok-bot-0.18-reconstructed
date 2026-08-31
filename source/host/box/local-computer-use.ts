@@ -12,7 +12,26 @@ import { computerUseExecutorResource } from "../../packages/agent-exec/computer-
 import { LocalComputerUseExecutor } from "../../packages/local-exec/computer-use/executor.js";
 import { LocalDisplayManager } from "../../packages/local-exec/computer-use/display-manager.js";
 
-export const LOCAL_COMPUTER_USE_ENABLED = process.env.SAND_LOCAL_COMPUTER_USE === "1";
+import { existsSync } from "node:fs";
+import { delimiter, join as joinPath } from "node:path";
+
+function hasExecutable(name: string): boolean {
+  return (process.env.PATH ?? "").split(delimiter).some((dir) => dir.length > 0 && existsSync(joinPath(dir, name)));
+}
+
+// Readiness is part of the gate (AUDIT-W17): advertising a Computer tool whose
+// display stack cannot start is worse than not offering it. Xvfb hosts the
+// display, xdotool drives input, ffmpeg captures screenshots — all three are
+// required for the tool to actually work.
+const LOCAL_COMPUTER_REQUIRED_BINARIES = ["Xvfb", "xdotool", "ffmpeg"] as const;
+const missingComputerBinaries = process.env.SAND_LOCAL_COMPUTER_USE !== "0"
+  ? LOCAL_COMPUTER_REQUIRED_BINARIES.filter((name) => !hasExecutable(name))
+  : [];
+if (process.env.SAND_LOCAL_COMPUTER_USE !== "0" && missingComputerBinaries.length > 0) {
+  console.error(`[local-computer] disabled: missing ${missingComputerBinaries.join(", ")} (install them to enable the Computer tool)`);
+}
+export const LOCAL_COMPUTER_USE_ENABLED =
+  process.env.SAND_LOCAL_COMPUTER_USE !== "0" && missingComputerBinaries.length === 0;
 const LOCAL_COMPUTER_DISPLAY = { width: 1280, height: 800 } as const;
 
 let sharedLocalDisplayManager: LocalDisplayManager | undefined;

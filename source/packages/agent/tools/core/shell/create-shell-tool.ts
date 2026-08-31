@@ -460,7 +460,7 @@ async function runShellSmartModeClassifier(
   }
 }
 
-function shellArgs(rawArgs: Record<string, unknown>, analysis: ShellCommandAnalysis, plan: ShellExecutionPlan, options: ShellToolOptions, meta: ShellToolExecutionMeta, policy: SandboxPolicy | undefined, skipApproval = false): ShellArgs {
+function shellArgs(rawArgs: Record<string, unknown>, analysis: ShellCommandAnalysis, plan: ShellExecutionPlan, options: ShellToolOptions, meta: ShellToolExecutionMeta, policy: SandboxPolicy | undefined, skipApproval = false, conversationId?: string): ShellArgs {
   const command = String(rawArgs.command);
   const workingDirectory = typeof rawArgs.working_directory === "string" ? rawArgs.working_directory : "";
   const description = typeof rawArgs.description === "string" ? rawArgs.description : typeof rawArgs.explanation === "string" ? rawArgs.explanation : undefined;
@@ -497,6 +497,9 @@ function shellArgs(rawArgs: Record<string, unknown>, analysis: ShellCommandAnaly
     ...(description === undefined ? {} : { description }),
     closeStdin: false,
     adminCommandDenylist: [...(options.adminCommandDenylist ?? [])],
+    // Namespaces the daemon's persistent cwd/env shell state per conversation
+    // (strict-review P1-07), so concurrent bots/children don't share one state.
+    ...(conversationId === undefined || conversationId.length === 0 ? {} : { conversationId }),
   });
 }
 
@@ -660,7 +663,7 @@ export function createShellTool(resourceAccessor: ShellToolResourceAccessor, opt
       };
     }
     options.onTelemetry?.(ctx, { type: "started", toolCallId: meta.toolCallId });
-    const args = shellArgs(rawArgs, analysis, plan, options, meta, policy, smartModeApprovalProviderApproved || (smartModeDecision.kind === "allow" && smartModeDecision.enabled));
+    const args = shellArgs(rawArgs, analysis, plan, options, meta, policy, smartModeApprovalProviderApproved || (smartModeDecision.kind === "allow" && smartModeDecision.enabled), getConversationId(ctx));
     const call = createShellToolCall(new ShellToolCall({ args }));
     if (plan.shouldStartInBackground) await interaction.emitPartialToolCall?.(ctx, meta.toolCallId, call);
     const result = await interaction.executeToolCall(ctx, call, meta.toolCallId, async executionCtx => {

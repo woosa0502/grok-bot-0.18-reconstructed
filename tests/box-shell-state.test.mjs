@@ -46,9 +46,12 @@ test("wrapped commands persist cwd and exported env across separate sh invocatio
     assert.match(env, /FOO=/);
     assert.doesNotMatch(env, /^(export |declare -x )(PWD|OLDPWD|SHLVL)(=|$)/m, "volatile shell vars are not restored");
 
-    // Second call: the daemon starts the shell in the saved cwd and the wrapper restores the env.
-    const second = await runSh(buildShellStateWrappedCommand(stateDir, "pwd -P; printf '%s\\n' \"$FOO\""), savedCwd);
-    assert.deepEqual(second.stdout.trim().split("\n"), [path.join(workspace, "sub"), "b a'r"]);
+    // Aliases and shell options are snapshotted too (functions need bash's typeset -f,
+    // which dash lacks — the functions file is then simply absent).
+    await runSh(buildShellStateWrappedCommand(stateDir, 'alias qq="echo AL-OK"; set -f'), workspace);
+    // Second call: the daemon starts the shell in the saved cwd and the wrapper restores env/aliases/options.
+    const second = await runSh(buildShellStateWrappedCommand(stateDir, "pwd -P; printf '%s\\n' \"$FOO\"\nqq\nset +o | grep noglob"), savedCwd);
+    assert.deepEqual(second.stdout.trim().split("\n"), [path.join(workspace, "sub"), "b a'r", "AL-OK", "set -o noglob"]);
 
     // A command that fails still snapshots the state, and the exit code is preserved.
     await assert.rejects(runSh(buildShellStateWrappedCommand(stateDir, "cd .. && exit 3"), savedCwd), (error) => error.code === 3);
@@ -76,9 +79,10 @@ test("daemon shell routes start from the saved cwd, wrap the command, and report
   assert.match(shell, /cwd = this\.resolvePath\(args\.workingDirectory\)/);
   assert.doesNotMatch(shell, /#withShellState|#startingCwd|#savedCwdLogical|#resetShellState/);
   const stream = server.slice(server.indexOf("  async *shellStream("), server.indexOf("  async *shellStream(") + 14_000);
-  assert.match(stream, /const cwd = await this\.#startingCwd\(args\.workingDirectory\)/);
-  assert.match(stream, /this\.spawnShell\(this\.#withShellState\(args\.command\), cwd\)/);
-  assert.match(stream, /cwd: signal\.aborted \? args\.workingDirectory : \(await this\.#savedCwdLogical\(\)\) \?\? args\.workingDirectory/);
+  // State is namespaced by the calling conversation (wave 6, strict-review P1-07).
+  assert.match(stream, /const cwd = await this\.#startingCwd\(args\.workingDirectory, stateOwner\)/);
+  assert.match(stream, /this\.spawnShell\(this\.#withShellState\(args\.command, stateOwner\), cwd\)/);
+  assert.match(stream, /cwd: signal\.aborted \? args\.workingDirectory : \(await this\.#savedCwdLogical\(stateOwner\)\) \?\? args\.workingDirectory/);
   const shellTool = await readFile(path.join(repoRoot, "source/packages/agent/tools/core/shell/create-shell-tool.ts"), "utf8");
   assert.match(shellTool, /workingDirectory: value\.cwd\.length > 0 \? value\.cwd : workingDirectory/);
 });

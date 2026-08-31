@@ -9,8 +9,11 @@ import {
   type AgentAddress,
   type AgentGroupAddress,
 } from "../../agents/agent-messaging.js";
+import { randomUUID } from "node:crypto";
+
 import { defineCommunicateTool } from "./communicate-tool.js";
 import { isValidAttachmentUrl } from "./send-message-schema.js";
+import { withRemoteHooks } from "../../../packages/agent/tools/core/remote-hooks.js";
 import type { Context } from "../../../packages/context/core.js";
 
 export interface AgentImage {
@@ -27,6 +30,16 @@ export interface SendToAgentDependencies<_Context = Context> {
     images?: readonly AgentImage[],
     priority?: true,
   ): string | Promise<string>;
+  /**
+   * Remote hooks (preToolUse/postToolUse via .cursor/hooks.json), the same
+   * mechanism WebSearch/WebFetch use. Wired so agent-to-agent messages can be
+   * observed (e.g. a durable job ledger) or gated without touching this tool.
+   */
+  hookOptions?: {
+    resourceAccessor: unknown;
+    enableExecuteHookExec?: boolean;
+    configuredSteps?: readonly string[];
+  };
 }
 
 export interface AgentManagementDependencies {
@@ -34,6 +47,8 @@ export interface AgentManagementDependencies {
     readonly id: string;
     readonly name: string;
   }>;
+  /** Persists a per-agent model/reasoning selection (AUDIT-W1). Optional; wired by the host. */
+  setAgentModelSelection?(agentId: string, selection: { readonly modelId: string; readonly maxMode: boolean; readonly parameters: readonly { readonly id: string; readonly value: string }[] }): void;
   update(
     agentId: string,
     patch: { readonly name?: string; readonly description?: string },
@@ -77,6 +92,9 @@ export const createAgentParameters = z.object({
   description: z.string().trim().default("").describe(
     "The new agent's persona / instructions: what it is for and how it should behave. This becomes its profile and shapes its replies. Optional but strongly recommended.",
   ),
+  reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional().describe(
+    "Optional reasoning effort for the new agent's model. Pick lower efforts (minimal/low) for quick mechanical workers and higher ones (high/xhigh) for analysis-heavy teammates; omit to inherit the default.",
+  ),
 });
 
 export const updateAgentParameters = z.object({
@@ -117,17 +135,46 @@ export function createSendToAgentTool(
       if (self != null && args.target_id === self) {
         return "You can't message yourself with SendToAgent. Use SendMessage to talk to the user, or pick a different target id.";
       }
-      const images = await resolveSendToAgentImages(
-        context,
-        args.images ?? [],
-        resolved.resolveImageSource,
-      );
-      return resolved.sendToAgent(
-        args.target_id,
-        args.message,
-        images.length > 0 ? images : undefined,
-        args.priority === true ? true : undefined,
-      );
+      const executeCore = async (ctx: Context, coreArgs: z.infer<typeof sendToAgentParameters>): Promise<string> => {
+        const images = await resolveSendToAgentImages(
+          ctx,
+          coreArgs.images ?? [],
+          resolved.resolveImageSource,
+        );
+        return resolved.sendToAgent(
+          coreArgs.target_id,
+          coreArgs.message,
+          images.length > 0 ? images : undefined,
+          coreArgs.priority === true ? true : undefined,
+        );
+      };
+      // Remote hooks (preToolUse/postToolUse), mirroring WebSearch/WebFetch: lets
+      // .cursor/hooks.json observe every agent-to-agent send (job ledger) or deny one.
+      const hookOptions = dependencies.hookOptions;
+      if (hookOptions?.resourceAccessor !== undefined && hookOptions.enableExecuteHookExec === true) {
+        const wrapped = withRemoteHooks({
+          executeFn: (ctx: Context, toolArgs: z.infer<typeof sendToAgentParameters>) => executeCore(ctx, toolArgs),
+          config: {
+            toolName: SAND_SEND_TO_AGENT_TOOL_NAME,
+            createToolInput: (a: z.infer<typeof sendToAgentParameters>) => ({
+              target_id: a.target_id,
+              message: a.message,
+              ...(a.priority === true ? { priority: true } : {}),
+              ...(resolved.getSelfAgentId() === undefined ? {} : { from_agent_id: resolved.getSelfAgentId() }),
+            }),
+            createRejectedResult: (_a: unknown, reason: string) => `Permission denied: ${reason}`,
+            createSuccessOutput: (_a: unknown, result: unknown) => ({ status: "sent", ack: String(result).slice(0, 300) }),
+          },
+          requestContext: { toolCallId: randomUUID() },
+          options: {
+            resourceAccessor: hookOptions.resourceAccessor,
+            enableExecuteHookExec: true,
+            configuredSteps: hookOptions.configuredSteps,
+          },
+        });
+        return await wrapped(context, args) as string;
+      }
+      return executeCore(context, args);
     },
   });
 }
@@ -143,7 +190,22 @@ export function createCreateAgentTool(management: AgentManagementDependencies) {
         name: args.name,
         description: args.description,
       });
-      return `Created agent "${created.name}" (id: ${created.id}). Message it with SendToAgent using that id.`;
+      // Per-agent reasoning (AUDIT-W1): persist a model selection keyed by the new
+      // agent's id; turn-run-shell consults it ahead of the global default.
+      let reasoningNote = "";
+      if (args.reasoning !== undefined) {
+        try {
+          resolved.setAgentModelSelection?.(created.id, {
+            modelId: process.env.SAND_CODEX_MODEL?.trim() || "gpt-5.5",
+            maxMode: false,
+            parameters: [{ id: "effort", value: args.reasoning }],
+          });
+          reasoningNote = ` Its reasoning effort is set to ${args.reasoning}.`;
+        } catch {
+          reasoningNote = " (Reasoning preference could not be saved; it will use the default.)";
+        }
+      }
+      return `Created agent "${created.name}" (id: ${created.id}).${reasoningNote} Message it with SendToAgent using that id.`;
     },
   });
 }

@@ -1,19 +1,37 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 const PROVIDER = "openai-codex";
 
-function credentialPath() {
+// One credential source of truth per profile (AUDIT-W14): the default matches the
+// path the WSL host runtime reads (<profile>/sand-data/pi-auth.json), so the
+// documented `npm run codex:auth:login` → `npm run wsl:start` sequence shares one
+// location. Env overrides and the legacy ~/.grokbot path (read-only fallback for
+// logins made before unification; the host migrates it on first start) still work.
+function profileCredentialPath() {
   if (process.env.SAND_PI_CODEX_AUTH_PATH?.trim()) return path.resolve(process.env.SAND_PI_CODEX_AUTH_PATH.trim());
   if (process.env.SAND_DATA_ROOT?.trim()) return path.join(path.resolve(process.env.SAND_DATA_ROOT.trim()), "pi-auth.json");
-  return path.join(homedir(), ".grokbot", "pi-auth.json");
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const profileDir = process.env.BELMONT_WSL_PROFILE?.trim() || path.join(repoRoot, ".cache", "belmont-wsl-profile");
+  return path.join(profileDir, "sand-data", "pi-auth.json");
+}
+
+function credentialPath({ forWrite = false } = {}) {
+  const profilePath = profileCredentialPath();
+  if (forWrite) return profilePath; // login always writes the profile store
+  const legacyPath = path.join(homedir(), ".grokbot", "pi-auth.json");
+  // status/logout: prefer the profile store; fall back to a pre-unification CLI
+  // login only when the profile has no store yet (the host migrates it on start).
+  return existsSync(profilePath) || !existsSync(legacyPath) ? profilePath : legacyPath;
 }
 
 class JsonCredentialStore {
@@ -92,9 +110,9 @@ class JsonCredentialStore {
   }
 }
 
-async function createRuntime() {
+async function createRuntime(storePath) {
   return await ModelRuntime.create({
-    credentials: new JsonCredentialStore(credentialPath()),
+    credentials: new JsonCredentialStore(storePath ?? credentialPath()),
     modelsPath: null,
     allowModelNetwork: false,
   });
@@ -130,7 +148,7 @@ async function login(runtime) {
 
 async function main() {
   const command = process.argv[2] ?? "status";
-  const runtime = await createRuntime();
+  const runtime = await createRuntime(command === "login" ? credentialPath({ forWrite: true }) : undefined);
   if (command === "status") {
     const status = runtime.getProviderAuthStatus(PROVIDER);
     console.log(JSON.stringify({ provider: PROVIDER, path: credentialPath(), ...status }, null, 2));

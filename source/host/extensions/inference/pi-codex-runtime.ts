@@ -12,6 +12,7 @@ import { getSandRootDir } from "../../host-paths.js";
 import { effectiveContextWindowTokens } from "./context-window.js";
 import {
   BelmontPiCredentialStore,
+  migrateBelmontCliCredential,
   migrateLegacyCodexCredential,
 } from "./pi-codex-credential-store.js";
 import {
@@ -38,6 +39,12 @@ export type PiCodexStreamEvent =
 export interface PiCodexExecutorOptions {
   readonly messages: readonly PiProviderMessage[];
   readonly invocationId: string;
+  /**
+   * Stable conversation-scoped cache key. Pi maps sessionId to prompt-cache
+   * affinity, so this must NOT change per call; invocationId stays per-call for
+   * result identity only (strict-review P1-02).
+   */
+  readonly cacheSessionId?: string;
   readonly definitions?: readonly PiToolDefinition[];
   readonly modelId?: string;
   readonly reasoning?: ThinkingLevel;
@@ -72,6 +79,7 @@ async function runtime(): Promise<ModelRuntime> {
     // ERR_PACKAGE_PATH_NOT_EXPORTED). The type import above is erased and stays static.
     const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
     const credentials = new BelmontPiCredentialStore(resolvePiCodexCredentialPath());
+    await migrateBelmontCliCredential(credentials);
     await migrateLegacyCodexCredential(credentials);
     return await ModelRuntime.create({
       credentials,
@@ -156,7 +164,7 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
       const stream = resolved.runtime.streamSimple(resolved.model, context, {
         ...(options.signal == null ? {} : { signal: options.signal }),
         ...(options.reasoning == null ? {} : { reasoning: options.reasoning }),
-        sessionId: options.invocationId,
+        sessionId: options.cacheSessionId ?? options.invocationId,
       });
       let final: AssistantMessage | undefined;
       for await (const event of stream) {

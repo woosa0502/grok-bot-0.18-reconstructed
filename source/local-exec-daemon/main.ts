@@ -51,6 +51,9 @@ export interface LocalExecDaemonMainDeps {
   readonly process?: Pick<NodeJS.Process, "pid" | "on" | "exit">;
   readonly log?: (message: string) => void;
   readonly holdProcessOpen?: () => LocalExecDaemonLifetime;
+  /** Test override for the orphan watchdog (defaults to process.ppid). */
+  readonly getParentPid?: () => number;
+  readonly orphanPollMs?: number;
 }
 
 export async function runLocalExecDaemonMain(deps: LocalExecDaemonMainDeps): Promise<{ shutdown(signal: "SIGTERM" | "SIGINT"): void }> {
@@ -59,6 +62,25 @@ export async function runLocalExecDaemonMain(deps: LocalExecDaemonMainDeps): Pro
   const lifetime = (deps.holdProcessOpen ?? holdLocalExecDaemonProcessOpen)(); let daemon: { close(): Promise<void> } | undefined; let pendingSignal: "SIGTERM" | "SIGINT" | undefined; let isShuttingDown = false;
   const beginShutdown = (signal: "SIGTERM" | "SIGINT") => { if (isShuttingDown) return; if (daemon === undefined) { pendingSignal ??= signal; log(`[sand-local-exec-daemon] received ${signal} during startup; shutdown queued`); return; } isShuttingDown = true; const runningDaemon = daemon; log(`[sand-local-exec-daemon] received ${signal}, shutting down`); void shutdownDeadline.run(() => runningDaemon.close()).finally(() => { lifetime.release(); processLike.exit(0); }); };
   processLike.on("SIGTERM", () => beginShutdown("SIGTERM")); processLike.on("SIGINT", () => beginShutdown("SIGINT"));
+  // AUDIT-W18: the daemon must not outlive its supervisor. When electron dies
+  // without delivering a signal (host crash, launcher kill), this process is
+  // reparented — on plain Linux to pid 1, but under WSL to the WSL init
+  // subreaper (an arbitrary pid), so the reliable orphan signal is the ppid
+  // CHANGING from the parent we started under. An app restart spawns a NEW
+  // daemon generation instead of reconnecting to this one, so a lingering
+  // orphan is a pure leak. Poll and self-terminate once orphaned.
+  const getParentPid = deps.getParentPid ?? (() => process.ppid);
+  if (process.platform !== "win32") {
+    const initialParentPid = getParentPid();
+    const orphanTimer = setInterval(() => {
+      const currentParentPid = getParentPid();
+      if (currentParentPid !== initialParentPid || currentParentPid === 1) {
+        log(`[sand-local-exec-daemon] parent process exited (ppid ${initialParentPid} -> ${currentParentPid}); shutting down`);
+        beginShutdown("SIGTERM");
+      }
+    }, deps.orphanPollMs ?? 15_000);
+    orphanTimer.unref?.();
+  }
   try { daemon = await deps.runDaemon(deps.daemonOptions); }
   catch (error) { lifetime.release(); throw error; }
   if (pendingSignal !== undefined) beginShutdown(pendingSignal);

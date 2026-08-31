@@ -73,6 +73,12 @@ export class LocalCronScheduler<Automation extends LocalSchedulableAutomation = 
   readonly #deps: LocalCronSchedulerDeps<Automation>;
   readonly #localAnchors = new Map<string, number>();
   readonly #inFlight = new Set<string>();
+  // Dispatch-failure retry state (strict-review P1-05): a failed fire used to
+  // leave the anchor advanced, silently skipping the slot until its next
+  // scheduled time. Now the slot is restored and retried with a growing hold;
+  // the stale guard (6h) still bounds how long a slot is retried.
+  readonly #fireFailures = new Map<string, number>();
+  readonly #retryHoldUntil = new Map<string, number>();
   #timer: { dispose(): void } | undefined;
   #stopped = false;
   #ticking: Promise<void> = Promise.resolve();
@@ -123,16 +129,34 @@ export class LocalCronScheduler<Automation extends LocalSchedulableAutomation = 
       if (decision.kind === "stale") {
         this.#deps.log?.(`[local-cron] ${key}: missed run at ${new Date(decision.dueAt).toISOString()} is older than ${Math.round(staleAfterMs / 60_000)} min; re-anchoring to now`);
         this.#localAnchors.set(key, now);
+        this.#fireFailures.delete(key);
+        this.#retryHoldUntil.delete(key);
         continue;
       }
       if (decision.kind !== "fire") continue;
+      const holdUntil = this.#retryHoldUntil.get(key);
+      if (holdUntil !== undefined && now < holdUntil) continue;
       this.#localAnchors.set(key, decision.dueAt);
       this.#inFlight.add(key);
       void Promise.resolve()
         .then(() => this.#deps.fire(agentId, automation, decision.dueAt))
-        .catch((error: unknown) => { this.#deps.log?.(`[local-cron] ${key}: fire failed: ${error instanceof Error ? error.message : String(error)}`); })
+        .then(() => { this.#fireFailures.delete(key); this.#retryHoldUntil.delete(key); })
+        .catch((error: unknown) => {
+          const failures = (this.#fireFailures.get(key) ?? 0) + 1;
+          this.#fireFailures.set(key, failures);
+          // Put the slot back so it retries, held off by a growing backoff. Once
+          // the slot ages past staleAfterMs the stale branch re-anchors it.
+          this.#localAnchors.set(key, decision.dueAt - 1);
+          this.#retryHoldUntil.set(key, (this.#deps.now?.() ?? Date.now()) + Math.min(failures, 10) * 60_000);
+          this.#deps.log?.(`[local-cron] ${key}: fire failed (attempt ${failures}, will retry): ${error instanceof Error ? error.message : String(error)}`);
+        })
         .finally(() => { this.#inFlight.delete(key); });
     }
-    for (const key of [...this.#localAnchors.keys()]) if (!seen.has(key) && !this.#inFlight.has(key)) this.#localAnchors.delete(key);
+    for (const key of [...this.#localAnchors.keys()]) {
+      if (seen.has(key) || this.#inFlight.has(key)) continue;
+      this.#localAnchors.delete(key);
+      this.#fireFailures.delete(key);
+      this.#retryHoldUntil.delete(key);
+    }
   }
 }

@@ -108,6 +108,7 @@ import {
   sandAutoReviewApprovalExpiryPolicy,
   SandAutoReviewController,
 } from "./runner/sand-auto-review.js";
+import { createSandMcpApprovalProvider } from "./runner/sand-auto-review-tool-escalations.js";
 import {
   createHostBrowserDriverDependencies,
   createHostComputerToolDependencies,
@@ -152,6 +153,7 @@ import {
 } from "./runner/system-prompt-assembly.js";
 import type { MemoryPromptStore, MemorySnapshotStore, SystemPromptAssemblyDependencies } from "./runner/system-prompt-assembly.js";
 import { isLocalCodexMode } from "../shared/node/local-codex-account.js";
+import { MCP_ERROR_RESULT_CLASS, mcpErrorClassOf, takeMcpExecErrorClass } from "../shared/node/mcp/mcp-diagnostics.js";
 import { PrivacyMode, type PrivacyMode as PrivacyModeValue } from "../packages/redaction/privacy-mode.js";
 import { tryExtractSandAutoReviewClassifierConversationContext } from "../packages/agent/smart-mode-classifier-context.js";
 import {
@@ -923,13 +925,35 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         return;
       }
 
+      const settledStatus = event.request.status === "pending"
+        ? "expired"
+        : event.request.status;
       hooks.transport.onUpdate({
         type: "local-tool-permission-status",
         requestId: event.request.id,
-        status: event.request.status === "pending"
-          ? "expired"
-          : event.request.status
+        status: settledStatus
       });
+      // USR-660: the pinned renderer collapses a settled ask into one muted line that
+      // does not distinguish a timeout from a denial. Give expiry an explicit,
+      // timestamped outcome: a tray above the composer plus a transcript notice.
+      if (settledStatus === "expired") {
+        try {
+          method(extensions.api("trays"), "pushError")?.({
+            agentId: session.id,
+            title: "Permission request expired",
+            detail: "Grok Bot asked to run something on your computer and the request timed out, so nothing ran.",
+            dedupeKey: `local-tool-ask-expired:${session.id}`
+          });
+        } catch { /* trays are best-effort */ }
+        hooks.transport.onUpdate({
+          type: "send-message",
+          message: {
+            type: "text",
+            content: "The local-computer permission request above expired without an answer — nothing ran on your computer. Send the request again if you still want it."
+          },
+          timestampMs: Date.now()
+        });
+      }
     });
     localToolPermissionSurfaces.set(session.id, unsubscribe);
   }
@@ -1321,6 +1345,11 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       priority,
     );
     const agentManagement = {
+      // Per-agent model/reasoning selection (AUDIT-W1): CreateAgent's optional
+      // reasoning parameter persists here; turn-run-shell reads it by agent id.
+      setAgentModelSelection: (agentId: string, selection: { readonly modelId: string; readonly maxMode: boolean; readonly parameters: readonly { readonly id: string; readonly value: string }[] }) => {
+        new SandSettingsStore(join(getSandRootDir(), "settings.json")).setAgentModelForAgentId(agentId, { modelId: selection.modelId, maxMode: selection.maxMode, parameters: selection.parameters.map((p) => ({ ...p })) });
+      },
       create: async (input: { name: string; description: string }) => {
         const result = await method(
           transcript,
@@ -2168,8 +2197,21 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               },
             },
       }),
-      createSendToAgentToolInputs: () => ({
-        dependencies: dependencies.sendToAgent,
+      createSendToAgentToolInputs: (turn) => ({
+        dependencies: {
+          ...dependencies.sendToAgent,
+          // Remote hooks for agent-to-agent sends (job ledger / gating via
+          // .cursor/hooks.json), same accessor the WebFetch/WebSearch hooks use.
+          ...(turn.remoteBoxResourceAccessor === undefined
+            ? {}
+            : {
+                hookOptions: {
+                  resourceAccessor: turn.remoteBoxResourceAccessor,
+                  enableExecuteHookExec: true,
+                  configuredSteps: ["preToolUse", "postToolUse", "postToolUseFailure"],
+                },
+              }),
+        },
       }),
       createReactionToolInputs: turn => ({
         dependencies: turn.emitUpdate === undefined
@@ -2306,15 +2348,22 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         && method(extensions.api("inference"), "createWebFetch") === undefined
         ? {}
         : {
-            createWebFetchToolInputs: (_turn, props): TurnWebFetchToolFactoryInput => {
+            createWebFetchToolInputs: (turn, props): TurnWebFetchToolFactoryInput => {
               const webFetch = props.webFetch
                 ?? turnInputs?.webFetch
                 ?? createTurnWebAndAwaitProjections(props).webFetch;
               if (webFetch === undefined) throw new TypeError("web fetch service is not bound");
-              // NOTE: web-fetch.ts does not consume the remote-hook options (no withRemoteHooks
-              // path in the recovered source), so no hook wiring is applied here — WebSearch is
-              // the only tool that executes preToolUse/postToolUse hooks in this build.
-              return { dependencies: webFetch as unknown as TurnWebFetchToolFactoryInput["dependencies"] };
+              // Remote-hook wiring mirrors WebSearch: the hook executor resolves only
+              // through the remote-box accessor; hooks.json without matching commands
+              // makes every step a no-op.
+              return {
+                dependencies: {
+                  ...(webFetch as Record<string, unknown>),
+                  ...(turn.remoteBoxResourceAccessor === undefined
+                    ? {}
+                    : { hookOptions: { resourceAccessor: turn.remoteBoxResourceAccessor, enableExecuteHookExec: true, configuredSteps: ["preToolUse", "postToolUse", "postToolUseFailure"] } }),
+                } as unknown as TurnWebFetchToolFactoryInput["dependencies"],
+              };
             },
           }),
       ...(turnInputs?.externalAwait === undefined
@@ -2438,8 +2487,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         isSubagentRunner: false,
         beginObservation: () => () => {},
         boundedConnectorTag: (providerIdentifier: string) => providerIdentifier,
-        mcpErrorClassOf: () => "unknown",
-        takeMcpExecErrorClass: () => undefined,
+        // Real error-class accounting (AGT-241): same diagnostics the box path uses.
+        // This settle runs only for error-case MCP results; when nothing recorded a
+        // transport class for the tool call, classify it as an MCP error result.
+        mcpErrorClassOf: (error: unknown) => mcpErrorClassOf(error),
+        takeMcpExecErrorClass: (toolCallId: string) => {
+          const errorClass = takeMcpExecErrorClass(toolCallId);
+          return errorClass.length > 0 ? errorClass : MCP_ERROR_RESULT_CLASS;
+        },
         emitConnectorCard: (emission: TurnScopedConnectorCardEmission) => {
           hooks.transport.onUpdate({
             type: "send-message",
@@ -2450,7 +2505,49 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         cancelThisRun: () => {},
         reportDiagnostic: () => {},
         errorLogTag: (error: unknown) => error instanceof Error ? error.message : String(error),
-        mcpMeta: { getMcpTools: () => [], callOptions: {} },
+        // MCP surface auto-review (Smart Mode): the same classifier/controller the
+        // Shell and Computer surfaces use — enforce blocks and offers the approval
+        // card; shadow logs only. Previously callOptions was {} so MCP calls skipped
+        // review entirely in local mode.
+        mcpMeta: {
+          getMcpTools: () => [],
+          callOptions: (() => {
+            const mcpMode = autoReviewGate?.currentModes().mcp ?? "off";
+            const baseProvider = mcpMode === "enforce" && autoReviewController !== undefined
+              ? createSandMcpApprovalProvider({
+                  controller: autoReviewController,
+                  agentId: session.id,
+                  getExpiryPolicy: () => sandAutoReviewApprovalExpiryPolicy("turn"),
+                })
+              : undefined;
+            return {
+              smartModeClassifierMode: mcpMode === "enforce",
+              smartModeClassifierShadowMode: mcpMode === "shadow",
+              userAutoRunInstructions: autoReviewGate?.userInstructions(),
+              ...(baseProvider === undefined
+                ? {}
+                : {
+                    smartModeApprovalProvider: {
+                      // The classifier's SmartModeApprovalTarget carries an optional
+                      // display name; the controller card needs a concrete one.
+                      requestApproval: (input: { readonly target: object; readonly fingerprint: string; readonly signal: AbortSignal }) => {
+                        const target = input.target as { serverDisplayName?: string; serverName?: string; serverIdentifier?: string };
+                        return baseProvider.requestApproval({
+                          fingerprint: input.fingerprint,
+                          signal: input.signal,
+                          target: {
+                            ...input.target,
+                            serverDisplayName: typeof target.serverDisplayName === "string" && target.serverDisplayName.length > 0
+                              ? target.serverDisplayName
+                              : target.serverName ?? target.serverIdentifier ?? "MCP server",
+                          },
+                        } as Parameters<typeof baseProvider.requestApproval>[0]);
+                      },
+                    },
+                  }),
+            };
+          })(),
+        },
       } satisfies TurnMcpProjectionInput;
     };
 
@@ -2478,8 +2575,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       };
     };
 
-    const createProductionTurnSettleHost = (): TurnSettleHost => {
-      const runner = builtRunner as {
+    const createProductionTurnSettleHost = (turnConversationId: string = session.id): TurnSettleHost => {
+      // AUDIT-4: a subagent turn settles against ITS OWN runner and transcript id,
+      // keeps its checkpoints in the child runner's local state (agentStore() is
+      // null for child turns, so turn-settle takes the setLocalState branch), and
+      // never rewrites the parent's durable root slot or announced profile. The
+      // blob store stays shared — it is content-addressed in the session DB.
+      const isChildTurn = turnConversationId !== session.id;
+      const runner = (isChildTurn ? runnerByConversationId.get(turnConversationId) : builtRunner) as {
         readonly isSubagentRunner?: boolean;
         getBlobStore?: () => unknown;
         getConversationStateStructure?: () => unknown;
@@ -2495,15 +2598,15 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       ) throw new TypeError("production Agent checkpoint store is not bound");
       const generation = runner?.currentRunGeneration;
       return {
-        isSubagentRunner: isSharedRoomTurn,
+        isSubagentRunner: isChildTurn || isSharedRoomTurn,
         ...(transcriptMirrorForTurn === undefined
           ? {}
           : { transcriptMirror: transcriptMirrorForTurn }),
-        getTranscriptId: () => session.id,
+        getTranscriptId: () => turnConversationId,
         getBlobStore: () => runner?.getBlobStore?.() ?? getAgentBlobStore(
           store as Parameters<typeof getAgentBlobStore>[0],
         ),
-        agentStore: () => ({
+        agentStore: () => isChildTurn ? null : ({
           handleCheckpoint: (context: unknown, checkpoint: unknown) =>
             store.handleCheckpoint(context, checkpoint),
           getMetadata: (key: string) => store.getMetadata(key),
@@ -2521,6 +2624,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           && runner.currentRunGeneration !== generation,
         latestPromptMessages: () => runner?.getLatestPromptMessages?.() ?? [],
         persistAnnouncedAgentProfile: (snapshots, snapshot, identity) => {
+          if (isChildTurn) return; // a child must not rewrite the parent's announced profile
           const profilePromptSnapshotStore = asPromptSnapshotStore(snapshots);
           productionSystemPromptAssembly?.persistAnnouncedAgentProfile(
             profilePromptSnapshotStore,
@@ -2623,8 +2727,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         const mcpProjection = buildTurnMcpProjection();
         return mcpProjection === undefined ? host : { ...host, mcpProjection } as typeof host;
       };
+      // Conversation id of the turn currently being set up (parent id when idle).
+      // createAgentOwnerInput stamps it per run; the settle host and base-state
+      // reader bind it so a subagent turn resolves ITS runner, not the parent's
+      // (AUDIT-4). Node's single thread keeps setup windows from interleaving.
+      let activeTurnConversationId: string | undefined;
       const getProductionConversationState = () => {
-        const runner = builtRunner as {
+        const turnId = activeTurnConversationId ?? session.id;
+        const runner = (turnId !== session.id ? runnerByConversationId.get(turnId) : builtRunner) as {
           getAgentConversationStateStructure?: () => unknown;
         } | undefined;
         if (typeof runner?.getAgentConversationStateStructure === "function") {
@@ -2646,6 +2756,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           const turnConversationId = typeof (runOptions as { conversationId?: unknown }).conversationId === "string"
             ? (runOptions as { conversationId: string }).conversationId
             : session.id;
+          activeTurnConversationId = turnConversationId;
           if (session.agentStore == null || typeof session.agentStore.getBlobStore !== "function") {
             throw new TypeError("production Agent blob store is not bound");
           }
@@ -2808,6 +2919,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   ...runnerOptions,
                   conversationId: agentId,
                   transcriptId: agentId,
+                  // Unshadow the child identity: runnerOptions carries the parent's
+                  // getAgentId, which getConversationId()/getTranscriptPath() prefer
+                  // over options.conversationId (AUDIT-4).
+                  getAgentId: () => agentId,
                   isSubagent: true,
                   subagentType: args.subagentType,
                   initialState: {
@@ -2973,11 +3088,11 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           getExecutor: () => createTextExecutor(owner.runContext.toolSession.getExecutor()),
         }),
         context: () => productionContext,
-        createSettleHost: createProductionTurnSettleHost,
+        createSettleHost: () => createProductionTurnSettleHost(activeTurnConversationId ?? session.id),
         profilePromptSnapshots: () => session.db,
         isSubagentRunner: false,
         subagents: { sessions: new Map() },
-        getConversationId: () => session.id,
+        getConversationId: () => activeTurnConversationId ?? session.id,
         runGeneration: () => (builtRunner as { currentRunGeneration?: number } | undefined)?.currentRunGeneration ?? 0,
         setActiveTurnRequestSource: () => {},
         beginAutoReviewUserMessageEpoch: () => {},

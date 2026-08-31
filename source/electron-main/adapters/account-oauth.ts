@@ -75,16 +75,34 @@ export function createLocalCodexAccountService(
   timer.unref?.();
 
   const runLogin = async (): Promise<LocalCodexStatus> => {
-    emit({ kind: "logging-in" });
     try {
-      const started = await legs().startProviderLogin?.();
+      // Start the host login session BEFORE announcing "logging-in": an auth
+      // status change makes the renderer re-adopt the coordinator main-data
+      // port, and that re-adoption severed the in-flight startProviderLogin
+      // reply (AUDIT-W13 live run). One retry covers a port already mid-churn.
+      let started;
+      try {
+        started = await legs().startProviderLogin?.();
+      } catch {
+        await sleep(500);
+        started = await legs().startProviderLogin?.();
+      }
+      emit({ kind: "logging-in" });
       if (started === undefined) throw new Error("Belmont host is not connected; try again in a moment.");
       if (started.state === "failed") throw new Error(started.error);
       const url = started.state === "pending" ? (started.verificationUri ?? started.authUrl) : undefined;
       if (typeof url === "string") await context.native.shell.openExternal(url).catch(() => undefined);
       const deadline = Date.now() + LOCAL_CODEX_LOGIN_TIMEOUT_MS;
       while (Date.now() < deadline) {
-        const status = await legs().getProviderLoginStatus?.();
+        // A poll may land exactly on a port re-adoption; treat that as
+        // transient and keep polling instead of failing the whole sign-in.
+        let status;
+        try {
+          status = await legs().getProviderLoginStatus?.();
+        } catch {
+          await sleep(LOCAL_CODEX_LOGIN_POLL_MS);
+          continue;
+        }
         if (status?.state === "completed") { emit(LOCAL_CODEX_STATUS); return current; }
         if (status?.state === "failed") { emit({ kind: "logged-out", errorMessage: status.error }); return current; }
         if (status?.state === "idle") break;

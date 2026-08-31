@@ -33,6 +33,7 @@ export class SandOsNotificationManager {
     readonly createNotification: (options: { readonly title: string; readonly body: string; readonly silent: boolean; readonly urgency: "critical" | "normal" }) => DesktopNotificationPort;
     readonly openAgent: (agentId: string) => void;
     readonly now?: () => number;
+    readonly reportFailure?: (operation: string, error: unknown) => void;
   }) {}
 
   handleAgentsEvent(event: { readonly agents: readonly NotificationAgent[] }): void {
@@ -84,7 +85,13 @@ export class SandOsNotificationManager {
     notification.on("click", () => this.focusAgent(transition.agentId));
     notification.once("close", () => this.active.delete(notification));
     this.active.add(notification);
-    notification.show();
+    // A D-Bus failure on Linux throws out of show(); keep it observable and non-fatal.
+    try {
+      notification.show();
+    } catch (error) {
+      this.active.delete(notification);
+      this.deps.reportFailure?.("show", error);
+    }
   }
 
   private focusAgent(agentId: string): void {

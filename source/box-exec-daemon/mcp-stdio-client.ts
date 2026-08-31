@@ -65,6 +65,7 @@ export class McpStdioClient {
   #closed = false;
   #startError: string | undefined;
   #stderrTail = "";
+  #refreshingTools: Promise<void> | undefined;
 
   constructor(config: McpStdioServerConfig) {
     this.#config = config;
@@ -120,12 +121,29 @@ export class McpStdioClient {
     this.#instructions = initResult?.instructions ?? "";
     this.#notify("notifications/initialized", {});
 
-    const listed = (await this.#request("tools/list", {}, HANDSHAKE_TIMEOUT_MS)) as { tools?: McpToolInfo[] } | undefined;
-    this.#tools = (listed?.tools ?? []).map(tool => ({
-      name: tool.name,
-      description: tool.description ?? "",
-      inputSchema: tool.inputSchema ?? { type: "object" },
-    }));
+    await this.refreshTools();
+  }
+
+  /** Paginated tools/list (cursor/nextCursor); also runs on tools/list_changed. */
+  async refreshTools(): Promise<void> {
+    if (this.#refreshingTools !== undefined) return this.#refreshingTools;
+    const refresh = (async () => {
+      const tools: McpToolInfo[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < 64; page += 1) {
+        const listed = (await this.#request("tools/list", cursor === undefined ? {} : { cursor }, HANDSHAKE_TIMEOUT_MS)) as { tools?: McpToolInfo[]; nextCursor?: string } | undefined;
+        tools.push(...(listed?.tools ?? []));
+        cursor = typeof listed?.nextCursor === "string" && listed.nextCursor.length > 0 ? listed.nextCursor : undefined;
+        if (cursor === undefined) break;
+      }
+      this.#tools = tools.map(tool => ({
+        name: tool.name,
+        description: tool.description ?? "",
+        inputSchema: tool.inputSchema ?? { type: "object" },
+      }));
+    })();
+    this.#refreshingTools = refresh.finally(() => { this.#refreshingTools = undefined; });
+    return this.#refreshingTools;
   }
 
   /** Invoke a tool and normalize the MCP result into McpCallResult. */
@@ -187,13 +205,20 @@ export class McpStdioClient {
       const line = this.#buffer.slice(0, index).trim();
       this.#buffer = this.#buffer.slice(index + 1);
       if (line.length === 0) continue;
-      let message: { id?: number; result?: unknown; error?: { message?: string } };
+      let message: { id?: number; method?: string; result?: unknown; error?: { message?: string } };
       try {
         message = JSON.parse(line);
       } catch {
         continue;
       }
-      if (message.id === undefined) continue; // server-initiated request/notification: ignored
+      if (message.id === undefined) {
+        // Server-initiated notification. tools/list_changed re-runs the (paginated)
+        // tools/list so the cached tool set stays current; everything else is ignored.
+        if (message.method === "notifications/tools/list_changed") {
+          void this.refreshTools().catch(() => { /* server may be shutting down */ });
+        }
+        continue;
+      }
       const pending = this.#pending.get(message.id);
       if (pending === undefined) continue;
       this.#pending.delete(message.id);

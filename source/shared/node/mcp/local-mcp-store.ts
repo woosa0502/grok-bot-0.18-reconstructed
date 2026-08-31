@@ -187,7 +187,11 @@ function normalizeCatalogEntry(value: unknown): LocalPluginCatalogEntry | undefi
     ...(typeof value.logoUrl === "string" ? { logoUrl: value.logoUrl } : {}),
     ...(typeof value.homepage === "string" ? { homepage: value.homepage } : {}),
     connectors: Array.isArray(value.connectors) ? value.connectors.flatMap((item) => isRecord(item) && typeof item.name === "string" ? [{ name: item.name, description: typeof item.description === "string" ? item.description : "" }] : []) : [],
-    skills: [],
+    skills: Array.isArray(value.skills)
+      ? value.skills.flatMap((item) => isRecord(item) && typeof item.name === "string"
+        ? [{ name: item.name, description: typeof item.description === "string" ? item.description : "", ...(typeof item.sourceUrl === "string" ? { sourceUrl: item.sourceUrl } : {}) }]
+        : [])
+      : [],
     variableFields: fields,
     install: { mcpServers },
   };

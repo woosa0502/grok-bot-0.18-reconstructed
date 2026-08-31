@@ -62,6 +62,15 @@ export interface CreateHostMcpOptions {
   getMachineId: () => Promise<string>;
   getAccessToken?: () => Promise<string | null>;
   pluginSkills?: PluginSkillsPort;
+  // Catalog source overrides (local Codex mode supplies a local marketplace so the
+  // agent-facing SearchPlugins/GetPlugin/InstallPlugin work without the Cursor
+  // backend). Without this field the local catalog built below was silently
+  // dropped between this extension and SandMcpManager (AUDIT-W16).
+  catalog?: {
+    bestEffortToken?: () => Promise<string | null>;
+    fetchMarketplace?: (token: string | null) => Promise<unknown>;
+    resolveLogo?: (url: string) => Promise<string | null>;
+  };
   onServersMutated?: () => void;
   onServerAuthenticated?: (completion: unknown) => void;
   onDiscoveryFailed?: (event: Record<string, unknown>) => void;
@@ -107,6 +116,7 @@ export function createHostMcp(deps: CreateHostMcpOptions): McpHostPort {
     effectivePluginsProvider: deps.effectivePluginsProvider,
     onConnectorAuth: deps.onConnectorAuth,
     getMachineId: deps.getMachineId,
+    ...(deps.catalog === undefined ? {} : { catalog: deps.catalog }),
   }) as unknown as McpManagerRuntime;
   const discovery = createMcpToolsDiscovery({
     definitionSource: manager.definitionSourceView(),
@@ -157,6 +167,7 @@ export function createHostMcp(deps: CreateHostMcpOptions): McpHostPort {
     mcp: { getTools: (ctx: unknown) => discovery.getToolsForTurnStart(ctx), listTools: async (ctx: unknown) => { const connected = await manager.listConnectedBackendTools(), discovered = await discovery.getTools(ctx), byName = new Map<string, any>(); for (const tool of [...connected, ...discovered] as any[]) if (!byName.has(tool.name)) byName.set(tool.name, tool); return [...byName.values()]; }, createExecutor: (persistImage: unknown, spillLargeText: unknown, auditIdentity: unknown) => new SandMcpExecutor(discovery, persistImage, spillLargeText, auditIdentity), refreshAccountConfig: () => manager.refreshAccountConfigInBackground(), createStateExecutor: () => createSandMcpStateExecutor({ getTools: (ctx: unknown) => discovery.getTools(ctx) }), getCustomInstructions: () => manager.getMcpCustomInstructions(), resolveToolTransport: (id: string) => discovery.resolveProviderTransport(id), resolveNeedsAuthSlot: async (id: string) => { const summary = (await manager.listServers()).servers.find((server: McpServerSummary) => server.serverIdentifier === id && server.status === "needsAuth"); return summary == null ? null : { serverId: summary.id, serverName: summary.name }; } },
     management,
     setSettingsStore: (settings: unknown) => manager.setSettingsStore(settings),
+    reconcileBoxTools: () => discovery.reconcileBoxTools() as Promise<boolean>,
     listBoxServers: (ids, options) => discovery.listBoxServers([...ids], options),
     noteAuthCompletedElsewhere: (serverId, accountKey) => manager.noteAuthCompletedElsewhere(serverId, accountKey),
     setBoxMcpExec: (exec: unknown) => discovery.setBoxMcpExec(exec),
@@ -164,7 +175,7 @@ export function createHostMcp(deps: CreateHostMcpOptions): McpHostPort {
   };
 }
 
-export interface McpHostPort { dispose(): void | Promise<void>; listBoxServers(ids: readonly string[], options?: { kickOnly?: boolean }): Promise<Array<{ serverIdentifier: string; status: string; statusDetail?: string; toolCount: number }>>; noteAuthCompletedElsewhere(serverId: string, accountKey: string): void; setSettingsStore?(settings: unknown): void; setBoxMcpExec?(exec: unknown): void; mcp: unknown; management: unknown }
+export interface McpHostPort { dispose(): void | Promise<void>; listBoxServers(ids: readonly string[], options?: { kickOnly?: boolean }): Promise<Array<{ serverIdentifier: string; status: string; statusDetail?: string; toolCount: number }>>; noteAuthCompletedElsewhere(serverId: string, accountKey: string): void; setSettingsStore?(settings: unknown): void; setBoxMcpExec?(exec: unknown): void; reconcileBoxTools?(): Promise<boolean>; mcp: unknown; management: unknown }
 export interface McpHostServiceDeps {
   auth: {
     getAccessToken(args: { backendUrl: string }): Promise<string>;
@@ -199,6 +210,7 @@ export class McpHostService {
   readonly statusFollowUps = new Map<string, Promise<void>>();
   private disposed = false;
   readonly hostMcp: McpHostPort;
+  #boxToolsReconcileTimer: ReturnType<typeof setInterval> | undefined;
   readonly api;
   constructor(readonly deps: McpHostServiceDeps) {
     const accountMcpDeps: AccountMcpDependencies = {
@@ -264,10 +276,26 @@ export class McpHostService {
       ...(deps.onConnectorAuth === undefined ? {} : { onConnectorAuth: deps.onConnectorAuth }),
     });
     this.api = { mcp: this.hostMcp.mcp, management: this.hostMcp.management, listBoxServers: (ids: readonly string[]) => this.listBoxServers(ids), subscribeToAuthCompletion: (listener: (event: unknown) => void) => { this.authCompletionListeners.add(listener); return () => this.authCompletionListeners.delete(listener); }, noteAuthCompletedElsewhere: (serverId: string, accountKey: string) => this.hostMcp.noteAuthCompletedElsewhere(serverId, accountKey), subscribeToServersUpdated: (listener: (event: { servers: unknown[] }) => void) => { this.serversUpdatedListeners.add(listener); return () => this.serversUpdatedListeners.delete(listener); }, syncPluginSkills: async () => await deps.pluginSkills?.sync("desktop") ?? [], pluginSyncStatus: () => deps.pluginSkills?.status() ?? { authBlocked: [] } };
+    // AUDIT-W12: pick up daemon-side tools/list_changed refreshes. The daemon's
+    // stdio client keeps its own list live, but the host tools cache (24h TTL)
+    // only invalidated on refreshMcp — a server that adds tools after connect
+    // stayed invisible (and its new tools uncallable through the descriptor
+    // gate). Reconcile compares the daemon's live list with the cached box
+    // subset every 20s and invalidates on drift.
+    let reconcileInFlight = false;
+    this.#boxToolsReconcileTimer = setInterval(() => {
+      if (this.disposed || reconcileInFlight || this.hostMcp.reconcileBoxTools == null) return;
+      reconcileInFlight = true;
+      void this.hostMcp.reconcileBoxTools()
+        .then((changed) => { if (changed) deps.log("box MCP tool list drifted (list_changed); tools cache invalidated"); })
+        .catch(() => {})
+        .finally(() => { reconcileInFlight = false; });
+    }, 20_000);
+    this.#boxToolsReconcileTimer.unref?.();
   }
   setSettingsStore(settings: unknown): void { this.hostMcp.setSettingsStore?.(settings); }
   setBoxMcpExec(exec: unknown): void { this.hostMcp.setBoxMcpExec?.(exec); }
-  async dispose(): Promise<void> { if (this.disposed) return; this.disposed = true; this.authCompletionListeners.clear(); this.serversUpdatedListeners.clear(); this.statusFollowUps.clear(); await this.hostMcp.dispose(); }
+  async dispose(): Promise<void> { if (this.disposed) return; this.disposed = true; if (this.#boxToolsReconcileTimer !== undefined) clearInterval(this.#boxToolsReconcileTimer); this.authCompletionListeners.clear(); this.serversUpdatedListeners.clear(); this.statusFollowUps.clear(); await this.hostMcp.dispose(); }
   async listBoxServers(ids: readonly string[]) { const servers = await this.hostMcp.listBoxServers(ids, { kickOnly: true }); this.scheduleStatusFollowUps(servers); return servers.map(({ serverIdentifier, status, statusDetail, toolCount }) => ({ serverIdentifier, status, ...(statusDetail == null ? {} : { statusDetail }), toolCount })); }
   scheduleStatusFollowUps(servers: readonly { serverIdentifier: string; status: string }[]): void {
     if (this.disposed) return;
