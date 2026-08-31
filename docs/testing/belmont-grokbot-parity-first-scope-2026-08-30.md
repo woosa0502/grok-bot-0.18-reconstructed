@@ -114,7 +114,7 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 
 ### A2. 대화·컨텍스트·압축·캐시
 
-현재 상태: **부분 구현·실측 부족**
+현재 상태: **부분 구현·실측 부족** — 2026-09-01 실사용에서 결함 재현: transcript가 긴 에이전트(기본 Belmont)에 메시지를 보내면 compaction이 발화하지 않은 채 "Codex error: Your input exceeds the context window"로 턴이 즉사한다 (A6-1 검증 기록 참조).
 
 남은 작업:
 
@@ -225,14 +225,16 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 1. **자격증명 격리 최소 규칙** — 구현됨 (driver v3). `browser_type`/`browser_fill`이 비밀번호·OTP·카드번호 필드를 무조건 거부한다. `confirmed`로도 우회 불가. 비밀은 사용자가 브라우저 창에서 직접 입력한다.
 2. **요소 신원 복구** — 구현됨 (driver v3). snapshot이 ref마다 role/name/순번 지문을 상태 파일에 저장하고, ref가 낡으면(페이지 이동으로 ref 지도가 사라졌거나 framework 재렌더로 요소가 교체된 경우) 같은 걷기 순서로 지문 재탐색 후 실행한다. 복구 사용 시 summary에 표기된다.
-3. **민감 조작만 승인 대기** — 구현됨 (driver v3). 결제·송금·구매와 로그인/가입 제출로 판정된 클릭·Enter만 차단하고, 사용자 승인 후 `confirmed: true` 재시도로 실행한다. 일반 클릭은 그대로 통과한다. 원본의 Cursor auto-review 분류기에 대한 `WSL_EQUIVALENT` (결정론적 페이지 내 판정, 분류기 없음).
-4. **system prompt 다이어트** — 별도 항목 아님. §5 처리 원칙 2(사용 불가 기능 광고 숨김)와 A12 광고 숨김 작업에 흡수.
-5. **snapshot 고신호화 (Snapshot V2: DOM+접근성 트리 병합, iframe·shadow DOM 수집)** — Phase A 이후 별도 작업으로 이연.
+3. **민감 조작만 승인 대기** — 구현됨 (driver v4, 무장 방식). 결제·송금·구매와 로그인/가입 제출로 판정된 클릭·Enter만 차단하고, 사용자 승인 후 `confirmed: true` 재시도로 실행한다. 일반 클릭은 그대로 통과한다. 원본의 Cursor auto-review 분류기에 대한 `WSL_EQUIVALENT` (결정론적 페이지 내 판정, 분류기 없음). **무장(arm) 계약 (2026-09-01 실측로 강화)**: 첫 실사용 검증에서 모델이 첫 시도부터 `confirmed: true`를 스스로 붙여 관문을 우회하는 것이 관찰되어, `confirmed`는 "드라이버가 같은 view·같은 사유로 직접 차단한 이력(10분 유효, 1회 소모)"이 있을 때만 유효하도록 바꿨다. 첫 시도의 confirmed는 무시하고 차단하며, 차단 시점에 상태 파일에 무장을 기록한다. 한계: 같은 턴 안에서 사용자에게 묻지 않고 재시도하는 모델은 기계적으로 막을 수 없다 — 그 구조적 해결은 A8 `preToolUse` ask/승인 카드다. 재검증에서는 모델이 차단을 보고하고 턴을 끝낸 뒤 사용자 승인 후에만 재시도했다.
+4. **system prompt 다이어트** — 구현됨. `buildSandBaseSystemPrompt`에 `localCodexMode`를 추가해 로컬 빌드에서 죽은 광고를 제거: Cursor Origin 절, Cursor 계정 마켓플레이스 플러그인 절(로컬 MCP 설정 안내로 대체), SearchPlugins 우선 의무 경로, "team's admin이 비활성화" 거짓 서사(개인 로컬 현실로 대체 — 저장소 작업은 이 컴퓨터에서 직접). 52,084 → 49,504자 (약 645토큰 감소 + 잘못된 안내로 인한 오동작 위험 제거). 컨테이너 프롬프트 2종은 전부 유지 (`tests/system-prompt-diet.test.mjs`가 고정).
+5. **snapshot 고신호화 (Snapshot V2)** — 1단계 구현됨 (driver v4): 열린 shadow DOM 걷기, 같은 출처 iframe 내용 수집(교차 출처는 "contents unavailable"로 정직 표기), iframe 내부 요소의 프레임 오프셋 누적 실좌표 클릭 경로, aria-labelledby 이름 해석(접근성 이름 우선순위), 상태 신호(expanded/collapsed·selected·mixed·required·readonly·input type). 지문 복구도 같은 걷기를 쓰므로 경계를 넘어 작동한다. 남은 2단계(driver-side DOMSnapshot+AX 트리 병합 재작성)는 이후 과제.
 
 검증:
 
-- `tests/browser-driver-guards.test.mjs` — 실제 드라이버 OPS를 추출해 가짜 DOM으로 폐루프 실행, 6/6 통과.
-- 라이브 E2E (2026-09-01) — 실제 Chrome(headless, CDP 9299)에 driver-v3.mjs를 그대로 실행해 17개 단계 전부 통과: 결제/로그인 클릭 차단 → `confirmed` 재시도 성공(title 변화로 실효 확인), 비밀번호 type/fill 거부(`confirmed`로도 불가), 로그인 양식 Enter 차단, framework 재렌더 후 지문 복구 클릭 성공(PAID2), 페이지 재이동으로 ref 지도 전멸 후 지문 복구 성공, 지문 없는 ref는 기존 stale 오류 유지. 남은 것은 실제 앱 UI 경유 검증뿐이며, 위의 “Browser click/drag validation 실제 실행 검증” 항목과 함께 진행한다.
+- `tests/browser-driver-guards.test.mjs` — 실제 드라이버 OPS를 추출해 가짜 DOM으로 폐루프 실행, 8/8 통과 (V2 걷기·상태 신호·무장 계약 포함).
+- 라이브 드라이버 E2E (2026-09-01) — 실제 Chrome(headless, CDP)에 driver-v4.mjs를 그대로 실행, 27개 단계 전부 통과: 관문 차단/무장/confirmed 재시도/자가승인 무시, 비밀번호·OTP·카드 필드 거부, Enter 차단, 재렌더·페이지 이동 후 지문 복구, shadow DOM·같은 출처 iframe 수집과 실클릭(iframe은 프레임 오프셋 좌표 경로), 교차 출처 iframe 정직 표기.
+- **실제 앱 UI 경유 E2E (2026-09-01)** — 재빌드한 WSL 런타임(`SAND_LOCAL_BROWSER_USE=1`)을 production 경로 그대로 기동, Electron renderer를 CDP로 조작해 실제 compose 흐름으로 새 에이전트(GuardProbe2)를 만들고 실제 Pi Codex 턴 4개를 보냄. 전부 통과: ① navigate→snapshot→일반 클릭(title `OK`, 지문 상태 파일 실기록) ② 결제 클릭 → 드라이버 차단 → 모델이 차단을 보고하고 턴 종료 ③ 사용자 승인 후 confirmed 재시도(title `PAID`) ④ 비밀번호 입력 거부와 사유 전달. 전사(agent-transcripts)로 도구 호출 인자까지 확인.
+- 실측 부산물 두 가지: (a) 무장 도입 전 첫 실사용에서 모델이 첫 시도부터 `confirmed:true`를 자가 승인하는 것을 전사로 확인 — 위 항목 3의 무장 계약이 그 답. (b) **A2 실증 결함**: 기존 Belmont 에이전트(긴 transcript)에서는 턴이 "Codex error: Your input exceeds the context window"로 즉사 — compaction이 한도 초과 전에 발화하지 않는다는 A2의 미검증 항목이 실사용으로 확인됨. A2 작업 시 이 재현 사례를 쓰면 된다.
 
 ### A7. MCP·플러그인
 
