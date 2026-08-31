@@ -201,6 +201,7 @@ export function createLocalBrowserDriverDependencies(input: {
   readonly resourceAccessor: { get(resource: unknown): unknown };
   readonly agentId: string;
   readonly auditShellCommand?: (command: string) => void;
+  readonly autoReview?: Parameters<typeof createHostBrowserDriverDependencies>[0]["autoReview"];
 }): ReturnType<typeof createHostBrowserDriverDependencies> {
   const approvalGate = localBrowserApprovalGateFor(input.agentId);
   return createHostBrowserDriverDependencies({
@@ -210,6 +211,7 @@ export function createLocalBrowserDriverDependencies(input: {
     getDefaultViewId: () => input.agentId,
     getLocalWindowIndex: () => localBrowserWindowIndex(),
     ...(approvalGate === undefined ? {} : { sensitiveApprovalGate: approvalGate }),
+    ...(input.autoReview === undefined ? {} : { autoReview: input.autoReview }),
     executeShell: localBrowserShellExecutor(input.auditShellCommand),
   });
 }

@@ -57,6 +57,7 @@ const BROWSER_TOOL_PARAMETERS: Readonly<Record<string, ZodTypeAny>> = {
   }).passthrough(),
   browser_click: z.object({
     ref: z.string().describe("Element ref from browser_snapshot, e.g. e12."),
+    element: z.string().optional().describe("Concise description of the intended target and purpose (used by the safety review; required when review is enforced)."),
     doubleClick: z.boolean().optional(),
     button: z.string().optional().describe("left (default), right, or middle."),
     modifiers: z.array(z.string()).optional(),
@@ -64,6 +65,7 @@ const BROWSER_TOOL_PARAMETERS: Readonly<Record<string, ZodTypeAny>> = {
   }).passthrough(),
   browser_mouse_click_xy: z.object({
     x: z.number().describe("Viewport x coordinate."),
+    element: z.string().optional().describe("Concise description of the intended target and purpose (used by the safety review; required when review is enforced)."),
     y: z.number().describe("Viewport y coordinate."),
     doubleClick: z.boolean().optional(),
     button: z.string().optional(),
@@ -99,6 +101,7 @@ const BROWSER_TOOL_PARAMETERS: Readonly<Record<string, ZodTypeAny>> = {
   }).passthrough(),
   browser_drag: z.object({
     sourceRef: z.string(),
+    element: z.string().optional().describe("Concise description of the intended target and purpose (used by the safety review; required when review is enforced)."),
     targetRef: z.string().optional(),
     targetX: z.number().optional(),
     targetY: z.number().optional(),

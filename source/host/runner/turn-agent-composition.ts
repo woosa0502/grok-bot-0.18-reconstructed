@@ -443,7 +443,7 @@ export function createTurnAgentToolsHandoff(input: {
         ? {}
         : {
             createBrowserToolInputs: (
-              _turn: TurnToolsetTurnInput,
+              turn: TurnToolsetTurnInput,
               currentProps: TurnToolsetBuildProps,
             ) => {
               const createDependencies = currentProps.createBrowserDriverDependencies;
@@ -461,6 +461,14 @@ export function createTurnAgentToolsHandoff(input: {
                 dependencies: createLocalBrowserDriverDependencies({
                   resourceAccessor: currentProps.resourceAccessor as { get(resource: unknown): unknown },
                   agentId: input.toolHost.getConversationId(),
+                  // The turn's computer auto-review options are structurally the
+                  // browser options (same classifier/controller/display fields),
+                  // already bound to the single local display — so the browser
+                  // surface goes through the same classifier preflight and
+                  // approval cards instead of silently skipping review.
+                  ...(turn.computerAutoReview === undefined
+                    ? {}
+                    : { autoReview: turn.computerAutoReview }),
                 }),
               };
             },

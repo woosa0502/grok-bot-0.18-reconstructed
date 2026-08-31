@@ -206,9 +206,9 @@ Belmont가 모든 사용자 기억을 관리하고 worker에게 최소 정보만
 - File Read/Write/Edit/Grep/Glob/LS의 오류·경계·large output E2E
 - PDF Read text extractor 연결
 - WebSearch/WebFetch 오류·취소·large output 검증
-- Browser click/drag validation 실제 실행 검증
-- Browser auto-review 개별 live 검증
-- browser unavailable 상태를 UI·prompt에서 정직하게 표시
+- ~~Browser click/drag validation 실제 실행 검증~~ — 완료 (2026-09-01, A6-1 검증 기록: 전체 15개 도구 중 click·type·fill·press_key·mouse_click_xy·drag·scroll·tabs·highlight·get_bounding_box·take_screenshot(+fullPage)·snapshot·navigate·cdp 라이브 실효 검증; drag는 mouseup 목표 명중, scroll은 뷰포트 실이동, screenshot은 PNG 바이트까지 확인)
+- ~~Browser auto-review 개별 live 검증~~ — 완료 (2026-09-01): 폴백 경로에 turn.computerAutoReview를 배선해 enforce 모드에서 preflight가 실행됨을 실증 — element 없는 클릭은 "require an element field"로 거부(음성 대조), element 있는 클릭은 로컬 분류기 allow로 실행. click/xy/drag 스키마에 element 필드 추가.
+- ~~browser unavailable 상태를 UI·prompt에서 정직하게 표시~~ — 검증 (2026-09-01): `SAND_LOCAL_BROWSER_USE` 미설정 기동에서 모델 도구 목록에 browser_* 부재, 모델이 "도구가 보이지 않는다"고 정확히 보고, 호출 시도 없음. (프롬프트의 box 브라우저 서술 자체는 A12 광고 정리 몫)
 
 현재 코드가 있어 “미구현”으로 부르면 안 되는 항목:
 
@@ -240,6 +240,10 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 - **실제 앱 UI 경유 E2E ×2 (2026-09-01)** — 재빌드한 WSL 런타임(`SAND_LOCAL_BROWSER_USE=1`)을 production 경로 그대로 기동, Electron renderer를 CDP로 조작해 실제 compose 흐름으로 새 에이전트를 만들고 실제 Pi Codex 턴을 보냄.
   - GuardProbe2 (무장 계약, driver v4): ① navigate→snapshot→일반 클릭(`OK`) ② 결제 클릭 차단 → 모델이 보고 후 턴 종료 ③ 사용자 승인 후 confirmed 재시도(`PAID`) ④ 비밀번호 거부. 전부 통과.
   - **GuardProbe4 (승인 카드 + AX 엔진, driver v5)**: ① 일반 클릭(`OK`) + production 상태 파일에 `engine:"ax"` 실기록 ② 결제 클릭 → **실제 승인 카드**가 채팅에 뜸 → "Allow once" 클릭 → 같은 턴에서 클릭 실행(`PAID`) ③ 로그인 클릭 → 카드 "Deny" → 거부 사유가 모델에 전달·보고 ④ 비밀번호 거부(카드 없음, 절대 거부). 전사 확인: 모델은 confirmed 없이 평범한 클릭만 보냈고 차단 문구를 한 번도 보지 못했다 — 승인 권한이 모델에서 사용자 카드로 완전히 이동.
+- **잔여 op·auto-review·unavailable 검증 (2026-09-01 마감)**:
+  - 라이브 드라이버 E2E 39단계로 확장 — get_bounding_box(기하 반환), scroll(경계 상자 y 이동으로 실스크롤 확인), highlight, take_screenshot(PNG 매직 바이트 확인)+fullPage, drag(mousedown/mouseup 실이벤트로 목표 명중 → title DRAGGED), tabs new/list/select/close(개수 왕복 확인). 전부 통과.
+  - 분류기 auto-review 브라우저 표면: 폴백 경로에 `turn.computerAutoReview`(구조 동일)를 배선하고 click/xy/drag 스키마에 `element` 추가. `SAND_AUTO_REVIEW_MODE=enforce` 실기동에서 GuardProbe5 실턴으로 검증 — element 있는 클릭은 로컬 분류기 allow 후 실행(title OK), element 없는 클릭은 preflight가 "require an element field"로 거부(음성 대조 = preflight 실행의 결정적 증거).
+  - unavailable 정직성: 옵트인 미설정 기동에서 browser_* 도구가 모델에 노출되지 않고, 모델이 부재를 정확히 보고.
 - 실측 부산물: (a) 무장 도입 전 모델의 `confirmed:true` 자가 승인(전사 증거) — 카드 도입의 직접 근거. (b) **A2 실증 결함**: 긴 transcript 에이전트에서 "Codex error: Your input exceeds the context window"로 턴 즉사 — compaction 미발화의 실사용 재현. (c) 브라우저 도구의 projection 슬롯 미바인딩(폴백 경로가 실경로) — A6/A12 배선 정리 시 참고.
 
 ### A7. MCP·플러그인
@@ -366,7 +370,7 @@ Phase A에서는 원본 기능의 복구 의미를 맞춘다. durable manager jo
 - WebSearch 429/5xx 안내
 - multitask coordinator reminder
 - Task model parameter validation
-- auto-review의 Browser/MCP/subagent surface
+- auto-review의 MCP/subagent surface (Browser surface는 2026-09-01 enforce 실측로 검증 완료 — A6 참조)
 - subagent steer/restart
 - VNC clipboard/key/zoom
 - routine 오류·복구 상태
