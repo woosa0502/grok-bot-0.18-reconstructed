@@ -148,3 +148,65 @@ test("r4#2: multiline (-U) matches keep their after-context", async () => {
   const projected = projectGrepEvents([multilineMatch, afterContext].join("\n"), { offset: 0, headLimit: 10, contextBefore: 1, contextAfter: 1 });
   assert.deepEqual(projected.lines.map((line) => [line.lineNumber, line.isContext]), [[2, false], [6, true]], "line 6 is the -A of the match ending at line 5");
 });
+
+// ---------- round 5 findings ----------
+
+test("r5: upsert preserves stored payloads against payload-less re-arms", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { SandPendingWakeStore } = await loadModule("source/host/extensions/transcript/sand-pending-wake-store.ts");
+  const root = await mkdtemp(path.join(tmpdir(), "belmont-upsert-"));
+  try {
+    const store = new SandPendingWakeStore(root);
+    store.markPending({ agentId: "a", kind: "cloud-agent", workId: "bc1", markedAtMs: 1, title: "t", subagentType: "cursor-agent", completion: { status: "completed", result: "the stored result" } });
+    // The exact payload-less event watchCloudAgent persists on re-watch:
+    store.markPending({ agentId: "a", kind: "cloud-agent", workId: "bc1", markedAtMs: 2, title: "Cloud agent bc1" });
+    const marker = new SandPendingWakeStore(root).listPending().find((entry) => entry.workId === "bc1");
+    assert.deepEqual(marker?.completion, { status: "completed", result: "the stored result" }, "the stored completion survives the re-watch upsert");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("r5: rearm actually redelivers (behavioral store->rearm->delivery, no pre-clear loss)", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const storeModule = await loadModule("source/host/extensions/transcript/sand-pending-wake-store.ts");
+  const rearmModule = await loadModule("source/host/extensions/transcript/pending-wake-rearm.ts");
+  const root = await mkdtemp(path.join(tmpdir(), "belmont-rearm-"));
+  try {
+    const store = new storeModule.SandPendingWakeStore(root);
+    store.markPending({ agentId: "mgr", kind: "agent-message", workId: "m1", markedAtMs: Date.now(), title: "Message from W", agentMessage: { from: { id: "w", name: "W" }, text: "[job:z] result", displayed: true } });
+    store.markPending({ agentId: "mgr", kind: "cloud-agent", workId: "bc1", markedAtMs: Date.now(), title: "t", subagentType: "cursor-agent", completion: { status: "completed", result: "stored cloud result" } });
+    const inboundQueue = new Map();
+    const deliveredCompletions = [];
+    const tm = {
+      pendingWakeStore: store,
+      execution: { canExecute: true },
+      sessions: { isAgentGone: () => false, deletedAgentIds: new Set(), resolveBackgroundSession: async (id) => ({ id }) },
+      groupChat: { isGroupSession: () => false },
+      telemetry: { reportPendingWake: () => {} },
+      roster: { emitAsyncTasksForAgent: () => {} },
+      backgroundWakes: {
+        agentToAgent: { pendingAgentInbound: inboundQueue, reviveForAgentInbound: async () => {} },
+        handleBackgroundSubagentCompletion: (completion) => deliveredCompletions.push(completion),
+      },
+      runnerRegistry: { getRunner: () => ({ getPendingCloudAgentWatchBcIds: () => [], watchCloudAgent: () => {} }) },
+      upgradeResume: {},
+    };
+    const rearm = new rearmModule.PendingWakeRearm(tm);
+    await rearm.rearmPendingWakes();
+    await new Promise((resolve) => setTimeout(resolve, 50)); // let the void-dispatched rearms settle
+    // The agent message reached the inbound queue AND its marker is STILL on
+    // disk (no pre-clear) until the delivery path settles it.
+    assert.equal(inboundQueue.get("mgr")?.[0]?.text, "[job:z] result");
+    const remaining = new storeModule.SandPendingWakeStore(root).listPending();
+    assert.ok(remaining.some((marker) => marker.workId === "m1"), "agent-message marker survives until delivery settles it");
+    // The stored cloud-agent completion was delivered as a REAL result, and its
+    // payload was not stripped from disk by any re-watch.
+    assert.equal(deliveredCompletions[0]?.result, "stored cloud result");
+    assert.equal(deliveredCompletions[0]?.subagentType, "cursor-agent");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

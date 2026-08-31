@@ -8,18 +8,16 @@ _작성: 2026-08-30 · 갱신: 2026-08-31 (후속 5 — "후속 8건+PARTIAL 4�
 
 ## TL;DR
 
-- 직전 회차(후속 4, 커밋 `c466160`): 0.18.0 설치파일 기준 핵심 연결부 15건 구현+라이브 — 기억 회수·roster·루틴·플러그인·Pi 로그인·PDF·Shell 상태 등.
-- **이번 회차(후속 5, 미커밋)**: 사용자 지시 "후속 8건 + PARTIAL 4건 전부 해결" → **전부 완료**: beforeMCPExecution 훅 · WebFetch 훅 · MCP 표면 auto-review(**AUDIT-W11 신규 발견·수정** — callOptions {}로 분류기 꺼져 있었음) · OS 알림 Linux/WSL fallback(windows-powershell 풍선 라이브) · 660/673 만료 트레이+전사 알림 · 241 박스 원문 오류 문구+오류 클래스 · 386 alias/옵션 유지 · 첨부 staging 즉시 정리 · MCP pagination/list_changed · 그룹 채팅 라이브(GROUP-PING→PONG) · 컨텍스트 창 실측(90k~260k 전부 수락, AUDIT-6B 해소) · AUDIT-4 settle 격리(자식 재시작 내구만 Phase B).
-- 게이트: `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 170/170). 원장: PASS 541 · UNAVAIL 631 · ISSUE 17 · PARTIAL 0 · UNCLEAR 0. 감사: FIXED 26 · RESOLVED 1 · CONFIRMED 8(대부분 의도적 제외/Phase B; 실질 수정 대기는 AUDIT-W18 하나) · PARTIAL 2.
-- **후속 6**: "비디오·이미지·중앙관리자 빼고 다 개선" → AUDIT-W12~W17 전부 수정+라이브, 품질 5종(캐시 친화성·cron 재시도·봇별 셸 상태·웹 충실도·PDF 캐시/타임아웃) 동반 수정. tests/wave6-remediation.test.mjs(15).
+- **현재 상태(2026-08-31, 후속 12 기준)**: 커밋 `11d5e06`+미커밋 후속 12 변경분. 게이트 198+/전부 통과. 감사 원장 46개 id — 수정 대기 실결함 0(잔여는 제외 지시·유보·경미 PARTIAL뿐). 앱은 최신 빌드로 실행 중이며 시작 시 Belmont(관리자, 8bebd5e2…)가 기본 대화. 새 프로필 복원은 `npm run belmont:manager` 한 번.
+- 회차 이력(전부 완료): 후속 4(0.18 parity 15건) → 5(후속·PARTIAL 12건) → 5.2(엄격 리뷰 검토) → 6(W12~W17+품질) → 7(벨몬트 관리자 B-1) → 8(Phase B 내구성) → 9~12(외부 검토 2~5차 전소화 — settle 순서·부트스트랩·유실 창·cloud-agent payload). 상세는 보고서 §1.6 후속 각 절.
 - **후속 11 (최신)**: 4차 검토 — **rearm 선삭제 유실 창 폐쇄**(payload 마커는 선삭제 없이 전달 후 정산 — 유실 창 0, 중복 창 2개 명시의 bounded at-least-once) · grep multiline -A 회귀 수정(끝줄 기준) · 문서 잔재 정리. 게이트 198/198.
 - **후속 10**: 3차 외부 검토 6건 전부 사실 확인·수정 — 영속 실패 시 ack 경고+telemetry · at-least-once 의미론(두 크래시 창) 정밀 명시 · payload 마커 14일 보존(감시형만 48h) · grep 줄번호 귀속(grep-projection.ts 순수 함수 + rg 이벤트 동작 테스트) · 부트스트랩이 persona/스위퍼 드리프트 재조정 · 문서 정합(§2/§7). 게이트 196/196.
 - **후속 9**: 2차 외부 검토 7건 전부 사실 확인·수정 — ①settle 순서 rev2(공유 가변 제거, 자식별 어댑터 고정) ②B-1 재현성(`npm run belmont:manager` + manager.json 자동 지정 — 새 프로필에서도 한 명령으로 복원) ③원장 실패 판정(getFailureInfo) ④reasoning 모델 상속 ⑤캐시 키=대화 id ⑥MCP 서명에 스키마 포함 ⑦pdfjs 데드라인. 게이트 191/191. tests/external-review-fixes.test.mjs(6).
 - **후속 8**: Phase B 본공사 — durable 수신함(AUDIT-5 근본: pending-wake 'agent-message' kind, 크래시 라이브 검증) · 완료 내구(P1-04: 결과를 마커에 저장, rearm이 실제 결과 재생) · 자식 재파견 정보(A-3 lite) · B-2 부분(관리자 삭제 보호 + Managed team 절 — 라이브: 지시 없이 워커 자발 회신) · 품질(Grep 문맥 그룹·Delete 부분읽기·LS 절단 계약·SIGKILL 승격·셸 id 시드·MCP 서버요청 응답·**로컬 모델 피커=실제 Pi 카탈로그 7종**) · 테스트 부채 F1~F4 정리. 게이트 185/185. tests/phase-b-durability.test.mjs(8).
 - **후속 7**: 벨몬트 관리자 B-1 — Belmont 봇 정의·SendToAgent 훅 배선·작업 원장·스위퍼 루틴·SAND_DEFAULT_AGENT_ID·CreateAgent reasoning(AUDIT-W1 수정)·W18 수정(+WSL 서브리퍼 대응)·**AUDIT-W19 발견·수정**(automation 완료 보고 언바운드 크래시). 라이브: 위임 왕복(b1h7, Belmont가 재검증까지)·재시작 생존(r91q, 스위퍼 복구). 게이트 175/175. tests/belmont-manager-b1.test.mjs(5).
 - "다 실테스트까지 했니?" 후속: 남았던 3건도 라이브 완료 — 첨부 staging(생성 3.3초 뒤 삭제 감시+박스 판독), pagination(belmont-page 2페이지 앱 경유), AUDIT-4(Task 자식 dispatch 후 root slot 단일·부모 기억/이력 온전). 그 과정에서 **AUDIT-W12 발견(CONFIRMED, 수정 대기)**: list_changed가 데몬까지만 전파, 호스트 도구 캐시(24h TTL) 미무효화 → 동적 추가 도구는 refreshMcp 전까지 발견·호출 불가.
-- 커밋 상태: `c466160` 이후 **미커밋** 변경(후속 5 전부). 사용자 요청 시에만 커밋. **`upstream` 푸시 금지, `origin`만.**
-- 앱은 wave-5 빌드로 실행 중(CDP 9347). 저장소 파일(문서 포함)을 바꾸면 다음 실행 전 재빌드 필요(stale 검사가 작업 트리 전체를 봄). ⚠️ 다른 체크아웃(예: `belmont-018-restore-*`)의 인스턴스가 동시에 떠 있으면 호스트가 기동 직후 exit(1)할 수 있음 — `ss -ltnp`로 확인.
+- 커밋: 사용자 요청 시에만. **`upstream` 푸시 금지, `origin`만.** 사용자 문서 `belmont-grokbot-parity-first-scope-2026-08-30.md`(untracked)는 커밋 제외 유지.
+- 저장소 파일(문서 포함)을 바꾸면 다음 실행 전 재빌드 필요(stale 검사가 작업 트리 전체를 봄, 내용 해시 기준). ⚠️ 다른 체크아웃(예: `belmont-018-restore-*`)의 인스턴스가 동시에 떠 있으면 호스트가 기동 직후 exit(1)할 수 있음 — `ss -ltnp`로 확인.
 - 텔레그램: 내장 Claude Code 플러그인 채널(@agc_sebas_bot) 점검 완료·발신 테스트 전송. Belmont 봇용 별도 커넥터는 미구현(사용자 결정 대기).
 
 ---

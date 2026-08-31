@@ -164,12 +164,31 @@ export function upsertPendingWakeMarker(
   existing: readonly DurablePendingWakeMarker[],
   marker: DurablePendingWakeMarker,
 ): DurablePendingWakeMarker[] {
+  // Payload preservation invariant (external review r5): watch-arming callers
+  // persist payload-LESS events for the same key (e.g. watchCloudAgent after a
+  // restart), and a whole-marker replace silently destroyed a stored completion
+  // or message. Payload fields only ever leave the store via clearOne.
+  const previous = existing.find((entry) =>
+    markerKeyMatches(entry, marker.agentId, marker.kind, marker.workId),
+  );
+  const merged: DurablePendingWakeMarker = {
+    ...marker,
+    ...(marker.agentMessage == null && previous?.agentMessage != null
+      ? { agentMessage: previous.agentMessage }
+      : {}),
+    ...(marker.completion == null && previous?.completion != null
+      ? { completion: previous.completion }
+      : {}),
+    ...(marker.taskPrompt == null && previous?.taskPrompt != null
+      ? { taskPrompt: previous.taskPrompt }
+      : {}),
+  };
   return [
     ...existing.filter(
       (entry) =>
         !markerKeyMatches(entry, marker.agentId, marker.kind, marker.workId),
     ),
-    marker,
+    merged,
   ];
 }
 export class SandPendingWakeStore {

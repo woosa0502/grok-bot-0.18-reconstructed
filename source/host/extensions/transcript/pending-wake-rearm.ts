@@ -207,6 +207,24 @@ export class PendingWakeRearm {
     marker: PendingWakeMarker,
     report: (outcome: string, reason?: string) => void,
   ): void {
+    // r5: a cursor-agent completion that arrived before the restart is stored
+    // in this marker — deliver it directly instead of re-watching (the re-watch
+    // used to persist a payload-less marker over it, and a remote re-query can
+    // fail or die, losing the stored result).
+    if (marker.completion?.result != null) {
+      report("rearmed", "stored_completion_redelivered");
+      this.tm.backgroundWakes.handleBackgroundSubagentCompletion({
+        parentAgentId: marker.agentId,
+        subagentAgentId: marker.workId,
+        subagentType: marker.subagentType ?? "cursor-agent",
+        toolCallId: "",
+        title: marker.title ?? `Cloud agent ${marker.workId}`,
+        status: marker.completion.status,
+        result: marker.completion.result,
+        ...(marker.quietOrigin == null ? {} : { quietOrigin: marker.quietOrigin }),
+      });
+      return;
+    }
     const runner = this.tm.runnerRegistry.getRunner(session);
     if (runner.getPendingCloudAgentWatchBcIds().includes(marker.workId)) {
       this.persistPendingWake({
