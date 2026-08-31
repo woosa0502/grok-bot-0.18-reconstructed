@@ -196,7 +196,12 @@ test("r5: rearm actually redelivers (behavioral store->rearm->delivery, no pre-c
     };
     const rearm = new rearmModule.PendingWakeRearm(tm);
     await rearm.rearmPendingWakes();
-    await new Promise((resolve) => setTimeout(resolve, 50)); // let the void-dispatched rearms settle
+    // The per-marker rearms are void-dispatched; poll until both delivery
+    // effects land instead of a fixed sleep (r6: flaky-wait hardening).
+    for (let waited = 0; waited < 2_000; waited += 25) {
+      if (inboundQueue.get("mgr")?.length > 0 && deliveredCompletions.length > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
     // The agent message reached the inbound queue AND its marker is STILL on
     // disk (no pre-clear) until the delivery path settles it.
     assert.equal(inboundQueue.get("mgr")?.[0]?.text, "[job:z] result");

@@ -459,7 +459,7 @@ hooks.json에 preToolUse/beforeShellExecution/postToolUse를 넣고 에이전트
 | r4#1 문자열 가드 | **실제 store→rearmPendingWakes→전달**을 스텁 tm으로 실행하는 동작 테스트로 교체·추가(마커 잔존 + 인바운드 큐 도달 + cloud 결과 재생 + payload-less upsert 생존) |
 | 원장·핸드오프 잔재 | AUDIT-5 동일-ID 최신 행을 정확한 한정("초기 영속화 성공+14일 범위의 bounded at-least-once, 중복 최소화")으로 갱신, 핸드오프 TL;DR 현행화 |
 
-게이트: `npm run check` exit 0. kill-9 재전달 라이브는 이번 빌드에서 재실행(아래 기록).
+게이트: `npm run check` exit 0 — 테스트 200/200. **kill-9 재전달 라이브(이번 빌드, 구체 기록)**: ParityProbe→Clerk에 sentinel `DURABLE-R5-88` 송신 → `host-pending-wakes.json`에 마커 1건 확인 → 전 프로세스 kill -9 → 재시작 → 마커 0건(정산됨), Clerk 전사(`97ab5a3d…jsonl`)에 `DURABLE-R5-88` **정확히 1회**. CloudAgent 원격 기능 자체는 로컬 Codex 모드에서 숨김이라 라이브 불가 — 코드·동작 테스트 수준 검증(원장 명시).
 
 ## 2. 감사 findings — P0 (심각)
 
