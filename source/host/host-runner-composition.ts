@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
-import { LOCAL_BROWSER_USE_ENABLED, localBrowserWindowIndex } from "./box/local-browser-use.js";
+import { LOCAL_BROWSER_USE_ENABLED, localBrowserWindowIndex, registerLocalBrowserApprovalGate } from "./box/local-browser-use.js";
 import { createSandMcpTextSpiller, isLargeOutputSpillEnabled } from "./runner/large-output-spill.js";
 import { createLocalPdfTextExtractor } from "./runner/local-pdf-text-extractor.js";
 
@@ -1022,6 +1022,18 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       autoReview.autoReviewController,
     );
 
+    // A8 bridge for the local build: the live browser tools are built through
+    // turn-agent-composition's per-turn FALLBACK (the projection slot is not
+    // bound on this runner), which cannot see this controller. Register the
+    // gate keyed by agent id so the fallback can raise real approval cards;
+    // re-binding overwrites, so the newest runner's transport wins.
+    if (LOCAL_BROWSER_USE_ENABLED && autoReviewController != null) {
+      registerLocalBrowserApprovalGate(session.id, {
+        requestApproval: (approvalRequest: { surface: string; fingerprint: string; reason: string; summary: string; command?: string }) =>
+          autoReviewController.requestApproval({ agentId: session.id, ...approvalRequest }),
+      });
+    }
+
     const autoReviewGate = (() => {
       if (
         autoReviewController == null
@@ -1071,10 +1083,11 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   method(experiments, "isUnicodeTypingEnabled")?.() ?? false,
               }),
               // The browser driver rides this same minimal projection, and without
-              // it the tools are gated on but never built. Auto-review is absent
-              // here for the same reason the Computer tool's is — local Codex mode
-              // forces review off — so the driver's shell calls are audited but not
-              // held for approval.
+              // it the tools are gated on but never built. The classifier-based
+              // auto-review preflight is absent here (review is off), but the
+              // driver's DETERMINISTIC sensitive-action gate still raises real
+              // approval cards through the runner's controller (A8): the card
+              // plumbing exists independently of the review toggle.
               ...(LOCAL_BROWSER_USE_ENABLED
                 ? {
                   createBrowserDriverDependencies: () => createHostBrowserDriverDependencies({
@@ -1083,6 +1096,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                     getBoxId: () => session.id,
                     getDefaultViewId: () => session.id,
                     getLocalWindowIndex: () => localBrowserWindowIndex(),
+                    ...(autoReviewController == null
+                      ? {}
+                      : {
+                        sensitiveApprovalGate: {
+                          requestApproval: (approvalRequest: { surface: string; fingerprint: string; reason: string; summary: string; command?: string }) =>
+                            autoReviewController.requestApproval({ agentId: session.id, ...approvalRequest }),
+                        },
+                      }),
                     executeShell: createHostShellExecutor({
                       resourceAccessor: input.resourceAccessor,
                       assertNoPendingApproval: () => {},
@@ -1173,6 +1194,18 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               ...(LOCAL_BROWSER_USE_ENABLED
                 ? { getLocalWindowIndex: () => localBrowserWindowIndex() }
                 : {}),
+              // A8: the driver's deterministic sensitive-action gate raises a
+              // real approval card even when the classifier preflight already
+              // ran — defense in depth, and the only path that can approve it
+              // is the user's card decision.
+              ...(autoReviewController == null
+                ? {}
+                : {
+                  sensitiveApprovalGate: {
+                    requestApproval: (approvalRequest: { surface: string; fingerprint: string; reason: string; summary: string; command?: string }) =>
+                      autoReviewController.requestApproval({ agentId: session.id, ...approvalRequest }),
+                  },
+                }),
               autoReview: {
                 mode: projectionAutoReviewModes.computer,
                 agentId: session.id,

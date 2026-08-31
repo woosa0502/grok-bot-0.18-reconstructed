@@ -1,4 +1,4 @@
-export const SAND_BROWSER_DRIVER_VERSION = 4;
+export const SAND_BROWSER_DRIVER_VERSION = 5;
 export const SAND_BROWSER_DRIVER_BOX_DIR = "/tmp/.sand-browser";
 export const SAND_BROWSER_DRIVER_BOX_PATH = SAND_BROWSER_DRIVER_BOX_DIR + "/driver-v" + String(SAND_BROWSER_DRIVER_VERSION) + ".mjs";
 export const SAND_BROWSER_RESULT_MARKER = "__SAND_BROWSER_RESULT__";
@@ -397,6 +397,220 @@ async function resolvePage(request, context, state) {
   return { page, viewId };
 }
 
+// ---------------------------------------------------------------------------
+// Snapshot V2 stage 2: the accessibility-merged snapshot. Built DRIVER-side
+// from CDP data instead of an in-page walk: Accessibility.getFullAXTree gives
+// the browser's canonical roles/names/states (and includes shadow DOM
+// natively), DOMSnapshot.captureSnapshot enriches with tags/attributes/input
+// values, and same-process child frames are stitched in inline by resolving
+// each AX iframe node to its frameId. Refs are registered into EACH element's
+// own frame main world (DOM.resolveNode + Runtime.callFunctionOn), so frame
+// handles come back bound to the right frame and click natively. Anything
+// that fails here falls back to the in-page DOM walk (SNAPSHOT_FN below).
+// ---------------------------------------------------------------------------
+
+const AX_INTERACTIVE_ROLES = [
+  "button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio",
+  "tab", "menuitem", "menuitemcheckbox", "menuitemradio", "option", "switch",
+  "slider", "spinbutton", "listbox", "togglebutton", "popupbutton",
+  "disclosuretriangle",
+];
+
+function axPropValue(node, name) {
+  const found = (node.properties ?? []).find((property) => property.name === name);
+  return found === undefined || found.value === undefined ? undefined : found.value.value;
+}
+
+function axTrim(text, max) {
+  const t = String(text ?? "").replace(/\\s+/g, " ").trim();
+  const cap = max ?? 80;
+  return t.length > cap ? t.slice(0, cap) + "…" : t;
+}
+
+async function axCaptureSnapshot(page, opts) {
+  const session = await page.context().newCDPSession(page);
+  try {
+    const frameTreeResult = await session.send("Page.getFrameTree");
+    const rootFrameId = frameTreeResult.frameTree.frame.id;
+    // One structural capture for every same-process document: tag, attributes
+    // and live input values keyed by backendNodeId.
+    const domIndex = new Map();
+    try {
+      const snap = await session.send("DOMSnapshot.captureSnapshot", { computedStyles: [] });
+      const str = (index) => (typeof index === "number" && index >= 0 && index < snap.strings.length ? snap.strings[index] : "");
+      for (const doc of snap.documents) {
+        const nodes = doc.nodes;
+        for (let i = 0; i < nodes.backendNodeId.length; i++) {
+          const attrs = {};
+          const flat = (nodes.attributes ?? [])[i] ?? [];
+          for (let a = 0; a + 1 < flat.length; a += 2) attrs[str(flat[a]).toLowerCase()] = str(flat[a + 1]);
+          domIndex.set(nodes.backendNodeId[i], { tag: str(nodes.nodeName[i]).toLowerCase(), attrs });
+        }
+        const inputValues = nodes.inputValue;
+        if (inputValues !== undefined) {
+          for (let k = 0; k < inputValues.index.length; k++) {
+            const entry = domIndex.get(nodes.backendNodeId[inputValues.index[k]]);
+            if (entry !== undefined) entry.value = str(inputValues.value[k]);
+          }
+        }
+      }
+    } catch {}
+
+    const axTreeCache = new Map();
+    const getTree = async (frameId) => {
+      if (axTreeCache.has(frameId)) return axTreeCache.get(frameId);
+      let nodes = null;
+      try {
+        nodes = (await session.send("Accessibility.getFullAXTree", { frameId })).nodes ?? null;
+      } catch {}
+      axTreeCache.set(frameId, nodes);
+      return nodes;
+    };
+
+    const lines = [];
+    const refMeta = [];
+    let refCounter = 0;
+    let nodeCount = 0;
+    const maxNodes = 400;
+    const maxDepth = typeof opts.maxDepth === "number" ? opts.maxDepth : 20;
+    const indent = (depth) => "  ".repeat(Math.min(depth, 6));
+
+    const registerRef = async (backendNodeId, ref) => {
+      // Resolves in the node's OWN frame main world, so the registration (and
+      // the later click) is frame-correct without any coordinate translation.
+      const resolved = await session.send("DOM.resolveNode", { backendNodeId });
+      await session.send("Runtime.callFunctionOn", {
+        objectId: resolved.object.objectId,
+        functionDeclaration: "function(r){ var g = globalThis; if (!(g.__sandRefs instanceof Map)) g.__sandRefs = new Map(); g.__sandRefs.set(r, this); }",
+        arguments: [{ value: ref }],
+      });
+    };
+
+    const walkFrame = async (frameId, depth) => {
+      const nodes = await getTree(frameId);
+      if (nodes === null || nodes.length === 0) return false;
+      const byId = new Map();
+      for (const node of nodes) byId.set(node.nodeId, node);
+      const root = nodes.find((node) => node.parentId === undefined) ?? nodes[0];
+      await walkAxNode(root, byId, depth, frameId);
+      return true;
+    };
+
+    const walkAxNode = async (node, byId, depth, frameId) => {
+      if (node === undefined || nodeCount >= maxNodes || depth > maxDepth) return;
+      const children = async (childDepth) => {
+        for (const childId of node.childIds ?? []) {
+          await walkAxNode(byId.get(childId), byId, childDepth, frameId);
+        }
+      };
+      if (node.ignored === true) return await children(depth);
+      const role = String(node.role !== undefined ? node.role.value : "").toLowerCase();
+      const name = axTrim(node.name !== undefined ? node.name.value : "");
+      if (role === "" || role === "rootwebarea" || role === "generic" || role === "none" || role === "genericcontainer") {
+        return await children(depth);
+      }
+      const dom = node.backendDOMNodeId !== undefined ? domIndex.get(node.backendDOMNodeId) : undefined;
+      if (role === "iframe" || role === "frame") {
+        nodeCount += 1;
+        let childFrameId;
+        try {
+          const described = await session.send("DOM.describeNode", { backendNodeId: node.backendDOMNodeId });
+          childFrameId = described.node.frameId;
+        } catch {}
+        const childNodes = childFrameId !== undefined && childFrameId !== frameId ? await getTree(childFrameId) : null;
+        const src = dom !== undefined && dom.attrs.src !== undefined ? dom.attrs.src : "";
+        lines.push(
+          indent(depth) + "- iframe"
+          + (name ? " " + JSON.stringify(name) : "")
+          + (src ? " src=" + JSON.stringify(axTrim(src)) : "")
+          + (childNodes !== null && childNodes.length > 0 ? "" : " (cross-origin, contents unavailable)")
+        );
+        if (childNodes !== null && childNodes.length > 0) {
+          const childById = new Map();
+          for (const childNode of childNodes) childById.set(childNode.nodeId, childNode);
+          const childRoot = childNodes.find((childNode) => childNode.parentId === undefined) ?? childNodes[0];
+          await walkAxNode(childRoot, childById, depth + 1, childFrameId);
+        }
+        return;
+      }
+      if (role === "statictext" || role === "inlinetextbox") {
+        if (opts.interactive === true || name.length === 0) return;
+        nodeCount += 1;
+        lines.push(indent(depth) + "- text " + JSON.stringify(name));
+        return;
+      }
+      if (role === "heading") {
+        nodeCount += 1;
+        const level = axPropValue(node, "level");
+        lines.push(indent(depth) + "- heading" + (typeof level === "number" ? " level=" + String(level) : "") + (name ? " " + JSON.stringify(name) : ""));
+        return;
+      }
+      if (AX_INTERACTIVE_ROLES.includes(role)) {
+        nodeCount += 1;
+        refCounter += 1;
+        const ref = "e" + String(refCounter);
+        refMeta.push({ ref, role, name, backendNodeId: node.backendDOMNodeId });
+        let line = indent(depth) + "- " + role + (name ? " " + JSON.stringify(name) : "") + " [ref=" + ref + "]";
+        if (axPropValue(node, "disabled") === true) line += " disabled";
+        const checked = axPropValue(node, "checked");
+        if (checked === "true" || checked === true) line += " checked";
+        else if (checked === "mixed") line += " mixed";
+        const expanded = axPropValue(node, "expanded");
+        if (expanded === true) line += " expanded";
+        else if (expanded === false) line += " collapsed";
+        if (axPropValue(node, "selected") === true) line += " selected";
+        if (axPropValue(node, "required") === true) line += " required";
+        if (axPropValue(node, "readonly") === true) line += " readonly";
+        const inputType = dom !== undefined && dom.tag === "input" ? String(dom.attrs.type ?? "").toLowerCase() : "";
+        if (["email", "tel", "number", "search", "url", "date", "time", "file", "color"].includes(inputType)) {
+          line += " type=" + inputType;
+        }
+        const axValue = node.value !== undefined && node.value.value !== undefined && String(node.value.value).length > 0 ? String(node.value.value) : undefined;
+        const value = axValue ?? (dom !== undefined && typeof dom.value === "string" && dom.value.length > 0 ? dom.value : undefined);
+        if (value !== undefined) {
+          const autocomplete = dom !== undefined ? String(dom.attrs.autocomplete ?? "").toLowerCase() : "";
+          const secret = inputType === "password" || autocomplete === "current-password" || autocomplete === "new-password"
+            || autocomplete === "one-time-code" || autocomplete === "cc-number" || autocomplete === "cc-csc";
+          line += " value=" + (secret ? '"<redacted>"' : JSON.stringify(axTrim(value, 40)));
+        }
+        if (role === "link" && dom !== undefined && typeof dom.attrs.href === "string" && !dom.attrs.href.startsWith("javascript:")) {
+          line += " href=" + JSON.stringify(axTrim(dom.attrs.href, 80));
+        }
+        lines.push(line);
+        return;
+      }
+      // Structural containers (lists, forms, regions, paragraphs, images…)
+      // contribute no line of their own; their content speaks for itself.
+      return await children(depth);
+    };
+
+    const walked = await walkFrame(rootFrameId, 0);
+    if (!walked) throw new Error("accessibility tree unavailable");
+    if (nodeCount >= maxNodes) lines.push("(snapshot truncated at " + String(maxNodes) + " elements)");
+
+    if (opts.recover) {
+      const wanted = opts.recover;
+      const matching = refMeta.filter((entry) => entry.role === wanted.role && entry.name === wanted.name && entry.backendNodeId !== undefined);
+      const pick = matching.length === 1
+        ? matching[0]
+        : typeof wanted.nth === "number" ? matching[wanted.nth] : undefined;
+      if (pick === undefined) return { recovered: false, candidateCount: matching.length };
+      await registerRef(pick.backendNodeId, wanted.ref);
+      return { recovered: true, candidateCount: matching.length };
+    }
+
+    for (const entry of refMeta) {
+      if (entry.backendNodeId === undefined) continue;
+      try {
+        await registerRef(entry.backendNodeId, entry.ref);
+      } catch {}
+    }
+    return { lines, refCount: refCounter, refMeta };
+  } finally {
+    await session.detach().catch(() => {});
+  }
+}
+
 // Fingerprint of a ref persisted at snapshot time, used to re-find the element
 // when the live ref map is gone (navigation wiped the page globals) or the
 // element was replaced by a framework re-render. Returns undefined when this
@@ -414,28 +628,56 @@ function refMetaFor(state, viewId, ref) {
 const recoveredRefs = [];
 
 async function refHandle(page, ref, meta) {
-  const lookup = () => page.evaluateHandle((r) => {
+  const lookupFn = (r) => {
     const map = globalThis.__sandRefs;
     return map instanceof Map ? map.get(r) : undefined;
-  }, ref);
-  let element = (await lookup()).asElement();
-  if (element !== null) {
-    // A handle can survive while its node left the document (framework
-    // re-render); acting on it silently does nothing, so treat it as stale.
-    const connected = await element.evaluate((el) => el.isConnected).catch(() => false);
-    if (connected) return element;
-    element = null;
-  }
-  // Identity recovery: re-run the snapshot walk and match the persisted
-  // role/name fingerprint. nth disambiguates same-labelled siblings; a single
-  // survivor matches regardless of position.
+  };
+  // The accessibility-merged snapshot registers each ref in its element's OWN
+  // frame main world, so the lookup searches the main frame first and then
+  // every child frame. A frame-bound handle clicks natively (correct hit-test
+  // and coordinates) without the foreign-offset path.
+  const tryGet = async () => {
+    const targets = [page];
+    try {
+      for (const frame of page.frames()) {
+        if (frame !== page.mainFrame()) targets.push(frame);
+      }
+    } catch {}
+    for (const target of targets) {
+      let element = null;
+      try {
+        element = (await target.evaluateHandle(lookupFn, ref)).asElement();
+      } catch {
+        continue;
+      }
+      if (element === null) continue;
+      // A handle can survive while its node left the document (framework
+      // re-render); acting on it silently does nothing, so treat it as stale.
+      const connected = await element.evaluate((el) => el.isConnected).catch(() => false);
+      if (connected) return element;
+    }
+    return null;
+  };
+  let element = await tryGet();
+  if (element !== null) return element;
+  // Identity recovery: re-run the SAME snapshot engine that minted the
+  // fingerprint and match role/name; nth disambiguates same-labelled siblings,
+  // a single survivor matches regardless of position. The DOM walk is the
+  // fallback engine when the accessibility path is unavailable.
   if (meta !== undefined && typeof meta.role === "string") {
-    const recovery = Object.assign({}, meta.opts || {}, {
-      recover: { ref, role: meta.role, name: meta.name, nth: meta.nth },
-    });
-    const result = await page.evaluate(SNAPSHOT_FN, recovery).catch(() => undefined);
-    if (result !== undefined && result.recovered === true) {
-      element = (await lookup()).asElement();
+    const recover = { ref, role: meta.role, name: meta.name, nth: meta.nth };
+    const persistedOpts = meta.opts || {};
+    let recovered = false;
+    if (persistedOpts.engine === "ax") {
+      const result = await axCaptureSnapshot(page, Object.assign({}, persistedOpts, { recover })).catch(() => undefined);
+      recovered = result !== undefined && result.recovered === true;
+    }
+    if (!recovered) {
+      const result = await page.evaluate(SNAPSHOT_FN, Object.assign({}, persistedOpts, { recover })).catch(() => undefined);
+      recovered = result !== undefined && result.recovered === true;
+    }
+    if (recovered) {
+      element = await tryGet();
       if (element !== null) {
         recoveredRefs.push(ref);
         return element;
@@ -525,6 +767,11 @@ const SENSITIVE_ARM_TTL_MS = 10 * 60 * 1000;
 
 function sensitiveGate(state, request, viewId, reason) {
   if (reason === null || reason === undefined) return;
+  // hostApproved is HOST-controlled: the host clobbers it after spreading the
+  // model's arguments, so it is only ever true when the user approved this
+  // exact action on a real approval card. It bypasses the arm bookkeeping,
+  // never the credential-field refusals (those are absolute).
+  if (request.hostApproved === true) return;
   const confirmedFlag = request.confirmed === true;
   // Arms are keyed per view AND per block reason: two different sensitive
   // targets blocked back to back must not clobber each other's arm.
@@ -824,7 +1071,25 @@ const OPS = {
       maxDepth: typeof request.maxDepth === "number" ? request.maxDepth : 20,
       selector: typeof request.selector === "string" && request.selector.length > 0 ? request.selector : undefined,
     };
-    const result = await page.evaluate(SNAPSHOT_FN, opts);
+    // The accessibility-merged engine is the default; a CSS selector scope has
+    // no accessibility-tree equivalent, and any capture failure falls back to
+    // the in-page DOM walk so the tool never regresses below stage 1.
+    let result;
+    let engine = "dom";
+    if (opts.selector === undefined) {
+      try {
+        try {
+          for (const frame of page.frames()) {
+            await frame.evaluate(() => { globalThis.__sandRefs = new Map(); }).catch(() => {});
+          }
+        } catch {}
+        result = await axCaptureSnapshot(page, opts);
+        engine = "ax";
+      } catch {
+        result = undefined;
+      }
+    }
+    if (result === undefined) result = await page.evaluate(SNAPSHOT_FN, opts);
     // Persist each ref's identity fingerprint (role/name plus its position
     // among same-labelled refs) and the snapshot options that produced the
     // enumeration, so a later call can re-find the element after the live ref
@@ -837,12 +1102,12 @@ const OPS = {
       counts[key] = nth + 1;
       captured[entry.ref] = { role: entry.role, name: entry.name, nth };
     }
-    state.refMeta = { ...state.refMeta, [viewId]: { opts, refs: captured } };
+    state.refMeta = { ...state.refMeta, [viewId]: { opts: { ...opts, engine }, refs: captured } };
     const data = result.lines.join("\\n");
     return {
       page,
       viewId,
-      summary: "Captured page snapshot (" + String(result.refCount) + " interactive refs)",
+      summary: "Captured page snapshot (" + String(result.refCount) + " interactive refs" + (engine === "ax" ? ", accessibility-merged" : "") + ")",
       data,
     };
   },

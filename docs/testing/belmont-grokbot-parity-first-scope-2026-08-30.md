@@ -225,16 +225,22 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 1. **자격증명 격리 최소 규칙** — 구현됨 (driver v3). `browser_type`/`browser_fill`이 비밀번호·OTP·카드번호 필드를 무조건 거부한다. `confirmed`로도 우회 불가. 비밀은 사용자가 브라우저 창에서 직접 입력한다.
 2. **요소 신원 복구** — 구현됨 (driver v3). snapshot이 ref마다 role/name/순번 지문을 상태 파일에 저장하고, ref가 낡으면(페이지 이동으로 ref 지도가 사라졌거나 framework 재렌더로 요소가 교체된 경우) 같은 걷기 순서로 지문 재탐색 후 실행한다. 복구 사용 시 summary에 표기된다.
-3. **민감 조작만 승인 대기** — 구현됨 (driver v4, 무장 방식). 결제·송금·구매와 로그인/가입 제출로 판정된 클릭·Enter만 차단하고, 사용자 승인 후 `confirmed: true` 재시도로 실행한다. 일반 클릭은 그대로 통과한다. 원본의 Cursor auto-review 분류기에 대한 `WSL_EQUIVALENT` (결정론적 페이지 내 판정, 분류기 없음). **무장(arm) 계약 (2026-09-01 실측로 강화)**: 첫 실사용 검증에서 모델이 첫 시도부터 `confirmed: true`를 스스로 붙여 관문을 우회하는 것이 관찰되어, `confirmed`는 "드라이버가 같은 view·같은 사유로 직접 차단한 이력(10분 유효, 1회 소모)"이 있을 때만 유효하도록 바꿨다. 첫 시도의 confirmed는 무시하고 차단하며, 차단 시점에 상태 파일에 무장을 기록한다. 한계: 같은 턴 안에서 사용자에게 묻지 않고 재시도하는 모델은 기계적으로 막을 수 없다 — 그 구조적 해결은 A8 `preToolUse` ask/승인 카드다. 재검증에서는 모델이 차단을 보고하고 턴을 끝낸 뒤 사용자 승인 후에만 재시도했다.
+3. **민감 조작만 승인 대기** — 구현됨 (driver v5 + **진짜 승인 카드**). 결제·송금·구매와 로그인/가입 제출로 판정된 클릭·Enter만 잡고, 일반 클릭은 그대로 통과한다. 이력:
+   - 무장(arm) 계약 (driver v4): 첫 실사용에서 모델이 첫 시도부터 `confirmed: true`를 자가 승인하는 것이 전사로 확인되어, `confirmed`를 "드라이버가 같은 view·같은 사유로 직접 차단한 이력(10분 유효, 1회 소모)" 있을 때만 유효하게 바꿨다.
+   - **승인 카드 (2026-09-01, A8의 브라우저 표면 완성)**: 드라이버가 민감 차단을 반환하면 호스트 래퍼가 세션의 `SandAutoReviewController.requestApproval`로 **실제 auto-review 승인 카드**를 채팅에 띄우고, 사용자의 Allow가 같은 액션을 호스트 소유 `hostApproved` 플래그(모델 인자 spread 뒤에 강제 덮어씀 — 모델 주입 불가)로 재실행한다. 카드 채널이 있으면 모델의 `confirmed`/`hostApproved` 인자는 실행 전에 **제거**된다: 모델의 어떤 문구도 승인을 만들 수 없고, 사용자의 카드 결정만 가능하다. Deny/만료는 그대로 최종 답이 된다. 비밀번호·카드 필드 거부는 카드로도 우회 불가(절대 거부).
+   - 배선 발견: 실제 앱의 브라우저 도구는 projection이 아니라 turn-agent-composition의 **폴백 경로**(`createLocalBrowserDriverDependencies`)로 만들어진다(기존 주석대로 projection 슬롯 미바인딩). 컨트롤러는 composition에만 있으므로 `registerLocalBrowserApprovalGate`(agent id 키, 재바인딩 시 최신 runner 우선)로 다리를 놓았다. 카드 채널이 없는 runner(등록 전 subagent 등)는 무장 계약이 폴백으로 남는다.
 4. **system prompt 다이어트** — 구현됨. `buildSandBaseSystemPrompt`에 `localCodexMode`를 추가해 로컬 빌드에서 죽은 광고를 제거: Cursor Origin 절, Cursor 계정 마켓플레이스 플러그인 절(로컬 MCP 설정 안내로 대체), SearchPlugins 우선 의무 경로, "team's admin이 비활성화" 거짓 서사(개인 로컬 현실로 대체 — 저장소 작업은 이 컴퓨터에서 직접). 52,084 → 49,504자 (약 645토큰 감소 + 잘못된 안내로 인한 오동작 위험 제거). 컨테이너 프롬프트 2종은 전부 유지 (`tests/system-prompt-diet.test.mjs`가 고정).
-5. **snapshot 고신호화 (Snapshot V2)** — 1단계 구현됨 (driver v4): 열린 shadow DOM 걷기, 같은 출처 iframe 내용 수집(교차 출처는 "contents unavailable"로 정직 표기), iframe 내부 요소의 프레임 오프셋 누적 실좌표 클릭 경로, aria-labelledby 이름 해석(접근성 이름 우선순위), 상태 신호(expanded/collapsed·selected·mixed·required·readonly·input type). 지문 복구도 같은 걷기를 쓰므로 경계를 넘어 작동한다. 남은 2단계(driver-side DOMSnapshot+AX 트리 병합 재작성)는 이후 과제.
+5. **snapshot 고신호화 (Snapshot V2)** — **2단계까지 구현됨 (driver v5)**. 기본 엔진은 driver-side **접근성 병합**: CDP `Accessibility.getFullAXTree`(프레임별, shadow DOM은 AX 트리에 원래 포함)가 브라우저의 정식 role/name/상태를 주고, `DOMSnapshot.captureSnapshot` 한 번으로 tag·속성·입력값을 backendNodeId로 병합하며, 같은 프로세스 iframe은 AX iframe 노드→`DOM.describeNode`의 frameId로 제자리에 이어 붙인다(교차 출처는 정직 표기). ref는 `DOM.resolveNode`+`Runtime.callFunctionOn`으로 **각 요소가 속한 프레임의 main world**에 등록되고, `refHandle`이 프레임을 횡단 검색하므로 iframe 내부 클릭도 네이티브 프레임 핸들로 정확히 명중한다(1단계의 좌표 보정 경로는 DOM 엔진 폴백용으로 유지). 지문 복구는 엔진 표기(`engine: "ax"|"dom"`)를 따라 같은 엔진으로 재열거하고, 실패 시 DOM 걷기로 강등한다. CSS `selector` 지정 시와 AX 캡처 실패 시엔 1단계 in-page DOM 걷기(shadow/iframe 수집·aria-labelledby·상태 신호 포함)가 그대로 폴백이다 — 도구가 1단계 아래로 퇴행할 일이 없다.
 
 검증:
 
-- `tests/browser-driver-guards.test.mjs` — 실제 드라이버 OPS를 추출해 가짜 DOM으로 폐루프 실행, 8/8 통과 (V2 걷기·상태 신호·무장 계약 포함).
-- 라이브 드라이버 E2E (2026-09-01) — 실제 Chrome(headless, CDP)에 driver-v4.mjs를 그대로 실행, 27개 단계 전부 통과: 관문 차단/무장/confirmed 재시도/자가승인 무시, 비밀번호·OTP·카드 필드 거부, Enter 차단, 재렌더·페이지 이동 후 지문 복구, shadow DOM·같은 출처 iframe 수집과 실클릭(iframe은 프레임 오프셋 좌표 경로), 교차 출처 iframe 정직 표기.
-- **실제 앱 UI 경유 E2E (2026-09-01)** — 재빌드한 WSL 런타임(`SAND_LOCAL_BROWSER_USE=1`)을 production 경로 그대로 기동, Electron renderer를 CDP로 조작해 실제 compose 흐름으로 새 에이전트(GuardProbe2)를 만들고 실제 Pi Codex 턴 4개를 보냄. 전부 통과: ① navigate→snapshot→일반 클릭(title `OK`, 지문 상태 파일 실기록) ② 결제 클릭 → 드라이버 차단 → 모델이 차단을 보고하고 턴 종료 ③ 사용자 승인 후 confirmed 재시도(title `PAID`) ④ 비밀번호 입력 거부와 사유 전달. 전사(agent-transcripts)로 도구 호출 인자까지 확인.
-- 실측 부산물 두 가지: (a) 무장 도입 전 첫 실사용에서 모델이 첫 시도부터 `confirmed:true`를 자가 승인하는 것을 전사로 확인 — 위 항목 3의 무장 계약이 그 답. (b) **A2 실증 결함**: 기존 Belmont 에이전트(긴 transcript)에서는 턴이 "Codex error: Your input exceeds the context window"로 즉사 — compaction이 한도 초과 전에 발화하지 않는다는 A2의 미검증 항목이 실사용으로 확인됨. A2 작업 시 이 재현 사례를 쓰면 된다.
+- `tests/browser-driver-guards.test.mjs` — 실제 드라이버 OPS·페이지 내 함수·AX 파이프라인(대본화된 CDP 세션)을 폐루프 실행, 10/10 통과 (V2 걷기·AX 병합·프레임 스티칭·값 가림·상태 신호·무장 계약·엔진별 복구).
+- `tests/browser-approval-gate.test.mjs` — A8 카드 래퍼 3/3: 승인 시 같은 액션의 hostApproved 재실행(모델 confirmed/hostApproved 제거·강제 덮어씀 확인), 거부는 최종 답, 일반 오류는 카드를 안 띄움, 게이트 없으면 무장 계약 유지.
+- 라이브 드라이버 E2E (2026-09-01) — 실제 Chrome(headless, CDP)에 driver-v5.mjs를 그대로 실행, 28개 단계 전부 통과: **접근성 병합 엔진 활성 확인(heading level 등 AX 신호 포함)**, 관문 차단/무장/confirmed 재시도/자가승인 무시, 비밀번호·OTP·카드 필드 거부, Enter 차단, 재렌더·페이지 이동 후 지문 복구, shadow DOM·같은 출처 iframe 수집과 실클릭, 교차 출처 iframe 정직 표기.
+- **실제 앱 UI 경유 E2E ×2 (2026-09-01)** — 재빌드한 WSL 런타임(`SAND_LOCAL_BROWSER_USE=1`)을 production 경로 그대로 기동, Electron renderer를 CDP로 조작해 실제 compose 흐름으로 새 에이전트를 만들고 실제 Pi Codex 턴을 보냄.
+  - GuardProbe2 (무장 계약, driver v4): ① navigate→snapshot→일반 클릭(`OK`) ② 결제 클릭 차단 → 모델이 보고 후 턴 종료 ③ 사용자 승인 후 confirmed 재시도(`PAID`) ④ 비밀번호 거부. 전부 통과.
+  - **GuardProbe4 (승인 카드 + AX 엔진, driver v5)**: ① 일반 클릭(`OK`) + production 상태 파일에 `engine:"ax"` 실기록 ② 결제 클릭 → **실제 승인 카드**가 채팅에 뜸 → "Allow once" 클릭 → 같은 턴에서 클릭 실행(`PAID`) ③ 로그인 클릭 → 카드 "Deny" → 거부 사유가 모델에 전달·보고 ④ 비밀번호 거부(카드 없음, 절대 거부). 전사 확인: 모델은 confirmed 없이 평범한 클릭만 보냈고 차단 문구를 한 번도 보지 못했다 — 승인 권한이 모델에서 사용자 카드로 완전히 이동.
+- 실측 부산물: (a) 무장 도입 전 모델의 `confirmed:true` 자가 승인(전사 증거) — 카드 도입의 직접 근거. (b) **A2 실증 결함**: 긴 transcript 에이전트에서 "Codex error: Your input exceeds the context window"로 턴 즉사 — compaction 미발화의 실사용 재현. (c) 브라우저 도구의 projection 슬롯 미바인딩(폴백 경로가 실경로) — A6/A12 배선 정리 시 참고.
 
 ### A7. MCP·플러그인
 
@@ -261,7 +267,7 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 - `beforeSubmitPrompt` 실제 발화와 `continue:false` 중단 처리
 - `workspaceOpen` 발화와 `pluginPaths` 실제 로드
-- `preToolUse`의 `ask` 구현 또는 명시적 미지원 처리
+- `preToolUse`의 `ask` 구현 또는 명시적 미지원 처리 — 단, 이 항목이 A6-1에 지고 있던 빚(브라우저 민감 조작의 사용자 승인)은 2026-09-01에 hooks가 아니라 auto-review 승인 카드 경로로 갚았다(A6-1 항목 3). 남은 것은 hooks.json 일반 도구용 `ask`뿐이다.
 - WebFetch·MCP hook 적용
 - postToolUse/postToolUseFailure additional context E2E
 - hook timeout·cancel·restart·잘못된 응답 검증

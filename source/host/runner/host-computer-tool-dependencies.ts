@@ -90,6 +90,7 @@ export interface HostBrowserDriverProjectionInput<Context = unknown> {
   readonly getLocalWindowIndex?: () => number | undefined;
   readonly getPersistImage?: BrowserDriverDependencies<Context>["getPersistImage"];
   readonly autoReview?: SandBrowserAutoReviewOptions;
+  readonly sensitiveApprovalGate?: BrowserDriverDependencies<Context>["sensitiveApprovalGate"];
 }
 
 type ActionValue = Readonly<Record<string, unknown>>;
@@ -474,5 +475,6 @@ export function createHostBrowserDriverDependencies<Context = unknown>(
     },
     ...(input.getPersistImage === undefined ? {} : { getPersistImage: input.getPersistImage }),
     ...(input.autoReview === undefined ? {} : { autoReview: input.autoReview }),
+    ...(input.sensitiveApprovalGate === undefined ? {} : { sensitiveApprovalGate: input.sensitiveApprovalGate }),
   };
 }

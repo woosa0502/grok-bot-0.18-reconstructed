@@ -162,22 +162,54 @@ function localBrowserShellExecutor(
   };
 }
 
+type LocalBrowserApprovalGate = NonNullable<
+  Parameters<typeof createHostBrowserDriverDependencies>[0]["sensitiveApprovalGate"]
+>;
+
+/**
+ * A8 bridge: the runner composition owns each session's approval controller,
+ * but the LIVE local build reaches the browser tools through the per-turn
+ * FALLBACK below (the projection never binds createBrowserDriverDependencies
+ * on this runner), which has no controller in scope. The composition registers
+ * each runner's gate here at bind time; re-binding the same agent overwrites,
+ * so the newest runner's transport (the one actually showing cards) wins.
+ */
+const localSensitiveApprovalGates = new Map<string, LocalBrowserApprovalGate>();
+
+export function registerLocalBrowserApprovalGate(
+  agentId: string,
+  gate: LocalBrowserApprovalGate,
+): void {
+  localSensitiveApprovalGates.set(agentId, gate);
+}
+
+export function localBrowserApprovalGateFor(
+  agentId: string,
+): LocalBrowserApprovalGate | undefined {
+  return localSensitiveApprovalGates.get(agentId);
+}
+
 /**
  * Browser driver dependencies for the local build. The container path receives
  * these from the per-turn projection, which does not bind them on this runner —
  * the same gap that left the Computer tool needing its own local fallback.
+ * The sensitive-action approval gate is attached only when the composition has
+ * registered one for this agent: without it, the driver's armed-confirmed
+ * fallback stays in charge instead of silently auto-denying.
  */
 export function createLocalBrowserDriverDependencies(input: {
   readonly resourceAccessor: { get(resource: unknown): unknown };
   readonly agentId: string;
   readonly auditShellCommand?: (command: string) => void;
 }): ReturnType<typeof createHostBrowserDriverDependencies> {
+  const approvalGate = localBrowserApprovalGateFor(input.agentId);
   return createHostBrowserDriverDependencies({
     resourceAccessor: input.resourceAccessor,
     box: localBrowserDriverBox(),
     getBoxId: () => input.agentId,
     getDefaultViewId: () => input.agentId,
     getLocalWindowIndex: () => localBrowserWindowIndex(),
+    ...(approvalGate === undefined ? {} : { sensitiveApprovalGate: approvalGate }),
     executeShell: localBrowserShellExecutor(input.auditShellCommand),
   });
 }

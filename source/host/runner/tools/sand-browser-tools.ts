@@ -12,6 +12,8 @@ import {
   SandBrowserAutoReviewBlockedError,
   type SandBrowserAutoReviewOptions,
 } from "../sand-browser-auto-review.js";
+import { fingerprintSandAutoReviewTarget } from "../sand-auto-review.js";
+import { withToolExecutionTimeoutSuspended } from "../../../packages/agent/tools/tool-timeout-suspension.js";
 import {
   SAND_BROWSER_DRIVER_BOX_DIR,
   SAND_BROWSER_DRIVER_BOX_PATH,
@@ -190,6 +192,24 @@ export interface BrowserDriverDependencies<Context> {
     | ((bytes: Uint8Array, mimeType: string) => Promise<unknown>)
     | undefined;
   readonly autoReview?: SandBrowserAutoReviewOptions;
+  /**
+   * A8: the real approval channel for the driver's deterministic sensitive-
+   * action gate. When present, a "Sensitive action blocked" driver result
+   * raises an approval card through it, and the user's Allow re-runs the SAME
+   * action with a host-controlled hostApproved flag — the model-facing
+   * `confirmed` flag is stripped entirely, so no model wording can approve a
+   * payment or login submission. When absent (no controller in scope, e.g. a
+   * bare subagent runner), the driver's armed-confirmed fallback still stands.
+   */
+  readonly sensitiveApprovalGate?: {
+    requestApproval(request: {
+      surface: string;
+      fingerprint: string;
+      reason: string;
+      summary: string;
+      command?: string;
+    }): Promise<{ approved: true } | { approved: false; reason: string }>;
+  };
 }
 
 export interface BrowserDriverOutput {
@@ -248,6 +268,7 @@ export class SandBrowserDriver<Context = unknown> {
       readonly toolCallId: string;
       readonly args: Record<string, unknown>;
       readonly skipScreenshot?: boolean;
+      readonly hostApproved?: boolean;
     },
   ): Promise<BrowserDriverOutput> {
     const [windowIndex] = await Promise.all([
@@ -268,6 +289,10 @@ export class SandBrowserDriver<Context = unknown> {
         ? requestedViewId
         : this.dependencies.getDefaultViewId(),
       ...(screenshotPath == null ? {} : { screenshotPath }),
+      // Host-controlled and deliberately AFTER the args spread: a model-
+      // injected hostApproved is always clobbered, so the driver only ever
+      // sees true when the user approved this action on an approval card.
+      hostApproved: input.hostApproved === true,
     };
     const encoded = Buffer.from(
       JSON.stringify(request),
@@ -602,8 +627,17 @@ export function createSandBrowserTools<Context>(
     schema: spec.schema ?? {},
     ...(spec.canNavigate === true ? { canNavigate: true } : {}),
     ...(spec.skipScreenshot === true ? { skipScreenshot: true } : {}),
-    async execute(context, args, metadata) {
+    async execute(context, rawArgs, metadata) {
       try {
+        // With a real approval channel wired, the model-facing approval flags
+        // are stripped outright: no model wording can approve a sensitive
+        // action, only the user's card decision (via hostApproved below) can.
+        const gate = dependencies.sensitiveApprovalGate;
+        let args = rawArgs;
+        if (gate !== undefined && (Object.hasOwn(rawArgs, "confirmed") || Object.hasOwn(rawArgs, "hostApproved"))) {
+          const { confirmed: _confirmed, hostApproved: _hostApproved, ...rest } = rawArgs;
+          args = rest;
+        }
         validateArguments(spec.schema ?? {}, args);
         if (dependencies.autoReview !== undefined) {
           const exactAction = toBrowserReviewAction(spec.op, args, dependencies.getDefaultViewId());
@@ -626,7 +660,7 @@ export function createSandBrowserTools<Context>(
             ...(metadata.workspacePaths === undefined ? {} : { workspacePaths: metadata.workspacePaths }),
           });
         }
-        const output = await driver.run(context, {
+        let output = await driver.run(context, {
           op: spec.op,
           toolCallId: metadata.toolCallId,
           args,
@@ -634,6 +668,40 @@ export function createSandBrowserTools<Context>(
             ? {}
             : { skipScreenshot: spec.skipScreenshot }),
         });
+        // A8: the driver's deterministic sensitive-action block becomes a real
+        // approval card. Approval re-runs the SAME action with the host-owned
+        // hostApproved flag; denial (or expiry) is the answer, verbatim.
+        if (
+          gate !== undefined
+          && output.isError === true
+          && output.text.startsWith("Sensitive action blocked")
+        ) {
+          const detail = /Sensitive action blocked \(([^)]{1,300})\)/.exec(output.text)?.[1]
+            ?? "sensitive browser action";
+          const ask = () => gate.requestApproval({
+            surface: "computer",
+            fingerprint: fingerprintSandAutoReviewTarget({ tool: spec.name, args, detail }),
+            reason: `This browser action was held for your approval: ${detail}.`,
+            summary: `Browser ${spec.op}: ${detail}`,
+            command: JSON.stringify({ tool: spec.name, ...args }),
+          });
+          // Suspend the generic tool timeout while the card waits on the user
+          // — when the context carries one (a bare context simply asks).
+          const decision = typeof (context as { get?: unknown } | null)?.get === "function"
+            ? await withToolExecutionTimeoutSuspended(context as unknown as OperationContext, ask)
+            : await ask();
+          output = decision.approved
+            ? await driver.run(context, {
+              op: spec.op,
+              toolCallId: `${metadata.toolCallId}-approved`,
+              args,
+              ...(spec.skipScreenshot === undefined
+                ? {}
+                : { skipScreenshot: spec.skipScreenshot }),
+              hostApproved: true,
+            })
+            : { text: decision.reason, isError: true };
+        }
         if (spec.canNavigate === true && output.isError !== true) {
           dependencies.onPossibleNavigation?.(context);
         }

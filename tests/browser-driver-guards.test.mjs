@@ -47,7 +47,7 @@ async function loadDriver() {
   const source = await loadDriverSource();
   const cut = source.indexOf("const watchdog = setTimeout(");
   assert.ok(cut > 0, "driver source should still end with the watchdog and argv IIFE");
-  const moduleText = `${source.slice(0, cut)}\nexport { OPS, SNAPSHOT_FN, SECRET_FIELD_FN, SENSITIVE_ACTION_FN };\n`;
+  const moduleText = `${source.slice(0, cut)}\nexport { OPS, SNAPSHOT_FN, SECRET_FIELD_FN, SENSITIVE_ACTION_FN, axCaptureSnapshot };\n`;
   const encoded = Buffer.from(moduleText).toString("base64");
   return await import(`data:text/javascript;base64,${encoded}`);
 }
@@ -479,6 +479,110 @@ test("snapshot v2 reports element states and aria-labelledby names", async () =>
   assert.match(snap.data, /combobox "요금제 선택" \[ref=e\d+\] collapsed/, "aria-labelledby resolves and expanded=false reads as collapsed");
   assert.match(snap.data, /checkbox "부분 선택" \[ref=e\d+\] mixed/);
   assert.match(snap.data, /textbox "이메일" \[ref=e\d+\] required readonly type=email/);
+});
+
+// ---------------------------------------------------------------------------
+// Snapshot V2 stage 2: the accessibility-merged engine, against a scripted CDP
+// session — canonical AX roles/names/states, DOMSnapshot enrichment (input
+// values, attributes), same-process iframe stitching by frameId, per-frame ref
+// registration via Runtime.callFunctionOn, and fingerprint recovery.
+// ---------------------------------------------------------------------------
+
+function buildAxWorld() {
+  const registrations = [];
+  const strings = [];
+  const s = (text) => {
+    const existing = strings.indexOf(text);
+    if (existing >= 0) return existing;
+    strings.push(text);
+    return strings.length - 1;
+  };
+  const mainNodes = {
+    backendNodeId: [11, 12, 13, 20],
+    nodeName: [s("BUTTON"), s("INPUT"), s("INPUT"), s("IFRAME")],
+    attributes: [
+      [],
+      [s("type"), s("password")],
+      [s("type"), s("email")],
+      [s("src"), s("child.html")],
+    ],
+    inputValue: { index: [1], value: [s("hunter2")] },
+  };
+  const childNodes = {
+    backendNodeId: [31],
+    nodeName: [s("BUTTON")],
+    attributes: [[]],
+  };
+  const ax = {
+    F1: [
+      { nodeId: "1", role: { value: "RootWebArea" }, name: { value: "Test" }, childIds: ["2", "3", "4", "5", "6", "7"] },
+      { nodeId: "2", role: { value: "heading" }, name: { value: "제목" }, properties: [{ name: "level", value: { value: 1 } }], childIds: [] },
+      { nodeId: "3", role: { value: "button" }, name: { value: "결제하기" }, backendDOMNodeId: 11, childIds: [] },
+      { nodeId: "4", role: { value: "textbox" }, name: { value: "비밀번호" }, backendDOMNodeId: 12, value: { value: "hunter2" }, childIds: [] },
+      { nodeId: "5", role: { value: "textbox" }, name: { value: "이메일" }, backendDOMNodeId: 13, properties: [{ name: "required", value: { value: true } }], childIds: [] },
+      { nodeId: "6", role: { value: "Iframe" }, backendDOMNodeId: 20, childIds: [] },
+      { nodeId: "7", role: { value: "StaticText" }, name: { value: "안내문입니다" }, childIds: [] },
+    ],
+    F2: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+      { nodeId: "2", role: { value: "button" }, name: { value: "프레임 버튼" }, backendDOMNodeId: 31, childIds: [] },
+    ],
+  };
+  const session = {
+    send: async (method, params = {}) => {
+      switch (method) {
+        case "Page.getFrameTree": return { frameTree: { frame: { id: "F1" } } };
+        case "DOMSnapshot.captureSnapshot": return { strings, documents: [{ nodes: mainNodes }, { nodes: childNodes }] };
+        case "Accessibility.getFullAXTree": {
+          const nodes = ax[params.frameId];
+          if (nodes === undefined) throw new Error("no tree for " + params.frameId);
+          return { nodes };
+        }
+        case "DOM.describeNode": return params.backendNodeId === 20 ? { node: { frameId: "F2" } } : { node: {} };
+        case "DOM.resolveNode": return { object: { objectId: `obj-${params.backendNodeId}` } };
+        case "Runtime.callFunctionOn":
+          registrations.push({ objectId: params.objectId, ref: params.arguments[0].value });
+          return {};
+        default: throw new Error(`unexpected CDP method ${method}`);
+      }
+    },
+    detach: async () => {},
+  };
+  const page = { context: () => ({ newCDPSession: async () => session }) };
+  return { page, registrations };
+}
+
+test("the accessibility-merged snapshot stitches frames, states, and redaction", async () => {
+  const { axCaptureSnapshot } = await driverPromise;
+  const { page, registrations } = buildAxWorld();
+  const result = await axCaptureSnapshot(page, {});
+  const data = result.lines.join("\n");
+  assert.match(data, /- heading level=1 "제목"/);
+  assert.match(data, /- button "결제하기" \[ref=e1\]/);
+  // AX carries the live value, DOMSnapshot carries type=password: redacted.
+  assert.match(data, /- textbox "비밀번호" \[ref=e2\] value="<redacted>"/);
+  assert.match(data, /- textbox "이메일" \[ref=e3\] required type=email/);
+  assert.match(data, /- iframe src="child\.html"\n\s+- button "프레임 버튼" \[ref=e4\]/, "same-process iframe content is stitched inline");
+  assert.match(data, /- text "안내문입니다"/);
+  assert.deepEqual(
+    registrations.map((entry) => `${entry.objectId}:${entry.ref}`),
+    ["obj-11:e1", "obj-12:e2", "obj-13:e3", "obj-31:e4"],
+    "every ref is registered in its element's own frame world",
+  );
+  assert.deepEqual(
+    result.refMeta.map((entry) => [entry.ref, entry.role, entry.name]),
+    [["e1", "button", "결제하기"], ["e2", "textbox", "비밀번호"], ["e3", "textbox", "이메일"], ["e4", "button", "프레임 버튼"]],
+  );
+});
+
+test("the accessibility engine recovers a fingerprint without renumbering", async () => {
+  const { axCaptureSnapshot } = await driverPromise;
+  const { page, registrations } = buildAxWorld();
+  const result = await axCaptureSnapshot(page, { recover: { ref: "e9", role: "button", name: "결제하기", nth: 0 } });
+  assert.equal(result.recovered, true);
+  assert.deepEqual(registrations, [{ objectId: "obj-11", ref: "e9" }], "only the recovered ref is registered");
+  const missing = await axCaptureSnapshot(page, { recover: { ref: "e9", role: "button", name: "없는 버튼", nth: 0 } });
+  assert.equal(missing.recovered, false);
 });
 
 test("the sensitive-action detector stays conservative on plain content", async () => {
