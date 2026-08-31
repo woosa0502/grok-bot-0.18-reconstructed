@@ -344,8 +344,13 @@ export function createTurnSettle(
       }
     }
 
+    // Subagent turns are excluded: a child runner shares the PARENT session's
+    // memory store, its "user" side is the internal boundary prompt (delegation
+    // mechanics, not user speech), and legacy extraction would run a blocking
+    // model call inside the child's settle, delaying the Task result.
     const shouldRemember =
-      !host.isRunSuperseded()
+      !host.isSubagentRunner
+      && !host.isRunSuperseded()
       && scope.memoryStore != null
       && !args.hidden
       && args.trimmedPrompt.length > 0

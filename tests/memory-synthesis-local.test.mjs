@@ -27,7 +27,7 @@ async function loadModules() {
       contents: `
         export { MemorySynthesisService } from "./source/host/extensions/memory/memory-synthesis-service.js";
         export { FileMemoryStore } from "./source/host/extensions/memory/memory-service.js";
-        export { pinGateWithLocalFallback } from "./source/host/extensions/experiments/extension.js";
+        export { pinGateWithLocalFallback, localGatePinValue } from "./source/host/extensions/experiments/extension.js";
         export { createHostInference } from "./source/host/extensions/inference/inference-service.js";
         export { createRealDebouncePolicy } from "./source/internal/scheduling.js";
         export { SandSettingsStore } from "./source/shared/node/settings/sand-settings-store.js";
@@ -73,7 +73,7 @@ test("pinGateWithLocalFallback pins immediately from the local evaluation in loc
   const pins = [];
   pinGateWithLocalFallback({
     isLocalMode: true,
-    checkFeatureGate: (name) => name === "sand_memory_dreaming",
+    evaluateLocalPin: (name) => name === "sand_memory_dreaming",
     pinOnAuthenticatedBootstrap: () => { throw new Error("must not wait for an authenticated bootstrap in local mode"); },
   }, "sand_memory_dreaming", (value) => pins.push(value));
   assert.deepEqual(pins, [true], "the pin fires synchronously with the locally evaluated value");
@@ -81,11 +81,32 @@ test("pinGateWithLocalFallback pins immediately from the local evaluation in loc
   const deferred = [];
   pinGateWithLocalFallback({
     isLocalMode: false,
-    checkFeatureGate: () => { throw new Error("cursor mode must defer to the authenticated bootstrap"); },
+    evaluateLocalPin: () => { throw new Error("cursor mode must defer to the authenticated bootstrap"); },
     pinOnAuthenticatedBootstrap: (name, pin) => deferred.push({ name, pin }),
   }, "sand_memory_dreaming", () => {});
   assert.equal(deferred.length, 1);
   assert.equal(deferred[0].name, "sand_memory_dreaming");
+});
+
+test("local pin evaluation is explicit-only: persisted override, then env, otherwise OFF", async () => {
+  const { localGatePinValue } = await loadModules();
+  // The critical property (adversarial review #1): a gate that nobody enabled
+  // explicitly pins OFF — never from the cached anonymous Statsig client or a
+  // bundled default. This keeps unrelated pinned gates (stale-root GC,
+  // conversation GC, legacy blob retirement) at their pre-reroute
+  // never-enabled behavior, deterministically.
+  assert.equal(localGatePinValue({ storedOverride: undefined, env: {} }, "sand_stale_root_gc"), false);
+  assert.equal(localGatePinValue({ storedOverride: undefined, env: { SAND_FEATURE_GATE_OVERRIDES: "other=1" } }, "grok_bot_conversation_gc"), false);
+  assert.equal(localGatePinValue({ storedOverride: undefined, env: { SAND_FEATURE_GATE_OVERRIDES: "sand_memory_dreaming=1" } }, "sand_memory_dreaming"), true);
+  assert.equal(localGatePinValue({ storedOverride: undefined, env: { SAND_FEATURE_GATE_OVERRIDES: "sand_memory_dreaming=0" } }, "sand_memory_dreaming"), false);
+  assert.equal(localGatePinValue({ storedOverride: false, env: { SAND_FEATURE_GATE_OVERRIDES: "sand_memory_dreaming=1" } }, "sand_memory_dreaming"), false, "a persisted override wins over the env default");
+  assert.equal(localGatePinValue({ storedOverride: true, env: {} }, "sand_memory_dreaming"), true);
+});
+
+test("the experiments extension routes the pin API through the local fallback with the explicit-only evaluator", () => {
+  const ext = read("source/host/extensions/experiments/extension.ts");
+  assert.match(ext, /pinGateOnAuthenticatedBootstrap: \(name[\s\S]{0,220}pinGateWithLocalFallback\(\{ isLocalMode: isLocalCodexMode\(process\.env\)/);
+  assert.match(ext, /evaluateLocalPin: \(gate\) => localGatePinValue\(\{ storedOverride: service\.getFeatureFlagOverridesRecord\(\)\[gate as typeof name\], env: process\.env \}/);
 });
 
 // ---------- 3. provider-aware summarization channel ----------
@@ -208,4 +229,61 @@ test("the settle scope receives the memory store, episode progress, and the memo
   assert.match(adapter, /\.\.\.\(input\.memoryStore == null \? \{\} : \{ memoryStore: input\.memoryStore \}\)/);
   assert.match(adapter, /\.\.\.\(input\.episodeProgress == null \? \{\} : \{ episodeProgress: input\.episodeProgress \}\)/);
   assert.match(adapter, /\.\.\.\(input\.isMemorableExchange == null \? \{\} : \{ isMemorableExchange: input\.isMemorableExchange \}\)/);
+});
+
+// ---------- 6. adversarial-review fixes (wave 16) ----------
+
+test("applySynthesis removes the RIGHT facts when a batch holds two removals in one file", async () => {
+  const { FileMemoryStore, createRealDebouncePolicy } = await loadModules();
+  const dir = await mkdtemp(path.join(tmpdir(), "belmont-apply-"));
+  try {
+    const store = new FileMemoryStore(dir, createRealDebouncePolicy({ name: "test", delayMs: 0 }));
+    store.addMemory("Fact one about the user", 1_000, "profile");
+    store.addMemory("Fact two about the user", 2_000, "profile");
+    store.addMemory("Fact three about the user", 3_000, "profile");
+    const snapshot = store.prepareSynthesis();
+    const idFor = (content) => snapshot.memories.find((memory) => memory.content === content)?.id;
+    // "Merge duplicates" batches (create one, remove several) are the synthesis
+    // prompt's intended steady state; before the fix the second removal spliced
+    // a STALE line index and deleted the wrong fact while reporting committed.
+    const result = store.applySynthesis(snapshot, [
+      { action: "remove", id: idFor("Fact one about the user"), sourceEvidenceIds: ["e1"] },
+      { action: "remove", id: idFor("Fact three about the user"), sourceEvidenceIds: ["e1"] },
+    ], 4_000);
+    assert.equal(result, "committed");
+    assert.deepEqual(store.listMemories().map((memory) => memory.content), ["Fact two about the user"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an invalid change anywhere in the batch leaves the store completely untouched", async () => {
+  const { FileMemoryStore, createRealDebouncePolicy } = await loadModules();
+  const dir = await mkdtemp(path.join(tmpdir(), "belmont-apply-invalid-"));
+  try {
+    const store = new FileMemoryStore(dir, createRealDebouncePolicy({ name: "test", delayMs: 0 }));
+    store.addMemory("Existing fact", 1_000, "profile");
+    const snapshot = store.prepareSynthesis();
+    const result = store.applySynthesis(snapshot, [
+      { action: "create", content: "A new synthesized fact", kind: "profile", sourceEvidenceIds: ["e1"] },
+      { action: "remove", id: "hallucinated-memory-id", sourceEvidenceIds: ["e1"] },
+    ], 2_000);
+    assert.equal(result, "invalid");
+    assert.deepEqual(store.listMemories().map((memory) => memory.content), ["Existing fact"], "the valid-looking create earlier in the batch was NOT applied");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("remaining review fixes are pinned: subagent settle guard, evidence try/catch, no rejected-retry, lifetime abort", () => {
+  const settle = read("source/host/runner/turn-settle.ts");
+  assert.match(settle, /const shouldRemember =\s*!host\.isSubagentRunner/);
+  const turnMemory = read("source/host/runner/turn-memory.ts");
+  assert.match(turnMemory, /try \{\s*episodeProgress\?\.clearPendingEpisodeTurns\(\);/);
+  const production = read("source/host/extensions/memory/production.ts");
+  assert.match(production, /error instanceof MemorySynthesisAttemptError\s*&& error\.outcome === "rejected"/);
+  const synthesis = read("source/host/extensions/memory/memory-synthesis-service.ts");
+  assert.match(synthesis, /AbortSignal\.any\(\[signal, this\.lifetime\.signal\]\)/);
+  const inference = read("source/host/extensions/inference/inference-service.ts");
+  assert.match(inference, /createProviderPromptSession\(provider, undefined, "low"\)/);
 });

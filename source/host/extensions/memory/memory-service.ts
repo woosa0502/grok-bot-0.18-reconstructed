@@ -113,13 +113,32 @@ export class FileMemoryStore {
   applySynthesis(snapshot: SynthesisSnapshot, changes: readonly SynthesisChange[], now: number): "committed" | "stale" | "invalid" {
     const state = this.readSynthesisState(); if (state.fingerprint !== snapshot.fingerprint) return "stale";
     const allowed = new Set(snapshot.memories.map((memory) => memory.id)), byId = new Map(state.facts.map((fact) => [fact.id, fact])), changed = new Set<string>();
+    // Validate the whole batch before writing anything: a mid-batch "invalid"
+    // verdict (e.g. a hallucinated memory id) must not leave the earlier
+    // changes of the batch applied while reporting invalid-output.
     for (const change of changes) {
-      if (change.action === "create") { const content = normalizeMemoryContent(change.content); if (!content) return "invalid"; if (!this.isTombstoned(content)) this.addSynthesized(content, now, change.kind); continue; }
-      if (!allowed.has(change.id) || changed.has(change.id)) return "invalid"; const current = byId.get(change.id); if (current == null || current.origin === "explicit") return "invalid"; changed.add(change.id);
-      if (change.action === "remove") { this.removeFact(current, false); continue; }
-      const content = normalizeMemoryContent(change.content); if (!content) return "invalid"; this.removeFact(current, false); if (!this.isTombstoned(content)) this.addSynthesized(content, now, change.kind);
+      if (change.action === "create") { if (!normalizeMemoryContent(change.content)) return "invalid"; continue; }
+      if (!allowed.has(change.id) || changed.has(change.id)) return "invalid";
+      const current = byId.get(change.id); if (current == null || current.origin === "explicit") return "invalid";
+      changed.add(change.id);
+      if (change.action === "update" && !normalizeMemoryContent(change.content)) return "invalid";
+    }
+    for (const change of changes) {
+      if (change.action === "create") { const content = normalizeMemoryContent(change.content); if (!this.isTombstoned(content)) this.addSynthesized(content, now, change.kind); continue; }
+      if (change.action === "remove") { this.removeFactById(change.id, false); continue; }
+      const content = normalizeMemoryContent(change.content); this.removeFactById(change.id, false); if (!this.isTombstoned(content)) this.addSynthesized(content, now, change.kind);
     }
     this.markTemporalReview(now); return "committed";
+  }
+  /**
+   * Re-resolve the fact by id at removal time: an earlier removal in the same
+   * batch shifts line numbers, so a line index captured at batch start would
+   * splice the WRONG line (deleting a different fact) while still reporting
+   * "committed". "Merge duplicates" batches (create 1, remove 2) are the
+   * synthesis prompt's intended steady state, so this is the common case.
+   */
+  private removeFactById(id: string, tombstone: boolean): void {
+    for (const fact of this.facts()) { if (fact.id !== id) continue; this.removeFact(fact, tombstone); return; }
   }
   private removeFact(fact: MemoryFact, tombstone: boolean): void { const lines = this.read(fact.path).split("\n"); lines.splice(fact.line, 1); this.dir.writeFileAtomic(fact.path, lines.join("\n")); this.clearOrigins(fact.content); if (tombstone) this.markTombstone(fact.content); }
   private addSynthesized(content: string, createdAt: number, kind: MemoryKind): void { if (this.facts().some((fact) => memoryDedupeKey(fact.content) === memoryDedupeKey(content))) return; const path = kind === "profile" ? this.profileFile : this.logFileForDate(createdAt), raw = this.read(path), base = raw || (kind === "profile" ? PROFILE_HEADER : LOG_HEADER); this.dir.writeFileAtomic(path, `${base}${base.endsWith("\n") ? "" : "\n"}${serializeFactLine(content, createdAt)}\n`); this.clearOrigins(content); this.markOrigin(content, "synthesis"); }

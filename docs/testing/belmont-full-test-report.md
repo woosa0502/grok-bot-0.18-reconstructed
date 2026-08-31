@@ -1,6 +1,6 @@
 # Belmont — 풀 테스트 & 감사 종합 문서
 
-_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 2차 갱신: 2026-08-30 저녁 (auto-review 로컬 분류기 배선 + 계정 scope 초기화 결함 수정 — §1.6) · 3차 갱신: 2026-08-31 (남은 문제 전부 처리 — TS 회귀·원장 이관·UNCLEAR 29건·첨부 스테이징 AUDIT-W7·훅 배선 AUDIT-W8, §1.6 후속 3) · 4차 갱신: 2026-08-31 (0.18.0 설치파일 기준 parity 회차 — 기억 회수·roster·루틴·플러그인·PDF·셸 상태·로그인 상태 등 15건 구현+라이브, §1.6 후속 4 · `belmont-018-parity-inventory-2026-08-31.md`) · 5차 갱신: 2026-08-31 (후속 8건+PARTIAL 4건 전부 해결 — MCP/WebFetch 훅·MCP 표면 auto-review(AUDIT-W11)·OS 알림 fallback·660/673 만료 알림·241·386·첨부 정리·pagination·그룹 채팅 라이브·컨텍스트 창 실측·AUDIT-4 settle 격리, §1.6 후속 5) · 6차 갱신: 2026-08-31 (외부 엄격 코드리뷰 검토 — 4건 재검증 후 AUDIT-W13~W17 등재, §1.6 후속 5.2) · 7차 갱신: 2026-08-31 (후속 6 — **AUDIT-W12~W17 전부 수정+라이브** + 품질 5종(캐시 친화성·cron 재시도·봇별 셸 상태·웹 충실도·PDF 수명주기), §1.6 후속 6) · 8차 갱신: 2026-08-31 (후속 7 — **벨몬트 관리자 B-1**: 기존 봇을 Belmont로 정의 + SendToAgent 훅 원장 + 스위퍼 루틴 + 기본 대화 + 봇별 reasoning(AUDIT-W1) + W18 수정 + **AUDIT-W19 발견·수정**; 왕복·재시작 생존 라이브, §1.6 후속 7) · 9차 갱신: 2026-08-31 (후속 8 — **Phase B 본공사**: durable 수신함(AUDIT-5 근본, 크래시 라이브)·완료 내구(P1-04)·자식 재파견·B-2 부분(삭제 보호+Managed team 절 라이브) + 품질 세부(Grep 문맥·Delete·LS·SIGKILL·셸 id·MCP 서버요청·Pi 모델 카탈로그) + 테스트 부채 F1~F4, §1.6 후속 8) · 10차 갱신: 2026-08-31 (후속 9 — 2차 외부 검토 7건 전부 확인·수정: settle 순서 rev2·B-1 부트스트랩 스크립트·원장 실패 판정·모델 상속·대화 단위 캐시 키·스키마 서명·pdfjs 데드라인, §1.6 후속 9) · 11차 갱신: 2026-08-31 (후속 10 — 3차 외부 검토 6건: 영속 실패 표면화·at-least-once 정밀 명시·kind-인지 prune(14일)·grep 줄번호 귀속+동작 테스트·부트스트랩 완전 멱등·문서 정합, §1.6 후속 10) · 12차 갱신: 2026-08-31 (후속 11 — 4차 검토: rearm 선삭제 유실 창 폐쇄(payload 마커 무삭제 유지)·grep multiline -A 회귀 수정·문서 잔재 정리, §1.6 후속 11) · 13차 갱신: 2026-08-31 (후속 12 — 5차 검토: upsert payload 보존 불변식·cloud-agent 저장 결과 직접 재생·동작 테스트 교체·원장/핸드오프 현행화, §1.6 후속 12) · 14차 갱신: 2026-08-31 (후속 13 — 추천 묶음: 봇별 도구 제한·dedupe·manager-only 게이트·그룹 턴 durable·W6/F5, §1.6 후속 13) · 15차 갱신: 2026-08-31 (후속 14 — **memory dreaming 활성화** + **AUDIT-W21 발견·수정**(턴 종료 기억 기록 미배선 — 재구성 결함), §1.6 후속 14) · 단일 통합본 (이전 산재 문서/임시 원장 대체; 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`, `node scripts/verdict-ledger.mjs summary`)_
+_생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정 실결함 커밋·병합 반영) · 2차 갱신: 2026-08-30 저녁 (auto-review 로컬 분류기 배선 + 계정 scope 초기화 결함 수정 — §1.6) · 3차 갱신: 2026-08-31 (남은 문제 전부 처리 — TS 회귀·원장 이관·UNCLEAR 29건·첨부 스테이징 AUDIT-W7·훅 배선 AUDIT-W8, §1.6 후속 3) · 4차 갱신: 2026-08-31 (0.18.0 설치파일 기준 parity 회차 — 기억 회수·roster·루틴·플러그인·PDF·셸 상태·로그인 상태 등 15건 구현+라이브, §1.6 후속 4 · `belmont-018-parity-inventory-2026-08-31.md`) · 5차 갱신: 2026-08-31 (후속 8건+PARTIAL 4건 전부 해결 — MCP/WebFetch 훅·MCP 표면 auto-review(AUDIT-W11)·OS 알림 fallback·660/673 만료 알림·241·386·첨부 정리·pagination·그룹 채팅 라이브·컨텍스트 창 실측·AUDIT-4 settle 격리, §1.6 후속 5) · 6차 갱신: 2026-08-31 (외부 엄격 코드리뷰 검토 — 4건 재검증 후 AUDIT-W13~W17 등재, §1.6 후속 5.2) · 7차 갱신: 2026-08-31 (후속 6 — **AUDIT-W12~W17 전부 수정+라이브** + 품질 5종(캐시 친화성·cron 재시도·봇별 셸 상태·웹 충실도·PDF 수명주기), §1.6 후속 6) · 8차 갱신: 2026-08-31 (후속 7 — **벨몬트 관리자 B-1**: 기존 봇을 Belmont로 정의 + SendToAgent 훅 원장 + 스위퍼 루틴 + 기본 대화 + 봇별 reasoning(AUDIT-W1) + W18 수정 + **AUDIT-W19 발견·수정**; 왕복·재시작 생존 라이브, §1.6 후속 7) · 9차 갱신: 2026-08-31 (후속 8 — **Phase B 본공사**: durable 수신함(AUDIT-5 근본, 크래시 라이브)·완료 내구(P1-04)·자식 재파견·B-2 부분(삭제 보호+Managed team 절 라이브) + 품질 세부(Grep 문맥·Delete·LS·SIGKILL·셸 id·MCP 서버요청·Pi 모델 카탈로그) + 테스트 부채 F1~F4, §1.6 후속 8) · 10차 갱신: 2026-08-31 (후속 9 — 2차 외부 검토 7건 전부 확인·수정: settle 순서 rev2·B-1 부트스트랩 스크립트·원장 실패 판정·모델 상속·대화 단위 캐시 키·스키마 서명·pdfjs 데드라인, §1.6 후속 9) · 11차 갱신: 2026-08-31 (후속 10 — 3차 외부 검토 6건: 영속 실패 표면화·at-least-once 정밀 명시·kind-인지 prune(14일)·grep 줄번호 귀속+동작 테스트·부트스트랩 완전 멱등·문서 정합, §1.6 후속 10) · 12차 갱신: 2026-08-31 (후속 11 — 4차 검토: rearm 선삭제 유실 창 폐쇄(payload 마커 무삭제 유지)·grep multiline -A 회귀 수정·문서 잔재 정리, §1.6 후속 11) · 13차 갱신: 2026-08-31 (후속 12 — 5차 검토: upsert payload 보존 불변식·cloud-agent 저장 결과 직접 재생·동작 테스트 교체·원장/핸드오프 현행화, §1.6 후속 12) · 14차 갱신: 2026-08-31 (후속 13 — 추천 묶음: 봇별 도구 제한·dedupe·manager-only 게이트·그룹 턴 durable·W6/F5, §1.6 후속 13) · 15차 갱신: 2026-08-31 (후속 14 — **memory dreaming 활성화** + **AUDIT-W21 발견·수정**(턴 종료 기억 기록 미배선 — 재구성 결함), §1.6 후속 14) · 16차 갱신: 2026-08-31 (후속 15 — 적대적 검토 10건 대응: P1 3건 수정(무관 게이트 오점화·applySynthesis 줄번호 오삭제·자식 settle 부모 기억 오염), §1.6 후속 15) · 단일 통합본 (이전 산재 문서/임시 원장 대체; 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`, `node scripts/verdict-ledger.mjs summary`)_
 
 이 문서는 두 검증 활동을 하나로 합친다: (1) **행위 단위 라이브 sweep** — 에이전트에 각 테스트 케이스를 주입해 실제 도구 실행 증거로 판정, (2) **소스 코드 감사** — production 배선/통합 여부를 코드로 확인. sweep은 '도구가 개별로 작동하는가'를 보고, 감사는 '실제로 production에 연결됐는가'를 본다. 후자가 전자의 여러 PASS를 false-green으로 뒤집었다.
 
@@ -18,7 +18,7 @@ _생성: 2026-08-29 · 갱신: 2026-08-30 (컴퓨터 유즈 §1.5 추가, 확정
 | 감사 findings | 45개 id(동일-ID 갱신 반영), 최신 판정 기준 FIXED 39 · PARTIAL 1(AUDIT-B2 유보) · RESOLVED 1 · DOCUMENTED 2 · CONFIRMED 1 · PARTIAL 3 · POSITIVE 1. **AUDIT-5 근본 수정(durable 수신함)·P1-04·자식 재파견·B-2 부분까지 후속 8에서 완료.** 잔여: AUDIT-9(이미지 — 사용자 제외 지시) · AUDIT-B2(PARTIAL — 워커 UI 잠금은 고정 렌더러 한계) · AUDIT-W6/F5(PARTIAL, 경미) |
 | 확정 실결함 | 19 — 전부 수정+재빌드+라이브검증: update_state, Pi maxTokens, 첨부전송 크래시(커밋) · AUDIT-W3~W8(§1.6) · **4차 갱신(§1.6 후속 4, 0.18 parity 회차)**: AUDIT-1 기억 회수 · AUDIT-3 roster · AUDIT-7 예약 루틴 · AUDIT-8 플러그인 · AUDIT-10 로그인 상태 · AUDIT-11 PDF · AUDIT-W2 셸 상태 · AUDIT-EPOCH · **AUDIT-W9 로컬 준비 상태 게이트** · **AUDIT-W10 데몬 PDF 거부** — 4차분 미커밋 |
 | 신규 기능 | **컴퓨터 유즈**(§1.5) · **로컬 auto-review 분류기**(§1.6) · **hooks.json Shell 경로**(§1.6 후속 3) · **4차**: 장기 기억 자동 회수 · ListAgents/ListGroups · 로컬 cron 루틴 · 로컬 플러그인 저장소/카탈로그 · PDF 읽기 · Shell cwd/env 유지 · 앱 내 Pi OAuth 로그인/상태 · 클라우드 에이전트/이미지 생성 정직 숨김 — 전부 라이브검증(`docs/testing/belmont-018-parity-inventory-2026-08-31.md`) |
-| 게이트 | `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 216/216, node 24+로 실행) — 15차 갱신(후속 14, memory dreaming + AUDIT-W21) |
+| 게이트 | `npm run check` exit 0 (source:typecheck 0 오류 · 테스트 221/221, node 24+로 실행) — 16차 갱신(후속 15, 적대적 검토 대응) |
 
 **핵심 결론(작성 당시):** 다중 봇 *기반*은 있으나, Belmont의 핵심 연결부 — 기억 자동회수 · 봇 발견 · 위임 내구성 · child 상태 격리 · 결과 검토 — 가 아직 production에 끊겨 있다. sweep의 PASS 수치는 false-green으로 부풀려져 있었다. **[2026-08-31 현재]** 기억 회수(후속 4)·봇 발견(후속 4)·위임 내구성(후속 8~10, at-least-once)·child 격리(후속 9 rev2)는 해소; 결과 검토·승인 강제만 프롬프트 관례+B-2 부분(유보). (2026-08-30 갱신: 컴퓨터 유즈 신규 구현+검증 §1.5, 확정 실결함 3건 커밋·병합 완료. 2차 갱신: 마지막 결함 클러스터(auto-review)가 해소되어 §0.5 ①은 0건 — §1.6. 3차 갱신: 남은 문제 목록을 전부 처리해 UNCLEAR 0건·typecheck 0오류, 그 과정에서 첨부 스테이징(AUDIT-W7)·훅 배선(AUDIT-W8) 결함 2건 추가 발견·수정 — §1.6 후속 3.)
 
@@ -485,7 +485,28 @@ hooks.json에 preToolUse/beforeShellExecution/postToolUse를 넣고 에이전트
 | 4 | 테스트 | `tests/memory-synthesis-local.test.mjs` 8건(런처 게이트 기본값·pin 우회·summarization 채널 모델 대체(라이브 결함 재현 쌍)·합성 E2E(스크립트 실행기)·검증 거부 시 무변화·배선 가드). 게이트 **216/216** |
 | 5 | 실행 환경 주의 | 셸 기본 node가 v22로 바뀌어 있었음 — v22는 테스트 번들의 `using` 구문을 못 읽어 가짜 실패 발생. **게이트는 node 24+**(nvm v24.14.0), 앱은 mise node 26.5.0 |
 
-dreaming 켜짐의 의미: 이제 매 턴(숨김 아님, 프롬프트 있음)이 증거로 기록되고, 15초 디바운스 후 백그라운드에서 Pi(로컬 설정 모델)가 제안→검증 2단계로 장기 기억을 합성한다. 턴당 백그라운드 Pi 호출이 최대 2건 늘어난다(옵트아웃: `SAND_FEATURE_GATE_OVERRIDES=sand_memory_dreaming=0`).
+dreaming 켜짐의 의미: 이제 매 턴(숨김 아님, 프롬프트 있음, 서브에이전트 아님)이 증거로 기록되고, 15초 디바운스 후 백그라운드에서 Pi(로컬 설정 모델, reasoning low)가 제안→검증 2단계로 장기 기억을 합성한다. 턴당 백그라운드 Pi 호출이 기본 2건(전송 오류·파싱 요동 재시도 시 최대 6건) 늘어난다(옵트아웃: `SAND_FEATURE_GATE_OVERRIDES=sand_memory_dreaming=0`).
+
+### 후속 15: 적대적 검토(d7e5b9b) — 10건 판정·대응 (2026-08-31, 16차 갱신 — 사용자 지시 "커밋 푸쉬해적대적 검토 한번 돌리고")
+
+독립 검토자(맥락 없는 서브에이전트)에게 후속 14 커밋을 공격시키고, 10건 전부 기제를 재검증했다. **7건 수정 · 1건 부분수정 · 2건 수용**(기각 0 — 전부 실제였음).
+
+| # | 심각도 | 내용 | 대응 |
+|---|---|---|---|
+| 1 | **P1** | pin 로컬 우회가 **무관한 게이트 3종**(stale-root GC·대화 GC·legacy blob 정리 — 세션 확장이 같은 API로 pin)을 익명 캐시 Statsig 값으로 켬 — 부팅마다 비결정적 | **수정**: `localGatePinValue` — 명시 값 전용(영구 재정의→env→OFF), 캐시·번들 기본값 배제. cycle44·45 부팅 2회는 GC 켠 채 돌았으나 이후 라이브 턴 전부 정상 — 관측 피해 없음 |
+| 2 | **P1** | `applySynthesis` 다중 제거 시 **낡은 줄번호로 엉뚱한 fact 삭제** 후 committed 보고 + mid-batch invalid 시 부분 적용(둘 다 이번에 처음 실전화된 휴면 결함) | **수정**: 배치 전체 선검증 + 제거 시 id 재해석. 동작 테스트 2종 |
+| 3 | **P1** | Task 자식 settle이 **부모 memory에 위임 기제(경계 프롬프트)를 증거로 기록**, dreaming off 시엔 자식 settle 안 블로킹 추출 호출 | **수정**: `shouldRemember`에 `!isSubagentRunner`(이웃 가드와 정합). 그룹 턴 기록은 의도적 유지 |
+| 4 | P2 | 패키지 빌드(SAND_PACKAGED=1)에선 env 재정의가 무시돼 기본 온·옵트아웃 모두 사문화 | **부분수정**: pin 경로는 env를 직접 읽어 패키지 빌드에서도 동작. 일반 checkFeatureGate 경로는 패키징(F, 제외 항목) 때 재론 |
+| 5 | P2 | dreaming 분기 무보호 throw → 응답 스트림 완료된 턴이 실패 처리될 수 있음 | **수정**: legacy 분기와 동일한 try/catch("Memory maintenance must never fail the user-visible turn") |
+| 6 | P2 | 검증 거부도 재시도(사이클당 최대 6 Pi 호출) + 배경 합성이 reasoning high | **수정**: rejected 무재시도(파싱 요동·전송 오류는 재시도 유지) + 라우팅 summarization 채널 reasoning low(원본 gemini-flash 의도 정합) |
+| 7 | P2 | 설정 기반 게이트 재정의는 부팅 pin 후 도착 → 재시작 전 미반영 | **수용**: pin-once가 이 API의 의미론. 영구 재정의 저장소는 부팅 시 반영됨 |
+| 8 | P2 | 확장의 reroute 라인이 테스트 미고정(되돌려도 8/8 녹색) | **수정**: reroute 가드 + `localGatePinValue` 동작 테스트 — 이제 되돌리면 실패 |
+| 9 | NIT | `=` 없는 게이트 언급은 '명시 false'로 해석되며 기본값 주입도 억제 | **수용**: '명시가 이긴다' 일관 동작. 공유 파서 불변경 |
+| 10 | NIT | dispose 후 in-flight 합성 요청이 90초 데드라인까지 생존 | **수정**: `AbortSignal.any([deadline, lifetime])` |
+
+깨끗 판정 각도(검토자 확인): 대체 턴 경로 없음(어댑터가 유일 생성점) · 러너 수명주기 안전 · `this` 바인딩 함정 없음 · cursor 경로 원본 동일 · 증거 8천자 바운딩 건전 · W21 진단 자체 정확(수정 전 커밋에서 재확인).
+
+게이트: 테스트 **221/221**(신규 5: 명시 전용 pin·reroute 가드·다중 제거 정확성·배치 원자성·수정 가드) · cycle46 재빌드 · dreaming 라이브 재확인.
 
 ## 2. 감사 findings — P0 (심각)
 

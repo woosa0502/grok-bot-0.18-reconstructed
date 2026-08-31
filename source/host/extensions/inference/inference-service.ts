@@ -63,7 +63,11 @@ export function createHostInference(options: HostInferenceOptions) {
     createSummarizationSession(onRequestId: (requestId: string) => void, sessionOptions?: Parameters<NonNullable<typeof cursor.createSummarizationSession>>[1]) {
       const provider = routerSettings.getInferenceProvider();
       if (provider === "cursor") return routedSession(cursor.createSession(onRequestId, { ...(sessionOptions ?? {}), isSummarizationSession: true }), provider) as ReturnType<NonNullable<typeof cursor.createSummarizationSession>>;
-      return createProviderPromptSession(provider) as ReturnType<NonNullable<typeof cursor.createSummarizationSession>>;
+      // The summarization channel's native model (gemini-2.5-flash) is a fast
+      // low-cost model; on a routed provider match that intent with low
+      // reasoning effort instead of inheriting the global default (high) for
+      // background summarization work.
+      return createProviderPromptSession(provider, undefined, "low") as ReturnType<NonNullable<typeof cursor.createSummarizationSession>>;
     },
   };
 }

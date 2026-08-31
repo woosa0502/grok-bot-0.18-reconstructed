@@ -273,7 +273,10 @@ export class MemorySynthesisService {
           }
           return changes;
         };
-        return this.options.deadline?.run(invoke) ?? invoke(this.lifetime.signal);
+        // Combine the deadline with the service lifetime: dispose() during an
+        // in-flight request must abort the underlying stream too, not leave it
+        // running until the deadline fires.
+        return this.options.deadline?.run(signal => invoke(AbortSignal.any([signal, this.lifetime.signal]))) ?? invoke(this.lifetime.signal);
       };
       const proposal = await (this.options.retry?.runWithRetry(perform, this.lifetime.signal) ?? perform());
       if (proposal.length === 0) { if (temporal) target.markTemporalReview(started); this.finish(agentId, evidence, temporal); this.report("no-work", agentId, evidence.length, snapshot.memories.length, 0, started); return "no-work"; }

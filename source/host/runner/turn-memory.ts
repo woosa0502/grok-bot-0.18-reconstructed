@@ -48,12 +48,16 @@ export async function runTurnMemory(
   exchange: TurnExchange,
 ): Promise<void> {
   if (memoryStore.recordMemoryEvidence != null) {
-    episodeProgress?.clearPendingEpisodeTurns();
-    memoryStore.recordMemoryEvidence({
-      occurredAt: turnTimestamp,
-      user: exchange.user,
-      assistant: exchange.agent,
-    });
+    try {
+      episodeProgress?.clearPendingEpisodeTurns();
+      memoryStore.recordMemoryEvidence({
+        occurredAt: turnTimestamp,
+        user: exchange.user,
+        assistant: exchange.agent,
+      });
+    } catch {
+      // Memory maintenance must never fail the user-visible turn.
+    }
     return;
   }
   await runMemoryExtraction(memoryStore, session, context, exchange);
