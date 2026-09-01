@@ -1,6 +1,29 @@
 # Belmont — 다음 세션 인수인계
 
-_작성: 2026-08-30 · 갱신: 2026-08-31 (후속 5 — "후속 8건+PARTIAL 4건 전부 해결" 회차 종료 시점 기준)_
+_작성: 2026-08-30 · 갱신: 2026-09-01 오후 (Phase A 전영역 스윕 회차 — A2~A13 + §6 disposition 마감)_
+
+## 2026-09-01 오후 회차 (Phase A 전영역, Phase B 제외 지시)
+
+커밋 5개: `c654c56`(A2) → `24135da`(A4/A7/A8/A10) → `44ab764`(A8/A10/A11/A12) → `4c73709`(A7/A9/A13/§6) → (마감 문서 커밋). 게이트 **287/287 + frontend:build green (현재 HEAD)**.
+
+**발견·수정한 실결함 (전부 라이브 재현→수정→라이브 재검증)**:
+1. **A2 warm-cache 점유량 과소집계** — Pi가 `usage.input`에서 캐시를 빼는데 `usedTokens=input+output`으로 재계산 → 캐시가 살아있는 한 선제 압축 문턱 도달 불가. `contextOccupancyTokens`(provider total_tokens)로 수정. 선제 압축 라이브 발화 실증(30k 핀, 요약 blob 실물·코드워드 보존·재시작 recall).
+2. **A4 subagent 관리 도구 미노출** — 프롬프트가 광고하는 Check/Message/StopSubagent가 production provider에 미배선. 수정 후 동시 2자식·선택 취소·computerUse 배타성 라이브 통과.
+3. **A8 lifecycle 훅 전체 무발화(P1)** — 엔진 accessor의 hookExecutorResource가 box 데몬(hooks.json 주인)에 안 닿음. 턴 local projection에 box행 주입 + 데몬 preCompact 응답 매핑. preCompact·afterAgentThought 마커 실발화. `ask`는 양 게이트 일관 차단+안내(라이브 확인). workspaceOpen=구조적 제외 확정.
+4. **A10 손상 이미지 대화 영구 오염(P1)** — 투영이 과거 image part 재전송 → 이미지 하나가 대화 전체를 죽임(무첨부 턴 3연속 실사). 전송 시 강등 + 투영 시 PNG 청크 구조·CRC 걷기 검증(서명+꼬리만으론 부족 — 내부 깨진 PNG가 실제로 통과했음). 오염 대화 부활 라이브 확인. MCP image 결과 경유 오염 벡터도 동일 차단.
+5. **A7 MCP crash 후 영구 사망** — callMcpTool 호출당 1회 자동 재기동. 라이브: crash→echo 즉시 복구, image 도구 PNG가 Pi vision까지 관통("파란색"), 300KB spill 파일 실증.
+6. **A11 VNC URL 정직화** — websockify 실청취 확인 후에만 URL 공개(미설치/실패 시 미공개).
+7. **A12 kinds 계약** — editable frontend 파서가 host의 배열 shape 수용.
+
+**라이브 E2E 마감**: A5 기억(저장→새 에이전트 recall→의사결정 반영→tombstone→재시작 recall 전부 정답), A9 루틴(1분 발화→재시작 재발화→delete), A10 vision(이미지 텍스트/색 판독)·손상/59MB 오류 흐름, A13 kill 매트릭스(고아 0·중단 정직 종결·자식 중단 자동 통지·SIGTERM drain·상태 정합), A6-마켓플레이스 도구 정직화.
+
+**§6**: `scripts/assign-unavail-dispositions.mjs` → `belmont-unavail-dispositions.jsonl`(UNAVAIL·ENV 715 전수, 미분류 0). **Gate A5 실제 잔여 = verification=GATE_A5 71건** + fresh profile 절차(OAuth 만료·attachment commit 창·VNC 뷰어 clipboard/zoom·MCP 설정 UX 수정/삭제·child MCP identity).
+
+**주의**: probe 에이전트 다수 생성됨(CompactProbe 75370c77, PreCompactProbe 55549415, VisionProbe fc55efa1, MemProbe1~4 등) — 정리해도 무방. 픽스처 서버에 image/slow 도구 추가됨. hooks.json은 관리자 기본으로 복원 済. 앱 정지 시 `ps -eo pid,args | awk '$2 ~ /node$/ && $3=="scripts/run-wsl.mjs"'`로 정확히 조준할 것(pgrep -f는 감시 셸을 오폭).
+
+---
+
+_이하는 2026-08-31 (후속 5) 기준 기록._
 
 전체 현황은 `docs/testing/belmont-full-test-report.md`(단일 SSOT, §1.6 후속 5가 이번 작업). 이번 회차의 재파악·판정표는 `docs/testing/belmont-018-parity-inventory-2026-08-31.md`. 판정 원장은 `docs/testing/belmont-sweep-verdicts.jsonl`(케이스별 최신 판정이 유효, `node scripts/verdict-ledger.mjs summary`), 감사 원장은 `docs/testing/belmont-audit-findings.jsonl`(id별 최신 행이 유효). 이 문서는 **다음 세션이 바로 이어받도록** 한 곳에 요약.
 

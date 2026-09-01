@@ -68,7 +68,7 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 
 ### A0. 빌드·실행 기준선
 
-현재 상태: **미완료**
+현재 상태: **HEAD 기준 green (2026-09-01 오후)** — `npm run check`(frontend/source typecheck + 테스트 287/287)와 `npm run frontend:build` 모두 현재 HEAD에서 통과, 같은 HEAD로 빌드된 WSL 런타임으로 실사용 검증 반복 수행. 잔여: fresh profile setup→OAuth→start 재현과 clean-tree lineage 재확인은 Gate A5 시작 절차로.
 
 남은 작업:
 
@@ -166,7 +166,7 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 
 > **2026-09-01 스윕**: settle/checkpoint 경계는 AUDIT-W23(`tests/subagent-settle-parity.test.mjs`)로 마감. steer-restart는 행동 검증 완료(`tests/subagent-steer-restart.test.mjs` — 인터럽트→steer 프롬프트 재시작→늦은 steer not-running→abort시 steer 소거). `file_attachments`는 범용 첨부로 계약 교정. 재시작 복구는 pending-wake 계열 테스트(r3#3 prune, r4#1 pre-clear 금지, r5 upsert/rearm 행동)로 커버.
 >
-> **2026-09-01 오후 (라이브 마감)**: ① **결함 발견·수정** — 시스템 프롬프트가 광고하는 CheckSubagent/MessageSubagent/StopSubagent가 production provider에 미배선이라 모델에 노출 안 됨(실턴에서 "StopSubagent 없음" 전사 확보) → provider에 `createSubagentManagementToolInputs` 배선(`tests/host-wiring-parity.test.mjs` 고정), 수정 빌드에서 도구 목록 실확인. ② **두 child 동시 실행 실측** — background 자식 A/B 동시 파견 → `[A=A-7301, B=B-9145]` 정확 귀속, 교차오염 없음. ③ **선택 취소 실측** — A(sleep 90)·B(즉답) 동시 파견, B 완료 시 StopSubagent로 A만 중단 → `[B=B-3333, A중단=성공, A상태=실행중 아님]`(CheckSubagent로 사후 확인까지). 잔여: computer-use 배타성(A11과 함께).
+> **2026-09-01 오후 (라이브 마감)**: ① **결함 발견·수정** — 시스템 프롬프트가 광고하는 CheckSubagent/MessageSubagent/StopSubagent가 production provider에 미배선이라 모델에 노출 안 됨(실턴에서 "StopSubagent 없음" 전사 확보) → provider에 `createSubagentManagementToolInputs` 배선(`tests/host-wiring-parity.test.mjs` 고정), 수정 빌드에서 도구 목록 실확인. ② **두 child 동시 실행 실측** — background 자식 A/B 동시 파견 → `[A=A-7301, B=B-9145]` 정확 귀속, 교차오염 없음. ③ **선택 취소 실측** — A(sleep 90)·B(즉답) 동시 파견, B 완료 시 StopSubagent로 A만 중단 → `[B=B-3333, A중단=성공, A상태=실행중 아님]`(CheckSubagent로 사후 확인까지). ④ **computerUse 배타성 실측** — computerUse 자식 실행 중 두 번째 computerUse 파견 시도 → "A computerUse subagent is already using the box's desktop. Only one can run at a time." 정확 거부. A4 전체 마감.
 
 이미 있는 것:
 
@@ -337,7 +337,7 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 > **2026-09-01 스윕**: **VNC loopback 고정 (보안, 라이브 검증)**: 비밀번호 없는 x11vnc가 0.0.0.0:5900에 노출돼 있던 것을 실측으로 확인하고 `-localhost`+websockify `127.0.0.1` 바인드로 수정, 재기동 후 두 포트 모두 loopback 전용임을 ss로 확인(`tests/local-vnc-loopback.test.mjs`). typecheck 오류 4건은 해소됨.
 >
-> **2026-09-01 오후**: ① **readiness 후 URL 제공 수정** — vncUrl 낙관 폴백 제거: websockify 포트가 실제 accept할 때까지 URL 미공개(미설치/기동 실패 시 영구 미공개 → UI는 자체 폴백 문구), ensureReady가 매번 재조회하므로 지연 공개 안전(`display-manager.ts`, `tests/local-vnc-loopback.test.mjs` 고정). ② **개별 액션 E2E 라이브** — screenshot·move(+좌표 검증)·scroll·drag·wait·key 전부 실측 통과; cursorPosition은 도구 액션 표면에 없고(액션 8종은 상류 스키마 그대로) 결과 필드로만 존재 — 모델은 move 후 스크린샷으로 확인. ③ **정책 확정** — Xvfb/x11vnc 재시작 간 재사용은 의도된 설계(stale 재사용 정책; dispose()는 명시 teardown용), 다중 window는 `maxWindows: () => 1`로 명시 제한 済. 잔여: main/computerUse 동시 조작 배타성, VNC clipboard/zoom(노VNC 뷰어 표면) — Gate A5.
+> **2026-09-01 오후**: ① **readiness 후 URL 제공 수정** — vncUrl 낙관 폴백 제거: websockify 포트가 실제 accept할 때까지 URL 미공개(미설치/기동 실패 시 영구 미공개 → UI는 자체 폴백 문구), ensureReady가 매번 재조회하므로 지연 공개 안전(`display-manager.ts`, `tests/local-vnc-loopback.test.mjs` 고정). ② **개별 액션 E2E 라이브** — screenshot·move(+좌표 검증)·scroll·drag·wait·key 전부 실측 통과; cursorPosition은 도구 액션 표면에 없고(액션 8종은 상류 스키마 그대로) 결과 필드로만 존재 — 모델은 move 후 스크린샷으로 확인. ③ **정책 확정** — Xvfb/x11vnc 재시작 간 재사용은 의도된 설계(stale 재사용 정책; dispose()는 명시 teardown용), 다중 window는 `maxWindows: () => 1`로 명시 제한 済. ④ **동시 조작 배타성 실측** — computerUse 자식 점유 중 두 번째 computerUse 거부(원문 메시지 확인, A4 ④와 동일 실측). 잔여: VNC clipboard/zoom(노VNC 뷰어 표준 기능 표면) — Gate A5.
 
 이미 실측된 것:
 
