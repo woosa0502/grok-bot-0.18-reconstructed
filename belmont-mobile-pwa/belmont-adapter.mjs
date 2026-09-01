@@ -133,15 +133,41 @@ export function createBelmontCompanionAdapter({
         return json(response, 200, { ...projected, state: turnState });
       }
 
+      const attachMatch = /^\/api\/bots\/([\w-]+)\/attachments$/.exec(url.pathname);
+      if (request.method === "POST" && attachMatch) {
+        if (attachMatch[1] !== managerId) return json(response, 403, { error: "mobile attachments can only target Belmont" });
+        const payload = await readJsonBody(request, 24 * 1024 * 1024);
+        const name = typeof payload.name === "string" ? payload.name.replace(/[\u0000-\u001f/\\]/g, "").trim().slice(0, 180) : "";
+        if (!name) throw badRequest("attachment name is required");
+        if (typeof payload.dataBase64 !== "string" || payload.dataBase64.length === 0 || payload.dataBase64.length > 24_000_000 || !/^[A-Za-z0-9+/=]+$/.test(payload.dataBase64)) {
+          throw badRequest("invalid attachment data");
+        }
+        const uploaded = await gateway.call("uploadAttachment", { filename: name, bytesBase64: payload.dataBase64, agentId: managerId });
+        if (typeof uploaded?.path !== "string" || !uploaded.path) return json(response, 502, { error: "Belmont did not accept the attachment" });
+        const attachmentId = randomBytes(9).toString("base64url");
+        session.attachmentPaths.set(attachmentId, { path: uploaded.path, name });
+        while (session.attachmentPaths.size > 16) session.attachmentPaths.delete(session.attachmentPaths.keys().next().value);
+        return json(response, 200, { attachmentId, name });
+      }
+
       const sendMatch = /^\/api\/bots\/([\w-]+)\/messages$/.exec(url.pathname);
       if (request.method === "POST" && sendMatch) {
         if (sendMatch[1] !== managerId) return json(response, 403, { error: "mobile messages can only target Belmont" });
         const payload = await readJsonBody(request);
         if (payload.threadId !== undefined && payload.threadId !== managerId) return json(response, 403, { error: "message thread does not belong to Belmont" });
-        if (typeof payload.text !== "string" || !payload.text.trim() || payload.text.length > 12_000) return json(response, 400, { error: "invalid message text" });
+        const attachmentIds = Array.isArray(payload.attachments) ? payload.attachments : [];
+        const staged = [];
+        for (const id of attachmentIds) {
+          const entry = typeof id === "string" ? session.attachmentPaths.get(id) : undefined;
+          if (!entry) return json(response, 409, { error: "attachment is stale or unknown; re-attach it" });
+          staged.push(entry);
+        }
+        const text = typeof payload.text === "string" ? payload.text : "";
+        if ((!text.trim() && staged.length === 0) || text.length > 12_000) return json(response, 400, { error: "invalid message text" });
         const result = await gateway.call("sendPrompt", {
           agentId: managerId,
-          prompt: payload.text,
+          prompt: text,
+          ...(staged.length > 0 ? { attachmentPaths: staged.map((entry) => entry.path), attachmentNames: staged.map((entry) => entry.name) } : {}),
           ...(typeof payload.sendId === "string" ? { clientNonce: payload.sendId } : {}),
         });
         return json(response, 200, result);
@@ -692,6 +718,7 @@ function createAdapterSession(token, timestamp) {
     actions: new Map(),
     allowKeys: new Map(),
     remembered: new Set(),
+    attachmentPaths: new Map(),
     computerTargets: new Map(),
     eventSequence: 0,
     eventCursors: ["belmont-0"],
@@ -718,14 +745,14 @@ async function readJson(pathname) {
   return JSON.parse(await readFile(pathname, "utf8"));
 }
 
-async function readJsonBody(request) {
+async function readJsonBody(request, maxBytes = MAX_BODY_BYTES) {
   const mediaType = String(request.headers["content-type"] || "").split(";", 1)[0].trim().toLowerCase();
   if (mediaType !== "application/json") throw badRequest("application/json is required");
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) {
+    if (size > maxBytes) {
       const error = new Error("request body too large");
       error.code = "BODY_TOO_LARGE";
       throw error;

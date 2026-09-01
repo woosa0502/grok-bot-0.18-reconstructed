@@ -681,11 +681,11 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 .chat-header > button, .chat-identity { pointer-events: auto; }
 .chat-identity {
   position: absolute;
-  top: env(safe-area-inset-top);
+  top: calc(env(safe-area-inset-top) + 6px);
   left: 50%;
-  display: grid;
-  justify-items: center;
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   transform: translateX(-50%);
 }
 .identity-pill {
@@ -722,7 +722,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
-  padding: calc(112px + env(safe-area-inset-top)) 16px 12px;
+  padding: calc(64px + env(safe-area-inset-top)) 16px 12px;
   /* No smooth scrolling: programmatic jumps to the latest message must be
      instant, or interrupted animations strand the view at the top. */
   scrollbar-width: none;
@@ -1256,3 +1256,29 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 }
 .code-copy svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .code-copy:active { background: rgba(119,119,119,.25); }
+
+.attach-chips {
+  position: relative;
+  z-index: 110;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px 0;
+  background: linear-gradient(to top,var(--surface) 78%,transparent);
+}
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 220px;
+  padding: 4px 4px 4px 10px;
+  border-radius: 12px;
+  background: var(--surface-muted);
+  border: 1px solid var(--separator);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.attach-chip button { min-width: 24px; min-height: 24px; width: 24px; height: 24px; }
+.attach-chip .icon { width: 14px; height: 14px; }

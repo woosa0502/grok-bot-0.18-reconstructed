@@ -34,6 +34,7 @@ const state = {
   loading: false,
   awaitingReply: false,
   readonlyChat: null,
+  pendingAttachments: [],
   notice: null,
   streamStatus: "closed",
   stopStream: null,
@@ -324,13 +325,14 @@ function renderChat() {
   const approval = readonly ? null : pendingApproval(state.messages);
   const composer = readonly
     ? `<div class="readonly-bar">읽기 전용 — 이 봇에게 지시하려면 Belmont에게 부탁하세요</div>`
-    : `<form class="composer" id="composer-form">
+    : `${state.pendingAttachments.length ? `<div class="attach-chips">${state.pendingAttachments.map((att) => `<span class="attach-chip">${escapeHtml(att.name)}<button type="button" data-action="remove-attachment" data-attach-id="${escapeHtml(att.id)}" aria-label="첨부 제거">${icon("close")}</button></span>`).join("")}</div>` : ""}<form class="composer" id="composer-form">
+        <input id="attach-input" type="file" multiple hidden />
         <button class="glass-button composer-plus ${state.overlay?.type === "more" ? "is-open" : ""}" type="button" data-action="more" aria-label="더 보기">${icon("plus")}</button>
         <label class="composer-field glass-pill">
           <span class="sr-only">Belmont에게 메시지</span>
           <textarea id="composer-input" rows="1" maxlength="12000" placeholder="Message ${escapeHtml(bot?.name || "Belmont")}">${escapeHtml(state.draft)}</textarea>
           <button class="mic-button ${state.dictating ? "is-listening" : ""}" type="button" data-action="dictation" aria-label="${state.dictating ? "음성 입력 중지" : "음성 입력 시작"}">${icon("mic")}</button>
-          <button class="send-button" type="submit" aria-label="보내기" ${!state.draft.trim() || state.loading ? "disabled" : ""}>${icon("send")}</button>
+          <button class="send-button" type="submit" aria-label="보내기" ${(!state.draft.trim() && state.pendingAttachments.length === 0) || state.loading ? "disabled" : ""}>${icon("send")}</button>
         </label>
       </form>`;
   return `
@@ -338,7 +340,7 @@ function renderChat() {
       <header class="chat-header">
         <button class="glass-button back-button" type="button" data-action="back" aria-label="대화 목록">${icon("back")}</button>
         <div class="chat-identity">
-          ${avatar(bot, "hero", bot?.busy ? "busy" : approval ? "waiting" : "idle")}
+          ${avatar(bot, "tiny", bot?.busy ? "busy" : approval ? "waiting" : "idle")}
           <button class="identity-pill glass-pill" type="button" data-action="${readonly ? "worker-detail" : "manager-info"}" ${readonly ? `data-worker-id="${escapeHtml(bot?.id ?? "")}"` : ""}><strong>${escapeHtml(bot?.name || "Belmont")}</strong><span>${escapeHtml(bot?.title || (readonly ? "읽기 전용" : "Chief of Staff"))}</span>${icon("chevron")}</button>
         </div>
         ${readonly ? '<span class="glass-button" aria-hidden="true" style="visibility:hidden"></span>' : `<button class="glass-button" type="button" data-action="computer" aria-label="컴퓨터 보기">${icon("computer")}</button>`}
@@ -503,6 +505,7 @@ function renderMoreOverlay() {
   return `<div class="sheet-backdrop plus-backdrop" data-action="close-overlay">
     <section class="plus-sheet glass-sheet" role="dialog" aria-modal="true" aria-label="Belmont actions" data-sheet>
       <div class="sheet-menu">
+        <button type="button" data-action="attach"><span class="menu-icon">${icon("share")}</span><span><strong>사진·파일 첨부</strong><small>Belmont에게 파일을 보냅니다</small></span></button>
         <button type="button" data-action="new-task"><span class="menu-icon">${icon("plus")}</span><span><strong>New goal</strong><small>Write a new goal in this Belmont conversation</small></span></button>
         <button type="button" data-action="show-tasks"><span class="menu-icon">${icon("task")}</span><span><strong>Agents</strong><small>See current persistent agent status</small></span></button>
         <button type="button" data-action="computer"><span class="menu-icon">${icon("computer")}</span><span><strong>Computer status</strong><small>Mobile live view is not connected yet</small></span></button>
@@ -721,13 +724,15 @@ async function openManager() {
 
 async function sendMessage() {
   const text = state.draft.trim();
-  if (!text || state.loading || !state.manager || state.readonlyChat) return;
+  const attachments = state.pendingAttachments.map((att) => att.id);
+  if ((!text && attachments.length === 0) || state.loading || !state.manager || state.readonlyChat) return;
   state.draft = "";
   state.loading = true;
   state.messages.push({ id: `optimistic-${Date.now()}`, role: "user", kind: "text", at: Date.now(), text });
   render();
   try {
-    await state.api.send({ botId: state.manager.id, threadId: state.manager.threadId, text });
+    await state.api.send({ botId: state.manager.id, threadId: state.manager.threadId, text, attachments });
+    state.pendingAttachments = [];
     const page = await state.api.messages(state.manager.threadId, { limit: 50 });
     state.messages = page.messages;
     state.hasMore = page.hasMore;
@@ -1147,7 +1152,34 @@ app.addEventListener("input", (event) => {
 
 app.addEventListener("change", (event) => {
   if (event.target.id === "qr-file") scanQrFile(event.target.files?.[0]);
+  if (event.target.id === "attach-input") attachFiles([...(event.target.files ?? [])]);
 });
+
+async function attachFiles(files) {
+  if (!state.manager || typeof state.api?.uploadAttachment !== "function") {
+    showNotice("이 연결에서는 첨부를 지원하지 않습니다.");
+    return;
+  }
+  for (const file of files.slice(0, 4 - state.pendingAttachments.length)) {
+    if (file.size > 15 * 1024 * 1024) { showNotice(`${file.name}: 15MB 이하만 첨부할 수 있습니다.`); continue; }
+    showNotice(`${file.name} 올리는 중…`);
+    try {
+      const dataUrl = await new Promise((resolveRead, rejectRead) => {
+        const reader = new FileReader();
+        reader.onload = () => resolveRead(String(reader.result));
+        reader.onerror = () => rejectRead(new Error("파일을 읽지 못했습니다."));
+        reader.readAsDataURL(file);
+      });
+      const dataBase64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+      const uploaded = await state.api.uploadAttachment({ botId: state.manager.id, name: file.name, dataBase64 });
+      if (!uploaded?.attachmentId) throw new Error("업로드가 거절되었습니다.");
+      state.pendingAttachments.push({ id: uploaded.attachmentId, name: uploaded.name ?? file.name });
+      render();
+    } catch (error) {
+      showNotice(`${file.name}: ${error.message}`);
+    }
+  }
+}
 
 app.addEventListener("keydown", (event) => {
   if (event.target.id === "composer-input" && event.key === "Enter" && !event.shiftKey) {
@@ -1190,6 +1222,11 @@ app.addEventListener("click", async (event) => {
   if (action === "new-task") { state.overlay = null; state.view = "chat"; state.draft = "새 목표: "; render(); document.querySelector("#composer-input")?.focus(); }
   if (action === "show-tasks") { state.overlay = null; state.view = "home"; render(); }
   if (action === "load-earlier") await loadEarlierMessages();
+  if (action === "attach") { state.overlay = null; render(); document.querySelector("#attach-input")?.click(); }
+  if (action === "remove-attachment") {
+    state.pendingAttachments = state.pendingAttachments.filter((att) => att.id !== target.dataset.attachId);
+    render();
+  }
   if (action === "copy-code") {
     const code = target.closest(".md-code-wrap")?.querySelector(".md-code")?.textContent ?? "";
     try { await navigator.clipboard.writeText(code); showNotice("코드를 복사했습니다."); }

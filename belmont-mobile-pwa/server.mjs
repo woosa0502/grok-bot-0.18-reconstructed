@@ -19,7 +19,7 @@ const PAIR_BACKOFF_MAX_MS = 60_000;
 const ALLOWED_API_ROUTES = [
   ["GET", /^\/api\/(?:health|events)$/],
   ["GET", /^\/api\/bots$/],
-  ["POST", /^\/api\/bots\/[\w-]+\/(?:messages|always-allow)$/],
+  ["POST", /^\/api\/bots\/[\w-]+\/(?:messages|always-allow|attachments)$/],
   ["GET", /^\/api\/bots\/[\w-]+\/computer$/],
   ["POST", /^\/api\/bots\/[\w-]+\/computer\/(?:ensure|hand-back)$/],
   ["GET", /^\/api\/bots\/[\w-]+\/computer\/view\/.+$/],
@@ -147,7 +147,8 @@ export function createMobileServer({ upstream, root = ROOT, fetchImpl = fetch, n
         const session = isHealth ? null : authenticatedSession(request, sessions, now());
         if (!isHealth && !session) return json(response, 401, { error: "pair this browser again" });
         const method = request.method || "GET";
-        const body = method === "GET" || method === "HEAD" ? undefined : await readBody(request);
+        const bodyLimit = /\/attachments$/.test(requestUrl.pathname) ? 24 * 1024 * 1024 : MAX_BODY_BYTES;
+        const body = method === "GET" || method === "HEAD" ? undefined : await readBody(request, bodyLimit);
         const boundaryError = session ? managerBoundaryError(method, requestUrl.pathname, session) : null;
         if (boundaryError) return json(response, boundaryError.status, { error: boundaryError.message });
         const prepared = prepareMobileRequest({ request, method, pathname: requestUrl.pathname, searchParams: requestUrl.searchParams, body, session });
@@ -230,7 +231,7 @@ async function proxyApi({ request, response, pathname, search, upstreamOrigin, s
 }
 
 function managerBoundaryError(method, pathname, session) {
-  const botRoute = /^\/api\/bots\/([\w-]+)\/(?:messages|always-allow|computer(?:\/(?:ensure|hand-back|websockify|view\/.+))?)$/.exec(pathname);
+  const botRoute = /^\/api\/bots\/([\w-]+)\/(?:messages|always-allow|attachments|computer(?:\/(?:ensure|hand-back|websockify|view\/.+))?)$/.exec(pathname);
   const threadRoute = /^\/api\/threads\/([\w-]+)\/(messages|respond)$/.exec(pathname);
   const eventRoute = method === "GET" && pathname === "/api/events";
   if (!botRoute && !threadRoute && !eventRoute) return null;
@@ -406,15 +407,27 @@ function prepareMobileRequest({ request, method, pathname, searchParams, body, s
   const managerThreadId = session?.managerThreadIds?.values().next().value;
 
   if (/^\/api\/bots\/[\w-]+\/messages$/.test(pathname)) {
-    if (!hasOnlyKeys(payload, ["text", "threadId", "sendId"])) return invalidBody("unsupported message field");
-    if (typeof payload.text !== "string" || !payload.text.trim() || payload.text.length > 12_000) return invalidBody("invalid message text");
+    if (!hasOnlyKeys(payload, ["text", "threadId", "sendId", "attachments"])) return invalidBody("unsupported message field");
+    const attachments = payload.attachments === undefined ? [] : payload.attachments;
+    if (!Array.isArray(attachments) || attachments.length > 4 || !attachments.every(isSafeIdentifier)) return invalidBody("invalid attachments");
+    if (typeof payload.text !== "string" || (!payload.text.trim() && attachments.length === 0) || payload.text.length > 12_000) return invalidBody("invalid message text");
     if (payload.threadId !== undefined && payload.threadId !== managerThreadId) return { status: 403, error: "message thread does not belong to Belmont" };
     if (payload.sendId !== undefined && !isSafeIdentifier(payload.sendId)) return invalidBody("invalid send identifier");
     return encodedBody(query.search, {
       text: payload.text,
       threadId: managerThreadId,
+      ...(attachments.length > 0 ? { attachments } : {}),
       ...(payload.sendId ? { sendId: payload.sendId } : {})
     });
+  }
+
+  if (/^\/api\/bots\/[\w-]+\/attachments$/.test(pathname)) {
+    if (!hasOnlyKeys(payload, ["name", "dataBase64"])) return invalidBody("unsupported attachment field");
+    if (typeof payload.name !== "string" || !payload.name.trim() || payload.name.length > 180) return invalidBody("invalid attachment name");
+    if (typeof payload.dataBase64 !== "string" || payload.dataBase64.length === 0 || payload.dataBase64.length > 24_000_000 || !/^[A-Za-z0-9+/=]+$/.test(payload.dataBase64)) {
+      return invalidBody("invalid attachment data");
+    }
+    return encodedBody(query.search, { name: payload.name, dataBase64: payload.dataBase64 });
   }
 
   if (/^\/api\/bots\/[\w-]+\/always-allow$/.test(pathname)) {
@@ -631,7 +644,7 @@ function cookieValue(request, name) {
   return null;
 }
 
-function readBody(request) {
+function readBody(request, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolveBody, rejectBody) => {
     const chunks = [];
     let size = 0;
@@ -639,7 +652,7 @@ function readBody(request) {
     request.on("data", (chunk) => {
       if (rejected) return;
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         rejected = true;
         chunks.length = 0;
         const error = new Error("body too large");

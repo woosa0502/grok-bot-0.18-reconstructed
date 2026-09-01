@@ -49,14 +49,22 @@ export class CompanionApi {
     };
   }
 
-  async send({ botId, threadId, text }) {
+  async send({ botId, threadId, text, attachments = [] }) {
     return this.request(`/api/bots/${safeId(botId)}/messages`, {
       method: "POST",
       body: {
         text,
         threadId: safeId(threadId),
+        ...(attachments.length > 0 ? { attachments } : {}),
         sendId: createSendId()
       }
+    });
+  }
+
+  async uploadAttachment({ botId, name, dataBase64 }) {
+    return this.request(`/api/bots/${safeId(botId)}/attachments`, {
+      method: "POST",
+      body: { name, dataBase64 }
     });
   }
 
