@@ -9,6 +9,7 @@ import type {
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import { getSandRootDir } from "../../host-paths.js";
+import { classifyTokenLimitErrorFromMessage } from "../../../packages/chat-inference/token-limit-error-classification.js";
 import { effectiveContextWindowTokens } from "./context-window.js";
 import {
   BelmontPiCredentialStore,
@@ -204,11 +205,21 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
       ));
     } catch (error) {
       if (options.signal?.aborted) materializer.abort();
-      response.reject(error);
-      usage.reject(error);
-      extendedUsage.reject(error);
-      metadata.reject(error);
-      throw error;
+      // Classify token-limit failures into the typed errors the summarization
+      // retry loop dispatches on (SummarizationHandler.isTokenLimitError is an
+      // instanceof check). A plain Error here left "input exceeds the context
+      // window" unrecognized, so the blocking-compaction recovery never ran on
+      // the local provider and an over-long conversation simply died (A2,
+      // reproduced live 2026-09-01).
+      const classified = error instanceof Error
+        ? classifyTokenLimitErrorFromMessage(error.message)
+        : undefined;
+      const finalError = classified ?? error;
+      response.reject(finalError);
+      usage.reject(finalError);
+      extendedUsage.reject(finalError);
+      metadata.reject(finalError);
+      throw finalError;
     }
   })();
 

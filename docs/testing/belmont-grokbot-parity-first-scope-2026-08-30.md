@@ -114,7 +114,11 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 
 ### A2. 대화·컨텍스트·압축·캐시
 
-현재 상태: **부분 구현·실측 부족** — 2026-09-01 실사용에서 결함 재현: transcript가 긴 에이전트(기본 Belmont)에 메시지를 보내면 compaction이 발화하지 않은 채 "Codex error: Your input exceeds the context window"로 턴이 즉사한다 (A6-1 검증 기록 참조).
+현재 상태: **사망 결함 수정·실증 완료, 세부 검증 일부 잔여** — 2026-09-01 재현된 결함(긴 transcript 에이전트가 "input exceeds the context window"로 턴 즉사)의 부검과 수정:
+
+- **사인 두 가지**: (1) 예방 — 유효 창을 카탈로그(272k)로 믿어 0.9 문턱(~245k)이 실한도(~55–83k)보다 위 = 도달 불가. (2) 반응 — 요약 재시도 루프는 `instanceof InputTokenLimitError`로 분기하는데 로컬 Pi 런타임은 일반 Error를 던져 복구가 절대 안 탐.
+- **수정**: `effectiveContextWindowTokens`가 핀 없을 때 카탈로그를 **하향으로만** 신뢰(기본 50k, 발화 문턱 45k < 최저 관측 거부 55k; env 핀·캡은 유지) + Pi 런타임이 실패를 `classifyTokenLimitErrorFromMessage`로 typed 오류로 분류해 반응형 blocking-summarization 경로를 살림.
+- **실증**: 매 메시지 즉사하던 기본 Belmont 에이전트가 수정 빌드에서 정상 응답("2026년 9월 1일, 살아있다"), 투영 ~16k 토큰으로 한도 내, UI 오류 없음. `tests/context-overflow-recovery.test.mjs` 4건이 창 기본값·핀/캡·실제 오류 문구 분류·런타임 분류 배선을 고정.
 
 남은 작업:
 
