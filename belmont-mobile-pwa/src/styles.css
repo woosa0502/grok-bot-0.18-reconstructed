@@ -762,7 +762,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 .bubble-text { position: relative; z-index: 1; }
 .bubble p { margin: 0; }
 .bubble p + p, .bubble p + .md-list, .bubble .md-list + p,
-.bubble p + .md-code, .bubble .md-code + p,
+.bubble p + .md-code-wrap, .bubble .md-code-wrap + p,
 .bubble p + .md-table-wrap, .bubble .md-table-wrap + p { margin-top: 10px; }
 .bubble .md-heading { font-weight: 650; }
 .bubble .md-list { margin: 5px 0; padding-left: 18px; display: block; }
@@ -1236,3 +1236,23 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 .bubble .md-code::-webkit-scrollbar, .approval-code::-webkit-scrollbar { height: 4px; width: 4px; }
 .bubble .md-code::-webkit-scrollbar-thumb, .approval-code::-webkit-scrollbar-thumb { border-radius: 2px; background: rgba(119,119,119,.4); }
 .bubble .md-code, .approval-code { scrollbar-width: thin; }
+
+/* Code copy: the desktop's hover-revealed xs icon button, always visible on touch. */
+.md-code-wrap { position: relative; }
+.md-code-wrap .md-code { padding-right: 40px; }
+.code-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  place-items: center;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--secondary);
+}
+.code-copy svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.code-copy:active { background: rgba(119,119,119,.25); }

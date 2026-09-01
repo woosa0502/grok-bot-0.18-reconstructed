@@ -1190,6 +1190,11 @@ app.addEventListener("click", async (event) => {
   if (action === "new-task") { state.overlay = null; state.view = "chat"; state.draft = "새 목표: "; render(); document.querySelector("#composer-input")?.focus(); }
   if (action === "show-tasks") { state.overlay = null; state.view = "home"; render(); }
   if (action === "load-earlier") await loadEarlierMessages();
+  if (action === "copy-code") {
+    const code = target.closest(".md-code-wrap")?.querySelector(".md-code")?.textContent ?? "";
+    try { await navigator.clipboard.writeText(code); showNotice("코드를 복사했습니다."); }
+    catch { showNotice("복사하지 못했습니다."); }
+  }
   if (action === "install" && state.installPrompt) {
     state.installPrompt.prompt();
     await state.installPrompt.userChoice;
@@ -1212,6 +1217,29 @@ window.addEventListener("resize", () => {
     if (messageList) messageList.scrollTop = messageList.scrollHeight;
   }
 });
+
+// Desktop hover actions map to long-press on touch: hold a bubble to copy it.
+let bubblePressTimer = null;
+app.addEventListener("pointerdown", (event) => {
+  const bubble = event.target.closest(".bubble");
+  if (!bubble || event.target.closest("button")) return;
+  bubblePressTimer = setTimeout(async () => {
+    bubblePressTimer = null;
+    try {
+      await navigator.clipboard.writeText(bubble.textContent ?? "");
+      if (navigator.vibrate) navigator.vibrate(8);
+      showNotice("메시지를 복사했습니다.");
+    } catch { showNotice("복사하지 못했습니다."); }
+  }, 550);
+});
+for (const eventName of ["pointerup", "pointercancel", "pointermove"]) {
+  app.addEventListener(eventName, (event) => {
+    if (bubblePressTimer == null) return;
+    if (eventName === "pointermove" && event.movementX === 0 && event.movementY === 0) return;
+    clearTimeout(bubblePressTimer);
+    bubblePressTimer = null;
+  });
+}
 
 window.addEventListener("offline", () => showNotice("오프라인입니다. 앱 셸과 마지막 화면만 사용할 수 있습니다."));
 window.addEventListener("online", () => showNotice("네트워크가 다시 연결됐습니다."));

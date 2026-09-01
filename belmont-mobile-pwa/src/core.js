@@ -173,7 +173,7 @@ export function renderMarkdown(source) {
       index += 1;
       while (index < lines.length && !/^\s*```/.test(lines[index])) buffer.push(lines[index++]);
       index += 1;
-      html.push(`<pre class="md-code">${escapeHtml(buffer.join("\n"))}</pre>`);
+      html.push(`<div class="md-code-wrap"><pre class="md-code">${escapeHtml(buffer.join("\n"))}</pre><button class="code-copy" type="button" data-action="copy-code" aria-label="코드 복사"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/></svg></button></div>`);
       continue;
     }
     if (isList(line)) {
