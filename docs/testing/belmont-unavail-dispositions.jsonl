@@ -352,8 +352,6 @@
 {"caseId":"GBF-USR-000732-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림/독 배지/passkey 웹뷰는 OS·하드웨어 레벨 — 헤드리스 WSL 미관측."}
 {"caseId":"GBF-USR-000237-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
 {"caseId":"GBF-USR-000540-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"toasts","note":"특정 저장 성공/실패 이벤트 필요"}
-{"caseId":"GBF-USR-000645-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"config-level","note":"설정 파일/외부 입력 기반 테스트 — Gate A5 개별 실측 목록"}
-{"caseId":"GBF-USR-000646-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"config-level","note":"설정 파일/외부 입력 기반 테스트 — Gate A5 개별 실측 목록"}
 {"caseId":"GBF-USR-000773-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
 {"caseId":"GBF-USR-000242-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
 {"caseId":"GBF-USR-000243-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}

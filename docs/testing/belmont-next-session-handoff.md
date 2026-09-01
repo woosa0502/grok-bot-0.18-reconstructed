@@ -17,7 +17,9 @@ _작성: 2026-08-30 · 갱신: 2026-09-01 오후 (Phase A 전영역 스윕 회�
 
 **라이브 E2E 마감**: A5 기억(저장→새 에이전트 recall→의사결정 반영→tombstone→재시작 recall 전부 정답), A9 루틴(1분 발화→재시작 재발화→delete), A10 vision(이미지 텍스트/색 판독)·손상/59MB 오류 흐름, A13 kill 매트릭스(고아 0·중단 정직 종결·자식 중단 자동 통지·SIGTERM drain·상태 정합), A6-마켓플레이스 도구 정직화.
 
-**§6**: `scripts/assign-unavail-dispositions.mjs` → `belmont-unavail-dispositions.jsonl`(UNAVAIL·ENV 전수, 미분류 0). 이후 실측으로 계속 소거해 **Gate A5 구체 잔여 = 4건**(645/646 permissions.json 격리 검증 — 주의: 실제 `~/.cursor`를 건드리지 말고 `CURSOR_CONFIG_DIR`로 격리 · 462 하드리밋+GC · 653 이전기록 로드 실패 상태) + env-explained 35 + fresh profile 절차(OAuth 만료/재로그인·attachment commit 창·VNC 뷰어 clipboard/zoom·MCP 설정 UX 수정/삭제·child MCP identity). 최종 원장: PASS 556 · FIXED 21 · ISSUE 0.
+**§6**: `scripts/assign-unavail-dispositions.mjs` → `belmont-unavail-dispositions.jsonl`(UNAVAIL·ENV 전수, 미분류 0). 이후 실측으로 계속 소거해 **Gate A5 구체 잔여 = 2건**(462 하드리밋+GC · 653 이전기록 로드 실패 상태 — 조건 합성 불가) + env-explained 35 + fresh profile 절차(OAuth 만료/재로그인·attachment commit 창·VNC 뷰어 clipboard/zoom·MCP 설정 UX 수정/삭제·child MCP identity). 최종 원장: PASS 558 · FIXED 21 · ISSUE 0.
+
+**사용자 확정 사실 (2026-09-01)**: 이 기기에서 **실제 Cursor는 사용하지 않음** — 코드·경로에 남은 "Cursor"는 전부 상류(원본이 Cursor 기반) 잔재. `~/.cursor`는 이 앱만 쓰는 경로(sand-dev + permissions.json 위치). 이 확인으로 645/646 permissions.json allowlist를 enforce 모드 실측으로 마감(허용 명령 무카드 실행 + 위험 명령 승인 요구 + MCP 허용 무카드; 시험 파일은 제거함).
 
 **추가 배선·실측 (같은 날 저녁)**: 채널 연결/해제 timeline 카드 발행부 배선(+실렌더 확인), 루틴 편집기 전체 lifecycle UI 실측(생성/수정/활성/비활성/삭제 알림 7종), hooks.json 오류 검증 fail-open, SetMcpInstructions 로컬 정상 재확인, 부팅 활성 에이전트 복원, 이전기록 스크롤 페이지 로드, outline/async 패널은 오프너 자체가 없음(정직 숨김 재분류), 후속 프롬프트 제안은 비용성 백그라운드 호출이라 기본 오프 정책 확정.
 
