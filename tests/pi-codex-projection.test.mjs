@@ -41,14 +41,13 @@ function assistant(content, stopReason = "pending") {
 
 test("Pi projection preserves cross-realm Uint8Array images as base64", async () => {
   const projection = await loadProjection();
-  // Real PNG header bytes: the projection now byte-sniffs image parts (a
-  // corrupt image used to poison every later turn of its conversation), so
-  // the cross-realm fixture must look like an actual image.
-  // signature + IHDR start + IEND trailer: passes the structural sniff
-  const pngHeader = [
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 73, 72, 68, 82,
-    0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-  ];
+  // A REAL (CRC-valid) tiny PNG: the projection byte-sniffs image parts with a
+  // full chunk walk (a corrupt image used to poison every later turn of its
+  // conversation), so the cross-realm fixture must be an actual image.
+  const pngHeader = [...Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGNkYPjPwMDAxMDAwMDAAAALHwEDmIWXfgAAAABJRU5ErkJggg==",
+    "base64",
+  )];
   const foreignBytes = vm.runInNewContext(`new Uint8Array([${pngHeader.join(",")}])`);
   const messages = projection.messagesToPi([{
     role: "user",
@@ -174,4 +173,15 @@ test("routed Codex text reconciles stale deltas from the authoritative final res
   const provider = await readFile(path.join(repoRoot, "source/host/extensions/inference/provider-session.ts"), "utf8");
   assert.match(provider, /const authoritative = belmontTextFromResponse\(settled\)/);
   assert.match(provider, /options\?\.onTextDelta\?\.\("", text\)/);
+});
+
+test("a structurally-plausible but CRC-broken PNG is still rejected", async () => {
+  const projection = await loadProjection();
+  // Hand-mangled PNG: valid signature AND IEND trailer, corrupt chunk bytes —
+  // slipped a signature+trailer sniff live (the provider then killed the turn).
+  const mangled = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4nGNgYPj/n4GBgQEABQsCAX8mSK0AAAAASUVORK5CYII=";
+  assert.equal(projection.base64LooksLikeImage(mangled), false);
+  // and a REAL tiny PNG passes
+  const real = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGNkYPjPwMDAxMDAwMDAAAALHwEDmIWXfgAAAABJRU5ErkJggg==";
+  assert.equal(projection.base64LooksLikeImage(real), true);
 });

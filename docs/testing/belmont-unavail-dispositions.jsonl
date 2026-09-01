@@ -1,0 +1,715 @@
+{"caseId":"GBF-AGT-000048-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no messaging channel connected in headless test ctx; capability present, nothing to deliver to"}
+{"caseId":"GBF-AGT-000060-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-AGT-000061-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-AGT-000062-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-AGT-000110-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"behavior-delta","note":"행동 차이가 명시된 로컬 대체 계약 — 같은 목표를 다른 절차로 달성"}
+{"caseId":"GBF-AGT-000118-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000123-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-AGT-000124-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-AGT-000125-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-AGT-000135-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000142-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-AGT-000143-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-AGT-000306-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000331-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000336-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000340-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000341-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000297-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000327-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"hook-step-unwired","note":"미배선 훅 단계 — 어떤 표면도 광고하지 않으며 등록해도 무해"}
+{"caseId":"GBF-AGT-000332-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"subagent-types","note":"로컬 subagent 타입 집합 축소(executor+computerUse; browserUse는 옵트인)"}
+{"caseId":"GBF-AGT-000333-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"media-understanding","note":"오디오/비디오 이해 — 사용자 제외 지시, 프롬프트/스키마 정직화"}
+{"caseId":"GBF-AGT-000342-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"requires actually installing a plugin (changes account config + confirmation); not on-demand testable"}
+{"caseId":"GBF-AGT-000004-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no MCP server with an unreachable check endpoint available as fixture (only belmont-test, connected)"}
+{"caseId":"GBF-AGT-000007-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-AGT-000055-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000063-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000073-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000075-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000042-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no messaging channel (headless)"}
+{"caseId":"GBF-AGT-000040-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"group-chat.ts exists (buildGroupRedriveNote) but no group membership fixture in headless test ctx"}
+{"caseId":"GBF-AGT-000041-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"group post feature present (group-chat.ts) but no group ID/membership available to test"}
+{"caseId":"GBF-AGT-000126-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000127-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000128-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000129-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000130-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000132-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000133-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000134-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000137-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000139-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000167-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000113-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000114-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000122-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"notify_on_output 대신 AwaitShell.pattern 인턴 대기 — 로컬 대체 계약"}
+{"caseId":"GBF-AGT-000145-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000168-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000169-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000170-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000204-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000205-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000209-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000210-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000211-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000172-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000276-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000277-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000278-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000361-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000260-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no *.canvas.tsx file in workspace to test managed-canvas edit + TS diagnostics"}
+{"caseId":"GBF-AGT-000263-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"로컬 DDG WebSearch는 스니펫 반환 — 대형 본문 외부화 경로가 필요 없는 형태"}
+{"caseId":"GBF-AGT-000298-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"subagent-types","note":"로컬 subagent 타입 집합 축소(executor+computerUse; browserUse는 옵트인)"}
+{"caseId":"GBF-AGT-000359-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000362-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no group.json / group-member context in test env to send (pass) into"}
+{"caseId":"GBF-AGT-000369-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000286-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no messaging channel (headless)"}
+{"caseId":"GBF-AGT-000287-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no messaging channel (headless)"}
+{"caseId":"GBF-AGT-000279-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000316-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"behavior-delta","note":"행동 차이가 명시된 로컬 대체 계약 — 같은 목표를 다른 절차로 달성"}
+{"caseId":"GBF-AGT-000318-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"behavior-delta","note":"행동 차이가 명시된 로컬 대체 계약 — 같은 목표를 다른 절차로 달성"}
+{"caseId":"GBF-AGT-000408-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000412-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000418-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000400-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000404-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000407-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no group.json/automation state or group-bot creation tool in test env"}
+{"caseId":"GBF-AGT-000409-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-AGT-000410-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000413-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000417-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000430-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000312-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"누락 작업 디렉터리는 fallback-to-root 대신 명시적 오류 — fail-closed가 더 안전한 로컬 계약"}
+{"caseId":"GBF-AGT-000214-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000215-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000216-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000217-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000307-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000308-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000419-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"subagent-types","note":"로컬 subagent 타입 집합 축소(executor+computerUse; browserUse는 옵트인)"}
+{"caseId":"GBF-AGT-000420-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"subagent-types","note":"로컬 subagent 타입 집합 축소(executor+computerUse; browserUse는 옵트인)"}
+{"caseId":"GBF-AGT-000423-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000427-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000434-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000440-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no messaging channel (headless)"}
+{"caseId":"GBF-AGT-000323-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000329-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000136-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000144-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000146-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000150-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000377-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000131-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000371-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000394-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000405-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000424-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-AGT-000322-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-AGT-000079-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000080-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000246-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-AGT-000290-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000435-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"8단계 상한은 OpenRouter 실행기 전용 — 로컬 Codex 경로는 Belmont 루프가 단계를 소유(SAND_AGENT_MAX_STEPS)"}
+{"caseId":"GBF-AGT-000237-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-AGT-000356-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"local-absent","note":"로컬 모드 미노출 표면 — 광고 없음(도구/스키마에서 제거)"}
+{"caseId":"GBF-AGT-000008-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"no plugin-owned MCP server installed to test UninstallMcpServer plugin-owned path"}
+{"caseId":"GBF-AGT-000009-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-AGT-000011-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-AGT-000015-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"GATE_A5","basis":"manual","note":"SetMcpInstructions가 로컬 stdio 서버 id(이름 해시 숫자열)와 Cursor 숫자 ID 검증이 어긋나 거부 — 로컬 id 체계로 동작하도록 손볼 후보(Gate A5 확인)"}
+{"caseId":"GBF-AGT-000111-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-AGT-000112-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"behavior-delta","note":"행동 차이가 명시된 로컬 대체 계약 — 같은 목표를 다른 절차로 달성"}
+{"caseId":"GBF-AGT-000115-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"30초 초과 foreground는 abort 대신 background 승격 — 명시적 로컬 계약(ShellTimeout 별도 존재)"}
+{"caseId":"GBF-AGT-000147-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-AGT-000148-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-AGT-000232-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000242-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"only belmont-test (connected) installed; no needsAuth server to test auth-fail connect card"}
+{"caseId":"GBF-AGT-000282-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000392-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"manual","note":"meta-agent 노트 디렉터리 안내는 플래그 오프로 미노출"}
+{"caseId":"GBF-AGT-000397-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-AGT-000438-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-USR-000213-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000212-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000217-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000218-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000221-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000194-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000292-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000293-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000294-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000305-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000390-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000446-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000668-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000795-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"창/사이드바 리사이즈·호스트 줌·타이틀바·Shift+F10 컨텍스트메뉴는 네이티브 창 조작/accelerator — CDP 합성으로 발화/구동 불가."}
+{"caseId":"GBF-USR-000803-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000826-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"창/사이드바 리사이즈·호스트 줌·타이틀바·Shift+F10 컨텍스트메뉴는 네이티브 창 조작/accelerator — CDP 합성으로 발화/구동 불가."}
+{"caseId":"GBF-USR-000830-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000876-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"F11/Cmd+R/Cmd+Q = Electron 네이티브 accelerator — 실사용자엔 작동, CDP 합성키로 발화 불가."}
+{"caseId":"GBF-USR-000879-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"창/사이드바 리사이즈·호스트 줌·타이틀바·Shift+F10 컨텍스트메뉴는 네이티브 창 조작/accelerator — CDP 합성으로 발화/구동 불가."}
+{"caseId":"GBF-USR-000262-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000296-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000304-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000312-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000327-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000328-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000681-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000682-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000683-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000701-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림/트레이 대시보드 액션 — OS 레벨, 헤드리스 WSL서 관찰 불가."}
+{"caseId":"GBF-USR-000901-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000908-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"창/사이드바 리사이즈·호스트 줌·타이틀바·Shift+F10 컨텍스트메뉴는 네이티브 창 조작/accelerator — CDP 합성으로 발화/구동 불가."}
+{"caseId":"GBF-USR-000909-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000911-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"remote-box","note":"원격 box/Docker 운영 기능 — 로컬 loopback box가 유일 실행 환경"}
+{"caseId":"GBF-USR-000930-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"창/사이드바 리사이즈·호스트 줌·타이틀바·Shift+F10 컨텍스트메뉴는 네이티브 창 조작/accelerator — CDP 합성으로 발화/구동 불가."}
+{"caseId":"GBF-USR-000175-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"'#' PR 후보 listbox: 로컬에 git PR 이력/연결 없음 → 후보 0(빈 목록). 환경 제약, 렌더 결함 아님."}
+{"caseId":"GBF-USR-000525-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000526-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000611-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000621-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"manual","note":"후속 프롬프트 제안 미표출 — 표출 조건(플래그/상태) 확인 후보"}
+{"caseId":"GBF-USR-000622-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"manual","note":"621과 동일"}
+{"caseId":"GBF-USR-000181-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"manual","note":"클립보드/특정 입력 상태 필요 — 자동완성 핵심 경로는 실측 済"}
+{"caseId":"GBF-USR-000535-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000577-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-USR-000578-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"질문 위젯은 선택지형 — 자유텍스트는 일반 채팅 입력으로 대체"}
+{"caseId":"GBF-USR-000612-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000822-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000834-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000247-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000536-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000001-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000006-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"도구 결과 카드는 정적 확장 렌더 — 접기 토글 없는 로컬 렌더 계약"}
+{"caseId":"GBF-USR-000011-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"spend-guard","note":"실제 비용 초과 상태 필요"}
+{"caseId":"GBF-USR-000367-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000384-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"mode-picker","note":"로컬 빌드 모드 피커 축소"}
+{"caseId":"GBF-USR-000522-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-USR-000528-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000736-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000737-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000012-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000016-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000021-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000025-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000029-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000036-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"spend-guard","note":"실제 비용 초과 상태 필요"}
+{"caseId":"GBF-USR-000037-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"spend-guard","note":"실제 비용 초과 상태 필요"}
+{"caseId":"GBF-USR-000038-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"spend-guard","note":"실제 비용 초과 상태 필요"}
+{"caseId":"GBF-USR-000039-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"spend-guard","note":"실제 비용 초과 상태 필요"}
+{"caseId":"GBF-USR-000040-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"spend-guard","note":"실제 비용 초과 상태 필요"}
+{"caseId":"GBF-USR-000041-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"spend-guard","note":"실제 비용 초과 상태 필요"}
+{"caseId":"GBF-USR-000044-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000045-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000046-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000544-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000545-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000546-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000548-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000549-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000550-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000569-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000631-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000641-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000643-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000644-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000649-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000650-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000651-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000652-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000654-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"big-history","note":"대용량 누적 대화 상태 — Gate A5 실사용 누적에서"}
+{"caseId":"GBF-USR-000656-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000669-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000782-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000783-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000784-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000785-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000786-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000787-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000788-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000801-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"로컬 WebFetch는 직접 fetch 서비스 — Cursor 박스의 권한 프롬프트 경로 자체가 대체됨"}
+{"caseId":"GBF-USR-000802-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"로컬 WebSearch는 직접 검색 서비스 — 권한 프롬프트 경로 대체(801과 동일)"}
+{"caseId":"GBF-USR-000818-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000819-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000820-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000052-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000055-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000056-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000057-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000058-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000393-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000394-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000399-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000426-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"billing","note":"Usage/Billing — sand_usage_page 오프"}
+{"caseId":"GBF-USR-000518-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000551-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000632-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000917-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000061-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000256-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림(앱 비활성 시 에이전트 이벤트) — os-notification-manager.ts로 배선됨. 헤드리스 WSL 테스트 환경에선 OS 알림 발화/관찰 불가."}
+{"caseId":"GBF-USR-000457-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000614-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-USR-000615-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-USR-000704-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000705-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000706-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000708-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000724-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000725-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000735-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"mode-picker","note":"로컬 빌드 모드 피커 축소"}
+{"caseId":"GBF-USR-000062-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000067-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000072-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000073-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000074-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000120-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000122-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000188-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000189-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000190-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000191-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000192-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000193-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000322-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000428-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000458-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000463-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"big-history","note":"대용량 누적 대화 상태 — Gate A5 실사용 누적에서"}
+{"caseId":"GBF-USR-000555-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000556-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000557-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000558-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000560-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000561-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000571-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000572-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000573-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"web-search 승인 카드는 로컬 직접-fetch 경로에 존재하지 않는 설계(801 참조)"}
+{"caseId":"GBF-USR-000574-N01","verdict":"UNAVAIL","disposition":"WSL_EQUIVALENT","verification":"LOCAL_REPLACEMENT","basis":"manual","note":"web-search 거부 카드 — 573과 동일"}
+{"caseId":"GBF-USR-000575-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000576-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000844-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"mode-picker","note":"로컬 빌드 모드 피커 축소"}
+{"caseId":"GBF-USR-000845-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"manual","note":"clientNonce dedup은 백엔드 계층 — 게이트웨이 createAgent nonce 원장 코드로 존재, UI 유발 불가"}
+{"caseId":"GBF-USR-000850-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"remote-box","note":"원격 box/Docker 운영 기능 — 로컬 loopback box가 유일 실행 환경"}
+{"caseId":"GBF-USR-000872-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"remote-box","note":"원격 box/Docker 운영 기능 — 로컬 loopback box가 유일 실행 환경"}
+{"caseId":"GBF-USR-000874-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000887-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000076-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000077-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000078-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000079-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"manual","note":"생성 스피너는 Cursor 의존 이미지 생성 전용 — 생성 자체가 제외라 도달 불가"}
+{"caseId":"GBF-USR-000080-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000124-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000125-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000127-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000128-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000129-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000131-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000133-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000135-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000195-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000196-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000197-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000198-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000307-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000308-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000309-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000310-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000313-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000329-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000430-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000431-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000432-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000439-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000440-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000441-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000443-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000459-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000460-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000499-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000678-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000680-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000702-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000920-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000921-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000199-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000200-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"network-preview","note":"외부 네트워크 프리뷰/CSP 의존"}
+{"caseId":"GBF-USR-000469-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000471-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000619-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000620-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000751-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000752-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000753-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000754-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000755-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000757-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000404-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000405-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000406-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000407-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000408-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000409-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000410-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000411-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000412-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000413-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000414-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000477-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"network-preview","note":"외부 네트워크 프리뷰/CSP 의존"}
+{"caseId":"GBF-USR-000502-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"remote-box","note":"원격 box/Docker 운영 기능 — 로컬 loopback box가 유일 실행 환경"}
+{"caseId":"GBF-USR-000504-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000505-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"media-understanding","note":"오디오/비디오 이해 — 사용자 제외 지시, 프롬프트/스키마 정직화"}
+{"caseId":"GBF-USR-000884-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000159-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000208-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000231-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000270-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000416-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000480-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000616-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-USR-000709-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"config-level","note":"설정 파일/외부 입력 기반 테스트 — Gate A5 개별 실측 목록"}
+{"caseId":"GBF-USR-000731-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"egress","note":"egress 터널 — 클라우드 네트워크 인프라 전용"}
+{"caseId":"GBF-USR-000732-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림/독 배지/passkey 웹뷰는 OS·하드웨어 레벨 — 헤드리스 WSL 미관측."}
+{"caseId":"GBF-USR-000237-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000540-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"toasts","note":"특정 저장 성공/실패 이벤트 필요"}
+{"caseId":"GBF-USR-000645-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"config-level","note":"설정 파일/외부 입력 기반 테스트 — Gate A5 개별 실측 목록"}
+{"caseId":"GBF-USR-000646-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"config-level","note":"설정 파일/외부 입력 기반 테스트 — Gate A5 개별 실측 목록"}
+{"caseId":"GBF-USR-000762-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"manual","note":"외부 서비스 트리거 구성 필요 — 미연결 트리거는 §5 게이트로 숨김"}
+{"caseId":"GBF-USR-000773-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000242-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000243-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000542-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"toasts","note":"특정 저장 성공/실패 이벤트 필요"}
+{"caseId":"GBF-USR-000902-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"multi-model","note":"다중 provider/모델 피커 — Codex-only 결정(A12), 로컬 피커는 Pi 카탈로그로 대체"}
+{"caseId":"GBF-USR-000923-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000595-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000598-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000417-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000599-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000618-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"billing","note":"Usage/Billing — sand_usage_page 오프"}
+{"caseId":"GBF-USR-000763-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000485-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000739-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000740-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000741-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000742-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000743-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000744-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000804-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000865-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000866-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000867-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000868-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000869-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000870-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000871-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000421-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000583-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000255-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림(앱 비활성 시 에이전트 이벤트) — os-notification-manager.ts로 배선됨. 헤드리스 WSL 테스트 환경에선 OS 알림 발화/관찰 불가."}
+{"caseId":"GBF-USR-000362-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000382-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"mode-picker","note":"로컬 빌드 모드 피커 축소"}
+{"caseId":"GBF-USR-000383-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"mode-picker","note":"로컬 빌드 모드 피커 축소"}
+{"caseId":"GBF-USR-000385-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"mode-picker","note":"로컬 빌드 모드 피커 축소"}
+{"caseId":"GBF-USR-000386-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"mode-picker","note":"로컬 빌드 모드 피커 축소"}
+{"caseId":"GBF-USR-000516-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000613-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"surface-not-exposed","note":"로컬에서 미노출 표면 — 도구/스키마에 없어 광고되지 않음(§5 처리원칙 3 충족)"}
+{"caseId":"GBF-USR-000617-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"billing","note":"Usage/Billing — sand_usage_page 오프"}
+{"caseId":"GBF-USR-000710-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000711-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000712-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"egress","note":"egress 터널 — 클라우드 네트워크 인프라 전용"}
+{"caseId":"GBF-USR-000713-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"egress","note":"egress 터널 — 클라우드 네트워크 인프라 전용"}
+{"caseId":"GBF-USR-000715-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"multi-model","note":"다중 provider/모델 피커 — Codex-only 결정(A12), 로컬 피커는 Pi 카탈로그로 대체"}
+{"caseId":"GBF-USR-000717-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000721-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000722-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000723-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"remote-box","note":"원격 box/Docker 운영 기능 — 로컬 loopback box가 유일 실행 환경"}
+{"caseId":"GBF-USR-000726-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000727-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000728-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000738-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"multi-model","note":"다중 provider/모델 피커 — Codex-only 결정(A12), 로컬 피커는 Pi 카탈로그로 대체"}
+{"caseId":"GBF-USR-000750-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000759-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000760-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"multi-model","note":"다중 provider/모델 피커 — Codex-only 결정(A12), 로컬 피커는 Pi 카탈로그로 대체"}
+{"caseId":"GBF-USR-000363-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000368-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000369-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000397-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000462-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"big-history","note":"대용량 누적 대화 상태 — Gate A5 실사용 누적에서"}
+{"caseId":"GBF-USR-000517-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000610-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000625-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000627-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"network-preview","note":"외부 네트워크 프리뷰/CSP 의존"}
+{"caseId":"GBF-USR-000657-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000774-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000775-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000798-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000799-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000800-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000806-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000807-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000835-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"remote-box","note":"원격 box/Docker 운영 기능 — 로컬 loopback box가 유일 실행 환경"}
+{"caseId":"GBF-USR-000873-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000875-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000882-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000883-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000889-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000890-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000891-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000285-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000286-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000287-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000366-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000370-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000371-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000396-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000398-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000400-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000401-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000402-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000403-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000435-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000437-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000438-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000487-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000512-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000626-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000686-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000687-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000697-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000896-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000898-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000912-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000929-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000452-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000453-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000597-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000746-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"network-preview","note":"외부 네트워크 프리뷰/CSP 의존"}
+{"caseId":"GBF-USR-000756-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"network-preview","note":"외부 네트워크 프리뷰/CSP 의존"}
+{"caseId":"GBF-USR-000758-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000259-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림(앱 비활성 시 에이전트 이벤트) — os-notification-manager.ts로 배선됨. 헤드리스 WSL 테스트 환경에선 OS 알림 발화/관찰 불가."}
+{"caseId":"GBF-USR-000260-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림(앱 비활성 시 에이전트 이벤트) — os-notification-manager.ts로 배선됨. 헤드리스 WSL 테스트 환경에선 OS 알림 발화/관찰 불가."}
+{"caseId":"GBF-USR-000261-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림(앱 비활성 시 에이전트 이벤트) — os-notification-manager.ts로 배선됨. 헤드리스 WSL 테스트 환경에선 OS 알림 발화/관찰 불가."}
+{"caseId":"GBF-USR-000454-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000511-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"network-preview","note":"외부 네트워크 프리뷰/CSP 의존"}
+{"caseId":"GBF-USR-000563-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000628-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"network-preview","note":"외부 네트워크 프리뷰/CSP 의존"}
+{"caseId":"GBF-USR-000764-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000765-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000766-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000767-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000768-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000769-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000770-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000771-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000827-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"network-preview","note":"외부 네트워크 프리뷰/CSP 의존"}
+{"caseId":"GBF-USR-000828-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000831-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000855-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림/독 배지/passkey 웹뷰는 OS·하드웨어 레벨 — 헤드리스 WSL 미관측."}
+{"caseId":"GBF-USR-000860-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000862-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림/독 배지/passkey 웹뷰는 OS·하드웨어 레벨 — 헤드리스 WSL 미관측."}
+{"caseId":"GBF-USR-000888-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000455-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000456-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000893-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000913-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"connectors","note":"미연결 외부 trigger — isPlatformConnected 게이트로 연결된 것만 활성"}
+{"caseId":"GBF-USR-000136-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000137-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000138-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000139-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000140-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000141-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000142-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000143-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000144-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000145-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000146-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000147-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000932-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cursor-ide","note":"Cursor IDE 통합 컨텍스트 — standalone 앱에 IDE 없음"}
+{"caseId":"GBF-USR-000007-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000373-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000374-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000377-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"multi-model","note":"다중 provider/모델 피커 — Codex-only 결정(A12), 로컬 피커는 Pi 카탈로그로 대체"}
+{"caseId":"GBF-USR-000378-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"multi-model","note":"다중 provider/모델 피커 — Codex-only 결정(A12), 로컬 피커는 Pi 카탈로그로 대체"}
+{"caseId":"GBF-USR-000510-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000714-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"config-level","note":"설정 파일/외부 입력 기반 테스트 — Gate A5 개별 실측 목록"}
+{"caseId":"GBF-USR-000730-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"killswitch","note":"백엔드 킬스위치 — 백엔드 전용 운영 기능"}
+{"caseId":"GBF-USR-000745-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000013-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000018-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000020-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000026-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000031-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000032-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000033-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000042-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000043-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000063-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000070-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000228-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000265-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"remote-box","note":"원격 box/Docker 운영 기능 — 로컬 loopback box가 유일 실행 환경"}
+{"caseId":"GBF-USR-000283-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000297-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000298-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000306-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000317-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000320-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000365-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000376-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000381-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"multi-model","note":"다중 provider/모델 피커 — Codex-only 결정(A12), 로컬 피커는 Pi 카탈로그로 대체"}
+{"caseId":"GBF-USR-000391-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000420-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000429-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"timeline-notices","note":"특정 백그라운드 작업 상태의 UI 표출 — Gate A5"}
+{"caseId":"GBF-USR-000472-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"remote-box","note":"원격 box/Docker 운영 기능 — 로컬 loopback box가 유일 실행 환경"}
+{"caseId":"GBF-USR-000481-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000482-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000483-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000484-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000486-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000498-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000527-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000541-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"toasts","note":"특정 저장 성공/실패 이벤트 필요"}
+{"caseId":"GBF-USR-000552-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000562-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000564-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000568-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000570-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000594-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000634-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000635-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000636-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000637-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000642-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000653-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"big-history","note":"대용량 누적 대화 상태 — Gate A5 실사용 누적에서"}
+{"caseId":"GBF-USR-000661-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000666-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000667-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000671-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000776-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000777-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000810-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000813-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000814-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000815-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000821-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000823-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000824-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"manual","note":"181과 동일"}
+{"caseId":"GBF-USR-000825-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"media-understanding","note":"오디오/비디오 이해 — 사용자 제외 지시, 프롬프트/스키마 정직화"}
+{"caseId":"GBF-USR-000836-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"killswitch","note":"백엔드 킬스위치 — 백엔드 전용 운영 기능"}
+{"caseId":"GBF-USR-000847-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000848-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000849-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000858-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"killswitch","note":"백엔드 킬스위치 — 백엔드 전용 운영 기능"}
+{"caseId":"GBF-USR-000859-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000861-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"killswitch","note":"백엔드 킬스위치 — 백엔드 전용 운영 기능"}
+{"caseId":"GBF-USR-000863-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000892-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000050-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000051-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"special-content","note":"특정 콘텐츠/애니메이션 상태 필요"}
+{"caseId":"GBF-USR-000059-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000132-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000134-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000232-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000271-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000295-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000311-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000314-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000395-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000422-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000434-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000479-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000500-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000501-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000590-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000591-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000592-N01","verdict":"ENV","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"webauthn","note":"팀 WebAuthn 정책 — §5 제외 (설정 토글 잔존은 UI_ONLY 각주)"}
+{"caseId":"GBF-USR-000638-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000676-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000677-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000694-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000695-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000696-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000700-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림/트레이 대시보드 액션 — OS 레벨, 헤드리스 WSL서 관찰 불가."}
+{"caseId":"GBF-USR-000897-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000899-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000907-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000910-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000922-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"untriggerable-misc","note":"유발/관측 불가 조건 — 코드 경로 존재, 조건 합성 불가"}
+{"caseId":"GBF-USR-000003-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000372-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000461-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"big-history","note":"대용량 누적 대화 상태 — Gate A5 실사용 누적에서"}
+{"caseId":"GBF-USR-000707-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000729-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000749-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"Cmd+0 줌 리셋은 Electron 네이티브 accelerator — CDP 합성키 미발화(cf 줌)."}
+{"caseId":"GBF-USR-000027-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000034-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000066-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000069-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000121-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000123-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000235-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000236-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000238-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000323-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000375-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000379-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"multi-model","note":"다중 provider/모델 피커 — Codex-only 결정(A12), 로컬 피커는 Pi 카탈로그로 대체"}
+{"caseId":"GBF-USR-000387-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000388-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000389-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000392-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000418-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000419-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"backend-validation","note":"검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재"}
+{"caseId":"GBF-USR-000530-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000559-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000623-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000624-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000633-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000655-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000670-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000829-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"ipc-states","note":"렌더러↔host IPC/합성 제스처를 CDP 하네스가 만들 수 없음"}
+{"caseId":"GBF-USR-000838-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000839-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000840-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000841-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000842-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000843-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"team-share","note":"팀/공유/조직 기능 — 개인 로컬 제품에서 제외(§5)"}
+{"caseId":"GBF-USR-000856-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"OS 알림/독 배지/passkey 웹뷰는 OS·하드웨어 레벨 — 헤드리스 WSL 미관측."}
+{"caseId":"GBF-USR-000877-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"F11/Cmd+R/Cmd+Q = Electron 네이티브 accelerator — 실사용자엔 작동, CDP 합성키로 발화 불가."}
+{"caseId":"GBF-USR-000126-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000130-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000239-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000240-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000241-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"updater","note":"자동 업데이트 — reconstructed-updater-guard + 게이트 오프"}
+{"caseId":"GBF-USR-000324-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000325-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000326-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-USR-000553-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000554-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000662-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"state-needed","note":"특정 상태/타이밍 조건 필요 — 정상 환경에서 합성 유발 불가"}
+{"caseId":"GBF-USR-000679-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"teach","note":"Teach-by-demonstration — 게이트 핀 오프"}
+{"caseId":"GBF-USR-000703-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"image-gen","note":"이미지 생성/AI 아바타 — 프롬프트 honest denial + 아바타 로컬 즉시-실패 가드"}
+{"caseId":"GBF-USR-000918-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"error-states","note":"정상 환경에서 오류 조건을 합성 유발할 수 없음 — 코드 경로는 존재"}
+{"caseId":"GBF-USR-000919-N01","verdict":"UNAVAIL","disposition":"EXACT_RESTORATION","verification":"UNTRIGGERABLE_LOCALLY","basis":"busy-states","note":"특정 in-flight/큐 상태 필요 — 안정 실행에서 유발 불가"}
+{"caseId":"GBF-USR-000878-N01","verdict":"ENV","disposition":"EXACT_RESTORATION","verification":"GATE_A5","basis":"env-explained","note":"F11/Cmd+R/Cmd+Q = Electron 네이티브 accelerator — 실사용자엔 작동, CDP 합성키로 발화 불가."}
+{"caseId":"GBF-GAT-000013-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000021-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000022-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000025-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000027-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000032-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000007-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000020-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000008-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000009-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000010-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000011-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000012-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000018-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000019-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000026-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000028-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000033-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000034-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000035-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000036-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000006-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000037-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000038-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000039-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000042-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000045-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000046-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}
+{"caseId":"GBF-GAT-000001-N01","verdict":"UNAVAIL","disposition":"EXCLUDED_AND_HIDDEN","verification":"HIDDEN_VERIFIED","basis":"cloud-agent","note":"Cursor Cloud Agent 계열 — CloudAgent 도구 미제공 + 프롬프트 다이어트로 숨김 검증"}

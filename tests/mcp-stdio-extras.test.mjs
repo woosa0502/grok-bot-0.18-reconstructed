@@ -91,3 +91,34 @@ test("shell state snapshots aliases, options and (bash) functions", () => {
   assert.match(shellState, /alias 2>\/dev\/null \| sed/);
   assert.match(shellState, /typeset -f > /);
 });
+
+test("a crashed stdio server is respawned on the next tool call (A7)", async () => {
+  // Live 2026-09-01: `crash` then `echo` answered "failed to start: server
+  // process exited" forever — the daemon kept the dead client until the next
+  // config reload. callMcpTool must attempt one respawn per call.
+  const server = read("source/box-exec-daemon/server.ts");
+  const call = server.slice(server.indexOf("async callMcpTool("), server.indexOf("async callMcpTool(") + 4_000);
+  assert.match(call, /const respawned = new McpStdioClient\(JSON\.parse\(entry\.configKey\)/);
+  assert.match(call, /await respawned\.start\(\);/);
+  assert.match(call, /this\.#mcpServers\.set\(serverName, entry\);/);
+  // and the failed-respawn path still reports the start error
+  assert.match(call, /failed to start: \$\{respawned\.startError \?\? client\.startError\}/);
+  // behavioral leg: the client itself marks startError on process exit, and a
+  // fresh client from the same config starts clean.
+  const { McpStdioClient } = await loadStdioClient();
+  const fixture = path.join(repoRoot, "tests/fixtures/mcp-crash-server.mjs");
+  const config = { command: process.execPath, args: [fixture] };
+  const first = new McpStdioClient(config);
+  await first.start();
+  assert.equal(first.startError, undefined);
+  // crash it (fire-and-forget call; the process exits mid-call)
+  await first.callTool("crash", {}).catch(() => {});
+  await waitFor(() => first.startError !== undefined);
+  assert.match(String(first.startError), /exited/);
+  const second = new McpStdioClient(config);
+  await second.start();
+  assert.equal(second.startError, undefined);
+  const echoed = await second.callTool("echo", { text: "back" });
+  assert.match(JSON.stringify(echoed), /back/);
+  second.stop();
+});

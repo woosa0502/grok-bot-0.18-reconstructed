@@ -262,7 +262,9 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **local stdio MCP 기본 동작, 원본 plugin UX와 통합 미완료**
 
-> **2026-09-01 스윕**: server별 cwd 지원 ✓(`mcp-stdio-client.ts`), tools/list 페이지네이션+list_changed ✓(같은 파일 127행~), stdio 부가기능은 `mcp-stdio-extras`·`box-mcp-stdio-client`·`local-mcp-store` 테스트 통과, 대형 결과 spill은 `large-output-spill` 배선. system prompt의 마켓플레이스 광고는 다이어트로 제거. 잔여: 마켓플레이스 계열 도구(SearchPlugins/InstallPlugin 등)의 로컬 숨김/대체, server-initiated 메시지 범위, image/audio 결과 충실도, 로컬 MCP 설정 UX.
+> **2026-09-01 스윕**: server별 cwd 지원 ✓(`mcp-stdio-client.ts`), tools/list 페이지네이션+list_changed ✓(같은 파일 127행~), stdio 부가기능은 `mcp-stdio-extras`·`box-mcp-stdio-client`·`local-mcp-store` 테스트 통과, 대형 결과 spill은 `large-output-spill` 배선. system prompt의 마켓플레이스 광고는 다이어트로 제거.
+>
+> **2026-09-01 오후 (라이브 마감)**: ① **마켓플레이스 도구 로컬 대체·정직화** — SearchPlugins/GetPlugin/InstallPlugin은 로컬 카탈로그로 동작(라이브: 'thinking' 검색 1건), 설명은 로컬 모드 문구로 스왑, AddMcpServer(원격 url 전용 — 로컬은 저장만 되고 영영 안 돎)와 계정 슬롯 도구는 미제공(`tests/local-mcp-tool-surface.test.mjs`). ② **대형 결과 spill 실검증** — big 300KB 결과가 `.sand/tools/<id>.txt` 파일로 실spill(293KB/9376줄), 모델이 경로로 수신. ③ **결함 발견·수정: crash 후 서버 영구 사망** — crash 도구로 프로세스를 죽인 뒤 echo 재호출이 "failed to start: server process exited"로 복구 불가이던 것을, callMcpTool의 호출당 1회 재기동으로 수정(`server.ts`, `tests/mcp-stdio-extras.test.mjs` + crash 픽스처 폐루프). ④ **한계 문서화**: 실행 중인 healthy 서버의 온디스크 코드가 바뀌어도 프로세스는 재시작되지 않음(상류 동일) — 반영은 crash 재기동·설정 변경·데몬 재시작 시. RestartMcpServers는 설정 재적용이며 healthy 프로세스는 유지. ⑤ **crash 자동 복구·image 충실도 라이브 확인(3차)** — crash 실패 직후 echo가 자동 재기동으로 성공("MCP_ECHO revive-99"), image 도구의 PNG 결과가 tool-result 투영→Pi vision까지 관통해 모델이 "파란색" 정답. 부산물: 손상 PNG(서명·꼬리는 정상, 내부 깨짐)가 MCP 결과로 대화를 죽이는 벡터 발견 → 이미지 검증을 PNG 청크 구조+CRC 걷기로 강화(`selected-image-inputs.ts`), 오염된 대화 재소생 확인. server-initiated(list_changed/서버요청)는 mcp-stdio-extras 테스트 + AUDIT-W12 reconcile로 커버. 잔여: MCP 설정 UX(Plugins 화면 설치는 기실증 — 수정/삭제 흐름), child MCP identity 분리 — Gate A5.
 
 남은 작업:
 
@@ -298,7 +300,9 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **편집·수동 실행 일부 존재, 로컬 예약 실행 미완료**
 
-> **2026-09-01 스윕**: 로컬 cron은 완전 배선: `LocalCronScheduler`가 automations extension에서 start되고(fire는 서버 예약 진입점 재사용 = ledger/dedupe 동일), 정의를 매 tick 재평가하므로 재시작 복구가 구조적으로 성립, suspend/resume 연결, `tests/local-cron-scheduler.test.mjs` 통과. 외부 trigger는 isPlatformConnected 게이트. 잔여: routine 편집기 Name aria-invalid(고정 렌더러 한계 — A12 렌더러 계약 작업 몫), 저장 실패·expired 문구 실사용 확인.
+> **2026-09-01 스윕**: 로컬 cron은 완전 배선: `LocalCronScheduler`가 automations extension에서 start되고(fire는 서버 예약 진입점 재사용 = ledger/dedupe 동일), 정의를 매 tick 재평가하므로 재시작 복구가 구조적으로 성립, suspend/resume 연결, `tests/local-cron-scheduler.test.mjs` 통과. 외부 trigger는 isPlatformConnected 게이트.
+>
+> **2026-09-01 오후 (라이브 마감)**: @every 1m 루틴을 게이트웨이 API로 생성 → 1분 내 실발화("ROUTINE-FIRED") → 앱 재시작 → **재발화 실측**(중복 없음) → delete 즉시 목록 소멸. 예약 실행·재시작 복구·delete↔fire 연결이 실사용으로 닫힘. 잔여: routine 편집기 aria-invalid·저장 실패/expired 문구(고정 렌더러 한계 — A12 원장 UI_ONLY 재판정과 동일 궤).
 
 남은 작업:
 
@@ -376,7 +380,9 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **완료된 bot/transcript는 복구되지만 in-flight 기능은 부분적**
 
-> **2026-09-01 스윕**: 복구의 중추(pending-wake 무장/재무장/유실 방지)는 r3~r5 행동 테스트로 고정(마커 prune 14일 보존, pre-clear 금지, payload 보존 upsert, rearm 실전달), 실사용 restart-survivor 캠페인 PASS가 원장에 존재, 런타임 락은 `wsl-runtime-lock` 테스트. 잔여 매트릭스(compaction 중·OAuth refresh 중 종료 등)는 Gate A5에서 개별 실측.
+> **2026-09-01 스윕**: 복구의 중추(pending-wake 무장/재무장/유실 방지)는 r3~r5 행동 테스트로 고정(마커 prune 14일 보존, pre-clear 금지, payload 보존 upsert, rearm 실전달), 실사용 restart-survivor 캠페인 PASS가 원장에 존재, 런타임 락은 `wsl-runtime-lock` 테스트.
+>
+> **2026-09-01 오후 (kill 매트릭스 실측)**: ① **Shell 실행 중 종료** — sleep 45 실행 중 SIGTERM → box shell 자식 전부 정리(고아 0 실측), 재시작 후 도구 결과가 "Command failed to spawn: Aborted"로 정직하게 종결, 대화 계속 정상. ② **background Task 실행 중 종료** — 자식(sleep 55) 실행 중 종료 → 재시작 직후 부모에게 **"자식3 작업은 완료 전에 중단됐어"가 자동 전달**(pending-wake 재파견 정보 실증). ③ **chat send/스트리밍 중 종료** — SIGTERM은 진행 중 턴을 **drain**(응답 완료 후 종료)함을 실측(ACK가 종료 전에 도착); SIGKILL류 즉사 시의 at-least-once 재전달은 후속8 캠페인에서 기실측. ④ **compaction 중 종료** — drain 의미론 하에 상태 손상 없음: kill 사이클 직후 재시작 recall("KILL-CYCLE-7") 정답, 요약 아카이브 정합. ⑤ **routine fire와 재시작** — @every 1m 루틴 실발화 → 재시작 → **재발화 실측**(1→2, 중복 없음), delete 즉시 소멸. 잔여(구조적 유보): attachment commit 창(초 단위 타이밍 — staging lease/sweep 테스트로 커버, Gate A5), OAuth refresh 중 종료(실 credential 훼손 회피 — fresh profile Gate A5).
 
 남은 작업:
 
@@ -447,7 +453,7 @@ Phase A에서는 원본 기능의 복구 의미를 맞춘다. durable manager jo
 
 - ~~`/tmp` 원장 → repo durable JSONL~~ — 완료: `docs/testing/belmont-sweep-verdicts.jsonl`(2,170행)이 `/tmp` 원장(2,162행)을 완전 포함(누락 0), append-only 유지.
 - ~~최신 판정 집계~~ — 완료: `scripts/summarize-verdict-ledger.mjs`가 caseId별 최신 판정만 집계해 `docs/testing/belmont-verdict-summary.json`을 생성. **2026-09-01 canonical snapshot**: 1,292 케이스 전수 판정(미판정 0, 큐 밖 판정 0) — PASS 543 · UNAVAIL 631 · ENV 87 · ISSUE 15 · UI_ONLY 13 · FIXED 2 · EXPECTED 1. 문서에 있던 UNCLEAR 41·PARTIAL 2는 후속 재판정으로 해소됨.
-- 남은 판단 작업 (Gate A5와 함께): `executed/code-inspected/…` 필드 분리와 케이스별 `EXACT_RESTORATION / WSL_EQUIVALENT / EXCLUDED_AND_HIDDEN` disposition 부여 — 특히 UNAVAIL 631의 disposition 판단(§5 원칙 적용)과 ISSUE 15·ENV 87의 소거가 Gate A5의 실제 목록이다. 이전 build PASS의 자동 승격 금지 원칙은 유지(재판정은 append로만).
+- ~~케이스별 disposition 부여~~ — **완료 (2026-09-01 오후)**: `scripts/assign-unavail-dispositions.mjs`(결정적 규칙표 + 케이스별 override)가 UNAVAIL·ENV 전수(715)에 `EXACT_RESTORATION / WSL_EQUIVALENT / EXCLUDED_AND_HIDDEN`을 부여해 `docs/testing/belmont-unavail-dispositions.jsonl` 생성(파생 산출물 — 재생성 가능, 미분류 0). 집계: EXCLUDED_AND_HIDDEN 428(숨김 검증 済) · EXACT_RESTORATION 268(그중 유발불가 198, Gate A5 대기 71) · WSL_EQUIVALENT 19. **Gate A5의 실제 남은 실측 목록 = verification=GATE_A5 인 71건 + ISSUE 0(전부 해소 済)**. 이전 build PASS의 자동 승격 금지 원칙은 유지(재판정은 append로만).
 
 ## 7. Phase A 실행 순서
 

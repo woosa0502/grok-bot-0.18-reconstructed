@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { crc32 } from "node:zlib";
 import { imageMimeFromPath } from "../shared/media/image-mime.js";
 export interface SelectedImageInput { data: Uint8Array<ArrayBuffer>; path: string; mimeType: string | undefined }
 
@@ -24,10 +25,26 @@ export function sniffsAsImage(data: Uint8Array): boolean {
     }
     return false;
   };
-  // PNG: signature AND the IEND chunk trailer — a truncated PNG keeps a valid
-  // header, which is exactly what slipped through a signature-only sniff.
+  // PNG: walk the chunk structure (length + type + data + CRC32) to a terminal
+  // IEND. A signature+trailer check was not enough — a hand-mangled PNG kept
+  // both yet the provider rejected it (and one bad image part kills the whole
+  // request). Chunk bounds + CRCs catch truncation and byte corruption without
+  // decoding pixel data.
   if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
-    return n >= 20 && tailHas([0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82], 48);
+    if (n < 8 + 12) return false;
+    let offset = 8;
+    let sawEnd = false;
+    while (offset + 12 <= n) {
+      const length = ((data[offset]! << 24) | (data[offset + 1]! << 16) | (data[offset + 2]! << 8) | data[offset + 3]!) >>> 0;
+      if (offset + 12 + length > n) return false;
+      const type = String.fromCharCode(data[offset + 4]!, data[offset + 5]!, data[offset + 6]!, data[offset + 7]!);
+      const declaredCrc = ((data[offset + 8 + length]! << 24) | (data[offset + 9 + length]! << 16) | (data[offset + 10 + length]! << 8) | data[offset + 11 + length]!) >>> 0;
+      const actualCrc = crc32(data.subarray(offset + 4, offset + 8 + length)) >>> 0;
+      if (declaredCrc !== actualCrc) return false;
+      offset += 12 + length;
+      if (type === "IEND") { sawEnd = true; break; }
+    }
+    return sawEnd;
   }
   // JPEG: SOI..EOI
   if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {

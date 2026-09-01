@@ -36,7 +36,7 @@ import {
   McpInstructions,
   McpToolDefinition,
 } from "../packages/proto/generated/agent/v1/mcp_pb.js";
-import { McpStdioClient, parseMcpStdioConfig } from "./mcp-stdio-client.js";
+import { McpStdioClient, parseMcpStdioConfig, type McpStdioServerConfig } from "./mcp-stdio-client.js";
 import {
   ExecClientControlMessage,
   ExecClientMessage,
@@ -409,13 +409,27 @@ export class BoxExecRuntime {
 
   async callMcpTool(args: McpArgs, signal?: AbortSignal): Promise<McpResult> {
     const serverName = args.serverIdentifier.length > 0 ? args.serverIdentifier : args.providerIdentifier;
-    const entry = this.#mcpServers.get(serverName);
+    let entry = this.#mcpServers.get(serverName);
     if (entry === undefined) {
       return new McpResult({ result: { case: "serverNotFound", value: new McpServerNotFound({ name: serverName, availableServers: [...this.#mcpServers.keys()] }) } });
     }
-    const client = entry.client;
+    let client = entry.client;
     if (client.startError !== undefined) {
-      return new McpResult({ result: { case: "error", value: new McpError({ error: `MCP server '${serverName}' failed to start: ${client.startError}` }) } });
+      // A crashed stdio server used to stay dead until the next config reload
+      // (A7, live 2026-09-01: `crash` then `echo` returned "failed to start:
+      // server process exited" with no recovery). One respawn attempt per call:
+      // a healthy-again server recovers transparently; a crash-looping one
+      // just fails each call with its startError, which is self-describing.
+      const respawned = new McpStdioClient(JSON.parse(entry.configKey) as McpStdioServerConfig);
+      try {
+        await respawned.start();
+        entry = { client: respawned, configKey: entry.configKey };
+        this.#mcpServers.set(serverName, entry);
+        client = respawned;
+        console.error(`[box-mcp] respawned crashed MCP server '${serverName}'`);
+      } catch {
+        return new McpResult({ result: { case: "error", value: new McpError({ error: `MCP server '${serverName}' failed to start: ${respawned.startError ?? client.startError}` }) } });
+      }
     }
     const toolName = args.toolName.length > 0 ? args.toolName : args.name;
     if (!client.tools.some(tool => tool.name === toolName)) {
