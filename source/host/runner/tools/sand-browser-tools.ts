@@ -443,10 +443,12 @@ async function captureBrowserReviewState(args: {
       workingDirectory: "/workspace",
       toolCallId: `${args.toolCallId}:auto-review-state`,
     }));
-  } catch {
-    throw new SandBrowserAutoReviewBlockedError("Browser Auto-review could not capture the current page state.");
+  } catch (error) {
+    // Surface the underlying failure: an opaque capture error hid a resource
+    // wiring bug for a full session (live 2026-09-02).
+    throw new SandBrowserAutoReviewBlockedError(`Browser Auto-review could not capture the current page state (probe execution failed: ${error instanceof Error ? error.message : String(error)}).`);
   }
-  if (result?.result?.case !== "success") throw new SandBrowserAutoReviewBlockedError("Browser Auto-review could not capture the current page state.");
+  if (result?.result?.case !== "success") throw new SandBrowserAutoReviewBlockedError(`Browser Auto-review could not capture the current page state (probe result: ${JSON.stringify(result?.result ?? null).slice(0, 300)}).`);
   if (result.result.value.exitCode !== 0) return { displayStateIdentity: "chrome-unreachable" };
   const stdout = result.result.value.stdout ?? "";
   const markerIndex = stdout.indexOf(BROWSER_REVIEW_STATE_MARKER);

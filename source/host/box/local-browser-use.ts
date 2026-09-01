@@ -21,6 +21,7 @@ import {
   type HostShellExecutor,
 } from "../runner/host-computer-tool-dependencies.js";
 import { SAND_BROWSER_DRIVER_BOX_DIR } from "../runner/tools/sand-browser-driver-source.js";
+import { shellExecutorResource } from "../../packages/agent-exec/shell.js";
 import {
   ShellResult,
   ShellSuccess,
@@ -196,7 +197,7 @@ const LOCAL_BROWSER_DRIVER_MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
  * argument is base64 JSON of already-validated tool args, executed argv-style
  * with no shell interpretation.
  */
-function localBrowserShellExecutor(
+export function localBrowserShellExecutor(
   audit?: (command: string) => void,
 ): HostShellExecutor {
   return {
@@ -205,12 +206,14 @@ function localBrowserShellExecutor(
       // timestamp is what keeps the idle reaper from closing a browser in use.
       noteLocalBrowserUse();
       audit?.(args.command);
-      const tokens = args.command.split(/\s+/u).filter((token) => token.length > 0);
-      if (tokens.length === 0) {
+      if (args.command.trim().length === 0) {
         throw new TypeError("browser driver shell command is empty");
       }
+      // The driver and the auto-review probe both emit compound shell commands
+      // (&&, subshells, redirects); naive tokenization broke them, so run
+      // through a real shell.
       return await new Promise<ShellResult>((resolve) => {
-        execFile(tokens[0]!, tokens.slice(1), {
+        execFile("/bin/sh", ["-c", args.command], {
           cwd: SAND_BROWSER_DRIVER_BOX_DIR,
           env: { ...process.env, DISPLAY: `:${localComputerDisplayNumber()}` },
           timeout: LOCAL_BROWSER_DRIVER_TIMEOUT_MS,
@@ -281,14 +284,25 @@ export function createLocalBrowserDriverDependencies(input: {
   readonly autoReview?: Parameters<typeof createHostBrowserDriverDependencies>[0]["autoReview"];
 }): ReturnType<typeof createHostBrowserDriverDependencies> {
   const approvalGate = localBrowserApprovalGateFor(input.agentId);
+  const browserShell = localBrowserShellExecutor(input.auditShellCommand);
+  // Live 2026-09-02: the auto-review capture resolves shellExecutorResource
+  // straight from this accessor; on the local runner that is the local-tool
+  // permission shell, whose describer rejects the compound probe command and
+  // killed every browser op with an opaque capture error. Overlay the
+  // browser's own direct executor for this toolset only.
+  const browserResourceAccessor = {
+    get: (resource: unknown) => resource === (shellExecutorResource as unknown)
+      ? browserShell
+      : input.resourceAccessor.get(resource),
+  };
   return createHostBrowserDriverDependencies({
-    resourceAccessor: input.resourceAccessor,
+    resourceAccessor: browserResourceAccessor,
     box: localBrowserDriverBox(),
     getBoxId: () => input.agentId,
     getDefaultViewId: () => input.agentId,
     getLocalWindowIndex: () => localBrowserWindowIndex(),
     ...(approvalGate === undefined ? {} : { sensitiveApprovalGate: approvalGate }),
     ...(input.autoReview === undefined ? {} : { autoReview: input.autoReview }),
-    executeShell: localBrowserShellExecutor(input.auditShellCommand),
+    executeShell: browserShell,
   });
 }

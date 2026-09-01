@@ -2,7 +2,8 @@ import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
-import { LOCAL_BROWSER_USE_ENABLED, localBrowserWindowIndex, registerLocalBrowserApprovalGate } from "./box/local-browser-use.js";
+import { LOCAL_BROWSER_USE_ENABLED, localBrowserShellExecutor, localBrowserWindowIndex, registerLocalBrowserApprovalGate } from "./box/local-browser-use.js";
+import { shellExecutorResource } from "../packages/agent-exec/shell.js";
 import { createSandMcpTextSpiller, isLargeOutputSpillEnabled } from "./runner/large-output-spill.js";
 import { createLocalPdfTextExtractor } from "./runner/local-pdf-text-extractor.js";
 
@@ -1094,8 +1095,28 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               // plumbing exists independently of the review toggle.
               ...(LOCAL_BROWSER_USE_ENABLED
                 ? {
-                  createBrowserDriverDependencies: () => createHostBrowserDriverDependencies({
-                    resourceAccessor: input.resourceAccessor,
+                  createBrowserDriverDependencies: () => {
+                    const browserShell = localBrowserShellExecutor(command => {
+                      method(actionAuditor as DynamicApi, "record")?.({
+                        agentId: session.id,
+                        occurredAtMs: Date.now(),
+                        action: { kind: "shellCommand", command, shellKind: "foreground", target: "box" },
+                      });
+                    });
+                    // Live 2026-09-02: the driver AND the auto-review capture
+                    // both resolve shellExecutorResource from this accessor. On
+                    // the local runner that resource is the local-tool
+                    // permission shell, whose describer rejects compound probe
+                    // commands — every browser op died with an opaque capture
+                    // error. Overlay the browser's own direct executor for
+                    // this toolset only.
+                    const browserResourceAccessor = {
+                      get: (resource: unknown) => resource === (shellExecutorResource as unknown)
+                        ? browserShell
+                        : (input.resourceAccessor as { get(resource: unknown): unknown }).get(resource),
+                    } as typeof input.resourceAccessor;
+                    return createHostBrowserDriverDependencies({
+                    resourceAccessor: browserResourceAccessor,
                     box: remoteBox as unknown as HostBrowserBoxOwner<unknown>,
                     getBoxId: () => session.id,
                     getDefaultViewId: () => session.id,
@@ -1108,18 +1129,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                             autoReviewController.requestApproval({ agentId: session.id, ...approvalRequest }),
                         },
                       }),
-                    executeShell: createHostShellExecutor({
-                      resourceAccessor: input.resourceAccessor,
-                      assertNoPendingApproval: () => {},
-                      auditShellCommand: command => {
-                        method(actionAuditor as DynamicApi, "record")?.({
-                          agentId: session.id,
-                          occurredAtMs: Date.now(),
-                          action: { kind: "shellCommand", command, shellKind: "foreground", target: "box" },
-                        });
-                      },
-                    }),
-                  }),
+                    executeShell: browserShell,
+                  });
+                  },
                 }
                 : {}),
             })
