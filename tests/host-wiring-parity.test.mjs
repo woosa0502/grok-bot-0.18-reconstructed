@@ -105,3 +105,16 @@ test("agent-lifecycle hooks route to the box daemon's workspace (A8)", () => {
   assert.match(daemon, /case "preCompact": \{/);
   assert.match(daemon, /new PreCompactRequestResponse\(\)/);
 });
+
+test("channel connect/disconnect emit their timeline events (A9/A12)", () => {
+  // The renderer ships channel-connected / channel-disconnected timeline
+  // cards, but no host code ever emitted those events (only automation-changed
+  // had an emitter) — live 2026-09-01 the cards rendered only after wiring
+  // the emitter into connectChannel/disconnectChannel.
+  const manager = read("source/host/extensions/transcript/transcript-manager.ts");
+  assert.match(manager, /emitTimelineEvent\?\.\(agentId, \{ type: "channel-connected", label: platform \}\)/);
+  assert.match(manager, /emitTimelineEvent\?\.\(agentId, \{ type: "channel-disconnected", label: platform \}\)/);
+  // and only on success — the emit sits behind the store result
+  const connect = manager.slice(manager.indexOf("connectChannel(agentId"), manager.indexOf("disconnectChannel(agentId"));
+  assert.ok(connect.indexOf("if (connected)") < connect.indexOf('type: "channel-connected"'));
+});

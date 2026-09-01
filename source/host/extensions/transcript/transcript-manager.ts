@@ -385,18 +385,30 @@ export class TranscriptManager {
   }
   connectChannel(agentId: string, platform: string, token: string): boolean {
     const value = token.trim();
-    return (
+    const connected =
       value.length > 0 &&
       this.sessionStore.storeConnectorCredential(
         agentId,
         platform,
         "token",
         value,
-      )
-    );
+      );
+    // The renderer ships channel-connected/-disconnected timeline cards, but
+    // nothing host-side ever emitted them (A9/A12 parity gap — only
+    // automation-changed had an emitter). Mirror that emitter here.
+    if (connected) {
+      (this as unknown as { emitTimelineEvent?: (id: string, event: unknown) => void })
+        .emitTimelineEvent?.(agentId, { type: "channel-connected", label: platform });
+    }
+    return connected;
   }
   disconnectChannel(agentId: string, platform: string) {
-    return this.sessionStore.disconnectChannel(agentId, platform);
+    const removed = this.sessionStore.disconnectChannel(agentId, platform);
+    if (removed) {
+      (this as unknown as { emitTimelineEvent?: (id: string, event: unknown) => void })
+        .emitTimelineEvent?.(agentId, { type: "channel-disconnected", label: platform });
+    }
+    return removed;
   }
 
   promptAcceptanceStatus(...args: any[]) {

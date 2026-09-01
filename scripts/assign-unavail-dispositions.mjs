@@ -51,7 +51,12 @@ const RULES = [
   { id: "special-content", p: /reasoning 행|katex|retired-permission|reduced-motion|애니메이션 상태|시선추적|스레드.*(배지|상태)|branched/i, d: "EXACT_RESTORATION", v: "UNTRIGGERABLE_LOCALLY", note: "특정 콘텐츠/애니메이션 상태 필요" },
   { id: "big-history", p: /대용량 누적|하드리밋|이전기록 페이지/i, d: "EXACT_RESTORATION", v: "GATE_A5", note: "대용량 누적 대화 상태 — Gate A5 실사용 누적에서" },
   { id: "network-preview", p: /OpenGraph|외부 네트워크 프리뷰|링크 카드|external open|CSP/i, d: "EXACT_RESTORATION", v: "UNTRIGGERABLE_LOCALLY", note: "외부 네트워크 프리뷰/CSP 의존" },
-  { id: "timeline-notices", p: /timeline 알림|아웃라인|비동기작업 패널|async task/i, d: "EXACT_RESTORATION", v: "GATE_A5", note: "특정 백그라운드 작업 상태의 UI 표출 — Gate A5" },
+  // Live 2026-09-01: the outline / async-tasks panels have NO opener in this
+  // build — the sidebar context menu lacks "Show async tasks" (optional prop
+  // not passed) and the Ctrl+K palette has no matching action. Nothing
+  // advertises them, nothing dead-ends: honest hiding per §5.
+  { id: "outline-async-unreachable", p: /아웃라인|비동기 ?작업 ?패널|async task|outline/i, d: "EXCLUDED_AND_HIDDEN", v: "HIDDEN_VERIFIED", note: "패널 오프너 미배선 — 컨텍스트 메뉴·명령 팔레트 어디에도 항목 없음(라이브 확인)" },
+  { id: "timeline-notices", p: /timeline 알림/i, d: "EXACT_RESTORATION", v: "GATE_A5", note: "특정 백그라운드 작업 상태의 UI 표출 — Gate A5" },
   { id: "backend-validation", p: /백엔드 검증 로직|API 레벨 동작/i, d: "EXACT_RESTORATION", v: "UNTRIGGERABLE_LOCALLY", note: "검증 로직은 API 레벨로 동작 확인 — UI 유발 경로만 부재" },
   { id: "secrets-ui", p: /비밀 관리|secret/i, d: "EXACT_RESTORATION", v: "GATE_A5", note: "secret 관리 UI — Gate A5 실사용에서" },
   { id: "toasts", p: /토스트|toast/i, d: "EXACT_RESTORATION", v: "UNTRIGGERABLE_LOCALLY", note: "특정 저장 성공/실패 이벤트 필요" },
@@ -81,8 +86,8 @@ const OVERRIDES = new Map([
   ["GBF-USR-000573-N01", { disposition: "WSL_EQUIVALENT", verification: "LOCAL_REPLACEMENT", basis: "manual", note: "web-search 승인 카드는 로컬 직접-fetch 경로에 존재하지 않는 설계(801 참조)" }],
   ["GBF-USR-000574-N01", { disposition: "WSL_EQUIVALENT", verification: "LOCAL_REPLACEMENT", basis: "manual", note: "web-search 거부 카드 — 573과 동일" }],
   ["GBF-AGT-000122-N01", { disposition: "WSL_EQUIVALENT", verification: "LOCAL_REPLACEMENT", basis: "manual", note: "notify_on_output 대신 AwaitShell.pattern 인턴 대기 — 로컬 대체 계약" }],
-  ["GBF-USR-000621-N01", { disposition: "EXACT_RESTORATION", verification: "GATE_A5", basis: "manual", note: "후속 프롬프트 제안 미표출 — 표출 조건(플래그/상태) 확인 후보" }],
-  ["GBF-USR-000622-N01", { disposition: "EXACT_RESTORATION", verification: "GATE_A5", basis: "manual", note: "621과 동일" }],
+  ["GBF-USR-000621-N01", { disposition: "EXCLUDED_AND_HIDDEN", verification: "HIDDEN_VERIFIED", basis: "manual", note: "후속 제안은 enablePromptSuggestion 미배선 + 턴마다 전체 컨텍스트 재전송 비용 — 로컬 기본 비활성 정책 확정" }],
+  ["GBF-USR-000622-N01", { disposition: "EXCLUDED_AND_HIDDEN", verification: "HIDDEN_VERIFIED", basis: "manual", note: "621과 동일" }],
   ["GBF-USR-000578-N01", { disposition: "WSL_EQUIVALENT", verification: "LOCAL_REPLACEMENT", basis: "manual", note: "질문 위젯은 선택지형 — 자유텍스트는 일반 채팅 입력으로 대체" }],
   ["GBF-USR-000006-N01", { disposition: "WSL_EQUIVALENT", verification: "LOCAL_REPLACEMENT", basis: "manual", note: "도구 결과 카드는 정적 확장 렌더 — 접기 토글 없는 로컬 렌더 계약" }],
   ["GBF-USR-000079-N01", { disposition: "EXCLUDED_AND_HIDDEN", verification: "HIDDEN_VERIFIED", basis: "manual", note: "생성 스피너는 Cursor 의존 이미지 생성 전용 — 생성 자체가 제외라 도달 불가" }],
