@@ -453,7 +453,7 @@ Phase A에서는 원본 기능의 복구 의미를 맞춘다. durable manager jo
 
 - ~~`/tmp` 원장 → repo durable JSONL~~ — 완료: `docs/testing/belmont-sweep-verdicts.jsonl`(2,170행)이 `/tmp` 원장(2,162행)을 완전 포함(누락 0), append-only 유지.
 - ~~최신 판정 집계~~ — 완료: `scripts/summarize-verdict-ledger.mjs`가 caseId별 최신 판정만 집계해 `docs/testing/belmont-verdict-summary.json`을 생성. **2026-09-01 canonical snapshot**: 1,292 케이스 전수 판정(미판정 0, 큐 밖 판정 0) — PASS 543 · UNAVAIL 631 · ENV 87 · ISSUE 15 · UI_ONLY 13 · FIXED 2 · EXPECTED 1. 문서에 있던 UNCLEAR 41·PARTIAL 2는 후속 재판정으로 해소됨.
-- ~~케이스별 disposition 부여~~ — **완료 (2026-09-01 오후)**: `scripts/assign-unavail-dispositions.mjs`(결정적 규칙표 + 케이스별 override)가 UNAVAIL·ENV 전수(715)에 `EXACT_RESTORATION / WSL_EQUIVALENT / EXCLUDED_AND_HIDDEN`을 부여해 `docs/testing/belmont-unavail-dispositions.jsonl` 생성(파생 산출물 — 재생성 가능, 미분류 0). 집계: EXCLUDED_AND_HIDDEN 428(숨김 검증 済) · EXACT_RESTORATION 268(그중 유발불가 198, Gate A5 대기 71) · WSL_EQUIVALENT 19. **Gate A5의 실제 남은 실측 목록 = verification=GATE_A5 인 71건 + ISSUE 0(전부 해소 済)**. 이전 build PASS의 자동 승격 금지 원칙은 유지(재판정은 append로만).
+- ~~케이스별 disposition 부여~~ — **완료 (2026-09-01 오후, 이후 실측으로 계속 소거)**: `scripts/assign-unavail-dispositions.mjs`(결정적 규칙표 + 케이스별 override)가 UNAVAIL·ENV 전수에 disposition을 부여해 `docs/testing/belmont-unavail-dispositions.jsonl` 생성(파생 산출물 — 재생성 가능, 미분류 0). 이어진 실측 소거: 자동화 알림 lifecycle 7종·채널 연결/해제 카드(발행부 배선)·hooks.json 검증·SetMcpInstructions·부팅 활성 복원·이전 페이지 스크롤 로드·MCP image 충실도 등 라이브 PASS/FIXED 전환. **최종 원장 (2026-09-01 저녁)**: PASS 556 · UNAVAIL 611 · ENV 87 · FIXED 21 · UI_ONLY 14 · PARTIAL 2 · EXPECTED 1. **Gate A5 구체 잔여 = 4건**(permissions.json allowlist 격리 검증 645/646 · 하드리밋+GC 462 · 이전기록 로드 실패 상태 653) + env-explained 35 + fresh profile OAuth 절차. ISSUE 0. 이전 build PASS의 자동 승격 금지 원칙은 유지(재판정은 append로만).
 
 ## 7. Phase A 실행 순서
 

@@ -17,7 +17,9 @@ _작성: 2026-08-30 · 갱신: 2026-09-01 오후 (Phase A 전영역 스윕 회�
 
 **라이브 E2E 마감**: A5 기억(저장→새 에이전트 recall→의사결정 반영→tombstone→재시작 recall 전부 정답), A9 루틴(1분 발화→재시작 재발화→delete), A10 vision(이미지 텍스트/색 판독)·손상/59MB 오류 흐름, A13 kill 매트릭스(고아 0·중단 정직 종결·자식 중단 자동 통지·SIGTERM drain·상태 정합), A6-마켓플레이스 도구 정직화.
 
-**§6**: `scripts/assign-unavail-dispositions.mjs` → `belmont-unavail-dispositions.jsonl`(UNAVAIL·ENV 715 전수, 미분류 0). **Gate A5 실제 잔여 = verification=GATE_A5 71건** + fresh profile 절차(OAuth 만료·attachment commit 창·VNC 뷰어 clipboard/zoom·MCP 설정 UX 수정/삭제·child MCP identity).
+**§6**: `scripts/assign-unavail-dispositions.mjs` → `belmont-unavail-dispositions.jsonl`(UNAVAIL·ENV 전수, 미분류 0). 이후 실측으로 계속 소거해 **Gate A5 구체 잔여 = 4건**(645/646 permissions.json 격리 검증 — 주의: 실제 `~/.cursor`를 건드리지 말고 `CURSOR_CONFIG_DIR`로 격리 · 462 하드리밋+GC · 653 이전기록 로드 실패 상태) + env-explained 35 + fresh profile 절차(OAuth 만료/재로그인·attachment commit 창·VNC 뷰어 clipboard/zoom·MCP 설정 UX 수정/삭제·child MCP identity). 최종 원장: PASS 556 · FIXED 21 · ISSUE 0.
+
+**추가 배선·실측 (같은 날 저녁)**: 채널 연결/해제 timeline 카드 발행부 배선(+실렌더 확인), 루틴 편집기 전체 lifecycle UI 실측(생성/수정/활성/비활성/삭제 알림 7종), hooks.json 오류 검증 fail-open, SetMcpInstructions 로컬 정상 재확인, 부팅 활성 에이전트 복원, 이전기록 스크롤 페이지 로드, outline/async 패널은 오프너 자체가 없음(정직 숨김 재분류), 후속 프롬프트 제안은 비용성 백그라운드 호출이라 기본 오프 정책 확정.
 
 **주의**: probe 에이전트 다수 생성됨(CompactProbe 75370c77, PreCompactProbe 55549415, VisionProbe fc55efa1, MemProbe1~4 등) — 정리해도 무방. 픽스처 서버에 image/slow 도구 추가됨. hooks.json은 관리자 기본으로 복원 済. 앱 정지 시 `ps -eo pid,args | awk '$2 ~ /node$/ && $3=="scripts/run-wsl.mjs"'`로 정확히 조준할 것(pgrep -f는 감시 셸을 오폭).
 

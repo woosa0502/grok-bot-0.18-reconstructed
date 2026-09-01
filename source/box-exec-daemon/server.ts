@@ -601,6 +601,10 @@ export class BoxExecRuntime {
       child.stderr.on("data", () => {});
       child.on("error", () => finish({ stdout: "", exitCode: 1, timedOut: false }));
       child.on("close", code => finish({ stdout: out, exitCode: code ?? 0, timedOut }));
+      // EPIPE surfaces as an async 'error' EVENT (not a synchronous throw) when
+      // a hook script exits without reading stdin — unhandled it becomes an
+      // uncaughtException (observed as a flaky full-suite test failure).
+      child.stdin.on("error", () => { /* hook exited without reading stdin */ });
       try { child.stdin.write(inputJson); child.stdin.end(); } catch { /* stdin closed early */ }
     });
   }

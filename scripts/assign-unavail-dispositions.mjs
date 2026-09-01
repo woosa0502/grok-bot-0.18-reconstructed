@@ -95,6 +95,8 @@ const OVERRIDES = new Map([
   ["GBF-USR-000824-N01", { disposition: "EXACT_RESTORATION", verification: "UNTRIGGERABLE_LOCALLY", basis: "manual", note: "181과 동일" }],
   ["GBF-USR-000845-N01", { disposition: "EXACT_RESTORATION", verification: "UNTRIGGERABLE_LOCALLY", basis: "manual", note: "clientNonce dedup은 백엔드 계층 — 게이트웨이 createAgent nonce 원장 코드로 존재, UI 유발 불가" }],
   ["GBF-USR-000762-N01", { disposition: "EXCLUDED_AND_HIDDEN", verification: "HIDDEN_VERIFIED", basis: "manual", note: "외부 서비스 트리거 구성 필요 — 미연결 트리거는 §5 게이트로 숨김" }],
+  ["GBF-USR-000461-N01", { disposition: "EXCLUDED_AND_HIDDEN", verification: "HIDDEN_VERIFIED", basis: "manual", note: "대화 비우기 표면이 설정·컨텍스트 메뉴·팔레트 어디에도 없음(라이브 확인) — Delete agent가 유일 정리 수단" }],
+  ["GBF-USR-000551-N01", { disposition: "EXACT_RESTORATION", verification: "UNTRIGGERABLE_LOCALLY", basis: "manual", note: "삭제된 루틴의 Open 버튼은 활성 상태로 빈 패널로 유도(정직) — 'disabled' 조건(id/핸들러 결손)은 합성 유발 불가" }],
 ]);
 
 const latest = new Map();
