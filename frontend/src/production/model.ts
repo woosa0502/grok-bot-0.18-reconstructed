@@ -81,6 +81,19 @@ function stringArray(value: unknown): string[] {
 }
 
 function parseLastEntryKinds(value: unknown): Readonly<Record<string, number>> | null {
+  // Canonical production-host shape (session-projection buildAttachmentLastEntry,
+  // DEFECT-3): an ARRAY of { kind, count }. The record form { image: 1 } is the
+  // legacy shape kept for old persisted projections.
+  if (Array.isArray(value)) {
+    const kinds: Record<string, number> = {};
+    for (const entry of value) {
+      if (!isRecord(entry) || typeof entry.kind !== "string" || entry.kind.length === 0) return null;
+      const count = entry.count;
+      if (typeof count !== "number" || !Number.isInteger(count) || count <= 0) return null;
+      kinds[entry.kind] = (kinds[entry.kind] ?? 0) + count;
+    }
+    return kinds;
+  }
   if (!isRecord(value)) return null;
   const kinds: Record<string, number> = {};
   for (const [kind, count] of Object.entries(value)) {

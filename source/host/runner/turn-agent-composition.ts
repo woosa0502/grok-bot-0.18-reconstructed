@@ -60,6 +60,8 @@ import {
 import {
   requestContextExecutorResource,
 } from "../../packages/agent-exec/request-context.js";
+import { hookExecutorResource } from "../../packages/agent-exec/hook-executor.js";
+import type { ExecuteHookArgs, ExecuteHookResult } from "../../packages/proto/generated/agent/v1/exec_pb.js";
 import {
   shellStreamExecutorResource,
 } from "../../packages/agent-exec/shell-stream.js";
@@ -1391,6 +1393,15 @@ export interface TurnLocalResourceProjectionInput {
   /** Exact per-turn launch-review inputs; installed only after the final accessor exists. */
   readonly subagentReview?: TurnSubagentLaunchReviewInput;
   readonly requestContext: RequestContextProvider;
+  /**
+   * Box-daemon route for the agent-lifecycle hooks (preCompact,
+   * afterAgentThought, stop, …). Without this local entry the engine's
+   * accessor resolves hookExecutorResource to the raw resource default over
+   * the turn's exec manager, which never reaches the box workspace whose
+   * .cursor/hooks.json configures the hooks — so they all silently no-opped
+   * (A8, live 2026-09-01).
+   */
+  readonly hookExecutor?: Executor<ExecuteHookArgs, ExecuteHookResult>;
   /** Workflow-derived skills are resolved per request-context execution. */
   readonly resolveAgentSkills?: () => AgentSkill[];
   readonly includeTranscripts: boolean;
@@ -1663,6 +1674,9 @@ export function createTurnLocalResourceProjection(
     resourceEntry(requestContextExecutorResource, requestContextExecutor),
     resourceEntry(subagentRegistryResource, subagentRegistry),
   ];
+  if (input.hookExecutor !== undefined) {
+    localEntries.push(resourceEntry(hookExecutorResource, input.hookExecutor));
+  }
   if (input.smartModeClassifierExecutor !== undefined) {
     localEntries.push(
       resourceEntry(

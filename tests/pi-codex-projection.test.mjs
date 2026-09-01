@@ -4,14 +4,19 @@ import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 
-import { transform } from "esbuild";
+import { build } from "esbuild";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 async function loadProjection() {
-  const source = await readFile(path.join(repoRoot, "source/host/extensions/inference/pi-codex-projection.ts"), "utf8");
-  const { code } = await transform(source, { format: "esm", loader: "ts", target: "es2022" });
-  return await import(`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`);
+  // Bundled (not just transformed): the projection now imports the shared
+  // image byte-sniffer from selected-image-inputs.ts.
+  const result = await build({
+    entryPoints: [path.join(repoRoot, "source/host/extensions/inference/pi-codex-projection.ts")],
+    bundle: true, format: "esm", platform: "node", write: false,
+    target: "es2022", supported: { using: false },
+  });
+  return await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 }
 
 function assistant(content, stopReason = "pending") {
@@ -36,13 +41,41 @@ function assistant(content, stopReason = "pending") {
 
 test("Pi projection preserves cross-realm Uint8Array images as base64", async () => {
   const projection = await loadProjection();
-  const foreignBytes = vm.runInNewContext("new Uint8Array([0, 1, 2, 255])");
+  // Real PNG header bytes: the projection now byte-sniffs image parts (a
+  // corrupt image used to poison every later turn of its conversation), so
+  // the cross-realm fixture must look like an actual image.
+  // signature + IHDR start + IEND trailer: passes the structural sniff
+  const pngHeader = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 73, 72, 68, 82,
+    0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+  ];
+  const foreignBytes = vm.runInNewContext(`new Uint8Array([${pngHeader.join(",")}])`);
   const messages = projection.messagesToPi([{
     role: "user",
     content: [{ type: "image", data: foreignBytes, mimeType: "image/png" }],
   }], () => 1);
   assert.equal(messages[0].role, "user");
-  assert.deepEqual(messages[0].content, [{ type: "image", data: "AAEC/w==", mimeType: "image/png" }]);
+  assert.deepEqual(messages[0].content, [{
+    type: "image",
+    data: Buffer.from(pngHeader).toString("base64"),
+    mimeType: "image/png",
+  }]);
+});
+
+test("Pi projection drops non-image bytes from image parts with an omission note", async () => {
+  const projection = await loadProjection();
+  assert.equal(projection.base64LooksLikeImage(Buffer.from([0, 1, 2, 255]).toString("base64")), false);
+  const messages = projection.messagesToPi([{
+    role: "user",
+    content: [
+      { type: "text", text: "look" },
+      { type: "image", data: Buffer.from("definitely not an image, just text bytes").toString("base64"), mimeType: "image/png" },
+    ],
+  }], () => 1);
+  assert.deepEqual(messages[0].content, [
+    { type: "text", text: "look" },
+    { type: "text", text: "[attached image omitted: the bytes are not a valid image]" },
+  ]);
 });
 
 test("Pi projection preserves assistant tool-call and tool-result ordering", async () => {

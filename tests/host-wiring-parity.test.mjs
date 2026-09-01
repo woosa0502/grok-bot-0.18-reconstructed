@@ -88,3 +88,20 @@ test("the production turn provider offers the subagent management tools (A4)", (
   const prompt = read("source/host/runner/system-prompt.ts");
   assert.match(prompt, /CheckSubagent/);
 });
+
+test("agent-lifecycle hooks route to the box daemon's workspace (A8)", () => {
+  // The engine accessor's default hookExecutorResource resolution never reached
+  // the box workspace whose .cursor/hooks.json configures the hooks, so
+  // preCompact / afterAgentThought / stop silently no-opped (live 2026-09-01:
+  // gate open, executor bound, marker scripts never ran). The turn's local
+  // resource projection must overlay a box-routed hook executor.
+  const composition = read("source/host/runner/turn-agent-composition.ts");
+  assert.match(composition, /readonly hookExecutor\?: Executor<ExecuteHookArgs, ExecuteHookResult>;/);
+  assert.match(composition, /if \(input\.hookExecutor !== undefined\) \{\s*localEntries\.push\(resourceEntry\(hookExecutorResource, input\.hookExecutor\)\);/);
+  const host = read("source/host/host-runner-composition.ts");
+  assert.match(host, /hookExecutor: \{\s*execute: \(hookCtx: unknown, hookArgs: unknown, hookOpts\?: unknown\) =>\s*\(remoteBoxAccessor\.get\(hookExecutorResource\)/);
+  // and the daemon maps the preCompact response (user_message) instead of dropping it
+  const daemon = read("source/box-exec-daemon/server.ts");
+  assert.match(daemon, /case "preCompact": \{/);
+  assert.match(daemon, /new PreCompactRequestResponse\(\)/);
+});

@@ -7,6 +7,8 @@ import type {
   Usage,
 } from "@earendil-works/pi-ai";
 
+import { sniffsAsImage } from "../../selected-image-inputs.js";
+
 type Loose = Record<string, unknown>;
 
 export interface PiProviderMessage {
@@ -100,6 +102,24 @@ function imagePartSource(part: Loose): unknown {
   return part.image !== undefined ? part.image : part.data;
 }
 
+/**
+ * The Codex backend rejects the WHOLE request when any image part is not a
+ * real image — and the projection replays every historical image part, so one
+ * corrupt image bricked its conversation permanently (A10, live 2026-09-01:
+ * a text-only follow-up still died with "The image data you provided does not
+ * represent a valid image"). Sniff the first bytes and drop non-images here,
+ * which also un-bricks conversations poisoned before the send-time sniff.
+ */
+export function base64LooksLikeImage(base64: string): boolean {
+  // Full decode: a truncated PNG keeps its valid header, so the check must see
+  // the trailer too (sniffsAsImage validates signature AND end-of-image).
+  let bytes: Buffer;
+  try { bytes = Buffer.from(base64, "base64"); } catch { return false; }
+  return sniffsAsImage(bytes);
+}
+
+const OMITTED_IMAGE_NOTE = "[attached image omitted: the bytes are not a valid image]";
+
 function userContent(parts: readonly unknown[]): Extract<Message, { role: "user" }>["content"] {
   const content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] = [];
   for (const raw of parts) {
@@ -111,7 +131,8 @@ function userContent(parts: readonly unknown[]): Extract<Message, { role: "user"
     }
     if (part.type === "image") {
       const data = imageData(imagePartSource(part));
-      if (data != null) content.push({ type: "image", data, mimeType: imageMimeType(part) });
+      if (data != null && base64LooksLikeImage(data)) content.push({ type: "image", data, mimeType: imageMimeType(part) });
+      else if (data != null) content.push({ type: "text", text: OMITTED_IMAGE_NOTE });
     }
   }
   return content;
@@ -125,7 +146,8 @@ function toolResultContent(value: unknown): Extract<Message, { role: "toolResult
       if (part?.type === "text" && typeof part.text === "string") projected.push({ type: "text", text: part.text });
       else if (part?.type === "image") {
         const data = imageData(imagePartSource(part));
-        if (data != null) projected.push({ type: "image", data, mimeType: imageMimeType(part) });
+        if (data != null && base64LooksLikeImage(data)) projected.push({ type: "image", data, mimeType: imageMimeType(part) });
+        else if (data != null) projected.push({ type: "text", text: OMITTED_IMAGE_NOTE });
       }
     }
     if (projected.length > 0) return projected;

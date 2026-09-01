@@ -55,6 +55,7 @@ import {
   PostToolUseFailureRequestResponse,
   PostToolUseRequestQuery,
   PostToolUseRequestResponse,
+  PreCompactRequestResponse,
   PreToolUseRequestResponse,
   StopRequestResponse,
   SubagentStartRequestResponse,
@@ -723,6 +724,15 @@ export class BoxExecRuntime {
         if (additionalContext !== undefined) value.additionalContext = additionalContext;
         if (followupMessage !== undefined) value.followupMessage = followupMessage;
         response = { case: "subagentStop", value };
+        break;
+      }
+      case "preCompact": {
+        // Fires from the summarization orchestrator right before compaction;
+        // the daemon ran the scripts but dropped the response (default case),
+        // so a hook's user_message never reached the summary prompt (A8).
+        const value = new PreCompactRequestResponse();
+        if (userMessage !== undefined) value.userMessage = userMessage;
+        response = { case: "preCompact", value };
         break;
       }
       case "afterAgentThought":

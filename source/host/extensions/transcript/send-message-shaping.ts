@@ -6,7 +6,7 @@ import {
 } from "../../../shared/media/image-mime.js";
 import { filePathFromFileUrl } from "../../../shared/node/paths.js";
 import { summarizeWidget } from "../../../shared/sand-widgets.js";
-import { loadSelectedImageInputs } from "../../selected-image-inputs.js";
+import { loadSelectedImageInputs, partitionSniffedImages } from "../../selected-image-inputs.js";
 import type { TranscriptEntry } from "./transcript-hub.js";
 export interface Reaction {
   emoji: string;
@@ -300,7 +300,9 @@ export async function loadAgentInboundImages(
   const paths = (images ?? [])
     .map((image) => filePathFromFileUrl(image.url))
     .filter((path): path is string => path != null);
-  return loadSelectedImageInputs(paths);
+  // Same byte-sniff as the user send path: a non-image here has no file
+  // channel to demote to, so it is dropped rather than poisoning the turn.
+  return partitionSniffedImages(await loadSelectedImageInputs(paths)).images;
 }
 export async function statAttachedFileSizes(
   paths: readonly string[],

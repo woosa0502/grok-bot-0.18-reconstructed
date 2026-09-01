@@ -23,3 +23,12 @@ test("websockify listens on 127.0.0.1, never a bare port", () => {
   assert.match(spawnArgs[1], /`127\.0\.0\.1:\$\{this\.novncPort\}`/, "the noVNC listener must bind loopback explicitly");
   assert.doesNotMatch(spawnArgs[1], /String\(this\.novncPort\)/, "a bare port argument binds 0.0.0.0");
 });
+
+test("the noVNC URL is only published after websockify accepts connections (A11)", () => {
+  // no optimistic fallback in the getter — undefined until confirmed listening
+  assert.doesNotMatch(source, /vncUrlValue \?\? `http/, "getter must not fabricate a URL");
+  assert.match(source, /if \(await this\.waitForTcp\(this\.novncPort, 8_000\)\) \{\s*this\.vncUrlValue =/);
+  assert.match(source, /VNC viewer URL withheld/);
+  // dispose forgets the published URL so a restart re-proves readiness
+  assert.match(source, /this\.vncUrlValue = undefined;/);
+});

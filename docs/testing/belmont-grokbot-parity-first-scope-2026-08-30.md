@@ -164,7 +164,9 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 
 현재 상태: **핵심 실행 가능, lifecycle 완성도 부족**
 
-> **2026-09-01 스윕**: settle/checkpoint 경계는 AUDIT-W23(`tests/subagent-settle-parity.test.mjs`)로 마감. steer-restart는 행동 검증 완료(`tests/subagent-steer-restart.test.mjs` — 인터럽트→steer 프롬프트 재시작→늦은 steer not-running→abort시 steer 소거). `file_attachments`는 범용 첨부로 계약 교정. 재시작 복구는 pending-wake 계열 테스트(r3#3 prune, r4#1 pre-clear 금지, r5 upsert/rearm 행동)로 커버. 잔여: 두 child 동시 실행 교차오염·computer-use 배타성 실측 — Gate A5.
+> **2026-09-01 스윕**: settle/checkpoint 경계는 AUDIT-W23(`tests/subagent-settle-parity.test.mjs`)로 마감. steer-restart는 행동 검증 완료(`tests/subagent-steer-restart.test.mjs` — 인터럽트→steer 프롬프트 재시작→늦은 steer not-running→abort시 steer 소거). `file_attachments`는 범용 첨부로 계약 교정. 재시작 복구는 pending-wake 계열 테스트(r3#3 prune, r4#1 pre-clear 금지, r5 upsert/rearm 행동)로 커버.
+>
+> **2026-09-01 오후 (라이브 마감)**: ① **결함 발견·수정** — 시스템 프롬프트가 광고하는 CheckSubagent/MessageSubagent/StopSubagent가 production provider에 미배선이라 모델에 노출 안 됨(실턴에서 "StopSubagent 없음" 전사 확보) → provider에 `createSubagentManagementToolInputs` 배선(`tests/host-wiring-parity.test.mjs` 고정), 수정 빌드에서 도구 목록 실확인. ② **두 child 동시 실행 실측** — background 자식 A/B 동시 파견 → `[A=A-7301, B=B-9145]` 정확 귀속, 교차오염 없음. ③ **선택 취소 실측** — A(sleep 90)·B(즉답) 동시 파견, B 완료 시 StopSubagent로 A만 중단 → `[B=B-3333, A중단=성공, A상태=실행중 아님]`(CheckSubagent로 사후 확인까지). 잔여: computer-use 배타성(A11과 함께).
 
 이미 있는 것:
 
@@ -190,7 +192,9 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 
 현재 상태: **저장 구현은 있으나 production recall 연결 미완료**
 
-> **2026-09-01 스윕**: prompt assembly의 실store 연결은 배선 테스트로 고정(host-wiring-parity #1), dreaming/synthesis는 로컬 기본 활성(d7e5b9b, `tests/memory-synthesis-local.test.mjs`), 어댑터는 `memory-prompt-adapters` 테스트. 잔여: 저장→새 대화 recall→의사결정 반영과 tombstone의 실사용 E2E — Gate A5.
+> **2026-09-01 스윕**: prompt assembly의 실store 연결은 배선 테스트로 고정(host-wiring-parity #1), dreaming/synthesis는 로컬 기본 활성(d7e5b9b, `tests/memory-synthesis-local.test.mjs`), 어댑터는 `memory-prompt-adapters` 테스트.
+>
+> **2026-09-01 오후 (실사용 E2E 마감)**: ① 저장 — MemProbe1이 update_state로 user 범위 사실("보고서 서명 문구는 K-sig-77") 저장, user-memory 샤드 파일 실물 확인. ② 새 대화 recall + 의사결정 반영 — **완전히 새 에이전트** MemProbe2가 안내문 작성 지시에서 서명 문구를 스스로 회상해 "…다시 안내드리겠습니다. K-sig-77"로 마침(교차 에이전트 회상 + 행동 반영). ③ tombstone — MemProbe1이 삭제 후 샤드 파일에서 사실 소거 실물 확인, 새 에이전트 MemProbe3는 "모름" 응답. 잔여: 앱 재시작 뒤 recall(다음 재시작 사이클에서 halcyon-9 사실로 확인 예정).
 
 남은 작업:
 
@@ -277,7 +281,9 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **부분 구현**
 
-> **2026-09-01 스윕**: beforeSubmitPrompt 완전 배선·검증(4계층, `tests/before-submit-prompt-hook.test.mjs`), preToolUse/beforeShellExecution 게이트와 ask의 명시적 deny 처리·postToolUse 추가 컨텍스트는 `box-shell-hooks` 테스트, WebFetch/SendToAgent/WebSearch hook 배선은 composition에 존재(hookOptions). 브라우저 민감 조작 승인은 카드 경로로 해결(A6-1). 잔여: workspaceOpen/pluginPaths, hook timeout·restart 케이스 일부.
+> **2026-09-01 스윕**: beforeSubmitPrompt 완전 배선·검증(4계층, `tests/before-submit-prompt-hook.test.mjs`), preToolUse/beforeShellExecution 게이트와 ask의 명시적 deny 처리·postToolUse 추가 컨텍스트는 `box-shell-hooks` 테스트, WebFetch/SendToAgent/WebSearch hook 배선은 composition에 존재(hookOptions). 브라우저 민감 조작 승인은 카드 경로로 해결(A6-1).
+>
+> **2026-09-01 오후 (라이브 마감)**: ① **`ask` 일관화·실증** — #preToolUseGate가 ask를 조용히 허용하던 비일관(beforeShell은 차단)을 위험 방향으로 판단, 양쪽 모두 "명시적 차단+안내"로 통일. 라이브: Delete matcher ask 훅에서 write는 성공, delete_file은 차단 메시지가 모델에 그대로 전달됨. ② **P1 결함 발견·수정: agent-lifecycle 훅 전체 미발화** — preCompact/afterAgentThought/stop이 게이트는 열리는데(계측으로 확인: enableExec=true, configuredSteps 정상, executor 존재) 실행이 box에 닿지 않아 전부 무발화. 사인: 엔진 accessor의 hookExecutorResource 기본 해석이 box 데몬(워크스페이스의 hooks.json)에 도달하지 않음. 수정: 턴 local resource projection에 box행 hookExecutor 주입(`turn-agent-composition.ts` + composition), 데몬에 preCompact 응답 매핑 추가(기존 default가 user_message를 버림). 라이브: preCompact·afterAgentThought 마커 스크립트 실발화(각 2회·1회), 전체 사슬 계측 로그로 box hookExecutor→daemon 도달 확인, user_message는 `Updates.summaryCompleted`로 전달(고정 렌더러의 표시 여부는 A12 몫). `tests/host-wiring-parity.test.mjs` 고정. ③ **workspaceOpen/pluginPaths — 제외 확정**: Cursor 워크스페이스 lifecycle 전용으로 로컬 데스크톱 빌드에 발화 지점이 구조적으로 없음(validator는 parity 유지, 아무 표면도 광고하지 않음, 등록해도 무해하게 무시). 잔여: stop 훅 발화 지점은 상류에도 엔진 executor가 없음(미배선 상류 동일) — 추가하지 않음.
 
 남은 작업:
 
@@ -307,7 +313,9 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **이미지·일반 첨부는 동작, 일부 미디어 기능 미완료**
 
-> **2026-09-01 스윕**: staging 정리·sweep은 `attachment-staging(-sweep)` 테스트, PDF 추출은 A6에서 마감, video는 프롬프트+Task 스키마 양쪽에서 정직화, 이미지 생성은 프롬프트 honest denial. 잔여: AI 아바타의 Cursor 토큰 의존 처리, image Read→Pi vision 실사용 E2E(§4 CODE_PRESENT), 대용량/손상 파일 오류 흐름 — Gate A5.
+> **2026-09-01 스윕**: staging 정리·sweep은 `attachment-staging(-sweep)` 테스트, PDF 추출은 A6에서 마감, video는 프롬프트+Task 스키마 양쪽에서 정직화, 이미지 생성은 프롬프트 honest denial.
+>
+> **2026-09-01 오후 (라이브 마감)**: ① **image→Pi vision E2E** — 텍스트("VISION-42 quartz")+파란 테두리 이미지를 첨부 전송, 모델이 텍스트·색상 정확 판독. ② **AI 아바타** — 로컬 모드에서 명확한 사유와 함께 즉시 실패로 정직화(`avatar-images.ts`). ③ **손상/대용량 오류 흐름** — 손상 PNG·59MB 바이너리 모두 턴 실패가 채팅에 사유와 함께 표시됨("Agent failed to respond — Codex error: …invalid image"). ④ **P1 결함 발견·수정: 손상 이미지 대화 영구 오염** — 투영이 과거 image part를 매 턴 재전송하므로 손상 이미지 하나가 이후 모든 턴(텍스트만 보내도)을 죽임을 실측으로 확인(무첨부 턴 3연속 실패). 수정 2중: 전송 시 바이트 시그니처 검사로 비이미지를 file 채널로 강등(`selected-image-inputs.ts` + send-pipeline), 투영 시에도 검사해 오염된 기존 대화를 소생(`pi-codex-projection.ts` — 무효 이미지는 생략 안내 텍스트로 대체). `tests/pi-codex-projection.test.mjs` 고정. 잔여: 오염 대화 부활 라이브 확인(진행 중).
 
 남은 작업:
 
@@ -323,7 +331,9 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **기본 Computer는 구현, 운영 lifecycle과 세부 UI 미완료**
 
-> **2026-09-01 스윕**: **VNC loopback 고정 (보안, 라이브 검증)**: 비밀번호 없는 x11vnc가 0.0.0.0:5900에 노출돼 있던 것을 실측으로 확인하고 `-localhost`+websockify `127.0.0.1` 바인드로 수정, 재기동 후 두 포트 모두 loopback 전용임을 ss로 확인(`tests/local-vnc-loopback.test.mjs`). typecheck 오류 4건은 해소됨. 잔여: shutdown cleanup 연결 확인, readiness 후 URL 제공(현재 낙관 반환+UI 폴백), 동시 조작 배타성·개별 액션 E2E — Gate A5.
+> **2026-09-01 스윕**: **VNC loopback 고정 (보안, 라이브 검증)**: 비밀번호 없는 x11vnc가 0.0.0.0:5900에 노출돼 있던 것을 실측으로 확인하고 `-localhost`+websockify `127.0.0.1` 바인드로 수정, 재기동 후 두 포트 모두 loopback 전용임을 ss로 확인(`tests/local-vnc-loopback.test.mjs`). typecheck 오류 4건은 해소됨.
+>
+> **2026-09-01 오후**: ① **readiness 후 URL 제공 수정** — vncUrl 낙관 폴백 제거: websockify 포트가 실제 accept할 때까지 URL 미공개(미설치/기동 실패 시 영구 미공개 → UI는 자체 폴백 문구), ensureReady가 매번 재조회하므로 지연 공개 안전(`display-manager.ts`, `tests/local-vnc-loopback.test.mjs` 고정). ② **개별 액션 E2E 라이브** — screenshot·move(+좌표 검증)·scroll·drag·wait·key 전부 실측 통과; cursorPosition은 도구 액션 표면에 없고(액션 8종은 상류 스키마 그대로) 결과 필드로만 존재 — 모델은 move 후 스크린샷으로 확인. ③ **정책 확정** — Xvfb/x11vnc 재시작 간 재사용은 의도된 설계(stale 재사용 정책; dispose()는 명시 teardown용), 다중 window는 `maxWindows: () => 1`로 명시 제한 済. 잔여: main/computerUse 동시 조작 배타성, VNC clipboard/zoom(노VNC 뷰어 표면) — Gate A5.
 
 이미 실측된 것:
 

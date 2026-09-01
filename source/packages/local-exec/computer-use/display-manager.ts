@@ -3,6 +3,7 @@
 // lightweight window manager (openbox, if present) is started so apps are
 // framed/positioned. Screenshot/input then target this display via the executor.
 import { spawn, execFile } from "node:child_process";
+import { connect } from "node:net";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -61,14 +62,16 @@ export class LocalDisplayManager {
   }
 
   /**
-   * noVNC page URL for watching this display. Deterministic from novncPort, so it is
-   * available immediately when VNC is enabled (the box records vncUrl the first time it
-   * readies, which can precede websockify finishing its bind ~1s later); returns undefined
-   * when VNC is disabled.
+   * noVNC page URL for watching this display. Only set once websockify has been
+   * confirmed LISTENING (A11): the box re-reads this on every ensureReady, so
+   * returning undefined while the stack is still binding (the UI shows its
+   * no-stream fallback) beats handing out a URL that never connects — which is
+   * exactly what the old optimistic fallback did when x11vnc/websockify were
+   * not installed or failed to start.
    */
   get vncUrl(): string | undefined {
     if (!this.vncEnabled) return undefined;
-    return this.vncUrlValue ?? `http://127.0.0.1:${this.novncPort}/vnc.html?autoconnect=1&resize=scale&path=websockify`;
+    return this.vncUrlValue;
   }
 
   /** Idempotent: starts Xvfb (and a WM) if needed and resolves once the display accepts X clients. */
@@ -149,7 +152,29 @@ export class LocalDisplayManager {
       { env: vncEnv, detached: true, stdio: "ignore" },
     );
     this.websockify.unref();
-    this.vncUrlValue = `http://127.0.0.1:${this.novncPort}/vnc.html?autoconnect=1&resize=scale&path=websockify`;
+    // Publish the URL only after the noVNC port actually accepts connections;
+    // a URL that never readies stays unpublished (the UI keeps its fallback).
+    if (await this.waitForTcp(this.novncPort, 8_000)) {
+      this.vncUrlValue = `http://127.0.0.1:${this.novncPort}/vnc.html?autoconnect=1&resize=scale&path=websockify`;
+    } else {
+      this.log(`[local-computer] websockify did not start listening on ${this.novncPort}; VNC viewer URL withheld`);
+    }
+  }
+
+  private waitForTcp(port: number, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    const tryOnce = (): Promise<boolean> => new Promise((resolve) => {
+      const socket = connect({ host: "127.0.0.1", port }, () => { socket.destroy(); resolve(true); });
+      socket.once("error", () => { socket.destroy(); resolve(false); });
+      socket.setTimeout(1_000, () => { socket.destroy(); resolve(false); });
+    });
+    return (async () => {
+      while (Date.now() < deadline) {
+        if (await tryOnce()) return true;
+        await delay(250);
+      }
+      return false;
+    })();
   }
 
   private async startWindowManager(): Promise<void> {
@@ -182,6 +207,7 @@ export class LocalDisplayManager {
     this.wm = undefined;
     this.xvfb = undefined;
     this.ready = undefined;
+    this.vncUrlValue = undefined;
   }
 }
 

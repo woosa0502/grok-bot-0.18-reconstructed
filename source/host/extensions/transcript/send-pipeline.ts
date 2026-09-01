@@ -8,7 +8,7 @@ import {
 } from "./transcript-hub.js";
 import { HOST_ACCOUNT_SLOT } from "../../../shared/send-acceptance.js";
 import { filePathFromFileUrl } from "../../../shared/node/paths.js";
-import { loadSelectedImageInputs } from "../../selected-image-inputs.js";
+import { loadSelectedImageInputs, partitionSniffedImages } from "../../selected-image-inputs.js";
 import { beginSendTrace, traceSendPhase } from "../../send-trace-host.js";
 import { BoxRequestEntries } from "./box-request-entries.js";
 import {
@@ -412,8 +412,13 @@ export class SendPipeline {
         videoAttachmentPaths,
         fileAttachmentPaths,
       } = splitAttachmentPathsByChannel(attachmentPaths);
-      const selectedImages =
-        await loadSelectedImageInputs(imageAttachmentPaths);
+      // Byte-sniff the image channel: a corrupt ".png" that reached the model
+      // as an image part poisoned every later turn of the conversation (the
+      // projection replays prior image parts; the provider rejects the whole
+      // request). Files that do not sniff as images ride the file channel.
+      const { images: selectedImages, demotedPaths: demotedImagePaths } =
+        partitionSniffedImages(await loadSelectedImageInputs(imageAttachmentPaths));
+      fileAttachmentPaths.push(...demotedImagePaths);
       const selectedVideos = buildSelectedVideos(videoAttachmentPaths);
       if (
         this.tm.groupChat.isRemoteRoomSession(session) ||

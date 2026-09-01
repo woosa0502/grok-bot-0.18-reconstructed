@@ -79,6 +79,7 @@ import type {
   RemoteResource,
   ResourceAccessor,
 } from "../packages/agent-exec/resource-provider.js";
+import { hookExecutorResource } from "../packages/agent-exec/hook-executor.js";
 import { subagentExecutorResource } from "../packages/agent-exec/subagent.js";
 import { requestContextExecutorResource } from "../packages/agent-exec/request-context.js";
 import { subagentRegistryResource } from "../packages/agent/tools/subagent-registry.js";
@@ -3150,6 +3151,16 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 requestContext: turnRequestContext,
                 includeTranscripts: !isSharedRoomTurn,
                 autoReviewEnforceEnabled: Object.values(autoReviewModes).includes("enforce"),
+                // Agent-lifecycle hooks (preCompact / afterAgentThought / stop)
+                // must reach the BOX daemon, whose workspace holds the
+                // .cursor/hooks.json they are configured in. The engine
+                // accessor's default resolution never got there (A8).
+                hookExecutor: {
+                  execute: (hookCtx: unknown, hookArgs: unknown, hookOpts?: unknown) =>
+                    (remoteBoxAccessor.get(hookExecutorResource) as {
+                      execute: (c: unknown, a: unknown, o?: unknown) => Promise<unknown>;
+                    }).execute(hookCtx, hookArgs, hookOpts),
+                } as never,
                 ...(autoReview.autoReviewClassifierExecutor === undefined
                   ? {}
                   : { smartModeClassifierExecutor: autoReview.autoReviewClassifierExecutor }),
