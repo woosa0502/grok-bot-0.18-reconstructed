@@ -326,7 +326,10 @@ function thrown(id: number, error: unknown, errorCode = "BOX_EXEC_DAEMON_ERROR")
   });
 }
 
-class BoxExecRuntime {
+// Exported for the file-tool boundary tests (tests/box-file-tools.test.mjs):
+// the daemon's read/ls/grep/write/delete error taxonomy is a model-facing
+// contract, and testing it in-process beats booting the websocket server.
+export class BoxExecRuntime {
   readonly #environment: NodeJS.ProcessEnv;
   readonly #foreground = new Set<ChildProcessWithoutNullStreams>();
   readonly #background = new Map<number, BackgroundProcess>();

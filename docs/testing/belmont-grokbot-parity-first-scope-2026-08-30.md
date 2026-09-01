@@ -205,11 +205,11 @@ Belmont가 모든 사용자 기억을 관리하고 worker에게 최소 정보만
 
 남은 작업:
 
-- Shell 호출 간 cwd/env 유지 여부를 원본 계약에 맞게 복원
-- foreground/background shell timeout·cancel·hook parity
-- File Read/Write/Edit/Grep/Glob/LS의 오류·경계·large output E2E
-- PDF Read text extractor 연결
-- WebSearch/WebFetch 오류·취소·large output 검증
+- ~~Shell 호출 간 cwd/env 유지~~ — 완료: `box-exec-daemon/shell-state.ts` + `tests/box-shell-state.test.mjs`(실제 sh 호출 간 cwd·export 지속 기능 검증)
+- ~~foreground shell timeout·cancel·hook parity~~ — 완료: timeout은 명시적 `ShellTimeout` 결과, 호출자 abort는 실패로 표면화(`tests/box-file-tools.test.mjs` 기능 검증), pre/post hook 게이트는 `tests/box-shell-hooks.test.mjs`. background 경로의 개별 cancel 검증은 A13 재시작 매트릭스와 함께.
+- ~~File Read/Write/Grep/LS/Delete의 오류·경계·large output~~ — 완료 (2026-09-01): `tests/box-file-tools.test.mjs`가 실제 임시 워크스페이스에서 검증 — 누락 파일/디렉터리/symlink 거부/워크스페이스 탈출 거부/절대경로 거부, offset·limit과 truncated 플래그, PDF 바이트 분기, grep 기본 headLimit(200) 캡과 clientTruncated 플래그, 원자적 write 왕복, delete 경계. (Edit는 agent-side 도구 — daemon 표면 아님)
+- ~~PDF Read text extractor 연결~~ — 완료: 양쪽 Read(`createBoxReadToolInputs`/ExternalRead)에 `localPdfTextExtractor` 배선, pdftotext 존재, `tests/local-pdf-text-extractor.test.mjs` + daemon의 PDF 바이트 분기 검증
+- ~~WebSearch/WebFetch 오류·large output~~ — 완료: `codex-web-tools.ts`가 5MB 바이트 캡·100k 문자 캡·abort signal 관통·타임아웃 구현, `tests/codex-web-tools.test.mjs`(HTTP 오류 표면화, 잘못된 URL 차단, 파싱) — 취소의 실사용 검증은 Gate A5 몫
 - ~~Browser click/drag validation 실제 실행 검증~~ — 완료 (2026-09-01, A6-1 검증 기록: 전체 15개 도구 중 click·type·fill·press_key·mouse_click_xy·drag·scroll·tabs·highlight·get_bounding_box·take_screenshot(+fullPage)·snapshot·navigate·cdp 라이브 실효 검증; drag는 mouseup 목표 명중, scroll은 뷰포트 실이동, screenshot은 PNG 바이트까지 확인)
 - ~~Browser auto-review 개별 live 검증~~ — 완료 (2026-09-01): 폴백 경로에 turn.computerAutoReview를 배선해 enforce 모드에서 preflight가 실행됨을 실증 — element 없는 클릭은 "require an element field"로 거부(음성 대조), element 있는 클릭은 로컬 분류기 allow로 실행. click/xy/drag 스키마에 element 필드 추가.
 - ~~browser unavailable 상태를 UI·prompt에서 정직하게 표시~~ — 검증 (2026-09-01): `SAND_LOCAL_BROWSER_USE` 미설정 기동에서 모델 도구 목록에 browser_* 부재, 모델이 "도구가 보이지 않는다"고 정확히 보고, 호출 시도 없음. (프롬프트의 box 브라우저 서술 자체는 A12 광고 정리 몫)
