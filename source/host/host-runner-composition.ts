@@ -155,6 +155,7 @@ import {
 } from "./runner/system-prompt-assembly.js";
 import type { MemoryPromptStore, MemorySnapshotStore, SystemPromptAssemblyDependencies } from "./runner/system-prompt-assembly.js";
 import { isLocalCodexMode } from "../shared/node/local-codex-account.js";
+import { effectiveContextWindowTokens } from "./extensions/inference/context-window.js";
 import { MCP_ERROR_RESULT_CLASS, mcpErrorClassOf, takeMcpExecErrorClass } from "../shared/node/mcp/mcp-diagnostics.js";
 import { PrivacyMode, type PrivacyMode as PrivacyModeValue } from "../packages/redaction/privacy-mode.js";
 import { tryExtractSandAutoReviewClassifierConversationContext } from "../packages/agent/smart-mode-classifier-context.js";
@@ -3157,7 +3158,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             turn,
             staticConfig: {
               modelId: staticModelId,
-              agentTokenLimit: 200_000,
+              // Prompt-section budgets (e.g. the 2% skill-catalog cap) must
+              // scale to the REAL window: on the Codex OAuth backend that is
+              // ~50k (see context-window.ts), not the upstream 200k.
+              agentTokenLimit: isLocalCodexMode(process.env)
+                ? effectiveContextWindowTokens(undefined)
+                : 200_000,
               conversationId: turnConversationId,
               isBoxScopedSubagent: false,
               isSubagentRunner: isSubagentTurn,

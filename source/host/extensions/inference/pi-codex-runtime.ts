@@ -112,6 +112,22 @@ function usageRecord(usage: Usage): PiUsageRecord {
   };
 }
 
+/**
+ * Real context occupancy of the turn, cached prefix included. Pi subtracts
+ * cached and cache-write tokens out of `usage.input` (openai-responses-shared
+ * `finalizeResponse`), so `input + output` under-counts a warm-cache turn by
+ * the entire cached transcript prefix — and `usedTokens` drives the proactive
+ * compaction trigger (`usedTokens >= threshold(maxTokens)`), which then never
+ * fires while the cache stays warm (A2). The provider's raw `total_tokens`
+ * is the authoritative occupancy; the component sum is the fallback when a
+ * backend omits it.
+ */
+export function contextOccupancyTokens(usage: Usage): number {
+  const total = usage.totalTokens;
+  if (Number.isFinite(total) && total > 0) return total;
+  return usage.input + usage.cacheRead + usage.cacheWrite + usage.output;
+}
+
 async function resolveModel(modelId: string | undefined, signal?: AbortSignal) {
   const models = await runtime();
   signal?.throwIfAborted();
@@ -199,7 +215,8 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
       usage.resolve({
         promptTokens: recorded.inputTokens,
         completionTokens: recorded.outputTokens,
-        totalTokens: recorded.inputTokens + recorded.outputTokens,
+        // Cached prefix counts toward occupancy — see contextOccupancyTokens.
+        totalTokens: contextOccupancyTokens(authoritative.usage),
       });
       // Report the model's real context window so Belmont's summarization orchestrator can
       // fire PRE-EMPTIVELY. Hardcoding 0 here made getBackgroundSummarizationTriggerThreshold

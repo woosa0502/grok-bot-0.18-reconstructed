@@ -103,7 +103,7 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 - ~~credential 없음·만료·refresh 추적~~ — 저장소가 refresh 토큰·JWT 만료를 기록(`pi-codex-credential-store.ts`). **잔여**: 만료 시나리오의 실사용 검증은 사용자의 실 credential을 훼손하지 않고는 불가 — Gate A5에서 fresh profile로.
 - ~~CLI 기본 auth 경로 통일~~ — `tests/codex-auth-file.test.mjs` 커버.
 - ~~provider 기본값~~ — 런처가 프로필에 `inferenceProvider: "codex"` seed(`initialLocalSettingsUpdate`), `tests/local-codex-mode.test.mjs`·`router-settings.test.mjs` 커버.
-- 기존 Cursor provider profile 처리 정책 확정 — 현행 동작: 로컬 모드 gate 고정(`local-codex-mode.ts`)으로 Cursor 표면 비활성. 명시 정책 문서화만 남음.
+- ~~기존 Cursor provider profile 처리 정책 확정~~ — **정책 확정 (2026-09-01)**: ① 로컬 모드에서 provider는 `codex` 고정(런처 seed + `local-codex-mode.ts` 게이트), Cursor 계정 표면(usage/billing·teach·network·iOS·skill publish·auto-update)은 gate 고정으로 숨김. ② 기존 프로필에 남은 Cursor provider 설정·자격증명 데이터는 **삭제하지 않고 보존**(사용자 데이터 불가침 — §8-8), 단 로컬 모드에서 읽히지 않으며 UI로도 도달 불가. ③ Codex 실패 시 Cursor 자동 fallback 없음(의도된 설계 — 조용한 계정 전환 금지). 분류: `EXCLUDED_AND_HIDDEN`(Cursor provider 표면) + `WSL_EQUIVALENT`(Pi Codex OAuth).
 - WSL 핵심 흐름의 Cursor/Anysphere 호출 여부 — 텔레메트리/업데이트/Sentry는 env로 차단(`SAND_DISABLE_*`), Statsig는 로컬 평가 경고만 관찰. 전수 네트워크 감사는 Gate A5 몫.
 
 완료 조건:
@@ -120,16 +120,16 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 - **수정**: `effectiveContextWindowTokens`가 핀 없을 때 카탈로그를 **하향으로만** 신뢰(기본 50k, 발화 문턱 45k < 최저 관측 거부 55k; env 핀·캡은 유지) + Pi 런타임이 실패를 `classifyTokenLimitErrorFromMessage`로 typed 오류로 분류해 반응형 blocking-summarization 경로를 살림.
 - **실증**: 매 메시지 즉사하던 기본 Belmont 에이전트가 수정 빌드에서 정상 응답("2026년 9월 1일, 살아있다"), 투영 ~16k 토큰으로 한도 내, UI 오류 없음. `tests/context-overflow-recovery.test.mjs` 4건이 창 기본값·핀/캡·실제 오류 문구 분류·런타임 분류 배선을 고정.
 
-남은 작업:
+남은 작업 (2026-09-01 오후 스윕 — 전부 마감, 세부는 아래):
 
-- `compactionEpoch` 고정값 `0` 제거 또는 실제 epoch 연결
-- 모델 catalog의 context window와 실제 Codex OAuth 유효 한도 교정
-- 긴 대화에서 compaction이 한도 초과 전에 실제 발화하는지 검증
-- compaction 전후 transcript·tool result·attachment 보존 검증
-- cache read/write token 기록의 정확성 검증
-- 매 턴 전체 message projection과 provider native cache hit의 관계 측정
-- explicit conversation continuity를 도입할지 현재 prefix-cache 방식으로 유지할지 결정
-- restart·compact·resume E2E
+- ~~`compactionEpoch` 고정값 `0` 제거 또는 실제 epoch 연결~~ — 완료: 3개 호출부 전부 `compactionEpochFromConversationState`(= `summaryArchives.length`)로 연결(`host-runner-composition.ts`), 라이브: Belmont 에이전트 `memoryPromptSnapshot.compactionEpoch=1` 실측(첫 반응형 압축 후), CompactProbe는 요약 아카이브 2개 생성.
+- ~~모델 catalog의 context window와 실제 Codex OAuth 유효 한도 교정~~ — 교정 방식 확정: 카탈로그는 하향으로만 신뢰(기본 50k), 실한도를 아는 운영자는 `SAND_CODEX_CONTEXT_WINDOW_TOKENS` 핀. 계정별 실한도 탐침(고의 거부 유발)은 비용 대비 이득 없어 채택 안 함 — 보수 기본값은 이르게 압축할 뿐 대화를 죽이지 않는다.
+- ~~긴 대화에서 compaction이 한도 초과 전에 실제 발화하는지 검증~~ — **라이브 검증 (2026-09-01, CompactProbe 75370c77)**: 30k 핀(발화 문턱 20k)으로 가속, 8k-토큰 부하 턴 2회 → 요약 아카이브 2개가 conversation-blobs에 실생성(`[Previous conversation summary]` blob 실물), 컨텍스트 오류 0, 모든 턴 정상 응답(ACK-1/ACK-2). 기본 50k 창에서는 같은 기전이 40k(= min(50k−10k, 0.9·50k))에서 발화.
+- **선제 발화를 죽이던 신규 결함 발견·수정**: Pi는 `usage.input`에서 캐시 토큰을 빼서 보고하는데(openai-responses-shared `finalizeResponse`), Belmont이 `usedTokens = input+output`으로 재계산해 warm-cache 턴의 점유량이 캐시된 prefix 전체만큼 과소집계 → 캐시가 살아있는 한 선제 문턱 도달 불가. 수정: `contextOccupancyTokens()`가 provider `total_tokens`(캐시 포함)를 보고(`pi-codex-runtime.ts`), `tests/context-overflow-recovery.test.mjs`에 고정. 라이브: 압축 2회 뒤 소형 recall 턴 후 tokenDetails `usedTokens=20858`(root blob 실측) — 전체 점유량 수치.
+- ~~compaction 전후 transcript·tool result·attachment 보존 검증~~ — transcript: store의 원문 전사는 압축 후에도 온전(64→변화 없음, UI용), 요약 원문에 코드워드 `umber-4417` 보존(디스크 blob 실물 확인), 압축 2회 뒤 recall 턴 정답. tool result(SendMessage) 소생 정상. attachment 보존은 A10 image E2E와 묶어 Gate A5에서.
+- ~~cache read/write token 기록의 정확성 검증~~ — 기록 경로 검증: cacheRead/cacheWrite는 provider `input_tokens_details`에서 그대로 매핑(pi-ai), extendedUsage로 무가공 전달. 점유량 과소집계 결함은 위에서 수정. provider 상호대조 수준의 검증은 provider 로그 접근 불가로 구조적 한계.
+- ~~매 턴 전체 message projection과 provider native cache hit의 관계 측정~~ / ~~explicit conversation continuity 결정~~ — **결정: 현행 prefix-cache 유지.** cacheSessionId = 대화 id 고정(P1-02)으로 provider prompt-cache 친화 유지; explicit continuity(previous_response_id류)는 압축이 prefix를 다시 쓰는 구조와 상충해 채택 안 함.
+- ~~restart·compact·resume E2E~~ — 라이브 (2026-09-01): 압축 2회 상태에서 SIGTERM 종료 → 재기동 → 같은 대화에 recall 턴 → 코드워드·이전 지시 요지 정답, 오류 없음.
 
 완료 조건:
 
@@ -164,6 +164,8 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 
 현재 상태: **핵심 실행 가능, lifecycle 완성도 부족**
 
+> **2026-09-01 스윕**: settle/checkpoint 경계는 AUDIT-W23(`tests/subagent-settle-parity.test.mjs`)로 마감. steer-restart는 행동 검증 완료(`tests/subagent-steer-restart.test.mjs` — 인터럽트→steer 프롬프트 재시작→늦은 steer not-running→abort시 steer 소거). `file_attachments`는 범용 첨부로 계약 교정. 재시작 복구는 pending-wake 계열 테스트(r3#3 prune, r4#1 pre-clear 금지, r5 upsert/rearm 행동)로 커버. 잔여: 두 child 동시 실행 교차오염·computer-use 배타성 실측 — Gate A5.
+
 이미 있는 것:
 
 - child ID·runner·transcript
@@ -187,6 +189,8 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 ### A5. 장기 기억
 
 현재 상태: **저장 구현은 있으나 production recall 연결 미완료**
+
+> **2026-09-01 스윕**: prompt assembly의 실store 연결은 배선 테스트로 고정(host-wiring-parity #1), dreaming/synthesis는 로컬 기본 활성(d7e5b9b, `tests/memory-synthesis-local.test.mjs`), 어댑터는 `memory-prompt-adapters` 테스트. 잔여: 저장→새 대화 recall→의사결정 반영과 tombstone의 실사용 E2E — Gate A5.
 
 남은 작업:
 
@@ -254,6 +258,8 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **local stdio MCP 기본 동작, 원본 plugin UX와 통합 미완료**
 
+> **2026-09-01 스윕**: server별 cwd 지원 ✓(`mcp-stdio-client.ts`), tools/list 페이지네이션+list_changed ✓(같은 파일 127행~), stdio 부가기능은 `mcp-stdio-extras`·`box-mcp-stdio-client`·`local-mcp-store` 테스트 통과, 대형 결과 spill은 `large-output-spill` 배선. system prompt의 마켓플레이스 광고는 다이어트로 제거. 잔여: 마켓플레이스 계열 도구(SearchPlugins/InstallPlugin 등)의 로컬 숨김/대체, server-initiated 메시지 범위, image/audio 결과 충실도, 로컬 MCP 설정 UX.
+
 남은 작업:
 
 - local MCP server별 cwd 지원
@@ -271,6 +277,8 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **부분 구현**
 
+> **2026-09-01 스윕**: beforeSubmitPrompt 완전 배선·검증(4계층, `tests/before-submit-prompt-hook.test.mjs`), preToolUse/beforeShellExecution 게이트와 ask의 명시적 deny 처리·postToolUse 추가 컨텍스트는 `box-shell-hooks` 테스트, WebFetch/SendToAgent/WebSearch hook 배선은 composition에 존재(hookOptions). 브라우저 민감 조작 승인은 카드 경로로 해결(A6-1). 잔여: workspaceOpen/pluginPaths, hook timeout·restart 케이스 일부.
+
 남은 작업:
 
 - `beforeSubmitPrompt` 실제 발화와 `continue:false` 중단 처리
@@ -283,6 +291,8 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 ### A9. Routine·automation
 
 현재 상태: **편집·수동 실행 일부 존재, 로컬 예약 실행 미완료**
+
+> **2026-09-01 스윕**: 로컬 cron은 완전 배선: `LocalCronScheduler`가 automations extension에서 start되고(fire는 서버 예약 진입점 재사용 = ledger/dedupe 동일), 정의를 매 tick 재평가하므로 재시작 복구가 구조적으로 성립, suspend/resume 연결, `tests/local-cron-scheduler.test.mjs` 통과. 외부 trigger는 isPlatformConnected 게이트. 잔여: routine 편집기 Name aria-invalid(고정 렌더러 한계 — A12 렌더러 계약 작업 몫), 저장 실패·expired 문구 실사용 확인.
 
 남은 작업:
 
@@ -297,6 +307,8 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **이미지·일반 첨부는 동작, 일부 미디어 기능 미완료**
 
+> **2026-09-01 스윕**: staging 정리·sweep은 `attachment-staging(-sweep)` 테스트, PDF 추출은 A6에서 마감, video는 프롬프트+Task 스키마 양쪽에서 정직화, 이미지 생성은 프롬프트 honest denial. 잔여: AI 아바타의 Cursor 토큰 의존 처리, image Read→Pi vision 실사용 E2E(§4 CODE_PRESENT), 대용량/손상 파일 오류 흐름 — Gate A5.
+
 남은 작업:
 
 - 전송 성공 후 staging 파일 즉시 정리
@@ -310,6 +322,8 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 ### A11. Computer·VNC
 
 현재 상태: **기본 Computer는 구현, 운영 lifecycle과 세부 UI 미완료**
+
+> **2026-09-01 스윕**: **VNC loopback 고정 (보안, 라이브 검증)**: 비밀번호 없는 x11vnc가 0.0.0.0:5900에 노출돼 있던 것을 실측으로 확인하고 `-localhost`+websockify `127.0.0.1` 바인드로 수정, 재기동 후 두 포트 모두 loopback 전용임을 ss로 확인(`tests/local-vnc-loopback.test.mjs`). typecheck 오류 4건은 해소됨. 잔여: shutdown cleanup 연결 확인, readiness 후 URL 제공(현재 낙관 반환+UI 폴백), 동시 조작 배타성·개별 액션 E2E — Gate A5.
 
 이미 실측된 것:
 
@@ -337,6 +351,8 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 
 현재 상태: **checksum-pinned renderer와 editable frontend가 혼재**
 
+> **2026-09-01 스윕**: **결정**: model picker는 복원하지 않고 Codex-only를 유지한다 — per-agent 모델 선택은 settings store로 이미 동작(`belmont-manager-b1` 테스트)하며 선택지는 Codex 모델뿐임을 명시. system prompt 쪽 광고 제거는 다이어트로 완료. 잔여: 렌더러 메뉴/설정의 제외 기능 숨김과 routine 편집기 aria-invalid(GBF-USR-000675, 고정 렌더러가 복원 소스와 불일치 — 렌더러 계약 재작업 시 처리; 원장은 UI_ONLY로 재판정).
+
 남은 작업:
 
 - production host의 attachment `kinds[]`와 editable frontend parser 계약 통일
@@ -349,6 +365,8 @@ Aside 분석에서 브라우저 도구에 가져오기로 결정된 다섯 가�
 ### A13. 재시작·복구
 
 현재 상태: **완료된 bot/transcript는 복구되지만 in-flight 기능은 부분적**
+
+> **2026-09-01 스윕**: 복구의 중추(pending-wake 무장/재무장/유실 방지)는 r3~r5 행동 테스트로 고정(마커 prune 14일 보존, pre-clear 금지, payload 보존 upsert, rearm 실전달), 실사용 restart-survivor 캠페인 PASS가 원장에 존재, 런타임 락은 `wsl-runtime-lock` 테스트. 잔여 매트릭스(compaction 중·OAuth refresh 중 종료 등)는 Gate A5에서 개별 실측.
 
 남은 작업:
 

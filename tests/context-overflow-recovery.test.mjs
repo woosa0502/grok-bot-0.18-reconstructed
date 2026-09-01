@@ -80,6 +80,35 @@ test("the Pi runtime classifies its failures before rejecting", () => {
   assert.match(runtime, /throw finalError;/, "and the one thrown");
 });
 
+test("warm-cache turns count the cached prefix toward context occupancy", async () => {
+  const result = await build({
+    stdin: {
+      resolveDir: repoRoot,
+      loader: "ts",
+      sourcefile: "occupancy-entry.ts",
+      contents: 'export { contextOccupancyTokens } from "./source/host/extensions/inference/pi-codex-runtime.js";',
+    },
+    bundle: true, format: "esm", platform: "node", write: false,
+    supported: { using: false }, packages: "external",
+  });
+  const { contextOccupancyTokens } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
+  const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+  // Pi subtracts cached tokens out of `input`, so a warm-cache turn looks tiny
+  // by input+output — the provider's total_tokens is the real occupancy.
+  assert.equal(
+    contextOccupancyTokens({ input: 900, output: 300, cacheRead: 41_000, cacheWrite: 0, totalTokens: 42_200, cost }),
+    42_200,
+  );
+  // A backend that omits total_tokens still gets the full component sum.
+  assert.equal(
+    contextOccupancyTokens({ input: 900, output: 300, cacheRead: 41_000, cacheWrite: 500, totalTokens: 0, cost }),
+    42_700,
+  );
+  // And the runtime must actually feed that number to the summarization trigger.
+  const runtime = read("source/host/extensions/inference/pi-codex-runtime.ts");
+  assert.match(runtime, /totalTokens: contextOccupancyTokens\(authoritative\.usage\)/, "usage.resolve must report occupancy, not input+output");
+});
+
 test("rate-limit failures carry retry guidance; token-limit classification wins", async () => {
   const result = await build({
     stdin: {
