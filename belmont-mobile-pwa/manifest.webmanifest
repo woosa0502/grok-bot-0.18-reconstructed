@@ -1,0 +1,27 @@
+{
+  "id": "./",
+  "name": "Belmont Mobile",
+  "short_name": "Belmont",
+  "description": "Belmont와 대화하고 위임 작업의 진행과 승인을 확인합니다.",
+  "lang": "ko-KR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "./icons/grok-bot-app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/grok-bot-app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

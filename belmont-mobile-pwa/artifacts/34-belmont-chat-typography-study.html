@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Belmont Chat Typography Study</title>
+
+    <!--
+      Assumptions
+      - Preserve the current Belmont mobile PWA information architecture and light UI.
+      - Import only the Refero typography roles, not its dark palette or marketing layout.
+      - Use PP Neue Montreal for Latin glyphs and Pretendard Variable for Hangul.
+      - The personal-use PP package lacks weight 200, so Latin body glyphs use its Light outline.
+    -->
+
+    <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+    <style>
+      @font-face {
+        font-family: "Belmont Neue";
+        src: local("PP Neue Montreal Light");
+        font-style: normal;
+        font-weight: 200;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "Belmont Neue";
+        src: local("PP Neue Montreal Regular"), local("PP Neue Montreal");
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "Belmont Neue";
+        src: local("PP Neue Montreal Semibold"), local("PP Neue Montreal SemiBold");
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "Belmont Korean";
+        src: local("Pretendard Variable"), local("Pretendard");
+        font-style: normal;
+        font-weight: 45 920;
+        font-display: swap;
+      }
+
+      :root {
+        --font-ui: "Belmont Neue", "Belmont Korean", system-ui, sans-serif;
+        --text-caption: 12px;
+        --leading-caption: 1.5;
+        --text-label: 14px;
+        --leading-label: 1.2;
+        --tracking-label: 0.35px;
+        --text-body: 18px;
+        --leading-body: 1.5;
+        --text-heading: 24px;
+        --leading-heading: 1.25;
+        --tracking-heading: -0.48px;
+        --ink: #151515;
+        --secondary: #6d6d6d;
+        --tertiary: #929292;
+        --surface: #fbfbfb;
+        --surface-muted: #f0f0f0;
+        --surface-keyboard: #dedfe2;
+        --line: rgb(21 21 21 / 10%);
+        --blue: #0968c6;
+        --orange: #c65d2e;
+        --radius: 24px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #root {
+        width: 100%;
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background: #e9e9eb;
+        color: var(--ink);
+        font-family: var(--font-ui);
+        font-feature-settings: "ss01" 1, "kern" 1, "liga" 1;
+        font-kerning: normal;
+        font-synthesis: none;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      button {
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+      }
+
+      .study {
+        width: 1440px;
+        min-height: 1060px;
+        padding: 42px 54px 52px;
+        background:
+          linear-gradient(rgb(255 255 255 / 46%), rgb(255 255 255 / 46%)),
+          #e9e9eb;
+      }
+
+      .study-header {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        margin-bottom: 30px;
+      }
+
+      .study-kicker,
+      .screen-label,
+      .spec-kicker,
+      .message-label,
+      .working-label {
+        font-size: var(--text-label);
+        font-weight: 600;
+        letter-spacing: var(--tracking-label);
+        line-height: var(--leading-label);
+      }
+
+      .study-kicker,
+      .spec-kicker,
+      .screen-label {
+        color: var(--secondary);
+        text-transform: uppercase;
+      }
+
+      .study-title {
+        max-width: 760px;
+        margin: 8px 0 0;
+        font-size: 42px;
+        font-weight: 400;
+        letter-spacing: -1.68px;
+        line-height: 1.2;
+      }
+
+      .study-note {
+        max-width: 360px;
+        margin: 0 0 4px;
+        color: var(--secondary);
+        font-size: var(--text-body);
+        font-weight: 200;
+        line-height: var(--leading-body);
+        text-align: right;
+        text-wrap: pretty;
+      }
+
+      .study-grid {
+        display: grid;
+        grid-template-columns: 412px 412px 1fr;
+        gap: 34px;
+        align-items: start;
+      }
+
+      .screen-column {
+        min-width: 0;
+      }
+
+      .screen-label {
+        margin: 0 0 10px 12px;
+      }
+
+      .device-capture {
+        display: inline-block;
+      }
+
+      .app-shell {
+        display: flex;
+        height: 100%;
+        flex-direction: column;
+        overflow: hidden;
+        background: var(--surface);
+      }
+
+      .app-header {
+        display: grid;
+        min-height: 66px;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        align-items: center;
+        padding: 6px 10px 8px;
+        border-bottom: 1px solid var(--line);
+        background: rgb(251 251 251 / 96%);
+      }
+
+      .app-header.long {
+        min-height: 76px;
+      }
+
+      .icon-button {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 22px;
+        font-family: system-ui, sans-serif;
+        font-size: 26px;
+        line-height: 1;
+      }
+
+      .icon-button:active,
+      .composer-action:active,
+      .chip:active {
+        transform: translateY(1px);
+      }
+
+      .header-copy {
+        min-width: 0;
+        text-align: center;
+      }
+
+      .header-copy h2 {
+        overflow: hidden;
+        margin: 0;
+        font-size: var(--text-heading);
+        font-weight: 400;
+        letter-spacing: var(--tracking-heading);
+        line-height: var(--leading-heading);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .header-copy.long h2 {
+        font-size: var(--text-label);
+        letter-spacing: 0;
+        line-height: var(--leading-label);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .header-copy p {
+        margin: 1px 0 0;
+        color: var(--secondary);
+        font-size: var(--text-caption);
+        font-weight: 400;
+        line-height: var(--leading-caption);
+      }
+
+      .conversation {
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        flex-direction: column;
+        gap: 11px;
+        overflow: hidden;
+        padding: 14px 14px 10px;
+      }
+
+      .message {
+        max-width: 91%;
+        padding: 13px 16px 14px;
+        border-radius: var(--radius);
+      }
+
+      .message.agent {
+        align-self: flex-start;
+        background: var(--surface-muted);
+      }
+
+      .message.user {
+        align-self: flex-end;
+        background: #171717;
+        color: #fafafa;
+      }
+
+      .message-label {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--secondary);
+      }
+
+      .message.user .message-label {
+        color: rgb(255 255 255 / 62%);
+      }
+
+      .message p,
+      .response-copy,
+      .feedback-placeholder {
+        margin: 0;
+        font-size: var(--text-body);
+        font-weight: 200;
+        line-height: var(--leading-body);
+        text-wrap: pretty;
+      }
+
+      .message strong,
+      .response-copy strong {
+        font-weight: 400;
+      }
+
+      .code {
+        display: block;
+        margin-top: 9px;
+        color: #3e3e3e;
+        font-family: var(--font-ui);
+        font-size: 15px;
+        font-weight: 200;
+        letter-spacing: 0.15px;
+        line-height: 1.5;
+      }
+
+      .composer {
+        display: flex;
+        min-height: 68px;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px 10px;
+        border-top: 1px solid var(--line);
+        background: rgb(251 251 251 / 96%);
+      }
+
+      .composer-field {
+        display: flex;
+        min-width: 0;
+        height: 50px;
+        flex: 1;
+        align-items: center;
+        gap: 8px;
+        padding: 0 9px 0 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: #fff;
+      }
+
+      .composer-placeholder {
+        min-width: 0;
+        flex: 1;
+        color: var(--tertiary);
+        font-size: var(--text-body);
+        font-weight: 200;
+        line-height: var(--leading-body);
+      }
+
+      .composer-action {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        flex: 0 0 auto;
+        place-items: center;
+        border-radius: 19px;
+        background: var(--surface-muted);
+        font-family: system-ui, sans-serif;
+        font-size: 20px;
+      }
+
+      .composer-action.primary {
+        background: #a9a9aa;
+        color: #fff;
+      }
+
+      .detail-content {
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        flex-direction: column;
+        gap: 10px;
+        overflow: hidden;
+        padding: 14px 16px 10px;
+      }
+
+      .response-copy {
+        color: #202020;
+      }
+
+      .activity {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--secondary);
+        font-size: var(--text-label);
+        font-weight: 400;
+        line-height: var(--leading-label);
+      }
+
+      .plus-count {
+        color: #19963d;
+        font-weight: 600;
+      }
+
+      .minus-count {
+        color: #b74343;
+        font-weight: 600;
+      }
+
+      .working-label {
+        color: var(--orange);
+      }
+
+      .quote {
+        margin-top: auto;
+        padding: 13px 16px;
+        border-radius: var(--radius);
+        background: var(--surface-muted);
+        color: var(--secondary);
+        font-size: var(--text-label);
+        font-weight: 400;
+        line-height: 1.5;
+        text-align: center;
+        text-wrap: pretty;
+      }
+
+      .feedback-box {
+        margin: 0 12px 8px;
+        padding: 14px 14px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: #fff;
+      }
+
+      .feedback-placeholder {
+        min-height: 44px;
+        color: var(--tertiary);
+      }
+
+      .feedback-actions {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 7px;
+      }
+
+      .chip {
+        display: inline-flex;
+        min-height: 38px;
+        align-items: center;
+        justify-content: center;
+        padding: 0 14px;
+        border-radius: 19px;
+        background: var(--surface-muted);
+        font-size: var(--text-label);
+        font-weight: 600;
+        letter-spacing: var(--tracking-label);
+        line-height: var(--leading-label);
+        white-space: nowrap;
+      }
+
+      .chip.icon-only {
+        width: 38px;
+        padding: 0;
+        font-family: system-ui, sans-serif;
+        font-size: 22px;
+      }
+
+      .stop {
+        width: 38px;
+        height: 38px;
+        margin-left: auto;
+        border-radius: 19px;
+        background: #ededed;
+      }
+
+      .stop::before {
+        display: block;
+        width: 15px;
+        height: 15px;
+        margin: auto;
+        border-radius: 3px;
+        background: #171717;
+        content: "";
+      }
+
+      .tool-row {
+        display: flex;
+        height: 48px;
+        align-items: center;
+        justify-content: space-around;
+        border-top: 1px solid var(--line);
+        background: #f7f7f8;
+      }
+
+      .tool-row span {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border-radius: 19px;
+        background: #eeeeef;
+        font-family: system-ui, sans-serif;
+        font-size: 19px;
+      }
+
+      .keyboard {
+        display: grid;
+        height: 211px;
+        flex: 0 0 211px;
+        grid-template-columns: repeat(4, 1fr);
+        grid-auto-rows: 43px;
+        gap: 7px;
+        padding: 10px 10px 8px;
+        background: var(--surface-keyboard);
+        font-family: system-ui, sans-serif;
+      }
+
+      .key {
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: #f7f7f8;
+        box-shadow: 0 1px 0 rgb(0 0 0 / 10%);
+        color: #232323;
+        font-size: 17px;
+      }
+
+      .key.system {
+        background: #c7c8cb;
+      }
+
+      .key.space {
+        grid-column: span 2;
+      }
+
+      .spec-panel {
+        min-height: 864px;
+        padding: 28px;
+        border-radius: 28px;
+        background: #171717;
+        color: #fafafa;
+      }
+
+      .spec-panel h3 {
+        margin: 12px 0 28px;
+        font-size: 36px;
+        font-weight: 400;
+        letter-spacing: -1.2px;
+        line-height: 1.2;
+      }
+
+      .spec-fonts {
+        margin-bottom: 30px;
+        color: #bdbdbd;
+        font-size: var(--text-body);
+        font-weight: 200;
+        line-height: var(--leading-body);
+      }
+
+      .spec-fonts strong {
+        color: #fff;
+        font-weight: 400;
+      }
+
+      .token-list {
+        display: grid;
+        gap: 18px;
+      }
+
+      .token {
+        padding-top: 18px;
+        border-top: 1px solid rgb(255 255 255 / 14%);
+      }
+
+      .token-meta {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        color: #9a9a9a;
+        font-size: var(--text-caption);
+        font-weight: 400;
+        line-height: var(--leading-caption);
+      }
+
+      .token-sample.heading {
+        font-size: var(--text-heading);
+        font-weight: 400;
+        letter-spacing: var(--tracking-heading);
+        line-height: var(--leading-heading);
+      }
+
+      .token-sample.body {
+        color: #f3f3f3;
+        font-size: var(--text-body);
+        font-weight: 200;
+        line-height: var(--leading-body);
+      }
+
+      .token-sample.label {
+        font-size: var(--text-label);
+        font-weight: 600;
+        letter-spacing: var(--tracking-label);
+        line-height: var(--leading-label);
+        text-transform: uppercase;
+      }
+
+      .token-sample.caption {
+        color: #bdbdbd;
+        font-size: var(--text-caption);
+        font-weight: 400;
+        line-height: var(--leading-caption);
+      }
+
+      .spec-note {
+        margin-top: 28px;
+        padding: 16px;
+        border-radius: 18px;
+        background: rgb(255 255 255 / 8%);
+        color: #bdbdbd;
+        font-size: var(--text-caption);
+        font-weight: 400;
+        line-height: var(--leading-caption);
+      }
+
+      @media (max-width: 900px) {
+        .study {
+          width: 100%;
+          min-height: 100dvh;
+          padding: 28px 18px;
+        }
+
+        .study-header {
+          display: block;
+        }
+
+        .study-title {
+          font-size: 36px;
+        }
+
+        .study-note {
+          margin-top: 12px;
+          text-align: left;
+        }
+
+        .study-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const androidFrameStyles = {
+        wrapper: {
+          display: "inline-block",
+          padding: 10,
+          background: "#1a1a1a",
+          borderRadius: 44,
+          boxShadow: "0 0 0 2px #2a2a2a, 0 20px 60px rgba(0,0,0,0.22)",
+          position: "relative",
+        },
+        screen: {
+          position: "relative",
+          borderRadius: 36,
+          overflow: "hidden",
+          background: "#fff",
+        },
+        statusBar: {
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 32,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 24px",
+          fontSize: 14,
+          fontWeight: 500,
+          fontFamily: "system-ui, sans-serif",
+          zIndex: 20,
+          pointerEvents: "none",
+        },
+        punchHole: {
+          position: "absolute",
+          top: 10,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 14,
+          height: 14,
+          background: "#000",
+          borderRadius: "50%",
+          zIndex: 30,
+        },
+        statusIcons: {
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        },
+        batteryText: {
+          fontSize: 11,
+          fontWeight: 600,
+          marginLeft: 2,
+        },
+        content: {
+          position: "absolute",
+          top: 32,
+          left: 0,
+          right: 0,
+          bottom: 24,
+          overflow: "hidden",
+        },
+        navBar: {
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 24,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10,
+        },
+        navButton: {
+          width: 100,
+          height: 4,
+          background: "rgba(0,0,0,0.4)",
+          borderRadius: 999,
+        },
+      };
+
+      function AndroidFrame({ children, width = 390, height = 844, time = "12:49", battery = 84 }) {
+        return (
+          <div style={androidFrameStyles.wrapper}>
+            <div style={{ ...androidFrameStyles.screen, width, height }}>
+              <div style={{ ...androidFrameStyles.statusBar, color: "#1a1a1a" }}>
+                <span>{time}</span>
+                <div style={androidFrameStyles.statusIcons}>
+                  <svg width="14" height="10" viewBox="0 0 14 10" fill="currentColor" aria-hidden="true">
+                    <rect x="0" y="6" width="2" height="4" rx="0.5" />
+                    <rect x="4" y="4" width="2" height="6" rx="0.5" />
+                    <rect x="8" y="2" width="2" height="8" rx="0.5" />
+                    <rect x="12" y="0" width="2" height="10" rx="0.5" />
+                  </svg>
+                  <span style={{ fontSize: 11 }}>5G</span>
+                  <div style={{ width: 22, height: 10, border: "1.5px solid currentColor", borderRadius: 2, padding: 1 }}>
+                    <div style={{ width: `${battery}%`, height: "100%", background: "currentColor", borderRadius: 1 }} />
+                  </div>
+                  <span style={androidFrameStyles.batteryText}>{battery}%</span>
+                </div>
+              </div>
+              <div style={androidFrameStyles.punchHole} />
+              <div style={androidFrameStyles.content}>{children}</div>
+              <div style={androidFrameStyles.navBar}>
+                <div style={androidFrameStyles.navButton} />
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function AppHeader({ title, subtitle = "Belmont", long = false }) {
+        return (
+          <header className={`app-header ${long ? "long" : ""}`}>
+            <button className="icon-button" aria-label="뒤로">‹</button>
+            <div className={`header-copy ${long ? "long" : ""}`}>
+              <h2>{title}</h2>
+              <p>{subtitle}</p>
+            </div>
+            <button className="icon-button" aria-label="더 보기">⋮</button>
+          </header>
+        );
+      }
+
+      function ThreadScreen() {
+        return (
+          <main className="app-shell">
+            <AppHeader title="Belmont" subtitle="Chief of Staff" />
+            <section className="conversation" aria-label="Belmont 대화 샘플">
+              <article className="message agent">
+                <span className="message-label">Belmont</span>
+                <p>추가 브라우저 시도도 끝났어. 결과 원문은 아래야.</p>
+                <code className="code">Browser Auto-review could not capture the current page state.</code>
+              </article>
+
+              <article className="message user">
+                <span className="message-label">나</span>
+                <p>브라우저 도구로 naver.com을 열고 페이지 제목을 알려줘. 실패하면 오류 원문 그대로.</p>
+              </article>
+
+              <article className="message agent">
+                <span className="message-label">Belmont</span>
+                <p>확인했어. 바로 열어서 제목을 확인해볼게.</p>
+              </article>
+
+              <article className="message agent">
+                <span className="message-label">Belmont</span>
+                <p>이번에도 실패했어. 오류 원문은 아래야.</p>
+                <code className="code">Browser Auto-review could not capture the current page state.</code>
+              </article>
+            </section>
+
+            <footer className="composer">
+              <button className="composer-action" aria-label="첨부">＋</button>
+              <div className="composer-field">
+                <span className="composer-placeholder">Ask Belmont</span>
+                <button className="composer-action" aria-label="음성 입력">●</button>
+                <button className="composer-action primary" aria-label="전송">↑</button>
+              </div>
+            </footer>
+          </main>
+        );
+      }
+
+      const keyboardRows = [
+        ["ㅣ", "·", "ㅡ", "⌫"],
+        ["ㄱㅋ", "ㄴㄹ", "ㄷㅌ", "↵"],
+        ["ㅂㅍ", "ㅅㅎ", "ㅈㅊ", ".,?!"],
+      ];
+
+      function FeedbackScreen() {
+        return (
+          <main className="app-shell">
+            <AppHeader title="Phase A 완료 및 A2 컨텍스트 윈도우 버그" long />
+
+            <section className="detail-content" aria-label="피드백 작성 샘플">
+              <p className="response-copy">
+                좋은 지적. <strong>시스템 지시문 원문이 화면에 그대로 노출된 건 명백한 표시 오류</strong>입니다. 원문은 숨기고 결과와 다음 행동만 보여줘야 합니다.
+              </p>
+              <div className="activity">
+                <span>명령어 2개 실행됨, 파일 2개 편집됨</span>
+                <span className="plus-count">+34</span>
+                <span className="minus-count">-2</span>
+              </div>
+              <div className="working-label">Working...</div>
+              <div className="quote">답이 여러 개일 때는 마지막 답이 끝날 때 함께 정리한다.</div>
+            </section>
+
+            <section className="feedback-box">
+              <div className="feedback-placeholder">피드백 입력...</div>
+              <div className="feedback-actions">
+                <button className="chip icon-only" aria-label="첨부">＋</button>
+                <button className="chip">Fable 5</button>
+                <button className="chip">검사 우회</button>
+                <button className="stop" aria-label="중지"></button>
+              </div>
+            </section>
+
+            <nav className="tool-row" aria-label="입력 도구">
+              <span>☺</span><span>✦</span><span>T</span><span>⚙</span><span>⋯</span>
+            </nav>
+
+            <section className="keyboard" aria-label="시스템 키보드 미리보기">
+              {keyboardRows.flatMap((row, rowIndex) => row.map((key, keyIndex) => (
+                <div className={`key ${keyIndex === 3 ? "system" : ""}`} key={`${rowIndex}-${key}`}>{key}</div>
+              )))}
+              <div className="key system">!#1</div>
+              <div className="key space">스페이스</div>
+              <div className="key system">한</div>
+            </section>
+          </main>
+        );
+      }
+
+      function TypeSpec() {
+        return (
+          <aside className="spec-panel">
+            <div className="spec-kicker">Refero type adaptation</div>
+            <h3>Scale creates hierarchy.</h3>
+            <p className="spec-fonts">
+              <strong>PP Neue Montreal</strong><br />Latin and numbers<br /><br />
+              <strong>Pretendard Variable</strong><br />한글과 한국어 문장
+            </p>
+
+            <div className="token-list">
+              <div className="token">
+                <div className="token-meta"><span>screen title</span><span>24 / 400 / 1.25 / -0.48</span></div>
+                <div className="token-sample heading">Belmont 대화</div>
+              </div>
+              <div className="token">
+                <div className="token-meta"><span>message body</span><span>18 / 200 / 1.5</span></div>
+                <div className="token-sample body">결과와 다음 행동만 차분하게 보여줍니다.</div>
+              </div>
+              <div className="token">
+                <div className="token-meta"><span>label and action</span><span>14 / 600 / 1.2 / +0.35</span></div>
+                <div className="token-sample label">Working · Request access</div>
+              </div>
+              <div className="token">
+                <div className="token-meta"><span>caption</span><span>12 / 400 / 1.5</span></div>
+                <div className="token-sample caption">Chief of Staff · 오후 12:49</div>
+              </div>
+            </div>
+
+            <p className="spec-note">
+              Refero의 색상과 랜딩 페이지 레이아웃은 가져오지 않았습니다. 현재 PWA 구조 위에 글자 역할, 크기, 굵기, 행간, 자간만 적용한 시안입니다. 무료 PP 패키지에는 200이 없어 영문 본문 윤곽은 Light로 표시됩니다.
+            </p>
+          </aside>
+        );
+      }
+
+      function App() {
+        React.useEffect(() => {
+          document.fonts.ready.then(() => { window.__ready = true; });
+        }, []);
+
+        return (
+          <div className="study">
+            <header className="study-header">
+              <div>
+                <div className="study-kicker">Belmont mobile PWA · typography study</div>
+                <h1 className="study-title">Two real states, one type system.</h1>
+              </div>
+              <p className="study-note">현재 화면 구조는 유지하고 Refero의 타이포 토큰만 모바일 문맥에 맞게 이식했습니다.</p>
+            </header>
+
+            <div className="study-grid">
+              <section className="screen-column">
+                <div className="screen-label">Chat thread</div>
+                <div className="device-capture" data-capture="thread">
+                  <AndroidFrame time="12:49" battery={84}><ThreadScreen /></AndroidFrame>
+                </div>
+              </section>
+
+              <section className="screen-column">
+                <div className="screen-label">Feedback composer</div>
+                <div className="device-capture" data-capture="feedback">
+                  <AndroidFrame time="10:23" battery={61}><FeedbackScreen /></AndroidFrame>
+                </div>
+              </section>
+
+              <TypeSpec />
+            </div>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

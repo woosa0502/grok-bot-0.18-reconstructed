@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Belmont PP Neue Montreal + Pretendard Typography Sample</title>
+    <style>
+      @font-face {
+        font-family: "Belmont Neue";
+        src: local("PP Neue Montreal Regular"), local("PP Neue Montreal");
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "Belmont Neue";
+        src: local("PP Neue Montreal Semibold"), local("PP Neue Montreal SemiBold");
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "Belmont Korean";
+        src: local("Pretendard Variable"), local("Pretendard");
+        font-style: normal;
+        font-weight: 45 920;
+        font-display: swap;
+      }
+
+      :root {
+        color-scheme: light;
+        --page: #f7f7f7;
+        --surface: #fcfcfc;
+        --surface-raised: rgb(252 252 252 / 92%);
+        --ink: #141414;
+        --secondary: rgb(20 20 20 / 62%);
+        --tertiary: rgb(20 20 20 / 46%);
+        --separator: rgb(20 20 20 / 10%);
+        --accent: #0c64c1;
+        --attention: #e4f2f7;
+        --font-ui: "Belmont Neue", "Belmont Korean", system-ui, sans-serif;
+        --font-regular: 400;
+        --font-semibold: 600;
+        --font-bold: 700;
+        --text-title: 20px;
+        --text-row-title: 17px;
+        --text-body: 15px;
+        --text-label: 14px;
+        --text-meta: 13px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        min-height: 100%;
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font-family: var(--font-ui);
+        font-feature-settings: "ss01" 1, "kern" 1, "liga" 1;
+        font-kerning: normal;
+        font-synthesis: none;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      button {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+      }
+
+      .screen {
+        position: relative;
+        display: flex;
+        width: min(100%, 430px);
+        height: 100dvh;
+        min-height: 760px;
+        margin: 0 auto;
+        overflow: hidden;
+        flex-direction: column;
+        background: var(--surface);
+      }
+
+      .glass {
+        border: 1px solid rgb(20 20 20 / 8%);
+        background: var(--surface-raised);
+        box-shadow: 0 4px 14px rgb(0 0 0 / 6%);
+        backdrop-filter: blur(20px) saturate(150%);
+      }
+
+      .circle-button {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 50%;
+      }
+
+      .header {
+        z-index: 5;
+        display: grid;
+        min-height: 60px;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        gap: 10px;
+        align-items: center;
+        padding: 4px 16px 10px;
+        background: var(--surface);
+      }
+
+      .profile {
+        display: grid;
+        width: 30px;
+        height: 30px;
+        place-items: center;
+        border-radius: 50%;
+        background: linear-gradient(145deg, #52b788, #009957);
+        color: white;
+        font-size: var(--text-label);
+        font-weight: var(--font-semibold);
+        line-height: 1;
+      }
+
+      .header-copy {
+        display: grid;
+        min-width: 0;
+        gap: 2px;
+        justify-items: center;
+        text-align: center;
+      }
+
+      .header-copy strong {
+        font-size: var(--text-title);
+        font-weight: var(--font-regular);
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+      }
+
+      .header-copy small {
+        overflow: hidden;
+        max-width: 100%;
+        color: var(--secondary);
+        font-size: var(--text-meta);
+        font-weight: var(--font-regular);
+        line-height: 1.4;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .gear {
+        font-family: system-ui, sans-serif;
+        font-size: 21px;
+        font-weight: 400;
+        line-height: 1;
+      }
+
+      .scroll {
+        min-height: 0;
+        flex: 1;
+        overflow: hidden;
+        padding-bottom: 82px;
+      }
+
+      .attention {
+        display: grid;
+        width: calc(100% - 32px);
+        min-height: 64px;
+        grid-template-columns: 44px minmax(0, 1fr) 18px;
+        gap: 12px;
+        align-items: center;
+        margin: 2px 16px 10px;
+        padding: 10px 12px;
+        border-radius: 18px;
+        background: var(--attention);
+      }
+
+      .attention-copy {
+        display: grid;
+        min-width: 0;
+        gap: 3px;
+      }
+
+      .attention-copy strong {
+        overflow: hidden;
+        font-size: var(--text-body);
+        font-weight: var(--font-semibold);
+        line-height: 1.35;
+        letter-spacing: -0.01em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .attention-copy small {
+        overflow: hidden;
+        color: var(--secondary);
+        font-size: var(--text-meta);
+        font-weight: var(--font-regular);
+        line-height: 1.4;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .chevron {
+        color: var(--tertiary);
+        font-size: 21px;
+        font-weight: var(--font-regular);
+      }
+
+      .avatar {
+        position: relative;
+        display: block;
+        width: 52px;
+        height: 52px;
+        flex: 0 0 auto;
+      }
+
+      .avatar.small {
+        width: 44px;
+        height: 44px;
+      }
+
+      .avatar.tiny {
+        width: 30px;
+        height: 30px;
+      }
+
+      .face {
+        position: absolute;
+        inset: 4px;
+        background: var(--avatar-color);
+      }
+
+      .face::before,
+      .face::after {
+        position: absolute;
+        top: 46%;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: white;
+        content: "";
+        transform: translateY(-50%);
+      }
+
+      .face::before {
+        left: 34%;
+      }
+
+      .face::after {
+        right: 34%;
+      }
+
+      .manager .face {
+        clip-path: polygon(50% 0, 94% 25%, 94% 75%, 50% 100%, 6% 75%, 6% 25%);
+      }
+
+      .researcher .face {
+        border-radius: 47% 53% 48% 52% / 55% 44% 56% 45%;
+      }
+
+      .builder .face {
+        border-radius: 50%;
+      }
+
+      .waiting-dot {
+        position: absolute;
+        right: -1px;
+        bottom: 3px;
+        width: 11px;
+        height: 11px;
+        border: 2px solid var(--surface);
+        border-radius: 50%;
+        background: #c24e00;
+      }
+
+      .roster-heading {
+        padding: 19px 28px 7px;
+        color: var(--secondary);
+        font-size: var(--text-meta);
+        font-weight: var(--font-semibold);
+        letter-spacing: 0.025em;
+        line-height: 1.2;
+      }
+
+      .row {
+        display: flex;
+        width: 100%;
+        min-height: 88px;
+        align-items: flex-start;
+        padding: 0 16px 0 6px;
+      }
+
+      .row-leading {
+        position: relative;
+        width: 22px;
+        min-width: 22px;
+        align-self: stretch;
+      }
+
+      .unread {
+        position: absolute;
+        top: 38px;
+        left: 6px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
+      .row > .avatar {
+        margin-top: 14px;
+        margin-right: 14px;
+      }
+
+      .row-copy {
+        display: grid;
+        min-width: 0;
+        min-height: 88px;
+        flex: 1;
+        align-content: start;
+        gap: 4px;
+        padding: 13px 0;
+        border-bottom: 1px solid var(--separator);
+      }
+
+      .row:last-child .row-copy {
+        border-bottom-color: transparent;
+      }
+
+      .row-title {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .row-title strong {
+        overflow: hidden;
+        min-width: 0;
+        font-size: var(--text-row-title);
+        font-weight: var(--font-semibold);
+        letter-spacing: -0.015em;
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .role {
+        overflow: hidden;
+        max-width: 42%;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: rgb(20 20 20 / 7%);
+        color: var(--secondary);
+        font-size: 12px;
+        font-style: normal;
+        font-weight: var(--font-regular);
+        line-height: 1.2;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      time {
+        margin-left: auto;
+        color: var(--secondary);
+        font-size: var(--text-meta);
+        font-weight: var(--font-regular);
+        line-height: 1.3;
+        white-space: nowrap;
+      }
+
+      .row-preview {
+        overflow: hidden;
+        color: var(--secondary);
+        font-size: var(--text-body);
+        font-weight: var(--font-regular);
+        letter-spacing: -0.005em;
+        line-height: 1.45;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .waiting-pill {
+        width: max-content;
+        margin-top: 3px;
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: white;
+        font-size: 12px;
+        font-weight: var(--font-semibold);
+        letter-spacing: 0.01em;
+        line-height: 1.2;
+      }
+
+      .working-dots {
+        display: flex;
+        width: 24px;
+        height: 12px;
+        align-items: center;
+        gap: 3px;
+      }
+
+      .working-dots i {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--tertiary);
+      }
+
+      .bottom-bar {
+        position: absolute;
+        z-index: 10;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        padding: 0 16px 8px;
+      }
+
+      .bottom-group {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .updates {
+        display: flex;
+        width: 180px;
+        height: 52px;
+        align-items: center;
+        gap: 9px;
+        padding: 5px 12px 5px 8px;
+        border-radius: 26px;
+      }
+
+      .updates-copy {
+        display: grid;
+        min-width: 0;
+        flex: 1;
+        gap: 1px;
+      }
+
+      .updates-copy strong {
+        font-size: var(--text-label);
+        font-weight: var(--font-semibold);
+        letter-spacing: -0.01em;
+        line-height: 1.25;
+      }
+
+      .updates-copy small {
+        overflow: hidden;
+        color: var(--secondary);
+        font-size: 12px;
+        font-weight: var(--font-regular);
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .count {
+        display: grid;
+        width: 22px;
+        height: 22px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--accent);
+        color: white;
+        font-size: 12px;
+        font-weight: var(--font-semibold);
+      }
+
+      .bottom-action {
+        width: 48px;
+        height: 48px;
+        font-family: system-ui, sans-serif;
+        font-size: 25px;
+        line-height: 1;
+      }
+
+      .search-mark {
+        position: relative;
+        display: block;
+        width: 19px;
+        height: 19px;
+        border: 2px solid var(--ink);
+        border-radius: 50%;
+      }
+
+      .search-mark::after {
+        position: absolute;
+        right: -5px;
+        bottom: -3px;
+        width: 7px;
+        height: 2px;
+        border-radius: 1px;
+        background: var(--ink);
+        content: "";
+        transform: rotate(48deg);
+        transform-origin: left center;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="screen" aria-label="Belmont 모바일 타이포그래피 샘플">
+      <header class="header">
+        <button class="circle-button glass" aria-label="연결 설정">
+          <span class="profile">H</span>
+        </button>
+        <div class="header-copy">
+          <strong>Chats</strong>
+          <small>Belmont Demo · connected</small>
+        </div>
+        <button class="circle-button glass" aria-label="설정">
+          <span class="gear" aria-hidden="true">⚙︎</span>
+        </button>
+      </header>
+
+      <section class="scroll">
+        <button class="attention" aria-label="Belmont 승인 요청 열기">
+          <span class="avatar small manager" style="--avatar-color:#ef3f91">
+            <span class="face"></span>
+            <span class="waiting-dot"></span>
+          </span>
+          <span class="attention-copy">
+            <strong>Belmont가 확인을 기다립니다</strong>
+            <small>실제 연결에서는 승인 종류에 맞는 명령으로 전달됩니다.</small>
+          </span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </button>
+
+        <section aria-label="Belmont 대화">
+          <button class="row">
+            <span class="row-leading"><span class="unread"></span></span>
+            <span class="avatar manager" style="--avatar-color:#ef3f91">
+              <span class="face"></span>
+              <span class="waiting-dot"></span>
+            </span>
+            <span class="row-copy">
+              <span class="row-title">
+                <strong>Belmont</strong>
+                <em class="role">Chief of Staff</em>
+                <time>오후 11:31</time>
+                <span class="chevron" aria-hidden="true">›</span>
+              </span>
+              <span class="row-preview">이 화면은 데모입니다. 실제 Belmont 연결은 전용 PWA를 통해 이어집니다.</span>
+              <span class="waiting-pill">Waiting on you</span>
+            </span>
+          </button>
+        </section>
+
+        <section aria-label="작업 에이전트">
+          <div class="roster-heading">Bots</div>
+
+          <button class="row">
+            <span class="row-leading"></span>
+            <span class="avatar researcher" style="--avatar-color:#8d8d8d">
+              <span class="face"></span>
+            </span>
+            <span class="row-copy">
+              <span class="row-title">
+                <strong>Researcher</strong>
+                <em class="role">Research</em>
+                <span class="chevron" aria-hidden="true">›</span>
+              </span>
+              <span class="row-preview">OpenMaus 모바일 구조와 PWA 경계를 확인했습니다.</span>
+            </span>
+          </button>
+
+          <button class="row">
+            <span class="row-leading"></span>
+            <span class="avatar builder" style="--avatar-color:#ff9f18">
+              <span class="face"></span>
+            </span>
+            <span class="row-copy">
+              <span class="row-title">
+                <strong>Builder</strong>
+                <em class="role">Engineer</em>
+                <time>now</time>
+                <span class="chevron" aria-hidden="true">›</span>
+              </span>
+              <span class="row-preview">설치형 PWA 수직 흐름을 구현하고 있습니다.</span>
+              <span class="working-dots" aria-label="작업 중"><i></i><i></i><i></i></span>
+            </span>
+          </button>
+        </section>
+      </section>
+
+      <footer class="bottom-bar">
+        <div class="bottom-group">
+          <button class="updates glass">
+            <span class="avatar tiny manager" style="--avatar-color:#ef3f91">
+              <span class="face"></span>
+              <span class="waiting-dot"></span>
+            </span>
+            <span class="updates-copy">
+              <strong>Updates</strong>
+              <small>1 needs you</small>
+            </span>
+            <span class="count">1</span>
+          </button>
+          <button class="circle-button bottom-action glass" aria-label="검색">
+            <span class="search-mark" aria-hidden="true"></span>
+          </button>
+          <button class="circle-button bottom-action glass" aria-label="새 요청">
+            <span aria-hidden="true">＋</span>
+          </button>
+        </div>
+      </footer>
+    </main>
+  </body>
+</html>
