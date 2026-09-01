@@ -97,14 +97,14 @@ Cursor 계정·macOS·원격 box·클라우드 backend에 묶인 원본 기능�
 - streaming·reasoning·tool projection·abort 배선
 - Codex 실패 시 Cursor 자동 fallback 없음
 
-남은 작업:
+남은 작업 (2026-09-01 대조: 대부분 앞선 wave에서 구현·테스트 완료 확인):
 
-- renderer 로그인 상태를 실제 Pi OAuth 상태와 연결
-- credential 없음·만료·refresh·재로그인 상태 표시
-- CLI 기본 auth 경로와 WSL runtime `SAND_DATA_ROOT` 경로 통일
-- provider 미설정 기본값 `cursor` 제거 또는 WSL에서 명시적 Codex-only migration
-- 기존 Cursor provider profile 처리 정책 확정
-- WSL 핵심 흐름에서 Cursor/Anysphere 호출 여부 검증
+- ~~renderer 로그인 상태 연결~~ — 완료: inference extension이 `getProviderAuthStatus`/`startProviderLogin`/`cancelProviderLogin`/`providerLogout` 표면 제공(`pi-codex-login-session.ts`), `isReady`가 로컬 모드에서 Pi credential을 신호로 사용. `tests/pi-codex-login.test.mjs`·`pi-codex-credential-store.test.mjs` 통과, 실사용 로그인 상태(pi-auth.json) 확인.
+- ~~credential 없음·만료·refresh 추적~~ — 저장소가 refresh 토큰·JWT 만료를 기록(`pi-codex-credential-store.ts`). **잔여**: 만료 시나리오의 실사용 검증은 사용자의 실 credential을 훼손하지 않고는 불가 — Gate A5에서 fresh profile로.
+- ~~CLI 기본 auth 경로 통일~~ — `tests/codex-auth-file.test.mjs` 커버.
+- ~~provider 기본값~~ — 런처가 프로필에 `inferenceProvider: "codex"` seed(`initialLocalSettingsUpdate`), `tests/local-codex-mode.test.mjs`·`router-settings.test.mjs` 커버.
+- 기존 Cursor provider profile 처리 정책 확정 — 현행 동작: 로컬 모드 gate 고정(`local-codex-mode.ts`)으로 Cursor 표면 비활성. 명시 정책 문서화만 남음.
+- WSL 핵심 흐름의 Cursor/Anysphere 호출 여부 — 텔레메트리/업데이트/Sentry는 env로 차단(`SAND_DISABLE_*`), Statsig는 로컬 평가 경고만 관찰. 전수 네트워크 감사는 Gate A5 몫.
 
 완료 조건:
 
@@ -415,16 +415,11 @@ Phase A에서는 원본 기능의 복구 의미를 맞춘다. durable manager jo
 
 문서에는 2,075행과 UNCLEAR 8이 적혀 있다. UNCLEAR 8은 USER route만 센 값이고 AGENT route 미확정이 빠져 있다.
 
-정리해야 할 사항:
+정리 상태 (2026-09-01 대조):
 
-- `/tmp` 판정 원장을 repo 내부 durable JSONL로 이동
-- case ID별 append-only history 유지
-- 요약은 최신 판정 한 건만 집계
-- `executed`, `code-inspected`, `inherited`, `excluded`, `fixture-blocked`를 별도 필드로 분리
-- `PASS`에는 실제 production effect 증거 필수
-- 원본 기능 1,292개마다 `EXACT_RESTORATION / WSL_EQUIVALENT / EXCLUDED_AND_HIDDEN` disposition 추가
-- 이전 build의 PASS는 새 HEAD에서 자동 승격하지 않음
-- active live run이 끝난 뒤 한 번만 canonical snapshot 생성
+- ~~`/tmp` 원장 → repo durable JSONL~~ — 완료: `docs/testing/belmont-sweep-verdicts.jsonl`(2,170행)이 `/tmp` 원장(2,162행)을 완전 포함(누락 0), append-only 유지.
+- ~~최신 판정 집계~~ — 완료: `scripts/summarize-verdict-ledger.mjs`가 caseId별 최신 판정만 집계해 `docs/testing/belmont-verdict-summary.json`을 생성. **2026-09-01 canonical snapshot**: 1,292 케이스 전수 판정(미판정 0, 큐 밖 판정 0) — PASS 543 · UNAVAIL 631 · ENV 87 · ISSUE 15 · UI_ONLY 13 · FIXED 2 · EXPECTED 1. 문서에 있던 UNCLEAR 41·PARTIAL 2는 후속 재판정으로 해소됨.
+- 남은 판단 작업 (Gate A5와 함께): `executed/code-inspected/…` 필드 분리와 케이스별 `EXACT_RESTORATION / WSL_EQUIVALENT / EXCLUDED_AND_HIDDEN` disposition 부여 — 특히 UNAVAIL 631의 disposition 판단(§5 원칙 적용)과 ISSUE 15·ENV 87의 소거가 Gate A5의 실제 목록이다. 이전 build PASS의 자동 승격 금지 원칙은 유지(재판정은 append로만).
 
 ## 7. Phase A 실행 순서
 
