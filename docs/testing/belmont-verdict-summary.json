@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-01T01:00:50.304Z",
+  "generatedAt": "2026-09-01T01:03:00.282Z",
   "note": "Latest-verdict-per-case tally over the append-only ledger. Regenerate with scripts/summarize-verdict-ledger.mjs; never hand-edit.",
-  "physicalRows": 2170,
+  "physicalRows": 2181,
   "uniqueCases": 1292,
-  "duplicateRows": 878,
+  "duplicateRows": 889,
   "queueCases": 1292,
   "unjudgedQueueCases": 0,
   "judgedOutsideQueue": 0,
@@ -11,9 +11,9 @@
     "UNAVAIL": 631,
     "PASS": 543,
     "ENV": 87,
-    "ISSUE": 15,
+    "FIXED": 13,
     "UI_ONLY": 13,
-    "FIXED": 2,
+    "ISSUE": 4,
     "EXPECTED": 1
   }
 }

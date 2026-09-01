@@ -10,6 +10,18 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import { getSandRootDir } from "../../host-paths.js";
 import { classifyTokenLimitErrorFromMessage } from "../../../packages/chat-inference/token-limit-error-classification.js";
+
+/** 429/503/overload shapes observed from the Codex OAuth backend. */
+export function isRateLimitLikeMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  return /\b429\b|\b503\b/.test(lower)
+    || lower.includes("rate limit")
+    || lower.includes("rate-limited")
+    || lower.includes("too many requests")
+    || lower.includes("overloaded")
+    || lower.includes("server is currently unavailable")
+    || lower.includes("usage limit");
+}
 import { effectiveContextWindowTokens } from "./context-window.js";
 import {
   BelmontPiCredentialStore,
@@ -214,7 +226,13 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
       const classified = error instanceof Error
         ? classifyTokenLimitErrorFromMessage(error.message)
         : undefined;
-      const finalError = classified ?? error;
+      // Rate-limit / overload failures carry explicit retry guidance
+      // (GBF-AGT-000240: a bare 429/503 gave the model and the user nothing
+      // actionable). Token-limit classification wins — it has its own recovery.
+      const finalError = classified
+        ?? (error instanceof Error && isRateLimitLikeMessage(error.message)
+          ? new Error(`${error.message} — The provider is rate limiting or overloaded right now; this is transient. Wait a moment and retry the same request.`)
+          : error);
       response.reject(finalError);
       usage.reject(finalError);
       extendedUsage.reject(finalError);

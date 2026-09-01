@@ -79,3 +79,31 @@ test("the Pi runtime classifies its failures before rejecting", () => {
   assert.match(runtime, /response\.reject\(finalError\)/, "the classified error must be the one rejected");
   assert.match(runtime, /throw finalError;/, "and the one thrown");
 });
+
+test("rate-limit failures carry retry guidance; token-limit classification wins", async () => {
+  const result = await build({
+    stdin: {
+      resolveDir: repoRoot,
+      loader: "ts",
+      sourcefile: "ratelimit-entry.ts",
+      contents: 'export { isRateLimitLikeMessage } from "./source/host/extensions/inference/pi-codex-runtime.js";',
+    },
+    bundle: true, format: "esm", platform: "node", write: false,
+    supported: { using: false }, packages: "external",
+  });
+  const { isRateLimitLikeMessage } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
+  for (const message of [
+    "HTTP 429 Too Many Requests",
+    "the model is currently overloaded",
+    "Rate limit exceeded, retry later",
+    "503 Service Unavailable",
+    "You have hit your usage limit",
+  ]) assert.equal(isRateLimitLikeMessage(message), true, message);
+  for (const message of [
+    "Your input exceeds the context window of this model.",
+    "connection reset by peer",
+    "file not found",
+  ]) assert.equal(isRateLimitLikeMessage(message), false, message);
+  const runtime = read("source/host/extensions/inference/pi-codex-runtime.ts");
+  assert.match(runtime, /rate limiting or overloaded right now; this is transient/);
+});
