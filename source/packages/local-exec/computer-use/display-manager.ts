@@ -131,9 +131,13 @@ export class LocalDisplayManager {
     delete vncEnv.WAYLAND_DISPLAY;
     delete vncEnv.XDG_SESSION_TYPE;
     this.log(`[local-computer] starting x11vnc on ${this.display} (rfb ${this.rfbPort})`);
+    // -localhost is load-bearing (A11): this VNC server is passwordless
+    // (-nopw) and can drive the desktop, so it must never listen beyond
+    // loopback — without it, anyone on the LAN could watch and control the
+    // user's sessions. The app's own viewer connects via 127.0.0.1 only.
     this.x11vnc = spawn(
       "x11vnc",
-      ["-display", this.display, "-nopw", "-forever", "-shared", "-rfbport", String(this.rfbPort), "-quiet", "-noxdamage"],
+      ["-display", this.display, "-nopw", "-forever", "-shared", "-localhost", "-rfbport", String(this.rfbPort), "-quiet", "-noxdamage"],
       { env: vncEnv, detached: true, stdio: "ignore" },
     );
     this.x11vnc.unref();
@@ -141,7 +145,7 @@ export class LocalDisplayManager {
     this.log(`[local-computer] starting websockify(noVNC) on ${this.novncPort} -> ${this.rfbPort}`);
     this.websockify = spawn(
       "websockify",
-      [`--web=${this.novncWebRoot}`, String(this.novncPort), `localhost:${this.rfbPort}`],
+      [`--web=${this.novncWebRoot}`, `127.0.0.1:${this.novncPort}`, `localhost:${this.rfbPort}`],
       { env: vncEnv, detached: true, stdio: "ignore" },
     );
     this.websockify.unref();
