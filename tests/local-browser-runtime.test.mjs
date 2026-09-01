@@ -154,3 +154,36 @@ test("the launcher puts the provisioned bin dir ahead of the system PATH", () =>
   assert.equal(prependPath("/a:/b", "/b"), "/b:/a", "an entry further down is promoted, not duplicated");
   assert.equal(prependPath(undefined, "/a"), "/a");
 });
+
+test("the idle reaper closes the box browser by host policy, not model memory", async () => {
+  // Live 2026-09-01: a ~2GB Chrome idled 16h after a browser test — no driver
+  // op closes the browser, agents have no close tool, and Chrome outlives app
+  // shutdown. The host must reap it after the idle timeout.
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const source = readFileSync(path.join(repoRoot, "source/host/box/local-browser-use.ts"), "utf8");
+  // every driver op refreshes the idle clock
+  assert.match(source, /async execute\(_context, args\) \{\s*\/\/[^]*?noteLocalBrowserUse\(\);/);
+  // the kill is scoped to OUR chrome profile only
+  assert.match(source, /execFile\("pkill", \["-TERM", "-f", profileDir\]/);
+  // a leftover from a previous run is armed at boot
+  assert.match(source, /armReaperForLeftoverChrome/);
+  // and the timeout knob parses safely
+  const { build } = await import("esbuild");
+  const result = await build({
+    stdin: { resolveDir: repoRoot, loader: "ts", sourcefile: "reaper-entry.ts",
+      contents: 'export { localBrowserIdleTimeoutMs, LOCAL_BROWSER_IDLE_TIMEOUT_ENV } from "./source/host/box/local-browser-use.js";' },
+    bundle: true, format: "esm", platform: "node", write: false, supported: { using: false },
+    banner: { js: 'import { createRequire as __cr } from "node:module"; const require = __cr(import.meta.url);' },
+  });
+  // createRequire needs a real file URL, so the bundle lands in a temp file.
+  const dir = await workdir();
+  const bundlePath = path.join(dir, "reaper-bundle.mjs");
+  await writeFile(bundlePath, result.outputFiles[0].text);
+  const mod = await import(`file://${bundlePath}`);
+  assert.equal(mod.localBrowserIdleTimeoutMs({}), 600_000);
+  assert.equal(mod.localBrowserIdleTimeoutMs({ SAND_BROWSER_IDLE_TIMEOUT_SECONDS: "60" }), 60_000);
+  assert.equal(mod.localBrowserIdleTimeoutMs({ SAND_BROWSER_IDLE_TIMEOUT_SECONDS: "0" }), 0);
+  assert.equal(mod.localBrowserIdleTimeoutMs({ SAND_BROWSER_IDLE_TIMEOUT_SECONDS: "banana" }), 600_000);
+});

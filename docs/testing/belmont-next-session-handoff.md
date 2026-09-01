@@ -150,3 +150,5 @@ _이하는 2026-08-31 (후속 5) 기준 기록._
 | **Shell 상태/PDF/훅(데몬)** | `source/box-exec-daemon/{server,shell-state}.ts`, `source/host/runner/local-pdf-text-extractor.ts` |
 | 숨김/게이트/프롬프트 | `source/electron-main/adapters/local-codex-mode.ts`, `source/host/extensions/experiments/extension.ts`, `source/host/runner/system-prompt*.ts` |
 | 이전 회차(분류기·권한·첨부·계정 scope) | full-test 보고서 §1.6 지도 |
+
+**성능 회차 (2026-09-01 오후 3시)**: 사용자 요청("앱이 너무 무거우면 안 돼")으로 실측 — 앱 본체 1.4GB/유휴 CPU 0.4%(Electron 표준 체급), 진범은 **브라우저 시험이 남긴 Chrome 2.0GB(16시간 방치)**. 원인: 브라우저 종료 op·도구·호스트 정리 모두 부재(한 번 뜨면 영원히 생존, 앱 종료도 못 죽임 — init에 재부모화). 수정: **호스트 유휴 자동 종료**(`local-browser-use.ts` — 모든 브라우저 op가 시각 기록, `SAND_BROWSER_IDLE_TIMEOUT_SECONDS`(기본 600, 0=끔) 유휴 시 프로필 한정 pkill, 부팅 시 이전 실행 잔재도 같은 규칙으로 무장). 라이브: Chrome 실기동 15:03:44 → 15:06:49 자동 종료(90초 설정) + 로그 확인, 재호출 시 자동 재기동. 모델 기억에 안 맡기는 게 설계 의도(모델이 잊거나 턴이 죽어도 안전). `tests/local-browser-runtime.test.mjs` 고정. 부수 관찰: browser_navigate가 example.com에서 about:blank 잔류(외부 네트워크/프록시 의심 — 브라우저 실사용 시 확인 후보).

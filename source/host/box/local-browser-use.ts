@@ -26,10 +26,84 @@ import {
   ShellSuccess,
 } from "../../packages/proto/generated/agent/v1/shell_exec_pb.js";
 import { localComputerDisplayNumber, LOCAL_COMPUTER_USE_ENABLED } from "./local-computer-use.js";
+import { getSandRootDir } from "../host-paths.js";
 
 function hasExecutable(name: string): boolean {
   return (process.env.PATH ?? "").split(delimiter).some((dir) => dir.length > 0 && existsSync(joinPath(dir, name)));
 }
+
+// ---------------------------------------------------------------------------
+// Idle browser reaper. The driver's ensureChrome() launches Chrome on first
+// browser-tool use and REUSES it across calls, but nothing ever closed it —
+// no driver op shuts the browser down, agents have no close tool, and Chrome
+// is reparented to init so app shutdown never reaches it. Observed live: a
+// ~2GB, 19-process Chrome idling for 16 hours after a browser test. Closing
+// is host policy, not model memory: after SAND_BROWSER_IDLE_TIMEOUT_SECONDS
+// (default 600, 0 disables) with no browser-tool call, the box-profile Chrome
+// is terminated; the next browser call just relaunches it (~2-3s).
+// ---------------------------------------------------------------------------
+
+export const LOCAL_BROWSER_IDLE_TIMEOUT_ENV = "SAND_BROWSER_IDLE_TIMEOUT_SECONDS";
+const LOCAL_BROWSER_DEFAULT_IDLE_TIMEOUT_SECONDS = 600;
+const LOCAL_BROWSER_REAPER_TICK_MS = 60_000;
+
+export function localBrowserIdleTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[LOCAL_BROWSER_IDLE_TIMEOUT_ENV]?.trim();
+  if (raw === undefined || raw.length === 0) return LOCAL_BROWSER_DEFAULT_IDLE_TIMEOUT_SECONDS * 1000;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return LOCAL_BROWSER_DEFAULT_IDLE_TIMEOUT_SECONDS * 1000;
+  return parsed * 1000;
+}
+
+/** The Chrome profile the box-chrome shim uses — the reaper's kill scope. */
+export function localBrowserProfileDir(): string {
+  return joinPath(getSandRootDir(), "box-chrome-profile");
+}
+
+let lastBrowserUseAtMs = 0;
+let reaperTimer: ReturnType<typeof setInterval> | undefined;
+
+function killIdleBoxChrome(profileDir: string): void {
+  // Scope strictly to processes whose argv carries OUR profile directory —
+  // that is only the box Chrome tree (pkill never matches itself).
+  execFile("pkill", ["-TERM", "-f", profileDir], () => {
+    console.error(`[local-browser] idle ${Math.round(localBrowserIdleTimeoutMs() / 60_000)}m; closed the box browser (it relaunches on the next browser call)`);
+  });
+}
+
+function reaperTick(): void {
+  if (lastBrowserUseAtMs === 0) return;
+  const timeoutMs = localBrowserIdleTimeoutMs();
+  if (timeoutMs <= 0) return;
+  if (Date.now() - lastBrowserUseAtMs < timeoutMs) return;
+  lastBrowserUseAtMs = 0; // one kill per idle episode; the next use re-arms
+  killIdleBoxChrome(localBrowserProfileDir());
+}
+
+export function noteLocalBrowserUse(now: number = Date.now()): void {
+  lastBrowserUseAtMs = now;
+  if (reaperTimer !== undefined || localBrowserIdleTimeoutMs() <= 0) return;
+  reaperTimer = setInterval(reaperTick, LOCAL_BROWSER_REAPER_TICK_MS);
+  reaperTimer.unref();
+}
+
+/**
+ * A leftover Chrome from a PREVIOUS app run (it survives shutdown by design of
+ * the process tree, not by intent) counts as idle from boot: if it exists,
+ * arm the reaper now so it gets closed after the normal idle timeout unless a
+ * browser call claims it first.
+ */
+export function armReaperForLeftoverChrome(): void {
+  if (localBrowserIdleTimeoutMs() <= 0) return;
+  const profileDir = localBrowserProfileDir();
+  execFile("pgrep", ["-f", profileDir], (error) => {
+    if (error !== null) return; // no leftover
+    console.error("[local-browser] found a box browser left over from a previous run; it will close after the idle timeout unless used");
+    noteLocalBrowserUse();
+  });
+}
+
+if (LOCAL_COMPUTER_USE_ENABLED) armReaperForLeftoverChrome();
 
 /**
  * Where the driver actually finds playwright-core. It imports the bare
@@ -127,6 +201,9 @@ function localBrowserShellExecutor(
 ): HostShellExecutor {
   return {
     async execute(_context, args) {
+      // Every browser-tool op flows through this executor: the freshest call
+      // timestamp is what keeps the idle reaper from closing a browser in use.
+      noteLocalBrowserUse();
       audit?.(args.command);
       const tokens = args.command.split(/\s+/u).filter((token) => token.length > 0);
       if (tokens.length === 0) {
