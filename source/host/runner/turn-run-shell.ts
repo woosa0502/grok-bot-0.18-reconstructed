@@ -354,6 +354,18 @@ export class SandTurnInterruptedBeforeDispatchError extends Error {
   }
 }
 
+/** A beforeSubmitPrompt hook returned continue:false — the turn never ran. */
+export class SandPromptSubmissionHaltedError extends Error {
+  constructor(userMessage?: string) {
+    super(
+      userMessage !== undefined && userMessage.length > 0
+        ? userMessage
+        : "Prompt submission was blocked by a beforeSubmitPrompt hook.",
+    );
+    this.name = "SandPromptSubmissionHaltedError";
+  }
+}
+
 export const RESUME_TURN_ACTION = new ConversationAction({
   action: { case: "resumeAction", value: new ResumeAction() },
 });
@@ -418,6 +430,19 @@ export interface TurnRunShellHost {
   /** Prepared real Agent path; inactive until the single atomic flip. */
   readonly inactiveTurnAgentStreamPath?: InactiveTurnAgentStreamPath;
   readonly activateTurnAgentStream?: boolean;
+  /**
+   * A8: runs the box's beforeSubmitPrompt hook for USER prompt submissions
+   * (requestSource "turn" on a non-subagent runner). `halted: true` stops the
+   * turn before the model sees the prompt (SandPromptSubmissionHaltedError,
+   * carrying the hook's userMessage); additionalContext is injected ahead of
+   * the prompt as a system reminder. Undefined return = hook did not run.
+   */
+  readonly runBeforeSubmitPromptHook?: (args: {
+    readonly prompt: string;
+    readonly requestId: string;
+  }) => Promise<
+    { halted: boolean; userMessage?: string; additionalContext?: string } | undefined
+  >;
   readonly isSubagentRunner: boolean;
   readonly subagentType?: string;
   readonly inheritedRequestSource?: string;
@@ -719,8 +744,35 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         );
       }
 
+      // A8 (GBF-AGT-000325): beforeSubmitPrompt fires for real user prompt
+      // submissions before the model ever sees the text. A halt surfaces the
+      // hook's userMessage as the turn outcome; hook-context rides in as a
+      // system reminder AHEAD of the untouched user prompt. Infrastructure
+      // failures fail open (never block the user's prompt on plumbing).
+      let effectivePrompt = trimmedPrompt;
+      if (
+        requestSource === "turn"
+        && !host.isSubagentRunner
+        && host.runBeforeSubmitPromptHook != null
+      ) {
+        const verdict = await host.runBeforeSubmitPromptHook({
+          prompt: trimmedPrompt,
+          requestId,
+        }).catch(() => undefined);
+        if (verdict?.halted === true) {
+          throw new SandPromptSubmissionHaltedError(verdict.userMessage);
+        }
+        if (
+          typeof verdict?.additionalContext === "string"
+          && verdict.additionalContext.length > 0
+        ) {
+          effectivePrompt =
+            `<system_reminder>\nbeforeSubmitPrompt hook context:\n${verdict.additionalContext}\n</system_reminder>\n\n${trimmedPrompt}`;
+        }
+      }
+
       prepared = await host.prepareTurn(
-        trimmedPrompt,
+        effectivePrompt,
         options,
         context,
       );

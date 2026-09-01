@@ -701,7 +701,12 @@ export class BoxExecRuntime {
       }
       case "beforeSubmitPrompt": {
         const value = new BeforeSubmitPromptRequestResponse();
+        // An explicit deny (exit 2 / failClosed non-zero / permission block)
+        // halts the prompt submission; anything else continues. "ask" has no
+        // interactive surface on this step and is treated as continue.
+        value.continue = permission !== "deny";
         if (additionalContext !== undefined) value.additionalContext = additionalContext;
+        if (userMessage !== undefined) value.userMessage = userMessage;
         response = { case: "beforeSubmitPrompt", value };
         break;
       }

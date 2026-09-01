@@ -7,6 +7,7 @@ import { HookStep } from "../../../hooks/hook-step.js";
 import { createCounter, createHistogram } from "../../../metrics/index.js";
 import {
   AfterAgentThoughtRequestQuery,
+  BeforeSubmitPromptRequestQuery,
   PostToolUseFailureRequestQuery,
   PostToolUseRequestQuery,
   PreToolUseRequestQuery,
@@ -92,6 +93,43 @@ export async function executeRemoteAfterAgentThoughtHook(args: AnyRecord): Promi
     recordRemoteHookMetrics(ctx, durationMs, "afterAgentThought", "failure");
     track(ctx, { hookStep: "afterAgentThought", hookSource: "remote", hookType: "afterAgentThought", status: timedOut ? "timeout" : "failed", latencyMs: durationMs, failClosed: false, timedOut });
     logger.warn(ctx, "afterAgentThought hook execution failed", { toolCallId: requestContext.toolCallId, error: error instanceof Error ? error.message : String(error), durationMs });
+  }
+}
+
+/**
+ * beforeSubmitPrompt (A8, GBF-AGT-000325): runs the box's configured hook
+ * BEFORE the user's prompt reaches the model. `halted: true` (the hook
+ * returned continue:false / denied) stops the submission; additionalContext
+ * rides back for the caller to inject. Fails OPEN — hook infrastructure
+ * trouble must never block a user's prompt.
+ */
+export async function executeRemoteBeforeSubmitPromptHook(args: AnyRecord): Promise<AnyRecord> {
+  const { ctx, prompt, requestContext, options } = args;
+  const executor = getRemoteHookExecutor(options, "beforeSubmitPrompt");
+  if (!executor) return {};
+  const { conversationId, generationId } = buildRequestIds(ctx, requestContext);
+  const startTime = performance.now();
+  try {
+    const hookArgs = new ExecuteHookArgs({ request: new ExecuteHookRequest({ request: { case: "beforeSubmitPrompt", value: new BeforeSubmitPromptRequestQuery({ prompt, conversationId, generationId, model: requestContext.model ?? options.model, ...toRemoteHookModelFields(requestContext, options) }) } }) });
+    const result = await executor.execute(ctx, hookArgs);
+    const durationMs = Math.round(performance.now() - startTime);
+    if (result.response?.response.case !== "beforeSubmitPrompt") {
+      logger.warn(ctx, "beforeSubmitPrompt hook returned unexpected response", { responseCase: result.response?.response.case, durationMs });
+      recordRemoteHookMetrics(ctx, durationMs, "beforeSubmitPrompt", "failure");
+      track(ctx, { hookStep: "beforeSubmitPrompt", hookSource: "remote", hookType: "beforeSubmitPrompt", status: "failed", latencyMs: durationMs, failClosed: false });
+      return {};
+    }
+    const response = result.response.response.value;
+    const halted = response.continue === false;
+    recordRemoteHookMetrics(ctx, durationMs, "beforeSubmitPrompt", "success");
+    track(ctx, { hookStep: "beforeSubmitPrompt", hookSource: "remote", hookType: "beforeSubmitPrompt", status: halted ? "blocked" : "success", latencyMs: durationMs, failClosed: false });
+    return { halted, userMessage: response.userMessage, additionalContext: response.additionalContext };
+  } catch (error) {
+    const durationMs = Math.round(performance.now() - startTime), timedOut = isHookExecutionTimeout(error);
+    recordRemoteHookMetrics(ctx, durationMs, "beforeSubmitPrompt", "failure");
+    track(ctx, { hookStep: "beforeSubmitPrompt", hookSource: "remote", hookType: "beforeSubmitPrompt", status: timedOut ? "timeout" : "failed", latencyMs: durationMs, failClosed: false, timedOut });
+    logger.warn(ctx, "beforeSubmitPrompt hook execution failed (fail-open)", { error: error instanceof Error ? error.message : String(error), durationMs });
+    return {};
   }
 }
 

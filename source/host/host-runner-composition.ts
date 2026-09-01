@@ -81,7 +81,8 @@ import type {
 import { subagentExecutorResource } from "../packages/agent-exec/subagent.js";
 import { requestContextExecutorResource } from "../packages/agent-exec/request-context.js";
 import { subagentRegistryResource } from "../packages/agent/tools/subagent-registry.js";
-import { executeRemoteSubagentStartHook, executeRemoteSubagentStopHook } from "../packages/agent/tools/core/remote-hooks.js";
+import {  executeRemoteSubagentStartHook, executeRemoteSubagentStopHook, executeRemoteBeforeSubmitPromptHook,
+} from "../packages/agent/tools/core/remote-hooks.js";
 import { smartModeClassifierExecutorResource } from "../packages/agent-exec/smart-mode-classifier.js";
 import { mcpExecutorResource, mcpStateExecutorResource } from "../packages/agent-exec/mcp.js";
 import { shellStreamExecutorResource } from "../packages/agent-exec/shell-stream.js";
@@ -3198,6 +3199,32 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           getExecutor: () => createTextExecutor(owner.runContext.toolSession.getExecutor()),
         }),
         context: () => productionContext,
+        // A8 (GBF-AGT-000325): fire the box's beforeSubmitPrompt hook before a
+        // user prompt reaches the model. The hook executor resolves through
+        // the same remote-box accessor the tool hooks use; every failure is
+        // swallowed to undefined so hook plumbing can never block a prompt.
+        runBeforeSubmitPromptHook: async ({ prompt }) => {
+          try {
+            const accessor = await productionResourceAccessor(productionContext);
+            const verdict = await executeRemoteBeforeSubmitPromptHook({
+              ctx: productionContext,
+              prompt,
+              requestContext: { conversationId: session.id },
+              options: {
+                resourceAccessor: accessor,
+                enableExecuteHookExec: true,
+                configuredSteps: ["beforeSubmitPrompt"],
+              },
+            });
+            return {
+              halted: verdict.halted === true,
+              ...(typeof verdict.userMessage === "string" ? { userMessage: verdict.userMessage } : {}),
+              ...(typeof verdict.additionalContext === "string" ? { additionalContext: verdict.additionalContext } : {}),
+            };
+          } catch {
+            return undefined;
+          }
+        },
         // Parent adapter identity is PINNED to the session (AUDIT-4 rev 2);
         // child runners override these with their own fixed id below.
         createSettleHost: () => createProductionTurnSettleHost(session.id),

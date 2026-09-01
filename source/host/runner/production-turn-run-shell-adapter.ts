@@ -93,6 +93,8 @@ export interface ProductionTurnRunShellAdapterInput {
   readonly subagentType?: string;
   readonly inheritedRequestSource?: string;
   readonly inheritedAutomationId?: string;
+  /** A8: beforeSubmitPrompt hook runner (see TurnRunShellHost). */
+  readonly runBeforeSubmitPromptHook?: TurnRunShellHost["runBeforeSubmitPromptHook"];
   readonly subagents: TurnRunShellHost["subagents"];
   readonly getConversationId: () => string;
   readonly runGeneration: () => number;
@@ -226,6 +228,9 @@ export function createProductionTurnRunShellAdapter(
     ...(input.inheritedAutomationId === undefined
       ? {}
       : { inheritedAutomationId: input.inheritedAutomationId }),
+    ...(input.runBeforeSubmitPromptHook === undefined
+      ? {}
+      : { runBeforeSubmitPromptHook: input.runBeforeSubmitPromptHook }),
     subagents: input.subagents,
     getConversationId: input.getConversationId,
     runGeneration: input.runGeneration,
