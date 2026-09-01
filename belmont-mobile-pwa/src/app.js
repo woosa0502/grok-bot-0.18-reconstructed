@@ -328,7 +328,7 @@ function renderChat() {
         <button class="glass-button composer-plus ${state.overlay?.type === "more" ? "is-open" : ""}" type="button" data-action="more" aria-label="더 보기">${icon("plus")}</button>
         <label class="composer-field glass-pill">
           <span class="sr-only">Belmont에게 메시지</span>
-          <textarea id="composer-input" rows="1" maxlength="12000" placeholder="Ask ${escapeHtml(bot?.name || "Belmont")}">${escapeHtml(state.draft)}</textarea>
+          <textarea id="composer-input" rows="1" maxlength="12000" placeholder="Message ${escapeHtml(bot?.name || "Belmont")}">${escapeHtml(state.draft)}</textarea>
           <button class="mic-button ${state.dictating ? "is-listening" : ""}" type="button" data-action="dictation" aria-label="${state.dictating ? "음성 입력 중지" : "음성 입력 시작"}">${icon("mic")}</button>
           <button class="send-button" type="submit" aria-label="보내기" ${!state.draft.trim() || state.loading ? "disabled" : ""}>${icon("send")}</button>
         </label>
