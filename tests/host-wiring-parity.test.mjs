@@ -73,3 +73,18 @@ test("compaction epoch is derived from the conversation summary archives, not ha
   assert.match(source, /compactionEpochFromConversationState\(getProductionConversationState\(\)\)/);
   assert.match(source, /compactionEpochFromConversationState\(store\.getConversationStateStructure\(\)\)/);
 });
+
+test("the production turn provider offers the subagent management tools (A4)", () => {
+  // The system prompt tells the model to use CheckSubagent / MessageSubagent /
+  // StopSubagent on a running child, but the production factory provider never
+  // offered them (found live 2026-09-01: parent had a child running and the
+  // model reported the tools missing). The provider must map
+  // dependencies.subagentManagement into createSubagentManagementToolInputs.
+  const composition = read("source/host/host-runner-composition.ts");
+  assert.match(composition, /\.\.\.\(dependencies\.subagentManagement === undefined\s*\?\s*\{\}\s*:\s*\{\s*createSubagentManagementToolInputs/);
+  const toolset = read("source/host/runner/tools/turn-toolset.ts");
+  assert.match(toolset, /subagentManagement: provider\.createSubagentManagementToolInputs\(/);
+  // and the prompt really does advertise them, so the offer must exist
+  const prompt = read("source/host/runner/system-prompt.ts");
+  assert.match(prompt, /CheckSubagent/);
+});

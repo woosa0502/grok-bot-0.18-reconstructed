@@ -770,6 +770,12 @@ export class BoxExecRuntime {
           : `Blocked by preToolUse hook`;
         return message;
       }
+      // "ask" wants an interactive prompt this build does not have. Allowing it
+      // silently would run the very action the hook flagged, so it blocks with
+      // an explanation — the same rule #beforeShellExecutionGate applies.
+      if (rawPermission === "ask") {
+        return `The preToolUse hook answered "ask", but this local build has no interactive hook prompt — the action was blocked. Use "allow" or "deny" (or an auto-review rule) in hooks.json.`;
+      }
     }
     return undefined;
   }

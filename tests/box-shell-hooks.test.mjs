@@ -53,3 +53,18 @@ test("agent-side Shell tool pushes hookContext carriers into the hook context co
   assert.match(source, /case "hookContext": meta\.hookContextCollector\?\.push\(\.\.\.event\.event\.value\.hookAdditionalContexts\); break;/);
   assert.doesNotMatch(source, /case "hookContext": break;/);
 });
+
+test("daemon preToolUse gate blocks 'ask' explicitly instead of silently allowing it", () => {
+  // beforeShellExecution already blocked "ask" (no interactive hook prompt in
+  // this build); #preToolUseGate let it fall through to ALLOW — the dangerous
+  // direction for a hook that asked for a prompt. Both gates now block with an
+  // explanation.
+  const source = read("source/box-exec-daemon/server.ts");
+  const start = source.indexOf("async #preToolUseGate(");
+  assert.ok(start > 0);
+  const body = source.slice(start, source.indexOf("async #beforeShellExecutionGate(", start));
+  assert.match(body, /if \(rawPermission === "ask"\) \{/);
+  assert.match(body, /no interactive hook prompt — the action was blocked/);
+  // and the block comes AFTER deny handling so deny keeps priority
+  assert.ok(body.indexOf("if (denies)") < body.indexOf('rawPermission === "ask"'));
+});

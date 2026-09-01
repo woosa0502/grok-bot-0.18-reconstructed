@@ -63,6 +63,7 @@ import type {
   TurnAwaitToolFactoryInput,
   TurnCloudAgentToolFactoryInput,
   TurnMcpManagementToolFactoryInput,
+  TurnSubagentManagementToolFactoryInput,
   TurnMcpMetaToolFactoryInput,
   TurnDeleteToolFactoryInput,
   TurnEditToolFactoryInput,
@@ -2473,6 +2474,19 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               };
             },
           }),
+        // CheckSubagent / MessageSubagent / StopSubagent: the system prompt
+        // advertises these, but this provider never offered them, and the
+        // per-turn props fallback (props.hostDependencies) does not reach the
+        // recovered engine's toolsGenerator — so the parent agent had no way
+        // to steer or stop a running child (found live: model reported
+        // "StopSubagent 없음" while a child ran, 2026-09-01).
+        ...(dependencies.subagentManagement === undefined
+          ? {}
+          : {
+              createSubagentManagementToolInputs: (): TurnSubagentManagementToolFactoryInput => ({
+                controller: dependencies.subagentManagement as TurnSubagentManagementToolFactoryInput["controller"],
+              }),
+            }),
         ...(mcpManagement === undefined
           ? {}
           : {
@@ -2485,6 +2499,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           },
           isMultiAccountEnabled: () =>
             method(experiments, "isMcpMultiAccountEnabled")?.() ?? false,
+          // Honest local surface: local catalog wording, no AddMcpServer
+          // (stdio-only execution), account-slot tools off.
+          options: { localMode: isLocalCodexMode(process.env) },
           emitConnectorCard: emission => {
             hooks.transport.onUpdate({
               type: "send-message",

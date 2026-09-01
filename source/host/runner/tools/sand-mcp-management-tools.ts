@@ -288,8 +288,15 @@ export function createMcpManagementTools(
   isAwaitingUserSelection?: () => boolean,
   isMultiAccountEnabled?: () => boolean,
   emitConnectorCard?: (card: ConnectorCard) => void,
+  options?: { readonly localMode?: boolean },
 ) {
-  const multiAccount = isMultiAccountEnabled?.() === true;
+  // Local Codex mode serves the catalog and installs from local files
+  // (mcp.json / plugin-catalog.json under the sand root) — there is no Cursor
+  // account, no backend-executed remote servers, and no per-server account
+  // slots. The descriptions must not claim otherwise, and account-slot tools
+  // stay off regardless of the multi-account gate.
+  const localMode = options?.localMode === true;
+  const multiAccount = !localMode && isMultiAccountEnabled?.() === true;
   const guardMutation = <A>(execute: (ctx: unknown, args: A, deps: McpManagementDependencies & { toolCallId: string }) => Promise<string>) =>
     async (ctx: unknown, args: A, deps: McpManagementDependencies & { toolCallId: string }): Promise<string> =>
       isAwaitingUserSelection?.() === true ? MCP_AWAITING_SELECTION_MESSAGE : execute(ctx, args, deps);
@@ -312,7 +319,7 @@ export function createMcpManagementTools(
 
   const tools = [
     defineCommunicateTool(management, {
-      id: "SEARCH_PLUGINS", name: "SearchPlugins", description: "Search the plugins the user could install (or already has): marketplace plugins bundling connectors and skills. Say what you're looking for in natural language and results come back ranked by relevance, each with its STABLE plugin id, install state, and what it includes. Use this to discover a capability (Linear, Notion, writing Word documents, …) or to check whether a plugin is installed. Inspect one result with GetPlugin; connector runtime statuses (connected/needsAuth) live in GetMcpServerStatus. This is read-only and never needs the user's permission.", parameters: searchPluginsParameters,
+      id: "SEARCH_PLUGINS", name: "SearchPlugins", description: `Search the plugins the user could install (or already has): ${localMode ? "entries from this machine's local plugin catalog (stdio MCP servers run locally; there is no online marketplace in this build)" : "marketplace plugins bundling connectors and skills"}. Say what you're looking for in natural language and results come back ranked by relevance, each with its STABLE plugin id, install state, and what it includes. Use this to discover a capability (Linear, Notion, writing Word documents, …) or to check whether a plugin is installed. Inspect one result with GetPlugin; connector runtime statuses (connected/needsAuth) live in GetMcpServerStatus. This is read-only and never needs the user's permission.`, parameters: searchPluginsParameters,
       execute: async (_ctx, args: z.infer<typeof searchPluginsParameters>, deps) => {
         const query = (args.query ?? "").trim();
         const plugins = rankPluginsLexically(await deps.listPlugins(), query);
@@ -328,7 +335,7 @@ export function createMcpManagementTools(
       },
     }),
     defineCommunicateTool(management, {
-      id: "INSTALL_PLUGIN", name: "InstallPlugin", description: "Install a plugin by its STABLE plugin id (from SearchPlugins) into the user's Cursor account. Only call this after the user has agreed — confirm with a question widget first, since installing changes the user's configuration. Idempotent: re-installing an installed plugin is safe. Pass any setup values GetPlugin lists (ask the user for secrets like API keys — never guess). If an installed connector needs authentication, its connect card is shown to the user automatically — finish unrelated work, then end your turn; you're resumed when they authorize. New tools and skills become available on your next message.", parameters: installPluginParameters,
+      id: "INSTALL_PLUGIN", name: "InstallPlugin", description: `Install a plugin by its STABLE plugin id (from SearchPlugins) into ${localMode ? "this machine's local MCP configuration (the sand-root mcp.json)" : "the user's Cursor account"}. Only call this after the user has agreed — confirm with a question widget first, since installing changes the user's configuration. Idempotent: re-installing an installed plugin is safe. Pass any setup values GetPlugin lists (ask the user for secrets like API keys — never guess). If an installed connector needs authentication, its connect card is shown to the user automatically — finish unrelated work, then end your turn; you're resumed when they authorize. New tools and skills become available on your next message.`, parameters: installPluginParameters,
       execute: guardMutation(async (_ctx, args: z.infer<typeof installPluginParameters>, deps) => {
         const before = await deps.getPlugin(args.plugin_id);
         if (before == null) return `No plugin with id "${args.plugin_id}".`;
@@ -339,7 +346,10 @@ export function createMcpManagementTools(
         return [`Installed ${after.displayName} (plugin ${after.pluginId}).`, ...(note == null ? [] : [note]), describePluginDetail(after)].join("\n");
       }),
     }),
-    defineCommunicateTool(management, {
+    // Local mode executes stdio servers only; a remote-url server added here
+    // would be stored but never run — a dead-end tool, so it is not offered.
+    // Local servers are added via the Plugins page or the sand-root mcp.json.
+    ...(localMode ? [] : [defineCommunicateTool(management, {
       id: "ADD_MCP_SERVER", name: "AddMcpServer", description: "Add a remote MCP server that isn't in the catalog to the user's Cursor account — use this when the user gives you a link for a server that SearchPlugins doesn't know. Only call this after the user agrees to add it — confirm with a question widget first, since it changes the user's account configuration and the server can reach external services on their behalf. Provide the remote server's `url` (with `headers` for any auth token). Grok Bot only supports remote http/sse MCP servers (executed on the backend); local/stdio servers are not supported. Ask the user for the exact endpoint and any secrets rather than guessing; if you only have a link, open it first (WebFetch) to find the connection details. Newly added tools become available to you on your next message.", parameters: addMcpServerParameters,
       execute: guardMutation(async (_ctx, args: z.infer<typeof addMcpServerParameters>, deps) => {
         const error = validateRemoteMcpUrl(args.url);
@@ -351,9 +361,9 @@ export function createMcpManagementTools(
         const note = emitNeedsAuthCards(before, servers);
         return [`Added "${args.name}".`, ...(note == null ? [] : [note]), describeInstalledList(servers)].join("\n");
       }),
-    }),
+    })]),
     defineCommunicateTool(management, {
-      id: "UNINSTALL_MCP_SERVER", name: "UninstallMcpServer", description: "Remove ONE custom MCP server — a server added with AddMcpServer, not one that came from a plugin — by its server identifier. This is destructive and deletes the server with all of its accounts, so confirm with the user via a question widget first. A server the listing marks `plugin=<id>` came from a marketplace plugin: removing it would uninstall that WHOLE plugin, which this tool refuses — use UninstallPlugin for those so the confirmation can disclose the full scope." + (multiAccount ? " To remove just one account and keep the server, use RemoveMcpAccount instead." : ""), parameters: serverIdParameters,
+      id: "UNINSTALL_MCP_SERVER", name: "UninstallMcpServer", description: "Remove ONE custom MCP server — a server " + (localMode ? "added to the local mcp.json by hand, not one that came from a plugin" : "added with AddMcpServer, not one that came from a plugin") + " — by its server identifier. This is destructive and deletes the server with all of its accounts, so confirm with the user via a question widget first. A server the listing marks `plugin=<id>` came from a marketplace plugin: removing it would uninstall that WHOLE plugin, which this tool refuses — use UninstallPlugin for those so the confirmation can disclose the full scope." + (multiAccount ? " To remove just one account and keep the server, use RemoveMcpAccount instead." : ""), parameters: serverIdParameters,
       execute: guardMutation(async (_ctx, args: z.infer<typeof serverIdParameters>, deps) => {
         const installed = await deps.listInstalled();
         const row = resolveMcpServerRowByIdentifierOrLegacyId(installed, args.server_id);
@@ -366,7 +376,7 @@ export function createMcpManagementTools(
       }),
     }),
     defineCommunicateTool(management, {
-      id: "UNINSTALL_PLUGIN", name: "UninstallPlugin", description: "Uninstall a plugin by its STABLE plugin id (from SearchPlugins). This is destructive and removes the WHOLE PLUGIN — its install record and EVERY connector and skill it added — so confirm with the user via a question widget first, and your confirmation must disclose that full scope (list what goes). Plugins required by the user's team cannot be uninstalled." + (multiAccount ? " This removes each of its servers with ALL of their accounts; to remove just one account from a server, use RemoveMcpAccount instead." : ""), parameters: getPluginParameters,
+      id: "UNINSTALL_PLUGIN", name: "UninstallPlugin", description: "Uninstall a plugin by its STABLE plugin id (from SearchPlugins). This is destructive and removes the WHOLE PLUGIN — its install record and EVERY connector and skill it added — so confirm with the user via a question widget first, and your confirmation must disclose that full scope (list what goes)." + (localMode ? "" : " Plugins required by the user's team cannot be uninstalled.") + (multiAccount ? " This removes each of its servers with ALL of their accounts; to remove just one account from a server, use RemoveMcpAccount instead." : ""), parameters: getPluginParameters,
       execute: guardMutation(async (_ctx, args: z.infer<typeof getPluginParameters>, deps) => {
         const detail = await deps.getPlugin(args.plugin_id);
         if (detail == null) return `No plugin with id "${args.plugin_id}".`;

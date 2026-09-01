@@ -761,6 +761,7 @@ export interface TurnMcpManagementToolFactoryInput {
   readonly isAwaitingUserSelection?: Parameters<typeof createMcpManagementTools>[2];
   readonly isMultiAccountEnabled?: Parameters<typeof createMcpManagementTools>[3];
   readonly emitConnectorCard?: Parameters<typeof createMcpManagementTools>[4];
+  readonly options?: Parameters<typeof createMcpManagementTools>[5];
 }
 
 export interface TurnCloudAgentToolFactoryInput {
@@ -1226,6 +1227,7 @@ export function createTurnMcpManagementToolFactory(
     input.isAwaitingUserSelection,
     input.isMultiAccountEnabled,
     input.emitConnectorCard,
+    input.options,
   ).map(asTurnTool);
 }
 

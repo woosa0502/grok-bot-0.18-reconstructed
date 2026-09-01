@@ -3,6 +3,7 @@ import { createContext } from "../../packages/context/core.js";
 import { loggerKey } from "../../packages/context/logger.js";
 import { SAND_DEFAULT_MODEL_ID } from "../../shared/agents/agent-model.js";
 import { createCursorGenerateImageService } from "../../shared/node/cursor-backend/cursor-generate-image.js";
+import { isLocalCodexMode } from "../../shared/node/local-codex-account.js";
 import {
   createAvatarImageEdgePort,
   registerImageContextMenu,
@@ -69,6 +70,12 @@ export function createProductionAvatarImagesAdapter(
         createFromPath: (path) => ports.electron.nativeImage.createFromPath(path),
         createFromBuffer: (bytes) => ports.electron.nativeImage.createFromBuffer(bytes),
         generate: async (description) => {
+          // A10: AI avatar generation calls the Cursor image backend with a
+          // Cursor access token this build never has — failing here with a
+          // clear reason beats a dangling auth error deep in the generator.
+          if (isLocalCodexMode(context.env)) {
+            throw new Error("AI avatar generation is unavailable in this local build (it needs the Cursor image backend). Pick an image file instead.");
+          }
           generator ??= createCursorGenerateImageService({
             getAccessToken: (options) => context.requireAccount().getAuthService().then((auth) => auth.getValidAccessToken(options)),
             getMachineId: () => context.machineId,
