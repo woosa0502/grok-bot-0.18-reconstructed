@@ -112,7 +112,17 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
   };
   const overrides: Partial<RunnerLike> & { wouldRecoverViaPrepend: undefined } = {
     run,
-    interrupt: (reason: string) => { stopped = true; const link = readLink(agentId); if (link !== null) void deps.client().stop(link.browseId).catch(() => undefined); deps.log(`[browse-runtime] bot ${agentId}: interrupted (${reason})`); return true; },
+    interrupt: (reason: string) => {
+      stopped = true;
+      const link = readLink(agentId);
+      // Belmont interrupts the previous turn whenever a new user message arrives ("superseded by a
+      // new user message"), including the answer to our own approval/question card. That must not
+      // kill the Aside session: the answer resumes it. Only other interrupts (user stop, cancel) do.
+      const superseded = /superseded/i.test(reason);
+      if (link !== null && !superseded && link.pendingKind === null) void deps.client().stop(link.browseId).catch(() => undefined);
+      deps.log(`[browse-runtime] bot ${agentId}: interrupted (${reason})${superseded ? " — session kept" : ""}`);
+      return true;
+    },
     getObservedToolCallCount: () => toolCalls,
     getActivitySnapshot: () => activity.slice(-12),
     wouldRecoverViaPrepend: undefined,
