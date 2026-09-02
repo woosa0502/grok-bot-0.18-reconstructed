@@ -1,11 +1,16 @@
-const CACHE_NAME = "belmont-mobile-v14-shipped-engine";
+const CACHE_NAME = "linear-mobile-v15-font-mark";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
-  "./icons/grok-bot-app-icon.png",
-  "./icons/grok-bot-app-icon-192.png",
-  "./icons/grok-bot-app-icon-512.png",
+  "./icons/linear-app-icon.svg",
+  "./icons/linear-app-icon.png",
+  "./icons/linear-app-icon-192.png",
+  "./icons/linear-app-icon-512.png",
+  "./fonts/PPNeueMontreal-Light.woff2",
+  "./fonts/PPNeueMontreal-Regular.woff2",
+  "./fonts/PPNeueMontreal-Semibold.woff2",
+  "./fonts/PretendardVariable.woff2",
   "./src/app.js",
   "./src/api.js",
   "./src/core.js",

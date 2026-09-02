@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Belmont Gate Symbol Study</title>
+    <style>
+      @font-face {
+        font-family: "Belmont Neue";
+        src: local("PP Neue Montreal Regular"), local("PP Neue Montreal");
+        font-weight: 400;
+      }
+
+      @font-face {
+        font-family: "Belmont Neue";
+        src: local("PP Neue Montreal Semibold"), local("PP Neue Montreal SemiBold");
+        font-weight: 600;
+      }
+
+      @font-face {
+        font-family: "Belmont Korean";
+        src: local("Pretendard Variable"), local("Pretendard");
+        font-weight: 45 920;
+      }
+
+      :root {
+        --ink: #111214;
+        --paper: #f5f3ee;
+        --muted: #777774;
+        --line: rgb(17 18 20 / 12%);
+        --font: "Belmont Neue", "Belmont Korean", system-ui, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 100%;
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--font);
+        font-synthesis: none;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .board {
+        width: 1440px;
+        height: 1040px;
+        margin: 0 auto;
+        padding: 42px 48px 48px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 14% 6%, rgb(255 255 255 / 76%), transparent 27%),
+          var(--paper);
+      }
+
+      .topline {
+        height: 78px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand {
+        font-size: 25px;
+        font-weight: 600;
+        letter-spacing: -0.6px;
+      }
+
+      .meta {
+        display: flex;
+        gap: 28px;
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 1.7px;
+        text-transform: uppercase;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 760px 1fr;
+        gap: 42px;
+        padding-top: 34px;
+      }
+
+      .hero {
+        height: 820px;
+        display: grid;
+        place-items: center;
+        border-radius: 44px;
+        background: #0b0c0e;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 52% 38%, rgb(255 255 255 / 6%), transparent 33%),
+          linear-gradient(180deg, transparent 70%, rgb(0 0 0 / 25%));
+      }
+
+      .hero-mark {
+        width: 430px;
+        height: 500px;
+        filter: drop-shadow(0 36px 34px rgb(0 0 0 / 48%));
+        z-index: 1;
+      }
+
+      .hero-caption {
+        position: absolute;
+        left: 36px;
+        bottom: 34px;
+        z-index: 2;
+        color: #f4f4f0;
+      }
+
+      .eyebrow {
+        color: #8e8f90;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+      }
+
+      .hero-caption strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 21px;
+        font-weight: 400;
+        letter-spacing: -0.3px;
+      }
+
+      .stack {
+        height: 820px;
+        display: grid;
+        grid-template-rows: 220px 260px 1fr;
+        gap: 22px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 30px;
+        background: rgb(255 255 255 / 42%);
+        overflow: hidden;
+      }
+
+      .lockup {
+        padding: 34px 36px;
+        display: flex;
+        align-items: center;
+        gap: 28px;
+      }
+
+      .lockup-mark {
+        width: 112px;
+        height: 128px;
+        flex: 0 0 auto;
+      }
+
+      .wordmark {
+        font-size: 58px;
+        line-height: 0.94;
+        letter-spacing: -2.6px;
+      }
+
+      .descriptor {
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 2.1px;
+        text-transform: uppercase;
+      }
+
+      .tests {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .test {
+        position: relative;
+        display: grid;
+        place-items: center;
+      }
+
+      .test + .test { border-left: 1px solid var(--line); }
+
+      .test.black { background: #111214; }
+
+      .test svg {
+        width: 116px;
+        height: 134px;
+      }
+
+      .test-label {
+        position: absolute;
+        left: 22px;
+        bottom: 18px;
+        color: var(--muted);
+        font-size: 10px;
+        letter-spacing: 1.4px;
+        text-transform: uppercase;
+      }
+
+      .test.black .test-label { color: #8d8f91; }
+
+      .application {
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .app-title {
+        margin-bottom: 19px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+
+      .phone-fragment {
+        flex: 1;
+        border: 1px solid var(--line);
+        border-radius: 25px;
+        background: #fbfbfb;
+        overflow: hidden;
+      }
+
+      .phone-header {
+        height: 86px;
+        padding: 14px 20px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .app-icon {
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+        border-radius: 15px;
+        background: #0b0c0e;
+      }
+
+      .app-icon svg {
+        width: 29px;
+        height: 34px;
+      }
+
+      .phone-name {
+        font-size: 20px;
+        letter-spacing: -0.45px;
+      }
+
+      .phone-role {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.2px;
+      }
+
+      .more {
+        margin-left: auto;
+        font-size: 24px;
+        letter-spacing: 2px;
+      }
+
+      .message {
+        width: 78%;
+        margin: 22px 18px;
+        padding: 17px 18px;
+        border-radius: 20px;
+        background: #ededeb;
+        color: #27282a;
+        font-family: var(--font);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 22px;
+        color: #6f706f;
+        font-size: 12px;
+      }
+
+      .status-mark {
+        width: 18px;
+        height: 21px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="board">
+      <header class="topline">
+        <div class="brand">Belmont</div>
+        <div class="meta"><span>Symbol study 04</span><span>The Gate</span><span>02 Sep 2026</span></div>
+      </header>
+
+      <section class="grid">
+        <article class="hero">
+          <svg class="hero-mark" viewBox="0 0 320 360" aria-label="Belmont Gate symbol">
+            <defs>
+              <linearGradient id="metalHero" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#777c80" />
+                <stop offset="0.2" stop-color="#f1f2ef" />
+                <stop offset="0.48" stop-color="#a8abad" />
+                <stop offset="0.72" stop-color="#f7f7f3" />
+                <stop offset="1" stop-color="#707579" />
+              </linearGradient>
+              <linearGradient id="creaseHero" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#52575b" />
+                <stop offset="0.5" stop-color="#f8f8f5" />
+                <stop offset="1" stop-color="#6f7478" />
+              </linearGradient>
+            </defs>
+            <path d="M84 318c-22 0-36-14-36-36V146C48 80 94 36 163 36c69 0 111 46 111 112v102c0 22-14 36-36 36h-12c-22 0-36-14-36-36v-96c0-23-14-39-36-39-23 0-38 16-38 39v128c0 22-14 36-32 36Z" fill="url(#metalHero)" stroke="#f8f8f5" stroke-opacity=".45" stroke-width="1.2" />
+            <path d="M66 146c0-55 37-91 97-91 59 0 93 38 93 94" fill="none" stroke="#f9f9f6" stroke-width="2" stroke-linecap="round" opacity=".48" />
+            <path d="M190 250v-96c0-23-14-39-36-39" fill="none" stroke="url(#creaseHero)" stroke-width="2" stroke-linecap="round" opacity=".54" />
+          </svg>
+          <div class="hero-caption">
+            <span class="eyebrow">Context enters / one accountable decision leaves</span>
+            <strong>The Gate</strong>
+          </div>
+        </article>
+
+        <div class="stack">
+          <article class="panel lockup">
+            <svg class="lockup-mark" viewBox="0 0 320 360" aria-hidden="true">
+              <path d="M84 318c-22 0-36-14-36-36V146C48 80 94 36 163 36c69 0 111 46 111 112v102c0 22-14 36-36 36h-12c-22 0-36-14-36-36v-96c0-23-14-39-36-39-23 0-38 16-38 39v128c0 22-14 36-32 36Z" fill="#111214" />
+            </svg>
+            <div><div class="wordmark">Belmont</div><div class="descriptor">Chief of Staff</div></div>
+          </article>
+
+          <article class="panel tests">
+            <div class="test">
+              <svg viewBox="0 0 320 360" aria-hidden="true"><path d="M84 318c-22 0-36-14-36-36V146C48 80 94 36 163 36c69 0 111 46 111 112v102c0 22-14 36-36 36h-12c-22 0-36-14-36-36v-96c0-23-14-39-36-39-23 0-38 16-38 39v128c0 22-14 36-32 36Z" fill="#111214" /></svg>
+              <span class="test-label">Flat / light</span>
+            </div>
+            <div class="test black">
+              <svg viewBox="0 0 320 360" aria-hidden="true"><path d="M84 318c-22 0-36-14-36-36V146C48 80 94 36 163 36c69 0 111 46 111 112v102c0 22-14 36-36 36h-12c-22 0-36-14-36-36v-96c0-23-14-39-36-39-23 0-38 16-38 39v128c0 22-14 36-32 36Z" fill="#f5f3ee" /></svg>
+              <span class="test-label">Flat / dark</span>
+            </div>
+          </article>
+
+          <article class="panel application">
+            <div class="app-title">PWA header / 52 px icon</div>
+            <div class="phone-fragment">
+              <div class="phone-header">
+                <div class="app-icon">
+                  <svg viewBox="0 0 320 360" aria-hidden="true"><path d="M84 318c-22 0-36-14-36-36V146C48 80 94 36 163 36c69 0 111 46 111 112v102c0 22-14 36-36 36h-12c-22 0-36-14-36-36v-96c0-23-14-39-36-39-23 0-38 16-38 39v128c0 22-14 36-32 36Z" fill="#f5f3ee" /></svg>
+                </div>
+                <div><div class="phone-name">Belmont</div><div class="phone-role">Chief of Staff</div></div>
+                <div class="more">⋮</div>
+              </div>
+              <div class="message">세 개의 작업 흐름을 확인했어. 충돌을 정리하고 한 가지 결정으로 가져올게.</div>
+              <div class="status">
+                <svg class="status-mark" viewBox="0 0 320 360" aria-hidden="true"><path d="M84 318c-22 0-36-14-36-36V146C48 80 94 36 163 36c69 0 111 46 111 112v102c0 22-14 36-36 36h-12c-22 0-36-14-36-36v-96c0-23-14-39-36-39-23 0-38 16-38 39v128c0 22-14 36-32 36Z" fill="#737574" /></svg>
+                <span>Belmont가 조율 중</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

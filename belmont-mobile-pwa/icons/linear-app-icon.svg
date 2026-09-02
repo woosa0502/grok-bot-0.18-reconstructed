@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Linear</title>
+  <desc id="desc">A brushed silver ridge on a near-black rounded square.</desc>
+  <defs>
+    <linearGradient id="tile" x1="72" y1="36" x2="430" y2="476" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#17181a" />
+      <stop offset="0.58" stop-color="#0b0c0e" />
+      <stop offset="1" stop-color="#07080a" />
+    </linearGradient>
+    <linearGradient id="metal" x1="118" y1="190" x2="408" y2="318" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#83888c" />
+      <stop offset="0.18" stop-color="#f0f1ef" />
+      <stop offset="0.46" stop-color="#c6c9ca" />
+      <stop offset="0.74" stop-color="#f5f5f2" />
+      <stop offset="1" stop-color="#7d8286" />
+    </linearGradient>
+    <linearGradient id="ridge" x1="164" y1="186" x2="408" y2="286" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="0.62" stop-color="#f7f7f3" stop-opacity="0.72" />
+      <stop offset="1" stop-color="#8b9094" stop-opacity="0.7" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="118" fill="url(#tile)" />
+  <rect x="1" y="1" width="510" height="510" rx="117" fill="none" stroke="#ffffff" stroke-opacity="0.055" stroke-width="2" />
+  <path d="M120 328h266c20 0 32 10 32 18s-12 18-32 18H120c-20 0-32-10-32-18s12-18 32-18Z" fill="#000000" fill-opacity="0.42" />
+  <g>
+    <path d="M108 315c-13 0-21-14-14-26l54-94c11-20 32-31 55-28 54 6 118 24 168 46 18 8 32 21 41 39l10 20c10 20-4 43-27 43H108Z" fill="url(#metal)" stroke="#ffffff" stroke-opacity="0.32" stroke-width="2" />
+    <path d="M151 194c11-18 31-28 52-25 54 6 118 24 168 46 18 8 32 21 41 39l9 18c-75-25-157-54-218-77-20-7-37-8-52-1Z" fill="#ffffff" fill-opacity="0.14" />
+    <path d="M153 194c54-4 171 35 264 78" fill="none" stroke="url(#ridge)" stroke-linecap="round" stroke-width="5" />
+  </g>
+</svg>

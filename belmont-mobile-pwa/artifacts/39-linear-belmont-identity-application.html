@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Linear / Belmont Identity Application</title>
+    <style>
+      @font-face {
+        font-family: "Linear Neue";
+        src: local("PP Neue Montreal Light");
+        font-style: normal;
+        font-weight: 200;
+      }
+
+      @font-face {
+        font-family: "Linear Neue";
+        src: local("PP Neue Montreal Regular"), local("PP Neue Montreal");
+        font-style: normal;
+        font-weight: 400;
+      }
+
+      @font-face {
+        font-family: "Linear Neue";
+        src: local("PP Neue Montreal Semibold"), local("PP Neue Montreal SemiBold");
+        font-style: normal;
+        font-weight: 600;
+      }
+
+      @font-face {
+        font-family: "Linear Korean";
+        src: local("Pretendard Variable"), local("Pretendard");
+        font-style: normal;
+        font-weight: 45 920;
+      }
+
+      :root {
+        --font: "Linear Neue", "Linear Korean", system-ui, sans-serif;
+        --ink: #111214;
+        --muted: #797977;
+        --paper: #f5f3ee;
+        --card: rgb(255 255 255 / 56%);
+        --line: rgb(17 18 20 / 12%);
+      }
+
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 100%;
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--font);
+        font-synthesis: none;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      .board {
+        width: 1440px;
+        height: 1040px;
+        margin: 0 auto;
+        padding: 40px 48px 48px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 14% 4%, rgb(255 255 255 / 80%), transparent 30%),
+          var(--paper);
+      }
+
+      .topline {
+        height: 78px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .top-brand {
+        font-size: 24px;
+        font-weight: 600;
+        letter-spacing: -0.6px;
+      }
+
+      .meta {
+        display: flex;
+        gap: 28px;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 1.55px;
+        text-transform: uppercase;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 720px 1fr;
+        gap: 38px;
+        padding-top: 34px;
+      }
+
+      .identity {
+        height: 820px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .icon-crop {
+        position: relative;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      .icon-crop img {
+        position: absolute;
+        width: 133.4%;
+        height: 133.4%;
+        left: -16.7%;
+        top: -16.7%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .hero-icon {
+        width: 650px;
+        height: 650px;
+        border-radius: 146px;
+        box-shadow: 0 34px 78px rgb(11 12 14 / 18%);
+      }
+
+      .hero-lockup {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        padding-right: 18px;
+      }
+
+      .project-name {
+        font-size: 80px;
+        line-height: 0.9;
+        font-weight: 400;
+        letter-spacing: -4.6px;
+      }
+
+      .project-role {
+        width: 230px;
+        padding-bottom: 2px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+        letter-spacing: 0.2px;
+      }
+
+      .right {
+        height: 820px;
+        display: grid;
+        grid-template-rows: 250px 1fr;
+        gap: 22px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 30px;
+        background: var(--card);
+        overflow: hidden;
+      }
+
+      .hierarchy {
+        padding: 28px 30px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 22px;
+      }
+
+      .hierarchy-item {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-width: 0;
+        padding: 6px 4px;
+      }
+
+      .hierarchy-item + .hierarchy-item {
+        padding-left: 28px;
+        border-left: 1px solid var(--line);
+      }
+
+      .eyebrow {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+      }
+
+      .hierarchy-name {
+        margin-top: auto;
+        font-size: 41px;
+        line-height: 1;
+        letter-spacing: -1.8px;
+      }
+
+      .hierarchy-description {
+        margin-top: 11px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .mobile-panel {
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .panel-label {
+        margin-bottom: 15px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+
+      .phone {
+        flex: 1;
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        background: #fbfbfb;
+        overflow: hidden;
+        box-shadow: 0 12px 30px rgb(17 18 20 / 5%);
+      }
+
+      .appbar {
+        height: 72px;
+        padding: 11px 18px;
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .small-icon {
+        width: 48px;
+        height: 48px;
+        flex: 0 0 auto;
+        border-radius: 14px;
+      }
+
+      .app-name {
+        font-size: 20px;
+        line-height: 1;
+        letter-spacing: -0.45px;
+      }
+
+      .app-caption {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 10px;
+        letter-spacing: 0.7px;
+        text-transform: uppercase;
+      }
+
+      .more {
+        margin-left: auto;
+        font-size: 25px;
+        line-height: 1;
+      }
+
+      .agent-row {
+        padding: 20px 20px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .agent-avatar {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: #151617;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .agent-name {
+        font-size: 16px;
+        letter-spacing: -0.25px;
+      }
+
+      .agent-role {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .message {
+        width: 79%;
+        margin: 0 20px;
+        padding: 17px 18px;
+        border-radius: 20px;
+        background: #ececea;
+        color: #2a2b2c;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .message strong { font-weight: 600; }
+
+      .composer {
+        height: 66px;
+        margin: 23px 14px 14px;
+        padding: 0 12px 0 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        color: #a0a09e;
+        font-size: 14px;
+      }
+
+      .send {
+        width: 38px;
+        height: 38px;
+        margin-left: auto;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: #151617;
+        color: #fff;
+        font-size: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="board">
+      <header class="topline">
+        <div class="top-brand">Linear</div>
+        <div class="meta"><span>Identity application</span><span>Project / Agent hierarchy</span><span>02 Sep 2026</span></div>
+      </header>
+
+      <section class="layout">
+        <article class="identity">
+          <div class="icon-crop hero-icon"><img src="39a-linear-ridge-icon-source.png" alt="Linear app icon concept" /></div>
+          <div class="hero-lockup">
+            <div class="project-name">Linear</div>
+            <div class="project-role">Project identity. The application, workspace and visual system use this name.</div>
+          </div>
+        </article>
+
+        <section class="right">
+          <article class="panel hierarchy">
+            <div class="hierarchy-item">
+              <div class="eyebrow">Project / Product</div>
+              <div>
+                <div class="hierarchy-name">Linear</div>
+                <div class="hierarchy-description">앱과 프로젝트의 대표 이름</div>
+              </div>
+            </div>
+            <div class="hierarchy-item">
+              <div class="eyebrow">Agent / Bot</div>
+              <div>
+                <div class="hierarchy-name">Belmont</div>
+                <div class="hierarchy-description">Linear 안에서 일하는 Chief of Staff</div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel mobile-panel">
+            <div class="panel-label">Mobile PWA / corrected naming hierarchy</div>
+            <div class="phone">
+              <div class="appbar">
+                <div class="icon-crop small-icon"><img src="39a-linear-ridge-icon-source.png" alt="" /></div>
+                <div>
+                  <div class="app-name">Linear</div>
+                  <div class="app-caption">Personal workspace</div>
+                </div>
+                <div class="more">⋮</div>
+              </div>
+
+              <div class="agent-row">
+                <div class="agent-avatar">B</div>
+                <div><div class="agent-name">Belmont</div><div class="agent-role">Chief of Staff</div></div>
+              </div>
+
+              <div class="message"><strong>Linear</strong>의 작업 상태를 확인했어. 우선순위가 충돌하는 두 항목을 정리해서 다음 행동으로 가져올게.</div>
+
+              <div class="composer"><span>Ask Belmont</span><span class="send">↑</span></div>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

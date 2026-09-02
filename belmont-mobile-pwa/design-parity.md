@@ -15,7 +15,7 @@ The visual identity now comes from the local Belmont desktop renderer
 - Bubbles: agent `#eeeeee`/`#262626`, user `#070707`/`#5a5a5a`, flat 18px
   radius, 8×12 padding — the iOS Bézier tail engine was removed.
 - Typography: 13px base / 12px secondary / 11px code, matching the desktop
-  `--cursor-font-size` scale; `Segoe UI` system stack.
+  `--cursor-font-size` scale; PP Neue Montreal for Latin and Pretendard for Korean.
 - Cards: neutral 1px `--sand-border-weak` border on elevated fill, blue accent
   buttons — replacing the cyan-tinted iOS approval card.
 - The Maus mascot, glass layout skeleton and pairing hierarchy stay from the
@@ -25,7 +25,7 @@ The visual identity now comes from the local Belmont desktop renderer
 
 - Letter/monogram avatars → exact public Maus silhouette, named color palette, expression-0 eye rings, anchored face transform and mouth stroke.
 - Monochrome/no-blue theme → OpenMaus cyan mascot, blue user bubbles and native light/dark bubble colors.
-- Search-in-header roster → centered Chats header and floating Updates/Search/Create glass bar.
+- Search-in-header roster → centered Linear project header and floating Updates/Search/Create glass bar.
 - Generic list layout → 22px unread lane, 52px mascot, 17px title, role capsule, 15px preview/timestamp and row divider.
 - Flat chat header → 44px glass back/computer controls, floating 60px mascot and 32px identity capsule.
 - Generic rounded bubbles → a dynamically sized single SVG Shape with the same 22px corners and four scaled Bézier tail segments from `SpeechBubble.swift`.
@@ -35,7 +35,7 @@ The visual identity now comes from the local Belmont desktop renderer
 - Composer without dictation → 32px microphone control alongside the native send control; supported browsers use Web Speech recognition.
 - Scanner placeholder → camera-facing platform QR scanner, platform-decoded image selection, fail-closed OpenMaus invite parsing and explicit computer confirmation.
 - Full-box CSS mascot gradient → SVG object-bounding-box gradient over the transformed silhouette, so the light/dark endpoints span the body exactly as in the native source.
-- OpenMaus install icon → preserved Grok Bot renderer artwork for the favicon, Apple touch icon and standard 192px/512px PWA manifest entries, per the Belmont product decision; the 256px source remains byte-identical.
+- OpenMaus install icon → Linear project mark for the favicon, Apple touch icon, profile control and standard 192px/512px PWA manifest entries. Belmont keeps its animated agent avatar inside the app.
 
 ## Browser-equivalent, not pixel-identical native output
 
@@ -62,5 +62,8 @@ The visual identity now comes from the local Belmont desktop renderer
 - `artifacts/28-openmaus-chat-current-dark.png`
 - `artifacts/29-grok-icon-gradient-light.png`
 - `artifacts/30-grok-icon-gradient-dark.png`
+- `artifacts/40-linear-brand-live-home.png`
+- `artifacts/41-linear-brand-live-chat.png`
+- `artifacts/42-linear-brand-live-dark.png`
 
-The earlier `09`–`28` files predate at least one final P1 correction and are retained only as historical render artifacts. `29` and `30` are the current-source light/dark roster render set after the silhouette-gradient and Grok-icon changes; `20`, `22` and `26` remain valid scanner, confirmation and grouped-message layout evidence because the later changes do not affect those structures.
+The earlier `09`–`30` files predate the Linear identity pass and are retained as historical render artifacts. `40`–`42` are the current-source Linear roster and Belmont chat light/dark render set; `20`, `22` and `26` remain valid scanner, confirmation and grouped-message layout evidence because the later identity changes do not affect those structures.

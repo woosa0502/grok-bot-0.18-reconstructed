@@ -1,19 +1,19 @@
-# OpenMaus mobile design port
+# Linear mobile design port
 
 Status: implemented reference specification  
 Reference snapshot: OpenMausBot `6140532ea63e50bc234c34c488a79ff908bfc7f5`  
-Checked: 2026-09-01
+Checked: 2026-09-02
 
 ## Source of truth
 
 - Native layout: `ios/App/ChatListView.swift`, `ChatView.swift`, `PairingView.swift`, `Glass.swift`, `SpeechBubble.swift`.
 - Mascot: `ios/App/MausAvatar.swift` and `src/components/CursorAvatar.tsx`.
 - Rendered references: `ios/AppStore/screenshots/iPhone-6.9/*.png`.
-- OpenMaus reference app icon: `public/app-icon.svg`; the installed Belmont PWA deliberately uses the preserved Grok Bot renderer icon requested by the user.
+- OpenMaus reference app icon: `public/app-icon.svg`; the installed Linear PWA deliberately uses its separate project mark requested by the user.
 
 ## Tokens carried over
 
-- System type: Apple system/SF stack, 17px primary text, 15px secondary text, 13px labels.
+- System type: self-hosted PP Neue Montreal for Latin glyphs and Pretendard Variable for Korean glyphs. Existing mobile sizes and hierarchy remain unchanged.
 - User bubble: `#377FE6`.
 - Bot bubble: `#E9E9EB` light, `#262629` dark.
 - Mascot colors: all ten upstream named values plus neutral fallback `#8E8E93`, resolved from real bot payload names.
@@ -25,16 +25,18 @@ Checked: 2026-09-01
 
 ## Core assets
 
-- `icons/maus-silhouette.svg`: exact public mascot silhouette path and upstream transforms.
 - The mascot fill is an SVG `objectBoundingBox` gradient on that transformed silhouette itself, preserving the upstream top-right → bottom-left extent and 0%/55%/100% stops.
-- `icons/maus-face-{idle,listening,working,happy}.svg`: exact upstream eye rings, anchor transform, mouth curves and 7.5-point stroke for the four PWA-visible states.
-- `icons/openmaus-app-icon.svg`: retained OpenMaus reference vector; it is not the installed PWA icon.
-- `icons/grok-bot-app-icon.png`: active favicon and Apple touch icon; byte-identical to the preserved Grok Bot renderer asset (`app-icon-C7NKj2u7.png`, SHA-256 `79e6a73e634ce7ad8d1982739e9064bcc9c9ec5106bdd7281d7514ee68169ad2`).
-- `icons/grok-bot-app-icon-{192,512}.png`: Lanczos-resized derivatives of that same source image used for the two standard PWA manifest sizes; no alternate artwork is introduced.
+- OpenMaus/Grok Bot reference vectors (`maus-*.svg`, `openmaus-app-icon.svg`, `grok-bot-app-icon*.png`) were removed with the Linear rebrand; the shipped identity is the files below.
+- `icons/linear-app-icon.svg`: canonical Linear project mark, a brushed-silver ridge on a near-black app tile.
+- `icons/linear-app-icon.png` and `icons/linear-app-icon-{192,512}.png`: favicon, Apple touch icon and PWA install derivatives rendered from the canonical SVG.
+- `fonts/PPNeueMontreal-{Light,Regular,Semibold}.woff2`: Latin UI faces packaged for the phone PWA.
+- `fonts/PretendardVariable.woff2`: Korean UI fallback packaged for the phone PWA.
 - `third-party/openmausbot/LICENSE` and `NOTICE`: upstream attribution.
 
-## Belmont substitution contract
+## Linear and Belmont naming contract
 
+- `Linear` is the project, installed application and visual identity.
+- `Belmont` is the chief-of-staff bot inside Linear.
 - `Scout` becomes the single user-facing manager, `Belmont`.
 - Specialist bot colors and role pills stay visually identical, but their rows are read-only status/details surfaces.
 - Users never receive a worker composer; every user message is routed to Belmont.

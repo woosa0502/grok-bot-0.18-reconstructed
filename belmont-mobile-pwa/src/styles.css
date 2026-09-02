@@ -1,3 +1,35 @@
+@font-face {
+  font-family: "Linear Neue";
+  src: url("../fonts/PPNeueMontreal-Light.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Linear Neue";
+  src: url("../fonts/PPNeueMontreal-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Linear Neue";
+  src: url("../fonts/PPNeueMontreal-Semibold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+/* <strong>/<b> default to bolder (700); pin them to the shipped Semibold so Latin and Korean match. */
+strong, b { font-weight: 600; }
+
+@font-face {
+  font-family: "Linear Korean";
+  src: url("../fonts/PretendardVariable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: swap;
+}
+
 /* Design tokens ported from the local Belmont desktop renderer
    (runtime-theme-token-installer.ts, 130-entry sand palette). The iOS layout
    skeleton stays; every color below is the desktop app's own value. */
@@ -22,7 +54,7 @@
   --maus-green: #009957;
   --danger: #c21d2e;
   --bot-bubble: #eeeeee;        /* --sand-fill-bubble-agent */
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  --font: "Linear Neue", "Linear Korean", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-family: var(--font);
   font-synthesis: none;
 }
@@ -145,16 +177,15 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   opacity: .72;
 }
 .profile-avatar {
-  display: grid;
+  display: block;
   width: 30px;
   height: 30px;
-  place-items: center;
-  border-radius: 50%;
-  background: linear-gradient(145deg,#52b788,#009957);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 650;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #0b0c0e;
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.08);
 }
+.profile-avatar img { display: block; width: 100%; height: 100%; }
 
 .maus-avatar {
   --maus-size: 52px;
@@ -247,7 +278,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   max-width: 340px;
   margin: 22px 0 10px;
   font-size: 28px;
-  font-weight: 720;
+  font-weight: 600;
   letter-spacing: -.025em;
   line-height: 1.14;
 }
@@ -269,7 +300,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   border-bottom: .5px solid var(--separator);
 }
 .pair-row:last-child { border-bottom: 0; }
-.pair-row > span { font-size: 14px; font-weight: 550; }
+.pair-row > span { font-size: 14px; font-weight: 600; }
 .pair-row input {
   width: 100%;
   min-height: 52px;
@@ -285,7 +316,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   justify-content: center;
   border-radius: 14px;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .primary-button { background: var(--user-blue); color: #fff; }
 .quiet-button { background: var(--surface); color: var(--user-blue); }
@@ -325,7 +356,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 }
 .nearby-row > .icon { color: var(--user-blue); }
 .nearby-row > span:nth-child(2) { display: grid; gap: 2px; }
-.nearby-row strong, .manual-toggle strong { font-size: 14px; font-weight: 650; }
+.nearby-row strong, .manual-toggle strong { font-size: 14px; font-weight: 600; }
 .nearby-row small { color: var(--secondary); font-size: 13px; }
 .pair-divider { height: .5px; background: var(--separator); }
 .manual-toggle > .icon:first-child { width: 20px; color: var(--user-blue); }
@@ -412,7 +443,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   border-radius: 18px;
   background: rgba(42,42,45,.88);
   font-size: 14px;
-  font-weight: 550;
+  font-weight: 600;
   text-align: center;
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
@@ -427,7 +458,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   margin: 0 16px calc(16px + env(safe-area-inset-bottom));
   border-radius: 14px;
   background: var(--user-blue);
-  font-weight: 650;
+  font-weight: 600;
   cursor: pointer;
 }
 .scanner-file input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -456,7 +487,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   justify-items: center;
   text-align: center;
 }
-.home-title strong { font-size: 14px; font-weight: 650; }
+.home-title strong { font-size: 14px; font-weight: 600; }
 .home-title small {
   overflow: hidden;
   max-width: 100%;
@@ -486,7 +517,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   text-align: left;
 }
 .attention-banner > span:nth-child(2) { display: grid; min-width: 0; gap: 2px; }
-.attention-banner strong { font-size: 14px; font-weight: 650; }
+.attention-banner strong { font-size: 14px; font-weight: 600; }
 .attention-banner small {
   overflow: hidden;
   color: var(--secondary);
@@ -542,7 +573,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   overflow: hidden;
   min-width: 0;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -581,7 +612,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   background: var(--maus-cyan);
   color: #fff;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .working-indicator { display: flex; width: 22px; height: 14px; align-items: center; gap: 2px; }
 .working-indicator i {
@@ -624,7 +655,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   text-align: left;
 }
 .updates-pill > .pill-copy { display: grid; min-width: 0; flex: 1; }
-.updates-pill strong { font-size: 14px; font-weight: 650; }
+.updates-pill strong { font-size: 14px; font-weight: 600; }
 .updates-pill small {
   overflow: hidden;
   color: var(--secondary);
@@ -702,7 +733,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 .identity-pill strong {
   overflow: hidden;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -734,7 +765,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   padding: 10px 0 4px;
   color: color-mix(in srgb,var(--secondary) 75%,transparent);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 600;
   text-align: center;
 }
 .message-row { display: flex; width: 100%; }
@@ -764,7 +795,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 .bubble p + p, .bubble p + .md-list, .bubble .md-list + p,
 .bubble p + .md-code-wrap, .bubble .md-code-wrap + p,
 .bubble p + .md-table-wrap, .bubble .md-table-wrap + p { margin-top: 10px; }
-.bubble .md-heading { font-weight: 650; }
+.bubble .md-heading { font-weight: 600; }
 .bubble .md-list { margin: 5px 0; padding-left: 18px; display: block; }
 .bubble .md-list li { margin: 2px 0; }
 .bubble code {
@@ -797,7 +828,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   text-align: left;
   white-space: nowrap;
 }
-.bubble .md-table th { background: color-mix(in srgb, var(--ink) 5%, transparent); font-weight: 650; }
+.bubble .md-table th { background: color-mix(in srgb, var(--ink) 5%, transparent); font-weight: 600; }
 .activity-row, .live-activity {
   display: flex;
   width: fit-content;
@@ -818,7 +849,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 }
 .activity-mark .icon { width: 17px; height: 17px; }
 .activity-row > span:last-child, .live-activity > span:last-child { display: grid; gap: 1px; }
-.activity-row strong, .live-activity strong { font-size: 13px; font-weight: 620; }
+.activity-row strong, .live-activity strong { font-size: 13px; font-weight: 600; }
 .activity-row small, .live-activity small { color: var(--secondary); font-size: 12px; }
 /* Turn-pending slot: the character stands bare at the incoming-message spot,
    like the desktop transcript; its dots form pulses while composing. */
@@ -866,7 +897,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   gap: 6px;
   color: var(--maus-cyan);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .approval-kicker .icon { width: 16px; height: 16px; }
 .waiting-hand {
@@ -877,7 +908,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   color: var(--maus-cyan);
 }
 .waiting-hand .icon { width: 18px; height: 18px; }
-.approval-card h2 { margin: 9px 0 4px; font-size: 13px; font-weight: 650; }
+.approval-card h2 { margin: 9px 0 4px; font-size: 13px; font-weight: 600; }
 .approval-card p { margin: 0; color: var(--secondary); font-size: 12px; line-height: 1.4; }
 .approval-actions {
   display: grid;
@@ -891,7 +922,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   border-radius: 20px;
   background: color-mix(in srgb,var(--secondary) 13%,transparent);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .approval-actions .approval-allow { background: var(--user-blue); color: #fff; }
 .always-allow {
@@ -1062,7 +1093,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 }
 .menu-icon .icon, .sheet-menu > button > .icon { width: 20px; height: 20px; }
 .sheet-menu button > span:last-child { display: grid; min-width: 0; gap: 2px; }
-.sheet-menu strong { font-size: 19px; font-weight: 550; }
+.sheet-menu strong { font-size: 19px; font-weight: 600; }
 .sheet-menu small {
   overflow: hidden;
   color: var(--secondary);

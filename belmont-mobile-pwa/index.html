@@ -5,20 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
-    <meta name="description" content="Belmont와 대화하고 작업 에이전트의 진행과 승인을 확인하는 모바일 PWA" />
+    <meta name="description" content="Linear에서 Belmont와 대화하고 작업 에이전트의 진행과 승인을 확인하는 모바일 PWA" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Belmont" />
+    <meta name="apple-mobile-web-app-title" content="Linear" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="icon" href="./icons/grok-bot-app-icon.png" type="image/png" sizes="256x256" />
-    <link rel="apple-touch-icon" href="./icons/grok-bot-app-icon.png" />
+    <link rel="icon" href="./icons/linear-app-icon.png" type="image/png" sizes="256x256" />
+    <link rel="apple-touch-icon" href="./icons/linear-app-icon.png" />
     <link rel="stylesheet" href="./src/styles.css" />
-    <title>Belmont</title>
+    <title>Linear</title>
   </head>
   <body>
     <!--
       Assumptions
       - This is a phone-first companion, not a smaller desktop dashboard.
+      - Linear is the project and application identity. Belmont is the single user-facing chief-of-staff bot.
       - The user only chats with Belmont. Worker bots appear as managed work, never as alternate composers.
       - The public OpenMausBot iOS source supplies the visual system as well as the interaction reference.
         Product nouns and routing remain Belmont-specific; the native cyan/blue palette is intentionally retained.
@@ -26,7 +27,7 @@
         pairing remains a development path because OpenMausBot's native sidecar deliberately rejects Origin.
     -->
     <main id="app" aria-live="polite"></main>
-    <noscript>Belmont 모바일 앱을 사용하려면 JavaScript를 켜주세요.</noscript>
+    <noscript>Linear 모바일 앱을 사용하려면 JavaScript를 켜주세요.</noscript>
     <script type="module" src="./src/app.js"></script>
   </body>
 </html>

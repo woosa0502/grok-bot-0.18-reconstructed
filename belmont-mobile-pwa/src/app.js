@@ -143,9 +143,8 @@ function avatar(bot, size = "medium", status = "idle") {
   return `<span class="maus-avatar maus-avatar--${size}" data-status="${escapeHtml(resolved)}" data-motion="${escapeHtml(motionState)}" data-agent-id="${escapeHtml(bot?.id ?? "")}" data-color="${escapeHtml(bot?.color ?? "")}" data-shape="${escapeHtml(bot?.shape ?? "")}" aria-hidden="true">${personaSvg({ id: bot?.id, shape: bot?.shape, color: bot?.color, status: resolved })}</span>`;
 }
 
-function profileAvatar(name = "H") {
-  const initial = String(name || "H").trim().slice(0, 1).toUpperCase();
-  return `<span class="profile-avatar" aria-hidden="true">${escapeHtml(initial)}</span>`;
+function profileAvatar() {
+  return '<span class="profile-avatar" aria-hidden="true"><img src="./icons/linear-app-icon.svg" alt="" /></span>';
 }
 
 function render() {
@@ -250,8 +249,8 @@ function renderHome() {
   return `
     <section class="home-screen screen">
       <header class="home-header">
-        <button class="glass-button profile-button" type="button" data-action="settings" aria-label="연결 설정">${profileAvatar("H")}</button>
-        <div class="home-title"><strong>Chats</strong><small>${state.connection?.mode === "demo" ? "Belmont Demo · connected" : `${escapeHtml(state.connection?.serverName || "Belmont computer")} · ${streamLabel(state.streamStatus).toLowerCase()}`}</small></div>
+        <button class="glass-button profile-button" type="button" data-action="settings" aria-label="연결 설정">${profileAvatar()}</button>
+        <div class="home-title"><strong>Linear</strong><small>${state.connection?.mode === "demo" ? "Belmont Demo · connected" : `${escapeHtml(state.connection?.serverName || "Belmont computer")} · ${streamLabel(state.streamStatus).toLowerCase()}`}</small></div>
         <button class="glass-button" type="button" data-action="settings" aria-label="설정">${icon("gear")}</button>
       </header>
 
@@ -324,7 +323,7 @@ function renderChat() {
   const readonly = state.readonlyChat != null;
   const approval = readonly ? null : pendingApproval(state.messages);
   const composer = readonly
-    ? `<div class="readonly-bar">읽기 전용 — 이 봇에게 지시하려면 Belmont에게 부탁하세요</div>`
+    ? `<div class="readonly-bar">읽기 전용: 이 봇에게 지시하려면 Belmont에게 부탁하세요</div>`
     : `${state.pendingAttachments.length ? `<div class="attach-chips">${state.pendingAttachments.map((att) => `<span class="attach-chip">${escapeHtml(att.name)}<button type="button" data-action="remove-attachment" data-attach-id="${escapeHtml(att.id)}" aria-label="첨부 제거">${icon("close")}</button></span>`).join("")}</div>` : ""}<form class="composer" id="composer-form">
         <input id="attach-input" type="file" multiple hidden />
         <button class="glass-button composer-plus ${state.overlay?.type === "more" ? "is-open" : ""}" type="button" data-action="more" aria-label="더 보기">${icon("plus")}</button>
@@ -508,7 +507,7 @@ function renderMoreOverlay() {
         <button type="button" data-action="attach"><span class="menu-icon">${icon("share")}</span><span><strong>사진·파일 첨부</strong><small>Belmont에게 파일을 보냅니다</small></span></button>
         <button type="button" data-action="new-task"><span class="menu-icon">${icon("plus")}</span><span><strong>New goal</strong><small>Write a new goal in this Belmont conversation</small></span></button>
         <button type="button" data-action="show-tasks"><span class="menu-icon">${icon("task")}</span><span><strong>Agents</strong><small>See current persistent agent status</small></span></button>
-        <button type="button" data-action="computer"><span class="menu-icon">${icon("computer")}</span><span><strong>Computer status</strong><small>Mobile live view is not connected yet</small></span></button>
+        <button type="button" data-action="computer"><span class="menu-icon">${icon("computer")}</span><span><strong>Computer status</strong><small>Belmont가 쓰는 컴퓨터 화면을 봅니다</small></span></button>
         <button type="button" data-action="share"><span class="menu-icon">${icon("share")}</span><span><strong>Share transcript</strong><small>This chat as a text file</small></span></button>
       </div>
     </section>
@@ -565,7 +564,7 @@ function renderComputerOverlay() {
   return sheet("Belmont의 컴퓨터", `
     ${handoff}
     <iframe class="computer-frame" src="${escapeHtml(computer.viewerUrl)}" allow="clipboard-read; clipboard-write"></iframe>
-    <p class="sheet-note">${computer.interactive ? "지금은 직접 조작이 허용된 상태입니다 — 화면을 터치해 조작하세요." : "보기 전용입니다. Belmont가 사용자 조작을 요청하면 조작이 열립니다."}</p>
+    <p class="sheet-note">${computer.interactive ? "지금은 직접 조작이 허용된 상태입니다. 화면을 터치해 조작하세요." : "보기 전용입니다. Belmont가 사용자 조작을 요청하면 조작이 열립니다."}</p>
   `);
 }
 
@@ -608,7 +607,7 @@ function decisionLabel(value) {
   if (["allow", "allowed", "allow-once", "approved", "approve"].includes(normalized)) return "허용됨";
   if (["always", "always-allow"].includes(normalized)) return "항상 허용됨";
   if (["deny", "denied"].includes(normalized)) return "거절됨";
-  if (["expired", "timeout", "timed-out"].includes(normalized)) return "시간 초과 — 실행되지 않음";
+  if (["expired", "timeout", "timed-out"].includes(normalized)) return "시간 초과: 실행되지 않음";
   if (["cancelled", "canceled", "dismissed", "aborted"].includes(normalized)) return "취소됨";
   return value;
 }
@@ -1202,7 +1201,7 @@ app.addEventListener("click", async (event) => {
   if (action === "open-manager") await openManager();
   if (action === "back") { state.view = "home"; state.overlay = null; state.readonlyChat = null; stopChatPoll(); await refreshFleet(); render(); }
   if (action === "worker-chat") await openWorkerChat(target.dataset.workerId);
-  if (action === "more") { state.overlay = { type: "more" }; render(); }
+  if (action === "more") { state.overlay = state.overlay?.type === "more" ? null : { type: "more" }; render(); }
   if (action === "close-overlay") { stopQrScanner(); state.overlay = null; render(); }
   if (action === "worker-detail") { state.overlay = { type: "worker", workerId: target.dataset.workerId }; render(); }
   if (action === "settings") { state.overlay = { type: "settings" }; render(); }
