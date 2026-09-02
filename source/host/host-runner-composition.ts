@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
+import { ASIDE_BROWSE_ENABLED, createAsideBrowseSubagentConfig, isAsideBrowseSubagentType } from "./extensions/browse-runtime/subagent-config.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
 import { LOCAL_BROWSER_USE_ENABLED, localBrowserShellExecutor, localBrowserWindowIndex, registerLocalBrowserApprovalGate } from "./box/local-browser-use.js";
@@ -2812,6 +2813,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         subagentConfigs: [
           ...(multitaskEnabled ? [createSandExecutorSubagentConfig()] : []),
           ...(LOCAL_COMPUTER_USE_ENABLED ? [createSandComputerUseSubagentConfig({ browserUseOffered: false })] : []),
+          ...(ASIDE_BROWSE_ENABLED ? [createAsideBrowseSubagentConfig()] : []),
         ],
       };
       const staticModelId = process.env.SAND_AGENT_MODEL ?? DEFAULT_SAND_MODEL;
@@ -3037,6 +3039,22 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               ): SubagentSession => {
                 if (typeof args.subagentType === "string" && args.subagentType.length > 0) {
                   subagentTypeByConversationId.set(agentId, args.subagentType);
+                }
+                if (ASIDE_BROWSE_ENABLED && isAsideBrowseSubagentType(args.subagentType)) {
+                  // belmont-browse: this child's brain is an Aside session behind the local browse service.
+                  const createBrowseSession = method(extensions.api("browse-runtime"), "createSubagentSession");
+                  if (createBrowseSession === undefined) throw new TypeError("browse-runtime extension is not bound");
+                  const browseSession = createBrowseSession(agentId) as SubagentSession;
+                  return {
+                    ...browseSession,
+                    run: async (prompt, options) => {
+                      try {
+                        return await browseSession.run(prompt, options);
+                      } finally {
+                        subagentTypeByConversationId.delete(agentId);
+                      }
+                    },
+                  };
                 }
                 const childConversationState = () => {
                   const runner = runnerByConversationId.get(agentId) as {

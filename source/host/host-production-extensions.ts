@@ -11,6 +11,7 @@ import { automationsExtension } from "./extensions/automations/extension.js";
 import { boxLifecycleExtension } from "./extensions/box-lifecycle/extension.js";
 import { boxStoreSyncExtension } from "./extensions/box-store-sync/extension.js";
 import { browserUaExtension } from "./extensions/browser-ua/extension.js";
+import { browseRuntimeExtension } from "./extensions/browse-runtime/extension.js";
 import { cloudAgentsExtension } from "./extensions/cloud-agents/extension.js";
 import { codebaseTelemetryExtension } from "./extensions/codebase-telemetry/extension.js";
 import { contentSearchExtension } from "./extensions/content-search/extension.js";
@@ -123,7 +124,8 @@ export function createRecoveredProductionExtensionRegistry<Host extends { log(me
     [HostExtensions.TeachRecording]: bind(teachRecordingExtension),
     [HostExtensions.WebauthnProxy]: bind(webauthnProxyExtension),
     [HostExtensions.NotifyBus]: bind(notifyBusExtension),
-    [HostExtensions.Wallpaper]: bind(wallpaperExtension)
+    [HostExtensions.Wallpaper]: bind(wallpaperExtension),
+    [HostExtensions.BrowseRuntime]: bind(browseRuntimeExtension)
   };
 }
 
