@@ -169,7 +169,12 @@ export function createProductionSandHost(ports: ProductionSandHostPorts): SandHo
         extensions: started,
         ctx: ports.runnerContext,
         emitGatewayEvent,
-        buildRunner: options => new SandAgentRunner(options as SandAgentRunnerOptions),
+        buildRunner: options => {
+          const runner = new SandAgentRunner(options as SandAgentRunnerOptions);
+          // belmont-browse: a roster bot whose profile opts into runtime "aside-browse" gets its turns served by the Aside engine.
+          const browseRuntime = started.api("browse-runtime") as { wrapRunner?: (runner: SandAgentRunner, options: unknown) => SandAgentRunner } | undefined;
+          return browseRuntime?.wrapRunner?.(runner, options) ?? runner;
+        },
         createRequestContext: options => createHostRequestContext(
           options.transcriptsDir,
           () => {

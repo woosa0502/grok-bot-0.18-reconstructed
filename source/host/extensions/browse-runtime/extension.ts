@@ -1,4 +1,7 @@
 import { defineHostExtension } from "../../../internal/host-extensions.js";
+import { subscribeTranscriptMutations } from "../../transcript-mutation-events.js";
+import type { RunnerUpdate } from "../../runner/sand-agent-runner.js";
+import { forgetAsideBotLink, isAsideBotAgent, wrapRunnerForAsideBot } from "./aside-bot-runner.js";
 import type { SubagentSession } from "../../runner/subagent-runtime.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 import { BrowseClient } from "./browse-client.js";
@@ -10,6 +13,8 @@ export interface BrowseRuntimeExtensionApi {
   isAsideBrowseSubagentType(name: string | undefined): boolean;
   createSubagentConfig(): ReturnType<typeof createAsideBrowseSubagentConfig>;
   createSubagentSession(agentId: string): SubagentSession;
+  /** Returns the runner unchanged unless the bot's profile opts into runtime "aside-browse". */
+  wrapRunner<T extends object>(runner: T, options: { getAgentId?: () => string; getConversationId?: () => string; emitUpdate: (update: RunnerUpdate) => void }): T;
 }
 
 /** Offers a browser worker whose brain is an Aside session (belmont-browse, local-only) as a Task subagent type. */
@@ -25,11 +30,20 @@ export const browseRuntimeExtension = defineHostExtension<BrowseRuntimeExtension
       return client;
     };
     if (ASIDE_BROWSE_ENABLED) log(`[browse-runtime] aside-browse subagent type enabled (${BrowseClient.fromEnvironment() === null ? "service not running yet" : "service found"})`);
+    context.onStop(subscribeTranscriptMutations((mutation) => {
+      if (mutation.kind === "conversation-cleared" && typeof mutation.agentId === "string" && isAsideBotAgent(mutation.agentId)) forgetAsideBotLink(mutation.agentId);
+    }));
     return {
       isEnabled: () => ASIDE_BROWSE_ENABLED,
       isAsideBrowseSubagentType,
       createSubagentConfig: createAsideBrowseSubagentConfig,
       createSubagentSession: (agentId: string) => new BrowseSubagentSession(resolveClient(), agentId, links, log),
+      wrapRunner: (runner, options) => {
+        const agentId = options.getAgentId?.() ?? options.getConversationId?.();
+        if (!ASIDE_BROWSE_ENABLED || agentId === undefined || !isAsideBotAgent(agentId)) return runner;
+        log(`[browse-runtime] bot ${agentId}: turns served by the Aside browse service`);
+        return wrapRunnerForAsideBot(runner, agentId, { client: resolveClient, emitUpdate: options.emitUpdate, log });
+      },
     };
   },
 });
