@@ -19,6 +19,8 @@ jobs:
         with:
           node-version: 26.5.0
           cache: npm
+      - name: Install the box search binary the Grep tool spawns
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep && rg --version
       - name: Install the locked dependency graph
         run: npm ci --no-audit --no-fund
       - name: Hydrate the checksum-pinned shipped runtime

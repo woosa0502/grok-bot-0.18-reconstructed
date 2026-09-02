@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -26,6 +27,22 @@ export function assertWslGuiRuntime(options = {}) {
   if (!env.DISPLAY && !env.WAYLAND_DISPLAY) {
     throw new Error("WSLg is unavailable: DISPLAY and WAYLAND_DISPLAY are both missing.");
   }
+}
+
+/**
+ * The box daemon's Grep tool spawns ripgrep directly (box-exec-daemon/server.ts) and
+ * reports "ripgrep failed to start" when it is missing. Say so at launch instead of
+ * letting the first search surface it; this warns and never throws.
+ */
+export function warnMissingBoxBinaries(binaries = ["rg"], log = console.error) {
+  const missing = binaries.filter((name) => {
+    try { execFileSync("sh", ["-c", `command -v ${name}`], { stdio: "ignore" }); return false; }
+    catch { return true; }
+  });
+  if (missing.length > 0) {
+    log(`[box] missing ${missing.join(", ")}: the Grep tool spawns ripgrep and will fail with "ripgrep failed to start" until it is installed (sudo apt install ripgrep).`);
+  }
+  return missing;
 }
 
 export function wslRuntimeEnvironment(env = process.env) {

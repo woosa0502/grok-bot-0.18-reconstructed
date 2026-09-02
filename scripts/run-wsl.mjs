@@ -10,6 +10,7 @@ import { ensureLocalBrowserRuntime } from "./lib/local-browser-runtime.mjs";
 import {
   assertSupportedNodeRuntime,
   assertWslGuiRuntime,
+  warnMissingBoxBinaries,
   BELMONT_WSL_DEBUG_PORT_ENV,
   gatewayUrlFromDiscovery,
   initialLocalSettingsUpdate,
@@ -23,6 +24,7 @@ import {
 
 assertSupportedNodeRuntime();
 assertWslGuiRuntime();
+warnMissingBoxBinaries();
 
 const electronBinary = path.join(repoRoot, "node_modules", "electron", "dist", "electron");
 const appRoot = path.join(repoRoot, ".build", "belmont-wsl-runtime");
