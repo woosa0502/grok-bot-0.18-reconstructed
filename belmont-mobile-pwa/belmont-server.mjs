@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { homedir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
-import { createBelmontCompanionAdapter, resolveBelmontDataRoot } from "./belmont-adapter.mjs";
+import { createBelmontCompanionAdapter, resolveBelmontDataRoot, resolveBelmontFilesRoot } from "./belmont-adapter.mjs";
 import { createMobileServer, warnIfPlaintextExposed } from "./server.mjs";
 
 export async function startBelmontMobileServer(env = process.env) {
@@ -10,7 +10,8 @@ export async function startBelmontMobileServer(env = process.env) {
   const pairCode = env.BELMONT_MOBILE_PAIR_CODE?.trim() || String(randomInt(0, 1_000_000)).padStart(6, "0");
   // Paired sessions survive restarts via this state dir (secrets, 0600 files).
   const stateDir = env.BELMONT_MOBILE_STATE_DIR?.trim() || join(homedir(), ".belmont-mobile-pwa");
-  const adapter = createBelmontCompanionAdapter({ dataRoot, pairCode, persistPath: join(stateDir, "adapter-sessions.json") });
+  const filesRoot = resolveBelmontFilesRoot(env, dataRoot);
+  const adapter = createBelmontCompanionAdapter({ dataRoot, pairCode, filesRoot, persistPath: join(stateDir, "adapter-sessions.json") });
   await listen(adapter, 0, "127.0.0.1");
   const adapterAddress = adapter.address();
   if (adapterAddress == null || typeof adapterAddress === "string") throw new Error("Belmont adapter did not bind a TCP port.");
@@ -32,7 +33,7 @@ export async function startBelmontMobileServer(env = process.env) {
   const shutdown = async () => {
     await Promise.allSettled([close(mobile), close(adapter)]);
   };
-  return { mobile, adapter, host, port, pairCode, dataRoot, shutdown };
+  return { mobile, adapter, host, port, pairCode, dataRoot, filesRoot, shutdown };
 }
 
 function listen(server, port, host) {

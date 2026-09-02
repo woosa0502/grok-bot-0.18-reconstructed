@@ -24,9 +24,29 @@ export function resolveBelmontDataRoot(env = process.env, cwd = process.cwd()) {
   return resolve(cwd, ".cache", "belmont-wsl-profile", "sand-data");
 }
 
+// The phone browses the whole Belmont folder (the repository that holds the app, its
+// profile and the box workspace), not just /workspace. Override with BELMONT_MOBILE_FILES_ROOT.
+export function resolveBelmontFilesRoot(env = process.env, dataRoot = resolveBelmontDataRoot(env)) {
+  const direct = env.BELMONT_MOBILE_FILES_ROOT?.trim();
+  if (direct) return resolve(direct);
+  const repo = env.BELMONT_REPO_ROOT?.trim();
+  if (repo) return resolve(repo);
+  // <repo>/.cache/belmont-wsl-profile/sand-data → <repo>
+  return resolve(dataRoot, "..", "..", "..");
+}
+
+// Files whose only content is a secret never reach the phone, even inside the folder view.
+const FILES_DENY = [
+  /(^|\/)gateway\.json$/u, /(^|\/)mcp\.json$/u, /(^|\/)plugin-installs\.json$/u, /(^|\/)manager\.json$/u,
+  /(^|\/)\.env(\.|$)/u, /(^|\/)sand-data\/google(\/|$)/u, /(^|\/)auth\.json$/u, /(^|\/)adapter-sessions\.json$/u, /(^|\/)gateway-sessions\.json$/u,
+  /(^|\/)[^/]*(secret|credential|token|keys)[^/]*\.json$/iu, /(^|\/)\.git\/(config|credentials)$/u,
+];
+export function isDeniedFilePath(relative) { return FILES_DENY.some((pattern) => pattern.test(relative)); }
+
 export function createBelmontCompanionAdapter({
   dataRoot,
   pairCode,
+  filesRoot = resolveBelmontFilesRoot(process.env, dataRoot),
   fetchImpl = fetch,
   now = () => Date.now(),
   tokenFactory = () => randomBytes(32).toString("base64url"),
@@ -37,7 +57,7 @@ export function createBelmontCompanionAdapter({
     throw new Error("Belmont mobile pairing code must contain at least 6 characters.");
   }
   const gateway = createGatewayClient({ dataRoot: resolve(dataRoot), fetchImpl });
-  const workspaceRoot = resolve(dataRoot, "box-workspace");
+  const workspaceRoot = resolve(filesRoot);
   const sessions = new Map();
   if (persistPath) {
     for (const [token, stored] of Object.entries(loadSessions(persistPath) ?? {})) {
@@ -163,11 +183,11 @@ export function createBelmontCompanionAdapter({
 
       const filesMatch = /^\/api\/bots\/([\w-]+)\/files(\/read)?$/.exec(url.pathname);
       if (request.method === "GET" && filesMatch) {
-        if (filesMatch[1] !== managerId) return json(response, 403, { error: "only Belmont's workspace is browsable" });
+        if (filesMatch[1] !== managerId) return json(response, 403, { error: "only Belmont's folder is browsable" });
         const target = await resolveWorkspacePath(workspaceRoot, url.searchParams.get("path") || "");
-        if (!target) return json(response, 404, { error: "no such file or folder in the workspace" });
+        if (!target) return json(response, 404, { error: "no such file or folder in the Belmont folder" });
         if (filesMatch[2]) return serveWorkspaceFile({ response, target, download: url.searchParams.get("download") === "1" });
-        return json(response, 200, await listWorkspace(target));
+        return json(response, 200, { rootName: basename(workspaceRoot), ...(await listWorkspace(target)) });
       }
 
       const sendMatch = /^\/api\/bots\/([\w-]+)\/messages$/.exec(url.pathname);
@@ -730,13 +750,13 @@ function sendFileBytes(response, { name, body, download }) {
 export async function resolveWorkspacePath(root, relative) {
   const cleaned = String(relative || "").replaceAll("\\", "/").replace(/^\/+/u, "");
   if (cleaned.includes("\0") || cleaned.length > 1_024) return null;
-  // Dot-directories (.cursor, .sand …) hold machinery, not the user's files: neither listed nor reachable by path.
-  if (cleaned.split("/").some((segment) => segment.startsWith("."))) return null;
   const rootReal = await realpath(root).catch(() => null);
   if (!rootReal) return null;
   const real = await realpath(resolve(rootReal, cleaned)).catch(() => null);
   if (!real || (real !== rootReal && !real.startsWith(`${rootReal}/`))) return null;
-  return { absolute: real, relative: real === rootReal ? "" : real.slice(rootReal.length + 1) };
+  const relativePath = real === rootReal ? "" : real.slice(rootReal.length + 1);
+  if (isDeniedFilePath(relativePath)) return null;
+  return { absolute: real, relative: relativePath };
 }
 
 export async function listWorkspace(target) {
@@ -744,13 +764,16 @@ export async function listWorkspace(target) {
   if (!info.isDirectory()) throw badRequest("that path is a file, not a folder");
   const entries = [];
   for (const dirent of await readdir(target.absolute, { withFileTypes: true })) {
-    if (dirent.name.startsWith(".") || dirent.isSymbolicLink()) continue;
+    if (dirent.isSymbolicLink()) continue;
+    if (isDeniedFilePath(target.relative ? `${target.relative}/${dirent.name}` : dirent.name)) continue;
     let detail;
     try { detail = await stat(join(target.absolute, dirent.name)); } catch { continue; }
     if (detail.isDirectory()) entries.push({ name: dirent.name, kind: "dir", mtime: Math.round(detail.mtimeMs) });
     else if (detail.isFile()) entries.push({ name: dirent.name, ...attachmentKind(dirent.name), size: detail.size, mtime: Math.round(detail.mtimeMs) });
   }
-  entries.sort((a, b) => (a.kind === "dir") === (b.kind === "dir") ? a.name.localeCompare(b.name, "ko") : a.kind === "dir" ? -1 : 1);
+  // Folders first, then files; dot-entries sink to the end of their group so the real work stays on top.
+  const rank = (entry) => `${entry.kind === "dir" ? 0 : 1}${entry.name.startsWith(".") ? 1 : 0}`;
+  entries.sort((a, b) => rank(a).localeCompare(rank(b)) || a.name.localeCompare(b.name, "ko"));
   return { path: target.relative, entries: entries.slice(0, 500), truncated: entries.length > 500 };
 }
 

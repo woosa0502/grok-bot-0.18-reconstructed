@@ -148,7 +148,7 @@ export function createMockApi() {
       };
       const entries = tree[path];
       if (!entries) throw new Error("no such folder in the demo workspace");
-      return { path, entries: entries.map((entry) => ({ ...entry, mtime: now })) };
+      return { rootName: "Belmont", path, entries: entries.map((entry) => ({ ...entry, mtime: now })) };
     },
 
     fileUrl() { return ""; },

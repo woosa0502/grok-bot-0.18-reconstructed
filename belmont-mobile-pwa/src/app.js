@@ -612,7 +612,7 @@ function renderFilesOverlay() {
   return `<section class="viewer-view viewer-view--doc files-view" role="dialog" aria-modal="true" aria-label="Belmont의 파일" data-sheet>
     <header class="cv-top">
       <button type="button" class="icon-button" data-action="${path ? "files-open" : "close-overlay"}" data-path="${escapeHtml(parent)}" aria-label="${path ? "상위 폴더" : "닫기"}">${icon("back")}</button>
-      <div class="cv-title"><strong>${escapeHtml(path ? path.slice(path.lastIndexOf("/") + 1) : "Belmont의 파일")}</strong><small>/workspace${path ? `/${escapeHtml(path)}` : ""}</small></div>
+      <div class="cv-title"><strong>${escapeHtml(path ? path.slice(path.lastIndexOf("/") + 1) : (listing?.rootName || "Belmont"))}</strong><small>${escapeHtml(listing?.rootName || "Belmont")}${path ? `/${escapeHtml(path)}` : ""}</small></div>
       ${path ? `<button type="button" class="icon-button" data-action="close-overlay" aria-label="닫기">${icon("close")}</button>` : ""}
     </header>
     <div class="viewer-body">${body}</div>
@@ -718,7 +718,7 @@ function renderMoreOverlay() {
         <button type="button" data-action="attach"><span class="menu-icon">${icon("share")}</span><span><strong>사진·파일 첨부</strong><small>Belmont에게 파일을 보냅니다</small></span></button>
         <button type="button" data-action="new-task"><span class="menu-icon">${icon("plus")}</span><span><strong>New goal</strong><small>Write a new goal in this Belmont conversation</small></span></button>
         <button type="button" data-action="show-tasks"><span class="menu-icon">${icon("task")}</span><span><strong>Agents</strong><small>See current persistent agent status</small></span></button>
-        <button type="button" data-action="files"><span class="menu-icon">${icon("folder")}</span><span><strong>Files</strong><small>Belmont 작업 폴더의 파일을 봅니다</small></span></button>
+        <button type="button" data-action="files"><span class="menu-icon">${icon("folder")}</span><span><strong>Files</strong><small>Belmont 폴더 전체를 봅니다</small></span></button>
         <button type="button" data-action="computer"><span class="menu-icon">${icon("computer")}</span><span><strong>Computer status</strong><small>Belmont가 쓰는 컴퓨터 화면을 봅니다</small></span></button>
         <button type="button" data-action="share"><span class="menu-icon">${icon("share")}</span><span><strong>Share transcript</strong><small>This chat as a text file</small></span></button>
       </div>
