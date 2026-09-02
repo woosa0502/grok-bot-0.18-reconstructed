@@ -3045,8 +3045,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   const createBrowseSession = method(extensions.api("browse-runtime"), "createSubagentSession");
                   if (createBrowseSession === undefined) throw new TypeError("browse-runtime extension is not bound");
                   const browseSession = createBrowseSession(agentId) as SubagentSession;
+                  // Delegate method by method: the session is a class instance, so a spread would
+                  // drop its prototype methods (getObservedToolCallCount etc.).
                   return {
-                    ...browseSession,
                     run: async (prompt, options) => {
                       try {
                         return await browseSession.run(prompt, options);
@@ -3054,6 +3055,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                         subagentTypeByConversationId.delete(agentId);
                       }
                     },
+                    interrupt: reason => browseSession.interrupt(reason),
+                    getResolvedOutline: () => browseSession.getResolvedOutline(),
+                    getObservedToolCallCount: () => browseSession.getObservedToolCallCount(),
+                    getActivitySnapshot: () => browseSession.getActivitySnapshot(),
+                    getTranscriptPath: () => browseSession.getTranscriptPath(),
+                    dispose: () => browseSession.dispose?.(),
                   };
                 }
                 const childConversationState = () => {
