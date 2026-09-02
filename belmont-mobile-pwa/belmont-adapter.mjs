@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { proxyWebSocketUpgrade, writeUpgradeError } from "./websocket-tunnel.mjs";
 import { loadSessions, saveSessions } from "./session-store.mjs";
+import { createScreenStreamServer } from "./screen-stream.mjs";
 
 const MAX_BODY_BYTES = 1_048_576;
 const SESSION_LIMIT = 64;
@@ -58,6 +59,11 @@ export function createBelmontCompanionAdapter({
   }
   const gateway = createGatewayClient({ dataRoot: resolve(dataRoot), fetchImpl });
   const workspaceRoot = resolve(filesRoot);
+  const screenStream = createScreenStreamServer({
+    display: process.env.BELMONT_MOBILE_DISPLAY?.trim() || ":99",
+    fps: Number(process.env.BELMONT_MOBILE_STREAM_FPS) || 60,
+    log: (message) => console.error(message),
+  });
   const sessions = new Map();
   if (persistPath) {
     for (const [token, stored] of Object.entries(loadSessions(persistPath) ?? {})) {
@@ -288,8 +294,9 @@ export function createBelmontCompanionAdapter({
     }
   });
   server.on("upgrade", (request, socket, head) => {
-    void handleComputerUpgrade({ request, socket, head, gateway, sessions, now });
+    void handleComputerUpgrade({ request, socket, head, gateway, sessions, now, screenStream });
   });
+  server.on("close", () => screenStream.close());
   return server;
 }
 
@@ -329,10 +336,10 @@ async function proxyNoVncAsset({ request, response, url, session, managerId, ass
   return Readable.fromWeb(upstreamResponse.body).pipe(response);
 }
 
-async function handleComputerUpgrade({ request, socket, head, gateway, sessions, now }) {
+async function handleComputerUpgrade({ request, socket, head, gateway, sessions, now, screenStream }) {
   try {
     const url = new URL(request.url || "/", "http://belmont-adapter.invalid");
-    const match = /^\/api\/bots\/([\w-]+)\/computer\/websockify$/.exec(url.pathname);
+    const match = /^\/api\/bots\/([\w-]+)\/computer\/(websockify|screen)$/.exec(url.pathname);
     if (request.method !== "GET" || match == null || [...url.searchParams].length > 0) {
       return writeUpgradeError(socket, 404, "no Belmont computer WebSocket route");
     }
@@ -340,6 +347,11 @@ async function handleComputerUpgrade({ request, socket, head, gateway, sessions,
     if (session == null) return writeUpgradeError(socket, 401, "pair this mobile client again");
     const managerId = await gateway.managerId();
     if (match[1] !== managerId) return writeUpgradeError(socket, 403, "mobile computer access can only target Belmont");
+    if (match[2] === "screen") {
+      // The video path needs no noVNC target: it captures the box display directly.
+      if (!screenStream) return writeUpgradeError(socket, 503, "screen stream unavailable");
+      return screenStream.handleUpgrade(request, socket, head);
+    }
     let target = session.computerTargets.get(managerId);
     if (target == null) {
       const status = await gateway.call("getForeverBoxStatus", { id: managerId });

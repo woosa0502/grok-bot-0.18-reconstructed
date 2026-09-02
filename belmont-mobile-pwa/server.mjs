@@ -24,6 +24,7 @@ const ALLOWED_API_ROUTES = [
   ["POST", /^\/api\/bots\/[\w-]+\/computer\/(?:ensure|hand-back)$/],
   ["GET", /^\/api\/bots\/[\w-]+\/computer\/view\/.+$/],
   ["GET", /^\/api\/bots\/[\w-]+\/computer\/websockify$/],
+  ["GET", /^\/api\/bots\/[\w-]+\/computer\/screen$/],
   ["GET", /^\/api\/threads\/[\w-]+\/messages$/],
   ["GET", /^\/api\/threads\/[\w-]+\/attachments\/[\w-]+$/],
   ["GET", /^\/api\/bots\/[\w-]+\/files(?:\/read)?$/],
@@ -186,7 +187,7 @@ export function createMobileServer({ upstream, root = ROOT, fetchImpl = fetch, n
 async function handleMobileUpgrade({ request, socket, head, upstreamOrigin, sessions, now, trustProxy }) {
   try {
     const requestUrl = new URL(request.url || "/", "http://mobile.invalid");
-    const match = /^\/api\/bots\/([\w-]+)\/computer\/websockify$/.exec(requestUrl.pathname);
+    const match = /^\/api\/bots\/([\w-]+)\/computer\/(?:websockify|screen)$/.exec(requestUrl.pathname);
     if (request.method !== "GET" || match == null || [...requestUrl.searchParams].length > 0) {
       return writeUpgradeError(socket, 404, "no mobile WebSocket route");
     }
@@ -241,7 +242,7 @@ async function proxyApi({ request, response, pathname, search, upstreamOrigin, s
 }
 
 function managerBoundaryError(method, pathname, session) {
-  const botRoute = /^\/api\/bots\/([\w-]+)\/(?:messages|always-allow|attachments|files(?:\/read)?|computer(?:\/(?:ensure|hand-back|websockify|view\/.+))?)$/.exec(pathname);
+  const botRoute = /^\/api\/bots\/([\w-]+)\/(?:messages|always-allow|attachments|files(?:\/read)?|computer(?:\/(?:ensure|hand-back|websockify|screen|view\/.+))?)$/.exec(pathname);
   const threadRoute = /^\/api\/threads\/([\w-]+)\/(messages|respond|attachments\/[\w-]+)$/.exec(pathname);
   const eventRoute = method === "GET" && pathname === "/api/events";
   if (!botRoute && !threadRoute && !eventRoute) return null;

@@ -780,7 +780,7 @@ function renderComputerOverlay() {
   return `<section class="computer-view" role="dialog" aria-modal="true" aria-label="Belmont의 컴퓨터" data-sheet>
     <header class="cv-top">
       <button type="button" class="icon-button" data-action="close-overlay" aria-label="닫기">${icon("back")}</button>
-      <div class="cv-title"><strong>Belmont의 컴퓨터</strong><small>${escapeHtml(status)}</small></div>
+      <div class="cv-title"><strong>Belmont의 컴퓨터</strong><small>${escapeHtml(status)}<span class="cv-fps"></span></small></div>
       <span class="cv-status ${conn === "connected" ? (interactive ? "is-live" : "is-view") : ""}" aria-hidden="true"></span>
     </header>
     ${handoff}
@@ -805,6 +805,7 @@ function renderComputerOverlay() {
 function computerInteractive(computer) { return Boolean(computer?.interactive) || computerView.control; }
 const computerView = {
   stage: null, rfb: null, RFB: null, botId: null, control: false,
+  mode: "auto", stream: null, streamSupport: null, encoder: null, fps: 0,
   connection: "idle", zoom: "fit", attempts: 0,
   pollTimer: null, reconnectTimer: null, composing: false
 };
@@ -852,8 +853,185 @@ function syncComputerView() {
     computerView.stage.className = "cv-rfb";
   }
   if (computerView.stage.parentElement !== slot) slot.appendChild(computerView.stage);
-  if (!computerView.rfb && computerView.connection !== "connecting") connectComputerRfb(computer);
+  if (computerView.rfb || computerView.stream || computerView.connection === "connecting") return;
+  if (computerView.mode === "vnc") { connectComputerRfb(computer); return; }
+  computerView.connection = "connecting";
+  screenStreamSupported().then((supported) => {
+    if (state.overlay?.type !== "computer" || computerView.rfb || computerView.stream) return;
+    if (supported) connectScreenStream(computer);
+    else { computerView.mode = "vnc"; computerView.connection = "idle"; connectComputerRfb(computer); }
+  });
 }
+
+// ---- video path: H.264 access units over WebSocket, decoded with WebCodecs ----
+async function screenStreamSupported() {
+  if (computerView.streamSupport != null) return computerView.streamSupport;
+  try {
+    if (typeof VideoDecoder === "undefined" || typeof EncodedVideoChunk === "undefined") throw new Error("no WebCodecs");
+    const probe = await VideoDecoder.isConfigSupported({ codec: "avc1.4D4028", optimizeForLatency: true });
+    computerView.streamSupport = Boolean(probe?.supported);
+  } catch { computerView.streamSupport = false; }
+  return computerView.streamSupport;
+}
+
+function screenCodecFromKeyUnit(bytes) {
+  // First SPS NAL after a start code → "avc1." + profile/constraints/level bytes.
+  for (let i = 0; i + 4 < bytes.length; i += 1) {
+    if (bytes[i] !== 0 || bytes[i + 1] !== 0) continue;
+    const prefix = bytes[i + 2] === 1 ? 3 : bytes[i + 2] === 0 && bytes[i + 3] === 1 ? 4 : 0;
+    if (!prefix) continue;
+    const header = i + prefix;
+    if ((bytes[header] & 0x1f) === 7 && header + 3 < bytes.length) {
+      const hex = (value) => value.toString(16).padStart(2, "0").toUpperCase();
+      return `avc1.${hex(bytes[header + 1])}${hex(bytes[header + 2])}${hex(bytes[header + 3])}`;
+    }
+    i = header - 1;
+  }
+  return null;
+}
+
+function connectScreenStream(computer) {
+  const stage = computerView.stage;
+  const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/bots/${computerView.botId}/computer/screen`;
+  const socket = new WebSocket(wsUrl);
+  socket.binaryType = "arraybuffer";
+  const stream = { socket, decoder: null, canvas: null, ctx: null, width: 0, height: 0, frames: 0, seq: 0, gotKey: false, lastFrameAt: 0, fpsTimer: null, fpsCount: 0, pointers: new Map(), gesture: null };
+  computerView.stream = stream;
+  computerView.connection = "connecting";
+  const fail = (reason) => {
+    if (computerView.stream !== stream) return;
+    teardownScreenStream();
+    // No frames ever arrived: the video path is not available here, so fall back to VNC for this session.
+    if (stream.frames === 0) { computerView.mode = "vnc"; computerView.connection = "idle"; if (state.overlay?.type === "computer") syncComputerView(); }
+    else { computerView.connection = "failed"; render(); if (computerView.attempts < 6) { computerView.attempts += 1; computerView.reconnectTimer = setTimeout(() => { computerView.reconnectTimer = null; syncComputerView(); }, 1000 * computerView.attempts); } }
+  };
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string") {
+      let message; try { message = JSON.parse(event.data); } catch { return; }
+      if (message.t === "info") {
+        stream.width = message.width; stream.height = message.height; computerView.fps = message.fps;
+        const canvas = document.createElement("canvas");
+        canvas.width = message.width; canvas.height = message.height; canvas.className = "cv-video";
+        stage.replaceChildren(canvas);
+        stream.canvas = canvas; stream.ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+        bindScreenInput(stream);
+        applyComputerZoom();
+      } else if (message.t === "encoder") { computerView.encoder = message.encoder; }
+      return;
+    }
+    const bytes = new Uint8Array(event.data);
+    if (bytes.length < 2) return;
+    const key = bytes[0] === 1;
+    const data = bytes.subarray(1);
+    if (!stream.decoder) {
+      if (!key) return;
+      const codec = screenCodecFromKeyUnit(data);
+      if (!codec) return;
+      stream.decoder = new VideoDecoder({
+        output: (frame) => {
+          if (stream.ctx) stream.ctx.drawImage(frame, 0, 0);
+          frame.close();
+          stream.frames += 1; stream.fpsCount += 1; stream.lastFrameAt = performance.now();
+          if (stream.frames === 1) { computerView.connection = "connected"; computerView.attempts = 0; render(); }
+        },
+        error: (error) => { console.error("screen decoder", error); fail(error); },
+      });
+      // No hardware hint: phones pick their hardware decoder on their own, and forcing it fails where none exists.
+      stream.decoder.configure({ codec, optimizeForLatency: true });
+      stream.gotKey = true;
+    }
+    if (!stream.gotKey && !key) return;
+    if (key) stream.gotKey = true;
+    if (stream.decoder.state !== "configured") return;
+    // Keep the decoder queue shallow: if the phone is behind, skip delta frames until the next key.
+    if (stream.decoder.decodeQueueSize > 4 && !key) { stream.gotKey = false; return; }
+    try {
+      stream.decoder.decode(new EncodedVideoChunk({ type: key ? "key" : "delta", timestamp: stream.seq * Math.round(1e6 / (computerView.fps || 60)), data }));
+      stream.seq += 1;
+    } catch (error) { console.error("screen decode", error); }
+  });
+  socket.addEventListener("close", () => fail("closed"));
+  socket.addEventListener("error", () => fail("error"));
+  stream.fpsTimer = setInterval(() => {
+    const fps = stream.fpsCount; stream.fpsCount = 0;
+    const label = document.querySelector(".cv-fps");
+    if (label) label.textContent = computerView.connection === "connected" ? ` · ${fps} fps ${computerView.encoder === "nvenc" ? "GPU" : "CPU"} 영상` : "";
+    if (computerView.connection === "connected" && performance.now() - stream.lastFrameAt > 5000 && stream.frames > 0) { socket.close(); }
+  }, 1000);
+}
+
+function teardownScreenStream() {
+  const stream = computerView.stream;
+  if (!stream) return;
+  computerView.stream = null;
+  clearInterval(stream.fpsTimer);
+  try { stream.socket.onclose = null; stream.socket.close(); } catch {}
+  try { stream.decoder?.close(); } catch {}
+  if (stream.canvas?.parentElement) stream.canvas.remove();
+}
+
+function applyComputerZoom() {
+  const stream = computerView.stream;
+  if (!stream?.canvas || !computerView.stage) return;
+  computerView.stage.classList.toggle("is-actual", computerView.zoom !== "fit");
+}
+
+// Touch on the video → pointer events on the box: tap = click, long press = right click,
+// drag = press-move-release, two fingers = scroll. Sends only while interactive.
+function bindScreenInput(stream) {
+  const canvas = stream.canvas;
+  const send = (payload) => { if (stream.socket.readyState === WebSocket.OPEN) stream.socket.send(JSON.stringify(payload)); };
+  const toDisplay = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: (event.clientX - rect.left) / rect.width * stream.width, y: (event.clientY - rect.top) / rect.height * stream.height };
+  };
+  const interactive = () => computerInteractive(state.overlay?.computer);
+  canvas.addEventListener("pointerdown", (event) => {
+    if (!interactive()) return;
+    canvas.setPointerCapture(event.pointerId);
+    stream.pointers.set(event.pointerId, toDisplay(event));
+    if (stream.pointers.size === 1) {
+      const point = toDisplay(event);
+      stream.gesture = { start: point, last: point, startedAt: performance.now(), dragging: false, longPress: setTimeout(() => { if (stream.gesture && !stream.gesture.dragging) { stream.gesture.done = true; send({ t: "click", ...point, button: 3 }); navigator.vibrate?.(20); } }, 550) };
+      send({ t: "move", ...point });
+    } else if (stream.pointers.size === 2 && stream.gesture) {
+      clearTimeout(stream.gesture.longPress);
+      if (stream.gesture.dragging) send({ t: "up", ...stream.gesture.last, button: 1 });
+      stream.gesture = { scroll: true, lastY: [...stream.pointers.values()].reduce((sum, p) => sum + p.y, 0) / 2, at: [...stream.pointers.values()][0] };
+    }
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!stream.pointers.has(event.pointerId) || !stream.gesture) return;
+    const point = toDisplay(event);
+    stream.pointers.set(event.pointerId, point);
+    if (stream.gesture.scroll) {
+      const y = [...stream.pointers.values()].reduce((sum, p) => sum + p.y, 0) / stream.pointers.size;
+      const dy = stream.gesture.lastY - y;
+      if (Math.abs(dy) >= 40) { send({ t: "scroll", ...stream.gesture.at, dy }); stream.gesture.lastY = y; }
+      return;
+    }
+    if (stream.gesture.done) return;
+    const moved = Math.hypot(point.x - stream.gesture.start.x, point.y - stream.gesture.start.y);
+    if (!stream.gesture.dragging && moved > 12) { stream.gesture.dragging = true; clearTimeout(stream.gesture.longPress); send({ t: "down", ...stream.gesture.start, button: 1 }); }
+    if (stream.gesture.dragging) send({ t: "move", ...point });
+    stream.gesture.last = point;
+  });
+  const finish = (event) => {
+    if (!stream.pointers.has(event.pointerId)) return;
+    stream.pointers.delete(event.pointerId);
+    const gesture = stream.gesture;
+    if (!gesture) return;
+    if (gesture.scroll) { if (stream.pointers.size === 0) stream.gesture = null; return; }
+    clearTimeout(gesture.longPress);
+    if (gesture.dragging) send({ t: "up", ...gesture.last, button: 1 });
+    else if (!gesture.done && performance.now() - gesture.startedAt < 500) send({ t: "click", ...gesture.start, button: 1 });
+    stream.gesture = null;
+  };
+  canvas.addEventListener("pointerup", finish);
+  canvas.addEventListener("pointercancel", finish);
+  canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+
 
 async function connectComputerRfb(computer) {
   computerView.connection = "connecting";
@@ -895,7 +1073,9 @@ function teardownComputerView() {
   if (computerView.pollTimer) { clearInterval(computerView.pollTimer); computerView.pollTimer = null; }
   if (computerView.reconnectTimer) { clearTimeout(computerView.reconnectTimer); computerView.reconnectTimer = null; }
   if (computerView.rfb) { try { computerView.rfb.disconnect(); } catch {} computerView.rfb = null; }
+  teardownScreenStream();
   if (computerView.stage) { computerView.stage.remove(); computerView.stage = null; }
+  computerView.mode = "auto";
   computerView.connection = "idle";
   computerView.attempts = 0;
   computerView.control = false;
@@ -903,6 +1083,7 @@ function teardownComputerView() {
 
 function setComputerZoom(zoom) {
   computerView.zoom = zoom;
+  applyComputerZoom();
   const rfb = computerView.rfb;
   if (rfb) {
     rfb.scaleViewport = zoom === "fit";
@@ -915,6 +1096,10 @@ function setComputerZoom(zoom) {
 // X11 keysyms for the soft keyboard: Latin-1 maps 1:1, everything else is 0x01000000 + code point.
 const KEYSYM = { Enter: 0xff0d, Backspace: 0xff08, Tab: 0xff09, Escape: 0xff1b, ArrowLeft: 0xff51, ArrowUp: 0xff52, ArrowRight: 0xff53, ArrowDown: 0xff54, Delete: 0xffff };
 function sendComputerText(text) {
+  if (computerView.stream) {
+    if (computerInteractive(state.overlay?.computer) && computerView.stream.socket.readyState === WebSocket.OPEN) computerView.stream.socket.send(JSON.stringify({ t: "text", text }));
+    return;
+  }
   const rfb = computerView.rfb;
   if (!rfb || rfb.viewOnly) return;
   for (const char of text) {
@@ -936,16 +1121,22 @@ function bindComputerKeyboard() {
   });
   input.addEventListener("input", (event) => {
     if (computerView.composing) return;
-    if (event.inputType === "deleteContentBackward") { computerView.rfb?.sendKey(KEYSYM.Backspace, "Backspace"); input.value = ""; return; }
+    if (event.inputType === "deleteContentBackward") { sendComputerKey("Backspace"); input.value = ""; return; }
     if (input.value) { sendComputerText(input.value); input.value = ""; }
   });
   input.addEventListener("keydown", (event) => {
     if (computerView.composing) return;
-    const keysym = KEYSYM[event.key];
-    if (keysym == null || !computerView.rfb || computerView.rfb.viewOnly) return;
+    if (KEYSYM[event.key] == null) return;
     event.preventDefault();
-    computerView.rfb.sendKey(keysym, event.key);
+    sendComputerKey(event.key);
   });
+}
+function sendComputerKey(key) {
+  if (computerView.stream) {
+    if (computerInteractive(state.overlay?.computer) && computerView.stream.socket.readyState === WebSocket.OPEN) computerView.stream.socket.send(JSON.stringify({ t: "key", key }));
+    return;
+  }
+  if (computerView.rfb && !computerView.rfb.viewOnly) computerView.rfb.sendKey(KEYSYM[key], key);
 }
 
 function renderManagerOverlay() {
@@ -1581,7 +1772,7 @@ app.addEventListener("click", async (event) => {
   }
   if (action === "computer-zoom") setComputerZoom(computerView.zoom === "fit" ? "actual" : "fit");
   if (action === "computer-keyboard") { const input = document.querySelector("#computer-key-input"); if (input) { input.focus({ preventScroll: true }); } }
-  if (action === "computer-reconnect") { computerView.attempts = 0; if (computerView.rfb) { computerView.rfb.disconnect(); } else { syncComputerView(); } }
+  if (action === "computer-reconnect") { computerView.attempts = 0; computerView.mode = "auto"; if (computerView.stream) { teardownScreenStream(); computerView.connection = "idle"; syncComputerView(); } else if (computerView.rfb) { computerView.rfb.disconnect(); } else { syncComputerView(); } }
   if (action === "computer-retry") { state.overlay = { type: "computer", computer: null }; render(); await refreshComputerStatus({ ensure: true }); }
   if (action === "computer-hand-back") {
     try { await state.api.request(`/api/bots/${computerView.botId}/computer/hand-back`, { method: "POST", body: {} }); await refreshComputerStatus({ ensure: false }); showNotice("Belmont에게 화면을 돌려줬습니다."); }

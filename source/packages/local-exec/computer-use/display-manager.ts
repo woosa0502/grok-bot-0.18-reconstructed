@@ -116,6 +116,9 @@ export class LocalDisplayManager {
     }
     // Best-effort background + window manager so apps are visible/framed.
     await this.run("xsetroot", ["-solid", "#1e2a3a"]).catch(() => {});
+    // A bare X server shows the "X" root cursor; give the desktop a real arrow so
+    // viewers (VNC, the phone stream) see a pointer, not a crosshair.
+    await this.run("xsetroot", ["-cursor_name", "left_ptr"]).catch(() => {});
     if (this.startWm) await this.startWindowManager();
     if (this.vncEnabled) await this.startVnc().catch((error) =>
       this.log(`[local-computer] VNC start failed: ${error instanceof Error ? error.message : String(error)}`));
