@@ -198,7 +198,7 @@ export function renderMarkdown(source) {
       continue;
     }
     if (isHeading(line)) {
-      html.push(`<p class="md-heading">${inline(line.replace(/^#{1,4}\s+/, ""))}</p>`);
+      html.push(`<p class="md-heading" data-level="${/^#+/.exec(line)[0].length}">${inline(line.replace(/^#{1,4}\s+/, ""))}</p>`);
       index += 1;
       continue;
     }
@@ -233,5 +233,5 @@ export function endsMessageRun(messages, index) {
   const current = messages?.[index];
   const next = messages?.[index + 1];
   if (!current || !next) return true;
-  return current.role !== next.role || !messageText(next) || next.kind === "options" || next.kind === "activity";
+  return current.role !== next.role || (!messageText(next) && next.kind !== "attachment") || next.kind === "options" || next.kind === "activity";
 }

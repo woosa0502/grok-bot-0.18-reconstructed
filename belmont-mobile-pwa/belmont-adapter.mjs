@@ -1,8 +1,9 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { join, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { proxyWebSocketUpgrade, writeUpgradeError } from "./websocket-tunnel.mjs";
 import { loadSessions, saveSessions } from "./session-store.mjs";
 
@@ -36,6 +37,7 @@ export function createBelmontCompanionAdapter({
     throw new Error("Belmont mobile pairing code must contain at least 6 characters.");
   }
   const gateway = createGatewayClient({ dataRoot: resolve(dataRoot), fetchImpl });
+  const workspaceRoot = resolve(dataRoot, "box-workspace");
   const sessions = new Map();
   if (persistPath) {
     for (const [token, stored] of Object.entries(loadSessions(persistPath) ?? {})) {
@@ -90,6 +92,7 @@ export function createBelmontCompanionAdapter({
         const projected = projectBelmontTranscriptPage(page, {
           agentId: managerId,
           registerAction: (action) => registerAction(session, action),
+          registerAttachment: (path, name) => registerAttachment(session, path, name),
         });
         const bots = agents.map((agent) => projectBelmontAgent(agent, managerId, agent.id === managerId ? projected.messages : undefined));
         return json(response, 200, { bots, groups: [] });
@@ -119,7 +122,7 @@ export function createBelmontCompanionAdapter({
             limit,
             ...(before == null ? {} : { beforeSeq: before }),
           });
-          return json(response, 200, { ...projectBelmontTranscriptPage(page, { agentId: threadId, includeAgentTraffic: true }), state: turnState });
+          return json(response, 200, { ...projectBelmontTranscriptPage(page, { agentId: threadId, includeAgentTraffic: true, registerAttachment: (path, name) => registerAttachment(session, path, name) }), state: turnState });
         }
         const page = await gateway.call("getAgentTranscriptTail", {
           id: managerId,
@@ -129,6 +132,7 @@ export function createBelmontCompanionAdapter({
         const projected = projectBelmontTranscriptPage(page, {
           agentId: managerId,
           registerAction: (action) => registerAction(session, action),
+          registerAttachment: (path, name) => registerAttachment(session, path, name),
         });
         return json(response, 200, { ...projected, state: turnState });
       }
@@ -148,6 +152,22 @@ export function createBelmontCompanionAdapter({
         session.attachmentPaths.set(attachmentId, { path: uploaded.path, name });
         while (session.attachmentPaths.size > 16) session.attachmentPaths.delete(session.attachmentPaths.keys().next().value);
         return json(response, 200, { attachmentId, name });
+      }
+
+      const attachReadMatch = /^\/api\/threads\/([\w-]+)\/attachments\/([\w-]+)$/.exec(url.pathname);
+      if (request.method === "GET" && attachReadMatch) {
+        const stored = session.attachmentReads.get(attachReadMatch[2]);
+        if (!stored) return json(response, 404, { error: "attachment is not in this session; reload the conversation" });
+        return serveAttachment({ response, gateway, stored, download: url.searchParams.get("download") === "1" });
+      }
+
+      const filesMatch = /^\/api\/bots\/([\w-]+)\/files(\/read)?$/.exec(url.pathname);
+      if (request.method === "GET" && filesMatch) {
+        if (filesMatch[1] !== managerId) return json(response, 403, { error: "only Belmont's workspace is browsable" });
+        const target = await resolveWorkspacePath(workspaceRoot, url.searchParams.get("path") || "");
+        if (!target) return json(response, 404, { error: "no such file or folder in the workspace" });
+        if (filesMatch[2]) return serveWorkspaceFile({ response, target, download: url.searchParams.get("download") === "1" });
+        return json(response, 200, await listWorkspace(target));
       }
 
       const sendMatch = /^\/api\/bots\/([\w-]+)\/messages$/.exec(url.pathname);
@@ -468,17 +488,17 @@ export function projectBelmontAgent(agent, managerId, messages) {
   };
 }
 
-export function projectBelmontTranscriptPage(page, { agentId, registerAction = () => ({ requestId: "unavailable" }), includeAgentTraffic = false } = {}) {
+export function projectBelmontTranscriptPage(page, { agentId, registerAction = () => ({ requestId: "unavailable" }), registerAttachment = () => null, includeAgentTraffic = false } = {}) {
   const entries = Array.isArray(page?.entries) ? page.entries : [];
   const messages = entries.flatMap((entry, index) => {
-    const projected = projectBelmontEntry(entry, { agentId, registerAction, index, includeAgentTraffic });
+    const projected = projectBelmontEntry(entry, { agentId, registerAction, registerAttachment, index, includeAgentTraffic });
     return projected == null ? [] : [projected];
   });
   const next = Number.isInteger(page?.nextBeforeSeq) && page.nextBeforeSeq >= 0 ? page.nextBeforeSeq : null;
   return { messages, hasMore: next != null, ...(next == null ? {} : { before: String(next) }) };
 }
 
-function projectBelmontEntry(entry, { agentId, registerAction, index, includeAgentTraffic = false }) {
+function projectBelmontEntry(entry, { agentId, registerAction, registerAttachment = () => null, index, includeAgentTraffic = false }) {
   if (!entry || typeof entry !== "object" || entry.hidden === true) return null;
   // In the manager view, agent-to-agent traffic is internal machinery and stays
   // hidden. In a worker's read-only view it IS the conversation: instructions
@@ -568,6 +588,10 @@ function projectBelmontEntry(entry, { agentId, registerAction, index, includeAge
         answered: ask.status && ask.status !== "pending" ? String(ask.status) : null,
       });
     }
+    if (message.type === "attachment") {
+      const projected = projectAttachmentMessage(id, at, message, registerAttachment);
+      if (projected) return projected;
+    }
     if (message.type === "permission-request") {
       const title = typeof message.permission?.title === "string" ? message.permission.title : "데스크톱 승인이 필요합니다.";
       return { id, role: "bot", kind: "text", at, text: title };
@@ -608,6 +632,133 @@ function optionCard({ id, at, requestId, title, subtitle, code, options, tool, a
       ...(dismissed ? { dismissed: true } : {}),
     },
   };
+}
+
+// Attachments Belmont sends are file:// URLs into its own attachment store. The
+// phone never sees the host path: each file gets a session-scoped opaque ref that
+// the read route resolves back, so the URL in a bubble is worthless elsewhere.
+const ATTACHMENT_MIME = new Map([
+  [".png", "image/png"], [".jpg", "image/jpeg"], [".jpeg", "image/jpeg"], [".gif", "image/gif"], [".webp", "image/webp"], [".svg", "image/svg+xml"],
+  [".md", "text/markdown; charset=utf-8"], [".markdown", "text/markdown; charset=utf-8"], [".txt", "text/plain; charset=utf-8"], [".log", "text/plain; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"], [".csv", "text/csv; charset=utf-8"], [".yaml", "text/plain; charset=utf-8"], [".yml", "text/plain; charset=utf-8"],
+  [".html", "text/html; charset=utf-8"], [".htm", "text/html; charset=utf-8"], [".pdf", "application/pdf"], [".mp4", "video/mp4"], [".webm", "video/webm"], [".mov", "video/quicktime"],
+]);
+const ATTACHMENT_READ_LIMIT = 200;
+const ATTACHMENT_MAX_BYTES = 24 * 1024 * 1024;
+const ATTACHMENT_CHUNK_BYTES = 1_000_000;
+
+export function attachmentKind(name) {
+  const mime = ATTACHMENT_MIME.get(extname(String(name || "")).toLowerCase()) || "application/octet-stream";
+  const kind = mime.startsWith("image/") ? "image"
+    : mime.startsWith("video/") ? "video"
+    : mime.startsWith("text/html") ? "html"
+    : mime === "application/pdf" ? "pdf"
+    : mime.startsWith("text/") || mime.startsWith("application/json") ? "text"
+    : "file";
+  return { mime, kind };
+}
+
+function registerAttachment(session, path, name) {
+  const ref = createHash("sha256").update(session.token).update("|attachment|").update(path).digest("base64url").slice(0, 24);
+  session.attachmentReads.set(ref, { path, name });
+  trimMap(session.attachmentReads, ATTACHMENT_READ_LIMIT);
+  return ref;
+}
+
+function projectAttachmentMessage(id, at, message, registerAttachment) {
+  const url = typeof message.url === "string" ? message.url : "";
+  const fileName = typeof message.file_name === "string" && message.file_name ? message.file_name : typeof message.fileName === "string" ? message.fileName : "";
+  const alt = typeof message.alt === "string" ? message.alt : "";
+  const dimensions = {
+    ...(Number.isFinite(message.width) ? { width: message.width } : {}),
+    ...(Number.isFinite(message.height) ? { height: message.height } : {}),
+  };
+  if (url.startsWith("file:")) {
+    let path;
+    try { path = fileURLToPath(url); } catch { return null; }
+    const name = fileName || basename(path);
+    const ref = registerAttachment(path, name);
+    if (!ref) return null;
+    return { id, role: "bot", kind: "attachment", at, attachment: { ref, name, ...attachmentKind(name), ...(alt ? { alt } : {}), ...dimensions } };
+  }
+  if (/^https?:\/\//u.test(url)) {
+    const name = fileName || alt || url;
+    return { id, role: "bot", kind: "attachment", at, attachment: { href: url, name, kind: "link", mime: "text/uri-list", ...(alt ? { alt } : {}) } };
+  }
+  return null;
+}
+
+async function serveAttachment({ response, gateway, stored, download }) {
+  const { mime, kind } = attachmentKind(stored.name);
+  const chunks = [];
+  let offset = 0;
+  let total = null;
+  while (total == null || offset < total) {
+    const chunk = await gateway.call("readAttachmentChunk", { path: stored.path, offset, length: ATTACHMENT_CHUNK_BYTES });
+    if (chunk == null || typeof chunk.bytesBase64 !== "string") {
+      if (offset === 0) return json(response, 404, { error: "attachment is no longer available" });
+      break;
+    }
+    total = Number.isFinite(chunk.totalSize) ? chunk.totalSize : offset;
+    if (total > ATTACHMENT_MAX_BYTES) return json(response, 413, { error: "attachment is too large for the phone viewer; open it on the desktop" });
+    const bytes = Buffer.from(chunk.bytesBase64, "base64");
+    if (bytes.length === 0) break;
+    chunks.push(bytes);
+    offset += bytes.length;
+  }
+  sendFileBytes(response, { name: stored.name, body: Buffer.concat(chunks), download });
+}
+
+function sendFileBytes(response, { name, body, download }) {
+  const { mime, kind } = attachmentKind(name);
+  response.statusCode = 200;
+  response.setHeader("Content-Type", mime);
+  response.setHeader("Content-Length", String(body.length));
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("Cache-Control", "private, max-age=600");
+  response.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(name)}`);
+  if (kind === "html" || mime === "image/svg+xml") {
+    // Bot-produced HTML is content, not code: it renders sandboxed with no script.
+    response.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline'; font-src data:");
+  }
+  response.end(body);
+}
+
+// Belmont's /workspace is a folder on this same machine (sand-data/box-workspace).
+// The phone browses it read-only; every path is resolved through realpath and must
+// land inside the root, so neither ".." nor a symlink can walk out of it.
+export async function resolveWorkspacePath(root, relative) {
+  const cleaned = String(relative || "").replaceAll("\\", "/").replace(/^\/+/u, "");
+  if (cleaned.includes("\0") || cleaned.length > 1_024) return null;
+  // Dot-directories (.cursor, .sand …) hold machinery, not the user's files: neither listed nor reachable by path.
+  if (cleaned.split("/").some((segment) => segment.startsWith("."))) return null;
+  const rootReal = await realpath(root).catch(() => null);
+  if (!rootReal) return null;
+  const real = await realpath(resolve(rootReal, cleaned)).catch(() => null);
+  if (!real || (real !== rootReal && !real.startsWith(`${rootReal}/`))) return null;
+  return { absolute: real, relative: real === rootReal ? "" : real.slice(rootReal.length + 1) };
+}
+
+export async function listWorkspace(target) {
+  const info = await stat(target.absolute);
+  if (!info.isDirectory()) throw badRequest("that path is a file, not a folder");
+  const entries = [];
+  for (const dirent of await readdir(target.absolute, { withFileTypes: true })) {
+    if (dirent.name.startsWith(".") || dirent.isSymbolicLink()) continue;
+    let detail;
+    try { detail = await stat(join(target.absolute, dirent.name)); } catch { continue; }
+    if (detail.isDirectory()) entries.push({ name: dirent.name, kind: "dir", mtime: Math.round(detail.mtimeMs) });
+    else if (detail.isFile()) entries.push({ name: dirent.name, ...attachmentKind(dirent.name), size: detail.size, mtime: Math.round(detail.mtimeMs) });
+  }
+  entries.sort((a, b) => (a.kind === "dir") === (b.kind === "dir") ? a.name.localeCompare(b.name, "ko") : a.kind === "dir" ? -1 : 1);
+  return { path: target.relative, entries: entries.slice(0, 500), truncated: entries.length > 500 };
+}
+
+async function serveWorkspaceFile({ response, target, download }) {
+  const info = await stat(target.absolute);
+  if (!info.isFile()) return json(response, 400, { error: "that path is a folder, not a file" });
+  if (info.size > ATTACHMENT_MAX_BYTES) return json(response, 413, { error: "file is too large for the phone viewer; open it on the desktop" });
+  sendFileBytes(response, { name: basename(target.absolute), body: await readFile(target.absolute), download });
 }
 
 function registerAction(session, action) {
@@ -719,6 +870,7 @@ function createAdapterSession(token, timestamp) {
     allowKeys: new Map(),
     remembered: new Set(),
     attachmentPaths: new Map(),
+    attachmentReads: new Map(),
     computerTargets: new Map(),
     eventSequence: 0,
     eventCursors: ["belmont-0"],

@@ -61,6 +61,9 @@ const icons = {
   chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
   link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></svg>',
   task: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 .8.8L6 5M3.5 12l.8.8L6 11M3.5 18l.8.8L6 17"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  file: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>',
+  image: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/></svg>',
   share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v7h14v-7"/></svg>',
   gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.55V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1.03H3v-4h.08A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.05V3h4v.05a1.7 1.7 0 0 0 1.03 1.52 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg>'
   ,device: '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="5" y="10" width="38" height="28" rx="3"/><path d="M15 46h18M24 38v8"/><rect x="39" y="24" width="18" height="31" rx="4"/><path d="M45 50h6"/></svg>',
@@ -160,6 +163,9 @@ function render() {
   else if (state.view === "home") app.innerHTML = renderHome();
   else app.innerHTML = renderChat();
   if (state.overlay) app.insertAdjacentHTML("beforeend", renderOverlay());
+  syncComputerView();
+  syncViewerView();
+  if (state.overlay?.type === "computer") bindComputerKeyboard();
   if (state.notice) app.insertAdjacentHTML("beforeend", `<div class="toast" role="status">${escapeHtml(state.notice)}</div>`);
   queueMicrotask(() => {
     if (state.overlay?.type === "scanner") startQrScanner();
@@ -408,6 +414,7 @@ function renderMessage(message, index) {
   const prefix = showDay ? `<div class="day-separator">${formatDay(message.at)}</div>` : "";
   if (message.kind === "options" && message.card) return prefix + renderApproval(message);
   if (message.kind === "activity") return prefix + renderActivity(message);
+  if (message.kind === "attachment" && message.attachment) return prefix + renderAttachment(message);
   const mine = message.role === "user";
   const text = messageText(message);
   if (!text) return "";
@@ -415,6 +422,208 @@ function renderMessage(message, index) {
   return `${prefix}<article class="message-row ${mine ? "message-row--mine" : "message-row--bot"}">
     <div class="bubble"><span class="bubble-text">${body}</span></div>
   </article>`;
+}
+
+// Attachments Belmont sends: images show as a picture tile, everything else as a
+// file card; both open the full-screen viewer. In demo mode the attachment carries
+// its bytes inline (src / text); live ones stream through the session-scoped route.
+function attachmentUrl(message, { download = false } = {}) {
+  const att = message.attachment || {};
+  if (att.src) return att.src;
+  if (att.href) return att.href;
+  const base = state.api?.baseUrl ?? "";
+  return `${base}/api/threads/${encodeURIComponent(activeThreadId())}/attachments/${encodeURIComponent(att.ref || "")}${download ? "?download=1" : ""}`;
+}
+function attachmentKindLabel(kind) {
+  return { image: "이미지", text: "문서", html: "웹 문서", pdf: "PDF", video: "동영상", link: "링크", file: "파일" }[kind] || "파일";
+}
+function isMarkdownName(name) { return /\.(md|markdown)$/iu.test(String(name || "")); }
+function renderAttachment(message) {
+  const att = message.attachment;
+  const id = escapeHtml(message.id);
+  if (att.kind === "image") {
+    return `<article class="message-row message-row--bot"><figure class="bubble bubble--image"><img src="${escapeHtml(attachmentUrl(message))}" alt="${escapeHtml(att.alt || att.name || "")}" loading="lazy" decoding="async" data-action="open-attachment" data-message-id="${id}" /></figure></article>`;
+  }
+  if (att.kind === "link") {
+    return `<article class="message-row message-row--bot"><a class="bubble file-card" href="${escapeHtml(att.href)}" target="_blank" rel="noopener"><span class="file-icon">${icon("link")}</span><span><strong>${escapeHtml(att.name)}</strong><small>링크</small></span></a></article>`;
+  }
+  return `<article class="message-row message-row--bot"><button type="button" class="bubble file-card" data-action="open-attachment" data-message-id="${id}"><span class="file-icon">${icon("task")}</span><span><strong>${escapeHtml(att.name)}</strong><small>${escapeHtml(attachmentKindLabel(att.kind))} · 탭해서 열기</small></span></button></article>`;
+}
+
+// ---- full-screen viewer (images zoom; documents read on a white page) ----
+const viewerView = { node: null, scale: 1, tx: 0, ty: 0, lastTap: 0 };
+
+function openAttachment(messageId) {
+  const message = state.messages.find((item) => item.id === messageId);
+  if (!message?.attachment) return;
+  openViewer(message.attachment, { key: `message:${messageId}`, url: attachmentUrl(message), downloadUrl: attachmentUrl(message, { download: true }) });
+}
+
+// The viewer shows one attachment-shaped item: from a chat bubble or from the file
+// browser. `back` restores the overlay to return to (the folder listing).
+function openViewer(attachment, { key, url, downloadUrl, back = null }) {
+  viewerView.scale = 1; viewerView.tx = 0; viewerView.ty = 0;
+  state.overlay = { type: "viewer", key, attachment, url, downloadUrl, back, content: null, error: null };
+  render();
+  loadViewerContent(state.overlay);
+}
+
+async function loadViewerContent(overlay) {
+  const att = overlay.attachment;
+  if (att.kind !== "text") return;
+  try {
+    let text = att.text;
+    if (typeof text !== "string") {
+      const response = await fetch(overlay.url, { credentials: "include" });
+      if (!response.ok) throw new Error(`문서를 불러오지 못했습니다 (${response.status})`);
+      text = await response.text();
+    }
+    if (state.overlay?.type === "viewer" && state.overlay.key === overlay.key) { state.overlay = { ...state.overlay, content: text }; render(); }
+  } catch (error) {
+    if (state.overlay?.type === "viewer" && state.overlay.key === overlay.key) { state.overlay = { ...state.overlay, error: error.message }; render(); }
+  }
+}
+
+function renderViewerOverlay() {
+  const att = state.overlay.attachment;
+  if (!att) return "";
+  const url = state.overlay.url;
+  let body;
+  if (att.kind === "image") {
+    body = `<div id="viewer-stage-slot" class="viewer-stage-slot"></div><p class="viewer-hint">두 손가락으로 확대 · 두 번 탭</p>`;
+  } else if (att.kind === "text") {
+    body = state.overlay.error
+      ? `<div class="computer-placeholder cv-message">${icon("close")}<p>${escapeHtml(state.overlay.error)}</p></div>`
+      : state.overlay.content == null
+        ? `<div class="computer-placeholder viewer-loading"><span class="spinner"></span><p>불러오는 중…</p></div>`
+        : `<div class="viewer-doc">${isMarkdownName(att.name) ? renderMarkdown(state.overlay.content) : `<pre class="viewer-pre">${escapeHtml(state.overlay.content)}</pre>`}</div>`;
+  } else if (att.kind === "html") {
+    body = `<iframe class="viewer-frame" sandbox="" src="${escapeHtml(url)}" title="${escapeHtml(att.name)}"></iframe>`;
+  } else if (att.kind === "video") {
+    body = `<video class="viewer-video" controls playsinline src="${escapeHtml(url)}"></video>`;
+  } else {
+    body = `<div class="computer-placeholder cv-message">${icon("task")}<p>${escapeHtml(att.name)}<br /><small>이 형식은 폰에서 바로 열 수 없어 외부 앱으로 엽니다.</small></p><a class="cv-retry" href="${escapeHtml(url)}" target="_blank" rel="noopener">외부 앱으로 열기</a></div>`;
+  }
+  const doc = att.kind === "text" || att.kind === "html";
+  return `<section class="viewer-view ${doc ? "viewer-view--doc" : ""}" role="dialog" aria-modal="true" aria-label="${escapeHtml(att.name)}" data-sheet>
+    <header class="cv-top">
+      <button type="button" class="icon-button" data-action="close-overlay" aria-label="닫기">${icon("back")}</button>
+      <div class="cv-title"><strong>${escapeHtml(att.name)}</strong><small>${escapeHtml(attachmentKindLabel(att.kind))}</small></div>
+      ${att.href || !state.overlay.downloadUrl ? "" : `<a class="icon-button viewer-download" href="${escapeHtml(state.overlay.downloadUrl)}" download="${escapeHtml(att.name)}" aria-label="저장">${icon("share")}</a>`}
+    </header>
+    <div class="viewer-body">${body}</div>
+  </section>`;
+}
+
+function syncViewerView() {
+  if (state.overlay?.type !== "viewer") { if (viewerView.node) { viewerView.node.remove(); viewerView.node = null; } return; }
+  const slot = document.querySelector("#viewer-stage-slot");
+  if (!slot || !state.overlay.url) return;
+  if (!viewerView.node || viewerView.node.dataset.key !== state.overlay.key) {
+    viewerView.node?.remove();
+    const node = document.createElement("div");
+    node.className = "viewer-stage";
+    node.dataset.key = state.overlay.key;
+    node.innerHTML = `<img class="viewer-image" src="${escapeHtml(state.overlay.url)}" alt="" draggable="false" />`;
+    bindViewerZoom(node);
+    viewerView.node = node;
+  }
+  if (viewerView.node.parentElement !== slot) slot.appendChild(viewerView.node);
+}
+
+function bindViewerZoom(node) {
+  const img = node.querySelector("img");
+  const pointers = new Map();
+  let start = null;
+  const apply = () => { img.style.transform = `translate(${viewerView.tx}px, ${viewerView.ty}px) scale(${viewerView.scale})`; };
+  const single = (point) => ({ x: point.x, y: point.y, tx: viewerView.tx, ty: viewerView.ty });
+  node.addEventListener("pointerdown", (event) => {
+    node.setPointerCapture(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      start = { dist: Math.hypot(a.x - b.x, a.y - b.y), scale: viewerView.scale, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, tx: viewerView.tx, ty: viewerView.ty };
+    } else if (pointers.size === 1) {
+      start = single({ x: event.clientX, y: event.clientY });
+      const now = Date.now();
+      if (now - viewerView.lastTap < 300) {
+        viewerView.scale = viewerView.scale > 1 ? 1 : 2.5;
+        if (viewerView.scale === 1) { viewerView.tx = 0; viewerView.ty = 0; }
+        apply();
+      }
+      viewerView.lastTap = now;
+    }
+  });
+  node.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2 && start?.dist) {
+      const [a, b] = [...pointers.values()];
+      viewerView.scale = Math.min(6, Math.max(1, start.scale * Math.hypot(a.x - b.x, a.y - b.y) / start.dist));
+      viewerView.tx = start.tx + (a.x + b.x) / 2 - start.cx;
+      viewerView.ty = start.ty + (a.y + b.y) / 2 - start.cy;
+      apply();
+    } else if (pointers.size === 1 && start && !start.dist && viewerView.scale > 1) {
+      viewerView.tx = start.tx + event.clientX - start.x;
+      viewerView.ty = start.ty + event.clientY - start.y;
+      apply();
+    }
+  });
+  const end = (event) => {
+    pointers.delete(event.pointerId);
+    start = pointers.size === 1 ? single([...pointers.values()][0]) : null;
+    if (viewerView.scale === 1) { viewerView.tx = 0; viewerView.ty = 0; apply(); }
+  };
+  node.addEventListener("pointerup", end);
+  node.addEventListener("pointercancel", end);
+}
+
+// ---- file browser over Belmont's /workspace (read-only) ----
+function openFiles(path = "") {
+  state.overlay = { type: "files", path, listing: null, error: null };
+  render();
+  loadFiles(path);
+}
+async function loadFiles(path) {
+  try {
+    const listing = await state.api.files(state.manager.id, path);
+    if (state.overlay?.type === "files" && state.overlay.path === path) { state.overlay = { ...state.overlay, listing }; render(); }
+  } catch (error) {
+    if (state.overlay?.type === "files" && state.overlay.path === path) { state.overlay = { ...state.overlay, error: error.message }; render(); }
+  }
+}
+function formatBytes(size) {
+  if (!Number.isFinite(size)) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(size < 10240 ? 1 : 0)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+function renderFilesOverlay() {
+  const { path, listing, error } = state.overlay;
+  const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const rows = listing?.entries?.length
+    ? listing.entries.map((entry) => entry.kind === "dir"
+      ? `<button type="button" class="file-row" data-action="files-open" data-path="${escapeHtml(path ? `${path}/${entry.name}` : entry.name)}"><span class="file-icon file-icon--dir">${icon("folder")}</span><span><strong>${escapeHtml(entry.name)}</strong><small>폴더</small></span>${icon("chevron")}</button>`
+      : `<button type="button" class="file-row" data-action="files-view" data-path="${escapeHtml(path ? `${path}/${entry.name}` : entry.name)}" data-index="${listing.entries.indexOf(entry)}"><span class="file-icon">${icon(entry.kind === "image" ? "image" : "file")}</span><span><strong>${escapeHtml(entry.name)}</strong><small>${escapeHtml(attachmentKindLabel(entry.kind))}${entry.size != null ? ` · ${formatBytes(entry.size)}` : ""}${entry.mtime ? ` · ${formatDay(entry.mtime)}` : ""}</small></span></button>`).join("")
+    : listing ? `<div class="computer-placeholder viewer-loading"><p>빈 폴더입니다.</p></div>` : "";
+  const body = error
+    ? `<div class="computer-placeholder cv-message">${icon("close")}<p>${escapeHtml(error)}</p><button type="button" class="cv-retry" data-action="files-open" data-path="${escapeHtml(path)}">다시 시도</button></div>`
+    : listing ? `<div class="files-list">${rows}</div>` : `<div class="computer-placeholder viewer-loading"><span class="spinner"></span><p>불러오는 중…</p></div>`;
+  return `<section class="viewer-view viewer-view--doc files-view" role="dialog" aria-modal="true" aria-label="Belmont의 파일" data-sheet>
+    <header class="cv-top">
+      <button type="button" class="icon-button" data-action="${path ? "files-open" : "close-overlay"}" data-path="${escapeHtml(parent)}" aria-label="${path ? "상위 폴더" : "닫기"}">${icon("back")}</button>
+      <div class="cv-title"><strong>${escapeHtml(path ? path.slice(path.lastIndexOf("/") + 1) : "Belmont의 파일")}</strong><small>/workspace${path ? `/${escapeHtml(path)}` : ""}</small></div>
+      ${path ? `<button type="button" class="icon-button" data-action="close-overlay" aria-label="닫기">${icon("close")}</button>` : ""}
+    </header>
+    <div class="viewer-body">${body}</div>
+  </section>`;
+}
+function openWorkspaceFile(path, index) {
+  const entry = state.overlay?.listing?.entries?.[index];
+  if (!entry || entry.kind === "dir") return;
+  const back = { type: "files", path: state.overlay.path, listing: state.overlay.listing, error: null };
+  const url = entry.src || state.api.fileUrl(state.manager.id, path);
+  openViewer({ name: entry.name, kind: entry.kind, mime: entry.mime, ...(entry.text != null ? { text: entry.text } : {}) }, { key: `file:${path}`, url, downloadUrl: entry.src ? null : state.api.fileUrl(state.manager.id, path, { download: true }), back });
 }
 
 function renderActivity(message) {
@@ -474,6 +683,8 @@ function renderOverlay() {
   if (state.overlay?.type === "worker") return renderWorkerOverlay(state.overlay.workerId);
   if (state.overlay?.type === "settings") return renderSettingsOverlay();
   if (state.overlay?.type === "computer") return renderComputerOverlay();
+  if (state.overlay?.type === "viewer") return renderViewerOverlay();
+  if (state.overlay?.type === "files") return renderFilesOverlay();
   if (state.overlay?.type === "manager") return renderManagerOverlay();
   return renderMoreOverlay();
 }
@@ -507,6 +718,7 @@ function renderMoreOverlay() {
         <button type="button" data-action="attach"><span class="menu-icon">${icon("share")}</span><span><strong>사진·파일 첨부</strong><small>Belmont에게 파일을 보냅니다</small></span></button>
         <button type="button" data-action="new-task"><span class="menu-icon">${icon("plus")}</span><span><strong>New goal</strong><small>Write a new goal in this Belmont conversation</small></span></button>
         <button type="button" data-action="show-tasks"><span class="menu-icon">${icon("task")}</span><span><strong>Agents</strong><small>See current persistent agent status</small></span></button>
+        <button type="button" data-action="files"><span class="menu-icon">${icon("folder")}</span><span><strong>Files</strong><small>Belmont 작업 폴더의 파일을 봅니다</small></span></button>
         <button type="button" data-action="computer"><span class="menu-icon">${icon("computer")}</span><span><strong>Computer status</strong><small>Belmont가 쓰는 컴퓨터 화면을 봅니다</small></span></button>
         <button type="button" data-action="share"><span class="menu-icon">${icon("share")}</span><span><strong>Share transcript</strong><small>This chat as a text file</small></span></button>
       </div>
@@ -552,37 +764,180 @@ function renderSettingsOverlay() {
 
 function renderComputerOverlay() {
   const computer = state.overlay?.computer;
-  if (!computer) {
-    return sheet("컴퓨터 보기", `<div class="computer-placeholder"><span class="spinner"></span><p>Belmont의 화면을 여는 중…</p></div>`);
-  }
-  if (computer.error) {
-    return sheet("컴퓨터 보기", `<div class="computer-placeholder">${icon("computer")}<p>${escapeHtml(computer.error)}</p></div>`);
-  }
-  const handoff = computer.handoff?.instruction
-    ? `<div class="handoff-bar">${icon("hand")}<span>${escapeHtml(computer.handoff.instruction)}</span></div>`
+  const conn = computerView.connection;
+  const interactive = Boolean(computer?.interactive);
+  const status = computer?.error ? "오류"
+    : !computer ? "여는 중"
+    : conn === "connected" ? (interactive ? "조작 가능" : "보기 전용")
+    : conn === "failed" ? "연결 끊김"
+    : "연결 중";
+  const handoff = computer?.handoff?.instruction
+    ? `<div class="cv-handoff">${icon("hand")}<span>${escapeHtml(computer.handoff.instruction)}</span><button type="button" data-action="computer-hand-back">다 했어요</button></div>`
     : "";
-  return sheet("Belmont의 컴퓨터", `
+  const body = computer?.error
+    ? `<div class="computer-placeholder cv-message">${icon("computer")}<p>${escapeHtml(computer.error)}</p><button type="button" class="cv-retry" data-action="computer-retry">다시 시도</button></div>`
+    : `<div id="computer-stage-slot" class="cv-slot"></div>${conn !== "connected" ? `<div class="computer-placeholder cv-message cv-overlay"><span class="spinner"></span><p>${conn === "failed" ? "화면 연결이 끊겼습니다. 다시 연결하는 중…" : "Belmont의 화면을 여는 중…"}</p></div>` : ""}`;
+  return `<section class="computer-view" role="dialog" aria-modal="true" aria-label="Belmont의 컴퓨터" data-sheet>
+    <header class="cv-top">
+      <button type="button" class="icon-button" data-action="close-overlay" aria-label="닫기">${icon("back")}</button>
+      <div class="cv-title"><strong>Belmont의 컴퓨터</strong><small>${escapeHtml(status)}</small></div>
+      <span class="cv-status ${conn === "connected" ? (interactive ? "is-live" : "is-view") : ""}" aria-hidden="true"></span>
+    </header>
     ${handoff}
-    <iframe class="computer-frame" src="${escapeHtml(computer.viewerUrl)}" allow="clipboard-read; clipboard-write"></iframe>
-    <p class="sheet-note">${computer.interactive ? "지금은 직접 조작이 허용된 상태입니다. 화면을 터치해 조작하세요." : "보기 전용입니다. Belmont가 사용자 조작을 요청하면 조작이 열립니다."}</p>
-  `);
+    <div class="cv-stage">${body}</div>
+    <footer class="cv-bottom">
+      <button type="button" data-action="computer-zoom" ${conn !== "connected" ? "disabled" : ""}>${computerView.zoom === "fit" ? "1:1 크기" : "화면 맞춤"}</button>
+      <button type="button" data-action="computer-keyboard" ${conn === "connected" && interactive ? "" : "disabled"}>${icon("keyboard")} 키보드</button>
+      <button type="button" data-action="computer-reconnect">다시 연결</button>
+      <input id="computer-key-input" class="sr-only cv-key-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="원격 키보드 입력" />
+    </footer>
+  </section>`;
 }
+
+// The live screen is a noVNC RFB client mounted on a node that survives re-renders:
+// render() rebuilds the DOM, so the stage is created once and re-slotted each time.
+// Only noVNC's core (core/rfb.js, proxied through the adapter) is used — none of its
+// stock UI — so the phone gets our own bars, status and keyboard instead of a settings panel.
+const computerView = {
+  stage: null, rfb: null, RFB: null, botId: null,
+  connection: "idle", zoom: "fit", attempts: 0,
+  pollTimer: null, reconnectTimer: null, composing: false
+};
 
 async function openComputerView() {
   const manager = state.manager;
   if (!manager) return;
+  computerView.botId = manager.id;
   state.overlay = { type: "computer", computer: null };
   render();
+  await refreshComputerStatus({ ensure: true });
+  if (state.overlay?.type === "computer" && !computerView.pollTimer) {
+    computerView.pollTimer = setInterval(() => { refreshComputerStatus({ ensure: false }); }, 3000);
+  }
+}
+
+async function refreshComputerStatus({ ensure }) {
+  const botId = computerView.botId;
+  if (!botId || state.overlay?.type !== "computer") return;
   try {
-    let status = await state.api.request(`/api/bots/${manager.id}/computer`);
-    if (!status?.ready) {
-      status = await state.api.request(`/api/bots/${manager.id}/computer/ensure`, { method: "POST", body: {} });
+    let status = await state.api.request(`/api/bots/${botId}/computer`);
+    if (ensure && !status?.ready) {
+      status = await state.api.request(`/api/bots/${botId}/computer/ensure`, { method: "POST", body: {} });
     }
-    state.overlay = { type: "computer", computer: status?.viewerUrl ? status : { error: "컴퓨터 화면이 아직 준비되지 않았습니다. Belmont에게 작업을 시킨 뒤 다시 열어보세요." } };
+    const next = status?.viewerUrl ? status : { error: "컴퓨터 화면이 아직 준비되지 않았습니다. Belmont에게 작업을 시킨 뒤 다시 열어보세요." };
+    const changed = JSON.stringify(state.overlay.computer) !== JSON.stringify(next);
+    state.overlay = { type: "computer", computer: next };
+    if (computerView.rfb) computerView.rfb.viewOnly = !next.interactive;
+    if (changed || !computerView.rfb) render();
   } catch (error) {
-    state.overlay = { type: "computer", computer: { error: error.message } };
+    if (!state.overlay?.computer?.viewerUrl) { state.overlay = { type: "computer", computer: { error: error.message } }; render(); }
+  }
+}
+
+function syncComputerView() {
+  const open = state.overlay?.type === "computer";
+  if (!open) { teardownComputerView(); return; }
+  const slot = document.querySelector("#computer-stage-slot");
+  const computer = state.overlay.computer;
+  if (!slot || !computer?.viewerUrl) return;
+  if (!computerView.stage) {
+    computerView.stage = document.createElement("div");
+    computerView.stage.className = "cv-rfb";
+  }
+  if (computerView.stage.parentElement !== slot) slot.appendChild(computerView.stage);
+  if (!computerView.rfb && computerView.connection !== "connecting") connectComputerRfb(computer);
+}
+
+async function connectComputerRfb(computer) {
+  computerView.connection = "connecting";
+  try {
+    if (!computerView.RFB) {
+      const base = computer.viewerUrl.slice(0, computer.viewerUrl.indexOf("vnc.html"));
+      const module = await import(`${base}core/rfb.js`);
+      computerView.RFB = module.default;
+    }
+    if (state.overlay?.type !== "computer" || !computerView.stage) { computerView.connection = "idle"; return; }
+    const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/bots/${computerView.botId}/computer/websockify`;
+    const rfb = new computerView.RFB(computerView.stage, wsUrl, { shared: true, wsProtocols: ["binary"] });
+    rfb.viewOnly = !computer.interactive;
+    rfb.scaleViewport = computerView.zoom === "fit";
+    rfb.clipViewport = computerView.zoom !== "fit";
+    rfb.dragViewport = computerView.zoom !== "fit";
+    rfb.showDotCursor = true;
+    rfb.background = "#000";
+    rfb.addEventListener("connect", () => { computerView.connection = "connected"; computerView.attempts = 0; render(); });
+    rfb.addEventListener("disconnect", () => {
+      computerView.rfb = null;
+      if (state.overlay?.type !== "computer") return;
+      computerView.connection = "failed";
+      render();
+      if (computerView.attempts < 6) {
+        computerView.attempts += 1;
+        computerView.reconnectTimer = setTimeout(() => { computerView.reconnectTimer = null; syncComputerView(); }, 1500 * computerView.attempts);
+      }
+    });
+    computerView.rfb = rfb;
+  } catch (error) {
+    computerView.connection = "failed";
+    state.overlay = { type: "computer", computer: { error: `화면 모듈을 불러오지 못했습니다: ${error.message}` } };
+    render();
+  }
+}
+
+function teardownComputerView() {
+  if (computerView.pollTimer) { clearInterval(computerView.pollTimer); computerView.pollTimer = null; }
+  if (computerView.reconnectTimer) { clearTimeout(computerView.reconnectTimer); computerView.reconnectTimer = null; }
+  if (computerView.rfb) { try { computerView.rfb.disconnect(); } catch {} computerView.rfb = null; }
+  if (computerView.stage) { computerView.stage.remove(); computerView.stage = null; }
+  computerView.connection = "idle";
+  computerView.attempts = 0;
+}
+
+function setComputerZoom(zoom) {
+  computerView.zoom = zoom;
+  const rfb = computerView.rfb;
+  if (rfb) {
+    rfb.scaleViewport = zoom === "fit";
+    rfb.clipViewport = zoom !== "fit";
+    rfb.dragViewport = zoom !== "fit";
   }
   render();
+}
+
+// X11 keysyms for the soft keyboard: Latin-1 maps 1:1, everything else is 0x01000000 + code point.
+const KEYSYM = { Enter: 0xff0d, Backspace: 0xff08, Tab: 0xff09, Escape: 0xff1b, ArrowLeft: 0xff51, ArrowUp: 0xff52, ArrowRight: 0xff53, ArrowDown: 0xff54, Delete: 0xffff };
+function sendComputerText(text) {
+  const rfb = computerView.rfb;
+  if (!rfb || rfb.viewOnly) return;
+  for (const char of text) {
+    const cp = char.codePointAt(0);
+    const keysym = cp < 0x100 ? cp : 0x01000000 + cp;
+    rfb.sendKey(keysym, null, true);
+    rfb.sendKey(keysym, null, false);
+  }
+}
+function bindComputerKeyboard() {
+  const input = document.querySelector("#computer-key-input");
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = "1";
+  input.addEventListener("compositionstart", () => { computerView.composing = true; });
+  input.addEventListener("compositionend", (event) => {
+    computerView.composing = false;
+    sendComputerText(event.data || input.value);
+    input.value = "";
+  });
+  input.addEventListener("input", (event) => {
+    if (computerView.composing) return;
+    if (event.inputType === "deleteContentBackward") { computerView.rfb?.sendKey(KEYSYM.Backspace, "Backspace"); input.value = ""; return; }
+    if (input.value) { sendComputerText(input.value); input.value = ""; }
+  });
+  input.addEventListener("keydown", (event) => {
+    if (computerView.composing) return;
+    const keysym = KEYSYM[event.key];
+    if (keysym == null || !computerView.rfb || computerView.rfb.viewOnly) return;
+    event.preventDefault();
+    computerView.rfb.sendKey(keysym, event.key);
+  });
 }
 
 function renderManagerOverlay() {
@@ -1202,10 +1557,22 @@ app.addEventListener("click", async (event) => {
   if (action === "back") { state.view = "home"; state.overlay = null; state.readonlyChat = null; stopChatPoll(); await refreshFleet(); render(); }
   if (action === "worker-chat") await openWorkerChat(target.dataset.workerId);
   if (action === "more") { state.overlay = state.overlay?.type === "more" ? null : { type: "more" }; render(); }
-  if (action === "close-overlay") { stopQrScanner(); state.overlay = null; render(); }
+  if (action === "close-overlay") { stopQrScanner(); state.overlay = state.overlay?.back ?? null; render(); }
+  if (action === "files") openFiles("");
+  if (action === "files-open") openFiles(target.dataset.path || "");
+  if (action === "files-view") openWorkspaceFile(target.dataset.path, Number(target.dataset.index));
   if (action === "worker-detail") { state.overlay = { type: "worker", workerId: target.dataset.workerId }; render(); }
   if (action === "settings") { state.overlay = { type: "settings" }; render(); }
   if (action === "computer") await openComputerView();
+  if (action === "open-attachment") openAttachment(target.dataset.messageId);
+  if (action === "computer-zoom") setComputerZoom(computerView.zoom === "fit" ? "actual" : "fit");
+  if (action === "computer-keyboard") { const input = document.querySelector("#computer-key-input"); if (input) { input.focus({ preventScroll: true }); } }
+  if (action === "computer-reconnect") { computerView.attempts = 0; if (computerView.rfb) { computerView.rfb.disconnect(); } else { syncComputerView(); } }
+  if (action === "computer-retry") { state.overlay = { type: "computer", computer: null }; render(); await refreshComputerStatus({ ensure: true }); }
+  if (action === "computer-hand-back") {
+    try { await state.api.request(`/api/bots/${computerView.botId}/computer/hand-back`, { method: "POST", body: {} }); await refreshComputerStatus({ ensure: false }); showNotice("Belmont에게 화면을 돌려줬습니다."); }
+    catch (error) { showNotice(error.message); }
+  }
   if (action === "manager-info") { state.overlay = { type: "manager" }; render(); }
   if (action === "open-search") { state.searchOpen = true; render(); queueMicrotask(() => document.querySelector("#roster-search")?.focus()); }
   if (action === "close-search") { state.searchOpen = false; state.query = ""; render(); }

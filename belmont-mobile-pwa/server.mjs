@@ -25,6 +25,8 @@ const ALLOWED_API_ROUTES = [
   ["GET", /^\/api\/bots\/[\w-]+\/computer\/view\/.+$/],
   ["GET", /^\/api\/bots\/[\w-]+\/computer\/websockify$/],
   ["GET", /^\/api\/threads\/[\w-]+\/messages$/],
+  ["GET", /^\/api\/threads\/[\w-]+\/attachments\/[\w-]+$/],
+  ["GET", /^\/api\/bots\/[\w-]+\/files(?:\/read)?$/],
   ["POST", /^\/api\/threads\/[\w-]+\/respond$/]
 ];
 
@@ -217,6 +219,13 @@ async function proxyApi({ request, response, pathname, search, upstreamOrigin, s
   response.setHeader("Cache-Control", "no-store");
   const contentType = upstreamResponse.headers.get("content-type");
   if (contentType) response.setHeader("Content-Type", contentType);
+  if (method === "GET" && /^\/api\/(?:threads\/[\w-]+\/attachments\/[\w-]+|bots\/[\w-]+\/files\/read)$/.test(pathname)) {
+    // Attachment bytes carry their own caching, disposition and sandbox policy.
+    for (const name of ["content-length", "content-disposition", "content-security-policy", "x-content-type-options", "cache-control"]) {
+      const value = upstreamResponse.headers.get(name);
+      if (value) response.setHeader(name, value);
+    }
+  }
   if (method === "GET" && pathname === "/api/bots" && upstreamResponse.body) {
     const bytes = Buffer.from(await upstreamResponse.arrayBuffer());
     const payload = parseJson(bytes.toString("utf8"));
@@ -232,8 +241,8 @@ async function proxyApi({ request, response, pathname, search, upstreamOrigin, s
 }
 
 function managerBoundaryError(method, pathname, session) {
-  const botRoute = /^\/api\/bots\/([\w-]+)\/(?:messages|always-allow|attachments|computer(?:\/(?:ensure|hand-back|websockify|view\/.+))?)$/.exec(pathname);
-  const threadRoute = /^\/api\/threads\/([\w-]+)\/(messages|respond)$/.exec(pathname);
+  const botRoute = /^\/api\/bots\/([\w-]+)\/(?:messages|always-allow|attachments|files(?:\/read)?|computer(?:\/(?:ensure|hand-back|websockify|view\/.+))?)$/.exec(pathname);
+  const threadRoute = /^\/api\/threads\/([\w-]+)\/(messages|respond|attachments\/[\w-]+)$/.exec(pathname);
   const eventRoute = method === "GET" && pathname === "/api/events";
   if (!botRoute && !threadRoute && !eventRoute) return null;
   if (!session.managerBotId) {
@@ -245,7 +254,7 @@ function managerBoundaryError(method, pathname, session) {
   if (threadRoute) {
     // Reading is open to every bot on the roster; acting (respond) stays Belmont-only.
     const readable = session.managerThreadIds?.has(threadRoute[1])
-      || (threadRoute[2] === "messages" && session.readableThreadIds?.has(threadRoute[1]));
+      || ((threadRoute[2] === "messages" || threadRoute[2].startsWith("attachments/")) && session.readableThreadIds?.has(threadRoute[1]));
     if (!readable) return { status: 403, message: "only Belmont conversation threads accept actions" };
   }
   return null;
@@ -477,7 +486,13 @@ function publicQuery(pathname, searchParams, session) {
       ? new Set(["since", "screens"])
       : /^\/api\/threads\/[\w-]+\/messages$/.test(pathname)
         ? new Set(["before", "around", "limit"])
-        : new Set();
+        : /^\/api\/threads\/[\w-]+\/attachments\/[\w-]+$/.test(pathname)
+          ? new Set(["download"])
+          : /^\/api\/bots\/[\w-]+\/files$/.test(pathname)
+            ? new Set(["path"])
+            : /^\/api\/bots\/[\w-]+\/files\/read$/.test(pathname)
+              ? new Set(["path", "download"])
+              : new Set();
   for (const key of new Set(searchParams.keys())) {
     if (!allowed.has(key) || searchParams.getAll(key).length !== 1) return { status: 400, error: "unsupported or repeated query parameter" };
   }
@@ -491,6 +506,13 @@ function publicQuery(pathname, searchParams, session) {
     } else if (key === "screens") {
       if (value !== "off") return { status: 400, error: "mobile screen events are disabled" };
       clean.set("screens", "off");
+    } else if (key === "path") {
+      // A workspace-relative path: the adapter resolves it inside the workspace root; here only sanity.
+      if (value.length > 1_024 || /[\0-\x1f\x7f]/u.test(value)) return { status: 400, error: "invalid path" };
+      clean.set("path", value);
+    } else if (key === "download") {
+      if (value !== "1") return { status: 400, error: "invalid download flag" };
+      clean.set("download", "1");
     } else {
       if (!isSafeCursor(value)) return { status: 400, error: "invalid cursor" };
       if (key === "since") {

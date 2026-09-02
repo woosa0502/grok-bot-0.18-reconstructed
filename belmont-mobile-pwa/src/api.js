@@ -61,6 +61,14 @@ export class CompanionApi {
     });
   }
 
+  async files(botId, path = "") {
+    return this.request(`/api/bots/${safeId(botId)}/files?path=${encodeURIComponent(path)}`);
+  }
+
+  fileUrl(botId, path, { download = false } = {}) {
+    return `${this.baseUrl}/api/bots/${safeId(botId)}/files/read?path=${encodeURIComponent(path)}${download ? "&download=1" : ""}`;
+  }
+
   async uploadAttachment({ botId, name, dataBase64 }) {
     return this.request(`/api/bots/${safeId(botId)}/attachments`, {
       method: "POST",
