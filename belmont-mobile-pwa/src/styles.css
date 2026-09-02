@@ -867,6 +867,9 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 .approval-card {
   width: 100%;
   max-width: 520px;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
   margin: 4px 0;
   padding: 14px;
   border: 1px solid var(--separator);
@@ -908,7 +911,7 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
   color: var(--maus-cyan);
 }
 .waiting-hand .icon { width: 18px; height: 18px; }
-.approval-card h2 { margin: 9px 0 4px; font-size: 13px; font-weight: 600; }
+.approval-card h2 { margin: 9px 0 4px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
 .approval-card p { margin: 0; color: var(--secondary); font-size: 12px; line-height: 1.4; }
 .approval-actions {
   display: grid;
@@ -1525,3 +1528,5 @@ input::placeholder, textarea::placeholder { color: var(--tertiary); }
 .file-row small { font-size: 12px; color: var(--secondary); }
 .file-row > .icon:last-child { width: 18px; height: 18px; color: var(--secondary); flex: 0 0 auto; }
 .files-view .cv-title small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-bottom button.is-on { background: #fcfcfc; color: #141414; border-color: #fcfcfc; }
+.computer-view .computer-placeholder, .viewer-view .computer-placeholder { background: transparent; border: 0; border-radius: 0; }

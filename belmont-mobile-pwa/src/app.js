@@ -765,10 +765,10 @@ function renderSettingsOverlay() {
 function renderComputerOverlay() {
   const computer = state.overlay?.computer;
   const conn = computerView.connection;
-  const interactive = Boolean(computer?.interactive);
+  const interactive = computerInteractive(computer);
   const status = computer?.error ? "오류"
     : !computer ? "여는 중"
-    : conn === "connected" ? (interactive ? "조작 가능" : "보기 전용")
+    : conn === "connected" ? (computerView.control ? "직접 조작 중" : interactive ? "조작 가능" : "보기 전용")
     : conn === "failed" ? "연결 끊김"
     : "연결 중";
   const handoff = computer?.handoff?.instruction
@@ -786,6 +786,7 @@ function renderComputerOverlay() {
     ${handoff}
     <div class="cv-stage">${body}</div>
     <footer class="cv-bottom">
+      <button type="button" class="${computerView.control ? "is-on" : ""}" data-action="computer-control" ${conn !== "connected" ? "disabled" : ""}>${computerView.control ? "보기만" : "조작하기"}</button>
       <button type="button" data-action="computer-zoom" ${conn !== "connected" ? "disabled" : ""}>${computerView.zoom === "fit" ? "1:1 크기" : "화면 맞춤"}</button>
       <button type="button" data-action="computer-keyboard" ${conn === "connected" && interactive ? "" : "disabled"}>${icon("keyboard")} 키보드</button>
       <button type="button" data-action="computer-reconnect">다시 연결</button>
@@ -798,8 +799,12 @@ function renderComputerOverlay() {
 // render() rebuilds the DOM, so the stage is created once and re-slotted each time.
 // Only noVNC's core (core/rfb.js, proxied through the adapter) is used — none of its
 // stock UI — so the phone gets our own bars, status and keyboard instead of a settings panel.
+// Like the desktop app, the live screen accepts input whenever the user asks for it
+// (`control`), not only when Belmont hands the box over. Default stays view-only so
+// a stray touch never lands on a page Belmont is driving.
+function computerInteractive(computer) { return Boolean(computer?.interactive) || computerView.control; }
 const computerView = {
-  stage: null, rfb: null, RFB: null, botId: null,
+  stage: null, rfb: null, RFB: null, botId: null, control: false,
   connection: "idle", zoom: "fit", attempts: 0,
   pollTimer: null, reconnectTimer: null, composing: false
 };
@@ -824,13 +829,15 @@ async function refreshComputerStatus({ ensure }) {
     if (ensure && !status?.ready) {
       status = await state.api.request(`/api/bots/${botId}/computer/ensure`, { method: "POST", body: {} });
     }
+    // The view may have been closed while the request was in flight: never resurrect it.
+    if (state.overlay?.type !== "computer" || computerView.botId !== botId) return;
     const next = status?.viewerUrl ? status : { error: "컴퓨터 화면이 아직 준비되지 않았습니다. Belmont에게 작업을 시킨 뒤 다시 열어보세요." };
     const changed = JSON.stringify(state.overlay.computer) !== JSON.stringify(next);
     state.overlay = { type: "computer", computer: next };
-    if (computerView.rfb) computerView.rfb.viewOnly = !next.interactive;
+    if (computerView.rfb) computerView.rfb.viewOnly = !computerInteractive(next);
     if (changed || !computerView.rfb) render();
   } catch (error) {
-    if (!state.overlay?.computer?.viewerUrl) { state.overlay = { type: "computer", computer: { error: error.message } }; render(); }
+    if (state.overlay?.type === "computer" && !state.overlay.computer?.viewerUrl) { state.overlay = { type: "computer", computer: { error: error.message } }; render(); }
   }
 }
 
@@ -859,7 +866,7 @@ async function connectComputerRfb(computer) {
     if (state.overlay?.type !== "computer" || !computerView.stage) { computerView.connection = "idle"; return; }
     const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/bots/${computerView.botId}/computer/websockify`;
     const rfb = new computerView.RFB(computerView.stage, wsUrl, { shared: true, wsProtocols: ["binary"] });
-    rfb.viewOnly = !computer.interactive;
+    rfb.viewOnly = !computerInteractive(computer);
     rfb.scaleViewport = computerView.zoom === "fit";
     rfb.clipViewport = computerView.zoom !== "fit";
     rfb.dragViewport = computerView.zoom !== "fit";
@@ -891,6 +898,7 @@ function teardownComputerView() {
   if (computerView.stage) { computerView.stage.remove(); computerView.stage = null; }
   computerView.connection = "idle";
   computerView.attempts = 0;
+  computerView.control = false;
 }
 
 function setComputerZoom(zoom) {
@@ -1565,6 +1573,12 @@ app.addEventListener("click", async (event) => {
   if (action === "settings") { state.overlay = { type: "settings" }; render(); }
   if (action === "computer") await openComputerView();
   if (action === "open-attachment") openAttachment(target.dataset.messageId);
+  if (action === "computer-control") {
+    computerView.control = !computerView.control;
+    if (computerView.rfb) computerView.rfb.viewOnly = !computerInteractive(state.overlay?.computer);
+    if (computerView.control && activeChatBot()?.busy) showNotice("Belmont가 작업 중입니다. 지금 조작하면 서로 겹칠 수 있어요.");
+    render();
+  }
   if (action === "computer-zoom") setComputerZoom(computerView.zoom === "fit" ? "actual" : "fit");
   if (action === "computer-keyboard") { const input = document.querySelector("#computer-key-input"); if (input) { input.focus({ preventScroll: true }); } }
   if (action === "computer-reconnect") { computerView.attempts = 0; if (computerView.rfb) { computerView.rfb.disconnect(); } else { syncComputerView(); } }
