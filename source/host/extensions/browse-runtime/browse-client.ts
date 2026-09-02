@@ -50,5 +50,7 @@ export class BrowseClient {
   get(id: string): Promise<BrowseSessionView> { return this.#request("GET", `/sessions/${id}`); }
   answer(id: string, response: unknown): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/answer`, { response }); }
   steer(id: string, text: string): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/steer`, { text }); }
+  /** Sends a follow-up user message into a finished session (same Aside conversation, full context kept). */
+  continue(id: string, text: string): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/continue`, { text }); }
   stop(id: string): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/stop`, {}); }
 }

@@ -35,6 +35,11 @@ export class BrowseSubagentSession implements SubagentSession {
       await this.client.answer(this.#browseId, parseSuspensionAnswer(this.#pendingKind, prompt));
       this.#pendingKind = null;
       this.log(`[browse-runtime] ${this.agentId}: resumed ${this.#browseId}`);
+    } else if (this.#browseId !== null) {
+      // Resume after a finished run (e.g. the worker replied "[approval needed]" as text, or the
+      // parent has a follow-up): continue the same Aside conversation with the parent's message.
+      await this.client.continue(this.#browseId, prompt.replace(BOUNDARY_RE, "").trim());
+      this.log(`[browse-runtime] ${this.agentId}: continued ${this.#browseId}`);
     } else {
       const created = await this.client.create({ task: prompt.replace(BOUNDARY_RE, "").trim() });
       this.#browseId = created.id;
