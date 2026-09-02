@@ -14,7 +14,7 @@ export interface BrowseRuntimeExtensionApi {
   createSubagentConfig(): ReturnType<typeof createAsideBrowseSubagentConfig>;
   createSubagentSession(agentId: string): SubagentSession;
   /** Returns the runner unchanged unless the bot's profile opts into runtime "aside-browse". */
-  wrapRunner<T extends object>(runner: T, options: { getAgentId?: () => string; getConversationId?: () => string; emitUpdate: (update: RunnerUpdate) => void }): T;
+  wrapRunner<T extends object>(runner: T, options: { getAgentId?: () => string; getConversationId?: () => string; emitUpdate?: (update: RunnerUpdate) => void }): T;
 }
 
 /** Offers a browser worker whose brain is an Aside session (belmont-browse, local-only) as a Task subagent type. */
@@ -42,7 +42,15 @@ export const browseRuntimeExtension = defineHostExtension<BrowseRuntimeExtension
         const agentId = options.getAgentId?.() ?? options.getConversationId?.();
         if (!ASIDE_BROWSE_ENABLED || agentId === undefined || !isAsideBotAgent(agentId)) return runner;
         log(`[browse-runtime] bot ${agentId}: turns served by the Aside browse service`);
-        return wrapRunnerForAsideBot(runner, agentId, { client: resolveClient, emitUpdate: options.emitUpdate, log });
+        // The runner itself owns emitUpdate (it forwards to the transcript transport); the raw
+        // options object handed to buildRunner does not carry it.
+        const emitUpdate = (update: RunnerUpdate) => {
+          const target = runner as { emitUpdate?: (update: RunnerUpdate) => void };
+          if (typeof target.emitUpdate === "function") target.emitUpdate(update);
+          else if (typeof options.emitUpdate === "function") options.emitUpdate(update);
+          else throw new TypeError("no emitUpdate available for the browse runtime");
+        };
+        return wrapRunnerForAsideBot(runner, agentId, { client: resolveClient, emitUpdate, log });
       },
     };
   },
