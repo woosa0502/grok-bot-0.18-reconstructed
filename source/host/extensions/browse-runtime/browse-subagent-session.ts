@@ -19,39 +19,48 @@ function describeSuspended(view: BrowseSessionView, agentId: string): string {
   return `${tag} ${s?.description ?? s?.kind ?? "the browser worker is waiting"}\n\nAsk the user, then call Task again with resume="${agentId}" and the answer as the prompt (allow / deny / confirm / cancel / free text).`;
 }
 
+/** Per-subagent link to its browse session. Belmont recreates the SubagentSession object on every
+ * Task(resume=...) call (the foreground path releases it after each run), so the link must outlive
+ * the object: the extension owns one registry shared by all sessions. */
+export interface BrowseLink { browseId: string; pendingKind: string | null }
+export type BrowseLinkRegistry = Map<string, BrowseLink>;
+
 /** A Belmont SubagentSession whose brain is an Aside browse session behind belmont-browse/serve.mjs. */
 export class BrowseSubagentSession implements SubagentSession {
-  #browseId: string | null = null;
-  #pendingKind: string | null = null;
   #activity: string[] = [];
   #toolCalls = 0;
   #stopped = false;
 
-  constructor(readonly client: BrowseClient, readonly agentId: string, readonly log: (message: string) => void) {}
+  constructor(readonly client: BrowseClient, readonly agentId: string, readonly links: BrowseLinkRegistry, readonly log: (message: string) => void) {}
+
+  get #link(): BrowseLink | undefined { return this.links.get(this.agentId); }
 
   async run(prompt: string, _options?: SubagentRunOptions): Promise<SubagentRunResult> {
     this.#stopped = false;
-    if (this.#browseId !== null && this.#pendingKind !== null) {
-      await this.client.answer(this.#browseId, parseSuspensionAnswer(this.#pendingKind, prompt));
-      this.#pendingKind = null;
-      this.log(`[browse-runtime] ${this.agentId}: resumed ${this.#browseId}`);
-    } else if (this.#browseId !== null) {
+    const text = prompt.replace(BOUNDARY_RE, "").trim();
+    const link = this.#link;
+    if (link !== undefined && link.pendingKind !== null) {
+      await this.client.answer(link.browseId, parseSuspensionAnswer(link.pendingKind, prompt));
+      link.pendingKind = null;
+      this.log(`[browse-runtime] ${this.agentId}: answered ${link.pendingKind ?? "suspension"} on ${link.browseId}`);
+    } else if (link !== undefined) {
       // Resume after a finished run (e.g. the worker replied "[approval needed]" as text, or the
       // parent has a follow-up): continue the same Aside conversation with the parent's message.
-      await this.client.continue(this.#browseId, prompt.replace(BOUNDARY_RE, "").trim());
-      this.log(`[browse-runtime] ${this.agentId}: continued ${this.#browseId}`);
+      await this.client.continue(link.browseId, text);
+      this.log(`[browse-runtime] ${this.agentId}: continued ${link.browseId}`);
     } else {
-      const created = await this.client.create({ task: prompt.replace(BOUNDARY_RE, "").trim() });
-      this.#browseId = created.id;
+      const created = await this.client.create({ task: text });
+      this.links.set(this.agentId, { browseId: created.id, pendingKind: null });
       this.log(`[browse-runtime] ${this.agentId}: started browse session ${created.id}`);
     }
+    const browseId = this.#link!.browseId;
     for (;;) {
       if (this.#stopped) return { text: "[aborted] browser worker stopped", aborted: true };
-      const view = await this.client.get(this.#browseId);
+      const view = await this.client.get(browseId);
       this.#activity = [...view.activity];
       this.#toolCalls = view.toolCalls;
       if (view.status === "suspended") {
-        this.#pendingKind = view.suspension?.kind ?? "approval";
+        this.#link!.pendingKind = view.suspension?.kind ?? "approval";
         return { text: describeSuspended(view, this.agentId), aborted: false };
       }
       if (view.status === "done") return { text: view.result ?? "(the browser worker finished without a final message)", aborted: false };
@@ -63,7 +72,8 @@ export class BrowseSubagentSession implements SubagentSession {
 
   interrupt(reason: string): void {
     this.#stopped = true;
-    if (this.#browseId !== null) void this.client.stop(this.#browseId).catch(() => undefined);
+    const link = this.#link;
+    if (link !== undefined) void this.client.stop(link.browseId).catch(() => undefined);
     this.log(`[browse-runtime] ${this.agentId}: interrupted (${reason})`);
   }
 
