@@ -2961,7 +2961,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                     extractProductionTurnAutoReviewConversationContext,
                   getApprovalExpiryPolicy: () =>
                     sandAutoReviewApprovalExpiryPolicy("turn"),
-                  resolveDisplayNumber: async () => localComputerDisplayNumber(),
+                  resolveDisplayNumber: async () => localComputerDisplayNumber(session.id),
                   ...(autoReviewInstructions === undefined
                     ? {}
                     : {

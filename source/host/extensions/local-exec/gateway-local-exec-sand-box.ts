@@ -16,7 +16,8 @@ export type GatewayExecControl =
 export interface GatewayLocalExecCodec<Client = unknown, Accessor = unknown> {
   decodeClient(json: unknown): Client;
   decodeControl(json: unknown): GatewayExecControl;
-  createRemoteAccessor(manager: GatewayLocalExecManager<Client>): Accessor;
+  /** `agentId` lets the local computer-use override pick that agent's own virtual desktop. */
+  createRemoteAccessor(manager: GatewayLocalExecManager<Client>, agentId?: string): Accessor;
 }
 export interface LocalExecFailureReport extends LocalExecFailureClassification { readonly site: "exec"; readonly conversationId?: string; }
 export interface GatewayLocalToolGate extends SandLocalToolGate { blockedReason(): string | undefined; requiresApproval(): boolean; }
@@ -61,7 +62,7 @@ export class GatewayLocalExecSandBox<Client = unknown, Accessor = GatewayLocalEx
   private readonly gate: GatewayLocalToolGate; private readonly computerId: string | undefined; private readonly maxFileBytes: number;
   constructor(private readonly bridge: SandLocalExecBridge, private readonly options: GatewayLocalExecSandBoxOptions<Client, Accessor>) { this.gate = options.gate; this.computerId = options.computerId; this.maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_LOCAL_EXEC_FILE_BYTES; }
   terminalsFolder(): string { return this.bridge.getProviderInfo()?.terminalsFolder ?? FALLBACK_TERMINALS_FOLDER; }
-  async ensureReady(_context: SandBoxContext, _agentId: string): Promise<{ remoteAccessor: Accessor; vncUrl: ""; terminalsFolder: string }> { const manager = new GatewayLocalExecManager(this.bridge, this.gate, () => this.terminalsFolder(), this.options.codec, this.options.reportFailure); return { remoteAccessor: this.options.codec.createRemoteAccessor(manager), vncUrl: "", terminalsFolder: this.terminalsFolder() }; }
+  async ensureReady(_context: SandBoxContext, agentId: string): Promise<{ remoteAccessor: Accessor; vncUrl: ""; terminalsFolder: string }> { const manager = new GatewayLocalExecManager(this.bridge, this.gate, () => this.terminalsFolder(), this.options.codec, this.options.reportFailure); return { remoteAccessor: this.options.codec.createRemoteAccessor(manager, agentId), vncUrl: "", terminalsFolder: this.terminalsFolder() }; }
   async hibernate(_context: SandBoxContext, _agentId: string): Promise<void> {}
   async runState(_context: SandBoxContext, _agentId: string): Promise<"running" | "absent"> { return this.bridge.hasProvider() ? "running" : "absent"; }
   async listBoxes(): Promise<[]> { return []; }

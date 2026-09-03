@@ -153,8 +153,8 @@ export const LOCAL_BROWSER_USE_ENABLED =
  * number, so it has to be the display computer-use actually started — there is
  * exactly one desktop here, and the box assigns no windows of its own.
  */
-export function localBrowserWindowIndex(): number {
-  return localComputerDisplayNumber();
+export function localBrowserWindowIndex(agentId?: string): number {
+  return localComputerDisplayNumber(agentId);
 }
 
 /**
@@ -172,7 +172,7 @@ export function localBrowserDriverBox(): HostBrowserBoxOwner<unknown> {
       // The display manager owns readiness; there is no container to bring up.
       return undefined;
     },
-    getAgentWindowIndex: () => localBrowserWindowIndex(),
+    getAgentWindowIndex: (agentId) => localBrowserWindowIndex(agentId),
     async uploadFile(_context, _agentId, path, bytes) {
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, bytes);

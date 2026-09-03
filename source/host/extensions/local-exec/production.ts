@@ -38,11 +38,12 @@ export const productionLocalExecCodec: GatewayLocalExecCodec<
         return { case: undefined };
     }
   },
-  createRemoteAccessor(manager: GatewayLocalExecManager<ExecClientMessage>): RemoteResourceAccessor<GatewayLocalExecManager<ExecClientMessage>> {
+  createRemoteAccessor(manager: GatewayLocalExecManager<ExecClientMessage>, agentId?: string): RemoteResourceAccessor<GatewayLocalExecManager<ExecClientMessage>> {
     const accessor = new RemoteResourceAccessor(manager);
     // Local computer-use: resolve the Computer executor to the local Xvfb-backed
     // driver instead of the gateway passthrough, which cannot describe or run
-    // computer_use actions on the user's machine and would reject them.
-    return LOCAL_COMPUTER_USE_ENABLED ? withLocalComputerUse(accessor) : accessor;
+    // computer_use actions on the user's machine and would reject them. The
+    // executor is bound to the agent's own virtual desktop.
+    return LOCAL_COMPUTER_USE_ENABLED ? withLocalComputerUse(accessor, agentId) : accessor;
   },
 });

@@ -104,7 +104,9 @@ export class LocalDisplayManager {
       this.log(`[local-computer] starting Xvfb ${display} (${this.width}x${this.height})`);
       this.xvfb = spawn(
         "Xvfb",
-        [display, "-screen", "0", `${this.width}x${this.height}x24`, "-nolisten", "tcp"],
+        // -noreset: an X server resets (black root, "X" cursor, all state) when its last client
+        // disconnects; without it every xsetroot below is undone the moment xsetroot exits.
+        [display, "-screen", "0", `${this.width}x${this.height}x24`, "-nolisten", "tcp", "-noreset"],
         { detached: true, stdio: "ignore" },
       );
       this.xvfb.unref();
@@ -116,14 +118,13 @@ export class LocalDisplayManager {
       }
       if (!ok) throw new Error(`Xvfb ${display} did not become ready`);
     }
-    // Best-effort background + window manager so apps are visible/framed.
-    await this.run("xsetroot", ["-solid", "#1e2a3a"]).catch(() => {});
-    // A bare X server shows the "X" root cursor; give the desktop a real arrow so
-    // viewers (VNC, the phone stream) see a pointer, not a crosshair.
-    await this.run("xsetroot", ["-cursor_name", "left_ptr"]).catch(() => {});
+    await this.applyRootDefaults();
     if (this.startWm) await this.startWindowManager();
     if (this.vncEnabled) await this.startVnc().catch((error) =>
       this.log(`[local-computer] VNC start failed: ${error instanceof Error ? error.message : String(error)}`));
+    // A display adopted from an earlier host may have been started without -noreset and
+    // reset since; now that x11vnc holds a connection the defaults stick.
+    if (this.vncEnabled) await this.applyRootDefaults();
     return { display, displayNumber: this.displayNumber, width: this.width, height: this.height };
   }
 
@@ -150,6 +151,14 @@ export class LocalDisplayManager {
       this.log(`[local-computer] websockify did not start listening on ${this.novncPort}; VNC viewer URL withheld`);
     }
     this.watchVnc();
+  }
+
+  /** Background colour + arrow cursor. Only durable while some client stays connected (or with -noreset). */
+  private async applyRootDefaults(): Promise<void> {
+    await this.run("xsetroot", ["-solid", "#1e2a3a"]).catch((error) => this.log(`[local-computer] xsetroot background failed on ${this.display}: ${describe(error)}`));
+    // A bare X server shows the "X" root cursor; give the desktop a real arrow so
+    // viewers (VNC, the phone stream) see a pointer, not a crosshair.
+    await this.run("xsetroot", ["-cursor_name", "left_ptr"]).catch((error) => this.log(`[local-computer] xsetroot cursor failed on ${this.display}: ${describe(error)}`));
   }
 
   private vncEnv(): NodeJS.ProcessEnv {
@@ -214,10 +223,11 @@ export class LocalDisplayManager {
       if (!(await this.isDisplayReady())) return; // nothing to serve; Xvfb itself is not ours to revive here
       if (!(await this.isListening(this.rfbPort))) {
         this.log(`[local-computer] x11vnc is not listening on ${this.rfbPort}; restarting`);
-        // A bare X server shows the "X" root cursor; re-assert the arrow with the server.
-        await this.run("xsetroot", ["-cursor_name", "left_ptr"]).catch(() => {});
         this.spawnX11vnc();
         await delay(800);
+        // The old x11vnc's exit may have been the last client: the server reset to a black
+        // root and "X" cursor, so paint the defaults again now that a client is attached.
+        await this.applyRootDefaults();
       }
       if (!(await this.isListening(this.novncPort))) {
         this.log(`[local-computer] websockify is not listening on ${this.novncPort}; restarting`);
@@ -290,6 +300,10 @@ export class LocalDisplayManager {
     this.ready = undefined;
     this.vncUrlValue = undefined;
   }
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function delay(ms: number): Promise<void> {

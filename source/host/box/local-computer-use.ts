@@ -12,8 +12,10 @@ import { computerUseExecutorResource } from "../../packages/agent-exec/computer-
 import { LocalComputerUseExecutor } from "../../packages/local-exec/computer-use/executor.js";
 import { LocalDisplayManager } from "../../packages/local-exec/computer-use/display-manager.js";
 
-import { existsSync } from "node:fs";
-import { delimiter, join as joinPath } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { delimiter, join as joinPath, resolve as resolvePath } from "node:path";
+
+import { getSandRootDir } from "../host-paths.js";
 
 function hasExecutable(name: string): boolean {
   return (process.env.PATH ?? "").split(delimiter).some((dir) => dir.length > 0 && existsSync(joinPath(dir, name)));
@@ -34,55 +36,152 @@ export const LOCAL_COMPUTER_USE_ENABLED =
   process.env.SAND_LOCAL_COMPUTER_USE !== "0" && missingComputerBinaries.length === 0;
 const LOCAL_COMPUTER_DISPLAY = { width: 1280, height: 800 } as const;
 
-let sharedLocalDisplayManager: LocalDisplayManager | undefined;
+/**
+ * Every bot gets its own virtual desktop, like the original product's per-agent box: a
+ * dedicated Xvfb display with its own x11vnc/websockify pair, so two bots working at once
+ * never draw into each other's screen and the phone shows each bot its own desktop.
+ *
+ * Display numbers are assigned once per agent and remembered in `local-displays.json`
+ * under the data root, so a bot keeps its desktop (and whatever a detached Xvfb still
+ * holds) across host restarts. :99 stays the legacy/shared number: the belmont-browse
+ * service pins its Chrome there (BELMONT_BROWSE_DISPLAY), so the "browser" bot is seeded
+ * to it and callers that cannot name an agent fall back to it.
+ */
+export const LEGACY_LOCAL_DISPLAY = 99;
+const FIRST_AGENT_DISPLAY = 100;
+const DISPLAY_REGISTRY_FILE = "local-displays.json";
 
-function localDisplayManager(): LocalDisplayManager {
-  if (sharedLocalDisplayManager === undefined) {
-    sharedLocalDisplayManager = new LocalDisplayManager({
+export function localDisplayPorts(displayNumber: number): { rfbPort: number; novncPort: number } {
+  const offset = displayNumber - LEGACY_LOCAL_DISPLAY;
+  return { rfbPort: 5900 + offset, novncPort: 6080 + offset };
+}
+
+interface DisplayRegistry { version: 1; displays: Record<string, number> }
+
+function registryPath(): string {
+  return joinPath(getSandRootDir(), DISPLAY_REGISTRY_FILE);
+}
+
+let registry: DisplayRegistry | undefined;
+
+function seedRegistry(): DisplayRegistry {
+  const seeded: DisplayRegistry = { version: 1, displays: {} };
+  // The browser bot created by belmont-browse records its id next to the service state.
+  const browserBotIdFile = process.env.SAND_BROWSER_BOT_ID_FILE?.trim()
+    || resolvePath(getSandRootDir(), "../../../belmont-browse/.state/browser-bot-id");
+  try {
+    const id = readFileSync(browserBotIdFile, "utf8").trim();
+    if (id.length > 0) seeded.displays[id] = LEGACY_LOCAL_DISPLAY;
+  } catch {}
+  return seeded;
+}
+
+function loadRegistry(): DisplayRegistry {
+  if (registry !== undefined) return registry;
+  try {
+    const parsed = JSON.parse(readFileSync(registryPath(), "utf8")) as Partial<DisplayRegistry>;
+    const displays: Record<string, number> = {};
+    for (const [agentId, value] of Object.entries(parsed.displays ?? {})) {
+      if (Number.isInteger(value) && (value as number) >= LEGACY_LOCAL_DISPLAY) displays[agentId] = value as number;
+    }
+    registry = { version: 1, displays };
+  } catch {
+    registry = seedRegistry();
+    saveRegistry();
+  }
+  return registry;
+}
+
+function saveRegistry(): void {
+  if (registry === undefined) return;
+  try {
+    mkdirSync(getSandRootDir(), { recursive: true });
+    writeFileSync(registryPath(), `${JSON.stringify(registry, null, 2)}\n`);
+  } catch (error) {
+    console.error(`[local-computer] could not save ${DISPLAY_REGISTRY_FILE}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** The display number owned by an agent, assigning the next free one on first use. */
+export function localDisplayNumberFor(agentId: string): number {
+  const current = loadRegistry();
+  const known = current.displays[agentId];
+  if (known !== undefined) return known;
+  const taken = Object.values(current.displays);
+  const next = Math.max(FIRST_AGENT_DISPLAY - 1, ...taken) + 1;
+  current.displays[agentId] = next;
+  saveRegistry();
+  return next;
+}
+
+/** Drops a registry entry (used by tests and when an agent is forgotten); the running display is left alone. */
+export function forgetLocalDisplay(agentId: string): void {
+  const current = loadRegistry();
+  if (!(agentId in current.displays)) return;
+  delete current.displays[agentId];
+  saveRegistry();
+}
+
+const managers = new Map<number, LocalDisplayManager>();
+
+function managerForDisplay(displayNumber: number): LocalDisplayManager {
+  let manager = managers.get(displayNumber);
+  if (manager === undefined) {
+    const ports = localDisplayPorts(displayNumber);
+    manager = new LocalDisplayManager({
+      displayNumber,
+      rfbPort: ports.rfbPort,
+      novncPort: ports.novncPort,
       width: LOCAL_COMPUTER_DISPLAY.width,
       height: LOCAL_COMPUTER_DISPLAY.height,
       // Start x11vnc + websockify(noVNC) so the desktop can be watched in the app's
-      // "Open computer" panel. Best-effort: skipped if the tools are not installed.
+      // "Open computer" panel and on the phone. Best-effort: skipped if not installed.
       vnc: true,
       log: (message) => console.error(message),
     });
-    // Start the virtual display eagerly so the first Computer action is fast.
-    void sharedLocalDisplayManager.ensure().catch((error) =>
-      console.error(`[local-computer] display start failed: ${error instanceof Error ? error.message : String(error)}`));
+    managers.set(displayNumber, manager);
   }
-  return sharedLocalDisplayManager;
+  return manager;
+}
+
+function managerFor(agentId: string | undefined): LocalDisplayManager {
+  return managerForDisplay(agentId === undefined ? LEGACY_LOCAL_DISPLAY : localDisplayNumberFor(agentId));
+}
+
+/** Starts the agent's desktop (Xvfb + VNC) if it is not up yet; resolves once it accepts clients. */
+export async function ensureLocalComputerDisplay(agentId?: string): Promise<void> {
+  await managerFor(agentId).ensure();
 }
 
 /**
- * noVNC URL for watching the local computer-use desktop, once the display manager
- * has started the VNC stack. Ensures the display (and VNC) is starting; returns
- * undefined until websockify is up (the UI falls back to its no-stream message).
+ * noVNC URL for watching an agent's desktop, once its display manager has started the VNC
+ * stack. Starts the display if needed; returns undefined until websockify is up (the UI
+ * falls back to its no-stream message).
  */
-export function localComputerVncUrl(): string | undefined {
-  const manager = localDisplayManager();
-  void manager.ensure().catch(() => {});
+export function localComputerVncUrl(agentId?: string): string | undefined {
+  const manager = managerFor(agentId);
+  void manager.ensure().catch((error) =>
+    console.error(`[local-computer] display start failed: ${error instanceof Error ? error.message : String(error)}`));
   return manager.vncUrl;
 }
 
 /**
- * X display number of the local computer-use desktop (":99" → 99). Computer auto-review
- * identifies the reviewed display by number; locally there is exactly one, owned by the
- * shared display manager.
+ * X display number of an agent's desktop (":100" → 100). Computer auto-review identifies the
+ * reviewed display by number. Without an agent id this is the legacy shared display.
  */
-export function localComputerDisplayNumber(): number {
-  const display = localDisplayManager().display;
-  const parsed = Number.parseInt(display.replace(/^:/u, ""), 10);
-  return Number.isFinite(parsed) ? parsed : 99;
+export function localComputerDisplayNumber(agentId?: string): number {
+  return agentId === undefined ? LEGACY_LOCAL_DISPLAY : localDisplayNumberFor(agentId);
 }
-
 /**
  * Wraps a box resource accessor so `computerUseExecutorResource` resolves to the
  * local Xvfb-backed executor. The local entry takes precedence over the base
  * accessor's own computer-use resource (gateway passthrough / no-monitor stub).
  */
-export function withLocalComputerUse<A>(accessor: A): A {
+export function withLocalComputerUse<A>(accessor: A, agentId?: string): A {
+  const manager = managerFor(agentId);
+  void manager.ensure().catch(() => {});
   const executor = new LocalComputerUseExecutor({
-    display: localDisplayManager().display,
+    display: manager.display,
     displaySize: { width: LOCAL_COMPUTER_DISPLAY.width, height: LOCAL_COMPUTER_DISPLAY.height },
   });
   return new CombinedResourceAccessor(

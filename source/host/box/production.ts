@@ -28,7 +28,7 @@ import type {
   PingResult
 } from "./loopback-sand-box.js";
 import type { ShellAccessor } from "./box-windows.js";
-import { LOCAL_COMPUTER_USE_ENABLED, withLocalComputerUse, localComputerVncUrl } from "./local-computer-use.js";
+import { LOCAL_COMPUTER_USE_ENABLED, ensureLocalComputerDisplay, localComputerVncUrl, withLocalComputerUse } from "./local-computer-use.js";
 
 export type ProductionBoxControlClient = BoxPingControlClient &
   BoxEnvironmentControlClient &
@@ -85,15 +85,18 @@ function createStandaloneProductionBoxInner<
   Accessor extends ShellAccessor & FileTransferAccessor
 >(
   loopback: ReturnType<typeof createSandBox<Accessor>>,
-  withNoMonitorComputerUse: (accessor: Accessor) => Accessor
+  withNoMonitorComputerUse: (accessor: Accessor, agentId: string) => Accessor
 ): ProductionBoxInner {
   return {
     ensureReady: async (ctx, agentId) => {
       const primary = await loopback.ensureReady(ctx, agentId);
+      // Each agent owns a virtual desktop; bring it up before handing out its viewer URL so
+      // the first "open computer" already streams instead of showing the no-stream fallback.
+      if (LOCAL_COMPUTER_USE_ENABLED) await ensureLocalComputerDisplay(agentId).catch(() => {});
       return {
         ...primary,
-        remoteAccessor: withNoMonitorComputerUse(primary.remoteAccessor),
-        vncUrl: LOCAL_COMPUTER_USE_ENABLED ? (localComputerVncUrl() ?? "") : "",
+        remoteAccessor: withNoMonitorComputerUse(primary.remoteAccessor, agentId),
+        vncUrl: LOCAL_COMPUTER_USE_ENABLED ? (localComputerVncUrl(agentId) ?? "") : "",
       };
     },
     runState: () => loopback.runState(),
@@ -220,7 +223,7 @@ export function createProductionBoxInner<
     return createStandaloneProductionBoxInner(
       loopback,
       LOCAL_COMPUTER_USE_ENABLED
-        ? accessor => withLocalComputerUse(accessor)
+        ? (accessor, agentId) => withLocalComputerUse(accessor, agentId)
         : accessor => generated.withNoMonitorComputerUse(accessor)
     );
   }
