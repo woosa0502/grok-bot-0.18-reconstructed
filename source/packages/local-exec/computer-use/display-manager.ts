@@ -44,6 +44,8 @@ export class LocalDisplayManager {
   private x11vnc: ReturnType<typeof spawn> | undefined;
   private websockify: ReturnType<typeof spawn> | undefined;
   private vncUrlValue: string | undefined;
+  private vncWatch: NodeJS.Timeout | undefined;
+  private vncHealing = false;
 
   constructor(options: LocalDisplayManagerOptions = {}) {
     this.displayNumber = options.displayNumber ?? 99;
@@ -133,28 +135,13 @@ export class LocalDisplayManager {
       this.log("[local-computer] x11vnc/websockify not installed; VNC viewer disabled");
       return;
     }
-    const vncEnv: NodeJS.ProcessEnv = { ...process.env, DISPLAY: this.display };
-    delete vncEnv.WAYLAND_DISPLAY;
-    delete vncEnv.XDG_SESSION_TYPE;
-    this.log(`[local-computer] starting x11vnc on ${this.display} (rfb ${this.rfbPort})`);
-    // -localhost is load-bearing (A11): this VNC server is passwordless
-    // (-nopw) and can drive the desktop, so it must never listen beyond
-    // loopback — without it, anyone on the LAN could watch and control the
-    // user's sessions. The app's own viewer connects via 127.0.0.1 only.
-    this.x11vnc = spawn(
-      "x11vnc",
-      ["-display", this.display, "-nopw", "-forever", "-shared", "-localhost", "-rfbport", String(this.rfbPort), "-quiet", "-noxdamage"],
-      { env: vncEnv, detached: true, stdio: "ignore" },
-    );
-    this.x11vnc.unref();
-    await delay(800);
-    this.log(`[local-computer] starting websockify(noVNC) on ${this.novncPort} -> ${this.rfbPort}`);
-    this.websockify = spawn(
-      "websockify",
-      [`--web=${this.novncWebRoot}`, `127.0.0.1:${this.novncPort}`, `localhost:${this.rfbPort}`],
-      { env: vncEnv, detached: true, stdio: "ignore" },
-    );
-    this.websockify.unref();
+    // A previous host instance may have left its (detached) x11vnc/websockify serving
+    // this display; a second x11vnc on the same rfb port would just exit. Adopt what is
+    // listening and let the watchdog below take over once it goes away.
+    if (await this.isListening(this.rfbPort)) this.log(`[local-computer] adopting x11vnc already listening on ${this.rfbPort}`);
+    else { this.spawnX11vnc(); await delay(800); }
+    if (await this.isListening(this.novncPort)) this.log(`[local-computer] adopting websockify already listening on ${this.novncPort}`);
+    else this.spawnWebsockify();
     // Publish the URL only after the noVNC port actually accepts connections;
     // a URL that never readies stays unpublished (the UI keeps its fallback).
     if (await this.waitForTcp(this.novncPort, 8_000)) {
@@ -162,6 +149,96 @@ export class LocalDisplayManager {
     } else {
       this.log(`[local-computer] websockify did not start listening on ${this.novncPort}; VNC viewer URL withheld`);
     }
+    this.watchVnc();
+  }
+
+  private vncEnv(): NodeJS.ProcessEnv {
+    // x11vnc bails if it thinks the session is Wayland (WSLg exports WAYLAND_DISPLAY).
+    const vncEnv: NodeJS.ProcessEnv = { ...process.env, DISPLAY: this.display };
+    delete vncEnv.WAYLAND_DISPLAY;
+    delete vncEnv.XDG_SESSION_TYPE;
+    return vncEnv;
+  }
+
+  private spawnX11vnc(): void {
+    this.log(`[local-computer] starting x11vnc on ${this.display} (rfb ${this.rfbPort})`);
+    // -localhost is load-bearing (A11): this VNC server is passwordless
+    // (-nopw) and can drive the desktop, so it must never listen beyond
+    // loopback — without it, anyone on the LAN could watch and control the
+    // user's sessions. The app's own viewer connects via 127.0.0.1 only.
+    // -xdamage plus 5 ms defer/wait roughly halves screen-update latency versus
+    // the 20 ms defaults (measured 88 ms → 33 ms through the phone viewer);
+    // -nap backs off while the desktop is idle.
+    const child = spawn(
+      "x11vnc",
+      ["-display", this.display, "-nopw", "-forever", "-shared", "-localhost", "-rfbport", String(this.rfbPort), "-quiet", "-xdamage", "-defer", "5", "-wait", "5", "-nap"],
+      { env: this.vncEnv(), detached: true, stdio: "ignore" },
+    );
+    child.unref();
+    child.once("exit", (code, signal) => {
+      if (this.x11vnc === child) this.x11vnc = undefined;
+      this.log(`[local-computer] x11vnc exited (${code ?? signal ?? "?"}); the watchdog restarts it`);
+    });
+    this.x11vnc = child;
+  }
+
+  private spawnWebsockify(): void {
+    this.log(`[local-computer] starting websockify(noVNC) on ${this.novncPort} -> ${this.rfbPort}`);
+    const child = spawn(
+      "websockify",
+      [`--web=${this.novncWebRoot}`, `127.0.0.1:${this.novncPort}`, `localhost:${this.rfbPort}`],
+      { env: this.vncEnv(), detached: true, stdio: "ignore" },
+    );
+    child.unref();
+    child.once("exit", (code, signal) => {
+      if (this.websockify === child) this.websockify = undefined;
+      this.log(`[local-computer] websockify exited (${code ?? signal ?? "?"}); the watchdog restarts it`);
+    });
+    this.websockify = child;
+  }
+
+  /**
+   * Keeps the viewer alive for the life of the host: an x11vnc (ours or an adopted orphan)
+   * that dies used to leave the computer screen black until the app was restarted.
+   */
+  private watchVnc(): void {
+    if (this.vncWatch !== undefined) return;
+    this.vncWatch = setInterval(() => { void this.healVnc(); }, 3_000);
+    this.vncWatch.unref();
+  }
+
+  private async healVnc(): Promise<void> {
+    if (this.vncHealing) return;
+    this.vncHealing = true;
+    try {
+      if (!(await this.isDisplayReady())) return; // nothing to serve; Xvfb itself is not ours to revive here
+      if (!(await this.isListening(this.rfbPort))) {
+        this.log(`[local-computer] x11vnc is not listening on ${this.rfbPort}; restarting`);
+        // A bare X server shows the "X" root cursor; re-assert the arrow with the server.
+        await this.run("xsetroot", ["-cursor_name", "left_ptr"]).catch(() => {});
+        this.spawnX11vnc();
+        await delay(800);
+      }
+      if (!(await this.isListening(this.novncPort))) {
+        this.log(`[local-computer] websockify is not listening on ${this.novncPort}; restarting`);
+        this.spawnWebsockify();
+        if (await this.waitForTcp(this.novncPort, 8_000)) {
+          this.vncUrlValue = `http://127.0.0.1:${this.novncPort}/vnc.html?autoconnect=1&resize=scale&path=websockify`;
+        }
+      }
+    } catch (error) {
+      this.log(`[local-computer] VNC watchdog: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.vncHealing = false;
+    }
+  }
+
+  private isListening(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = connect({ host: "127.0.0.1", port }, () => { socket.destroy(); resolve(true); });
+      socket.once("error", () => { socket.destroy(); resolve(false); });
+      socket.setTimeout(1_000, () => { socket.destroy(); resolve(false); });
+    });
   }
 
   private waitForTcp(port: number, timeoutMs: number): Promise<boolean> {
@@ -201,6 +278,7 @@ export class LocalDisplayManager {
   }
 
   dispose(): void {
+    if (this.vncWatch !== undefined) { clearInterval(this.vncWatch); this.vncWatch = undefined; }
     try { this.websockify?.kill("SIGKILL"); } catch {}
     try { this.x11vnc?.kill("SIGKILL"); } catch {}
     try { this.wm?.kill("SIGKILL"); } catch {}
