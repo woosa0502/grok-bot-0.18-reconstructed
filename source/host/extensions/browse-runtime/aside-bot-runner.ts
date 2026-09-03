@@ -8,6 +8,10 @@ import { parseSuspensionAnswer } from "./browse-subagent-session.js";
 export const ASIDE_BOT_RUNTIME = "aside-browse";
 const LINK_FILENAME = "browse-runtime.json";
 const POLL_MS = 1_000;
+// The service runs the cheap default model (luna). When a fresh task fails outright, retry it once with the
+// strong model instead of handing the user an error. SAND_ASIDE_BROWSE_FALLBACK_MODEL=off disables the retry.
+const FALLBACK_MODEL = process.env.SAND_ASIDE_BROWSE_FALLBACK_MODEL?.trim() || "gpt-5.5";
+const FALLBACK_THINKING = process.env.SAND_ASIDE_BROWSE_FALLBACK_THINKING?.trim() || "high";
 
 interface BotLink { browseId: string; pendingKind: string | null }
 
@@ -101,6 +105,7 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
     stopped = false;
     const client = deps.client();
     let link = readLink(agentId);
+    let freshTask = false, retried = false;
     try {
       if (link !== null && link.pendingKind !== null) {
         await client.answer(link.browseId, parseSuspensionAnswer(link.pendingKind, text));
@@ -111,7 +116,7 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         deps.log(`[browse-runtime] bot ${agentId}: continued ${link.browseId}`);
       } else {
         const created = await client.create({ task: text });
-        link = { browseId: created.id, pendingKind: null }; writeLink(agentId, link);
+        link = { browseId: created.id, pendingKind: null }; writeLink(agentId, link); freshTask = true;
         deps.log(`[browse-runtime] bot ${agentId}: started ${created.id}`);
       }
     } catch (error) {
@@ -138,6 +143,16 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         return result(view.result ?? "", 1);
       }
       if (view.status === "error") {
+        if (freshTask && !retried && FALLBACK_MODEL !== "off") {
+          retried = true;
+          deps.log(`[browse-runtime] bot ${agentId}: ${link.browseId} failed (${view.error ?? "unknown"}); retrying with ${FALLBACK_MODEL}/${FALLBACK_THINKING}`);
+          try {
+            const created = await client.create({ task: text, model: FALLBACK_MODEL, thinking: FALLBACK_THINKING });
+            link = { browseId: created.id, pendingKind: null }; writeLink(agentId, link);
+            send({ type: "text", content: `[브라우저 봇] 기본 모델이 실패해서 ${FALLBACK_MODEL}(으)로 다시 시도합니다. (${view.error ?? "unknown error"})` });
+            continue;
+          } catch (error) { deps.log(`[browse-runtime] bot ${agentId}: fallback start failed: ${error instanceof Error ? error.message : String(error)}`); }
+        }
         const message = `[브라우저 봇 오류] ${view.error ?? "unknown error"}`;
         send({ type: "text", content: message });
         await replyToSender(message);
