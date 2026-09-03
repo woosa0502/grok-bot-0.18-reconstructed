@@ -28,7 +28,7 @@ import type {
   PromptSnapshotStore,
 } from "./system-prompt-assembly.js";
 import type { SummarizationPromptSession } from "../../packages/agent-summarization/summarization-handler.js";
-import { createProviderPromptSession, type CodexReasoningEffort } from "../extensions/inference/provider-session.js";
+import { createProviderPromptSession, openAiCompatibleHostForModel, type CodexReasoningEffort } from "../extensions/inference/provider-session.js";
 import { getSandRootDir } from "../host-paths.js";
 import { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { AgentProfilePromptSnapshot } from "./sand-agent-profile-prompt.js";
@@ -158,6 +158,15 @@ export interface TurnAgentRunContext<ContextValue> {
  * shell-watch state/blob/box wiring all happen once per turn; disposal is
  * idempotent and releases an uncommitted reminder episode.
  */
+// Context compaction on the local (non-Cursor) path used to fall through to the turn model
+// (gpt-5.5/high): ~130 summaries a day over ~45k tokens each. Summaries need no tools, so the
+// cheap model does them; override with SAND_CODEX_SUMMARY_MODEL / SAND_CODEX_SUMMARY_EFFORT.
+const LOCAL_SUMMARY_MODEL = process.env.SAND_CODEX_SUMMARY_MODEL?.trim() || "gpt-5.6-luna";
+const LOCAL_SUMMARY_REASONING: CodexReasoningEffort = ((): CodexReasoningEffort => {
+  const effort = process.env.SAND_CODEX_SUMMARY_EFFORT?.trim();
+  return effort === "minimal" || effort === "low" || effort === "medium" || effort === "high" || effort === "xhigh" ? effort : "medium";
+})();
+
 export async function createTurnAgentRunContext<ContextValue>(
   input: TurnAgentRunContextInput<ContextValue>,
 ): Promise<TurnAgentRunContext<ContextValue>> {
@@ -207,17 +216,27 @@ export async function createTurnAgentRunContext<ContextValue>(
     const effort = reasoningEffortFromSelection(agentSelection);
     return effort === "minimal" || effort === "low" || effort === "medium" || effort === "high" || effort === "xhigh" ? effort : undefined;
   })();
-  const agent = inferenceProvider === "cursor"
+  // A per-bot model id that names an OpenAI-compatible host ("nvidia/…") routes that bot through
+  // the openrouter executor regardless of the global provider, so one roster bot can run on a free
+  // or cheaper host while the rest stay on Codex.
+  const routedHost = openAiCompatibleHostForModel(resolvedModelId);
+  const turnProvider: typeof inferenceProvider = routedHost === undefined ? inferenceProvider : "openrouter";
+  const agent = turnProvider === "cursor"
     ? input.inference.createSession(input.onRequestId, sessionOptions)
-    : createProviderPromptSession(inferenceProvider, resolvedModelId, resolvedReasoning, input.conversationId) as unknown as TurnAgentPromptSession;
-  const summarizationSession = inferenceProvider === "cursor" ? input.inference.createSummarizationSession?.(
+    : createProviderPromptSession(turnProvider, resolvedModelId, resolvedReasoning, input.conversationId) as unknown as TurnAgentPromptSession;
+  const summarizationSession = turnProvider === "cursor" ? input.inference.createSummarizationSession?.(
     input.onRequestId,
     {
       modelId: SAND_SUMMARIZATION_MODEL_ID,
       isSummarizationSession: true,
       ...(input.lineage === undefined ? {} : { lineage: input.lineage }),
     },
-  ) : createProviderPromptSession(inferenceProvider) as unknown as SummarizationPromptSession;
+  ) : createProviderPromptSession(
+    turnProvider,
+    routedHost === undefined ? LOCAL_SUMMARY_MODEL : resolvedModelId, // a routed bot summarizes on its own (free) host
+    LOCAL_SUMMARY_REASONING,
+    `${input.conversationId}:summary`,
+  ) as unknown as SummarizationPromptSession;
   const summarization = summarizationSession ?? input.inference.createSession(
     input.onRequestId,
     {

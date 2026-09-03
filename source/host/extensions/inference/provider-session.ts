@@ -63,6 +63,41 @@ function openRouterCredential(): string {
   return value;
 }
 
+/**
+ * OpenAI-compatible hosts reachable through the "openrouter" executor, selected by a model-id
+ * prefix so a single bot can run on a different host than the global provider:
+ * "nvidia/deepseek-ai/deepseek-v4-flash-0731" → NVIDIA NIM (free tier), model "deepseek-ai/…".
+ * A bare model id ("openai/gpt-5.2") keeps going to OpenRouter.
+ */
+interface OpenAiCompatibleTarget { readonly name: string; readonly baseURL: string; readonly modelId: string; readonly apiKey: () => string; readonly headers?: Record<string, string> }
+const OPENAI_COMPATIBLE_HOSTS: Record<string, { baseURL: string; keyName: string; hint: string }> = {
+  nvidia: { baseURL: "https://integrate.api.nvidia.com/v1", keyName: "NVIDIA_API_KEY", hint: "build.nvidia.com → Get API Key; put it in the env or the secrets store as NVIDIA_API_KEY." },
+};
+export function openAiCompatibleHostForModel(modelId: string | undefined): string | undefined {
+  const prefix = modelId?.split("/", 1)[0];
+  return prefix !== undefined && prefix in OPENAI_COMPATIBLE_HOSTS ? prefix : undefined;
+}
+function resolveOpenAiCompatibleTarget(requestedModelId: string | undefined): OpenAiCompatibleTarget {
+  const host = openAiCompatibleHostForModel(requestedModelId);
+  if (host !== undefined && requestedModelId !== undefined) {
+    const spec = OPENAI_COMPATIBLE_HOSTS[host]!;
+    return {
+      name: host, baseURL: spec.baseURL, modelId: requestedModelId.slice(host.length + 1),
+      apiKey: () => {
+        const value = process.env[spec.keyName]?.trim() || persistedSecrets()[spec.keyName]?.trim();
+        if (value == null || value.length === 0) throw new Error(`${host} needs ${spec.keyName}. ${spec.hint}`);
+        return value;
+      },
+    };
+  }
+  return {
+    name: "openrouter", baseURL: "https://openrouter.ai/api/v1",
+    modelId: requestedModelId?.trim() || process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2",
+    apiKey: openRouterCredential,
+    headers: { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" },
+  };
+}
+
 function providerPrompt(messages: readonly ProviderMessage[], systemPrompt?: string): string {
   const rendered = messages.map(message => {
     const content = typeof message.content === "string" ? message.content : JSON.stringify(message.content);
@@ -263,15 +298,16 @@ function openRouterExecutor(
   executeTool?: RoutedToolExecutor,
   onUsage?: (usage: UsageRecord) => void,
   systemPrompt?: string,
+  requestedModelId?: string,
 ) {
-  const id = process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
+  const target = resolveOpenAiCompatibleTarget(requestedModelId);
   const model: LanguageModelV1 = createOpenAI({
-    apiKey: openRouterCredential(),
-    baseURL: "https://openrouter.ai/api/v1",
+    apiKey: target.apiKey(),
+    baseURL: target.baseURL,
     compatibility: "compatible",
-    name: "openrouter",
-    headers: { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" },
-  }).chat(id as any);
+    name: target.name,
+    ...(target.headers === undefined ? {} : { headers: target.headers }),
+  }).chat(target.modelId as any);
   const tools = toToolSet(definitions, executeTool);
   const result = streamText({
     model,
@@ -354,7 +390,7 @@ class ProviderPromptExecutor implements PromptExecutor {
       );
     }
     if (this.provider === "claude-code") return claudeExecutor(this.getMessages(), invocationId, this.onUsage);
-    return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage);
+    return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, undefined, modelFromContext(ctx) ?? this.modelId);
   }
 }
 
@@ -369,7 +405,7 @@ export function createProviderPromptSession(
     ? requested || configuredCodexModel()
     : provider === "claude-code"
       ? "claude-code"
-      : process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
+      : requested || process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
   return {
     getModelId: () => modelId,
     getExecutor: state => {
@@ -404,7 +440,7 @@ export async function runRoutedProviderText(provider: RoutedProvider, messages: 
     ? codexExecutor(messages, invocationId, options?.tools, onUsage, providerContext(options?.signal, options?.modelId, options?.reasoning, options?.systemPrompt))
     : provider === "claude-code"
       ? claudeExecutor(messages, invocationId, onUsage, options?.mcpServerUrl, options?.systemPrompt)
-      : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage, options?.systemPrompt);
+      : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage, options?.systemPrompt, options?.modelId);
   let text = "";
   for await (const event of result.fullStream) {
     if (event.type === "text-delta" && typeof event.textDelta === "string") {
