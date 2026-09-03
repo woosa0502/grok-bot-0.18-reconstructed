@@ -177,6 +177,7 @@ export function createTurnSettle(
   }
 
   let observedSummaryArchiveCount = 0;
+  let summaryArchivesAtTurnStart = 0;
   let transcriptPersistenceEnabled = true;
   let tokenDetailsPersistenceState:
     | { readonly kind: "fresh" }
@@ -191,6 +192,7 @@ export function createTurnSettle(
     enableTranscriptPersistence = true,
   ): void {
     observedSummaryArchiveCount = baseState.summaryArchives.length;
+    summaryArchivesAtTurnStart = baseState.summaryArchives.length;
     transcriptPersistenceEnabled = enableTranscriptPersistence;
   }
 
@@ -309,8 +311,13 @@ export function createTurnSettle(
     }));
 
     if (!host.isSubagentRunner && !args.hidden) {
+      // A mid-turn compaction replaces the history with a summary: the opening acknowledgement is
+      // no longer visible in the prompt messages, but the collectors still know it was sent.
+      const compactedThisTurn =
+        args.finalState.summaryArchives.length > summaryArchivesAtTurnStart;
       endedOnSilentToolCalls = turnEndedOnSilentToolCalls(
         host.latestPromptMessages(),
+        { deliveredBeforeVisibleHistory: compactedThisTurn && sentMessageCount > 0 },
       );
     }
 

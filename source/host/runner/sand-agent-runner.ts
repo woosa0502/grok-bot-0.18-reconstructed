@@ -596,6 +596,11 @@ export class SandAgentRunner<T = unknown> {
     return this.#latestPromptMessagesGetter?.() ?? [];
   }
 
+  /** Bound by the production owner once the turn's tool executor exists; the settle step reads it. */
+  setLatestPromptMessagesGetter(getter: (() => readonly unknown[]) | undefined): void {
+    this.#latestPromptMessagesGetter = getter;
+  }
+
   get isComputerUseSubagent(): boolean {
     return this.isSubagentRunner
       && this.subagentType != null

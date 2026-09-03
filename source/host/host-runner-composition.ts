@@ -3017,6 +3017,16 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               ? {}
               : { ackToken: runOptions.ackToken }),
             canUseSelfSummary: () => true,
+            // Reconstruction gap: the settle host reads runner.getLatestPromptMessages() to detect a
+            // turn that acknowledged, worked and never reported (closing send nudge), but nothing ever
+            // handed the runner the executor's message getter, so the detector always saw [] and the
+            // nudge never fired. Bind it to the runner that owns this turn (child or parent).
+            onLatestPromptMessages: (getter: () => readonly unknown[]) => {
+              const owner = (turnConversationId !== session.id
+                ? runnerByConversationId.get(turnConversationId)
+                : builtRunner) as { setLatestPromptMessagesGetter?: (g: () => readonly unknown[]) => void } | undefined;
+              owner?.setLatestPromptMessagesGetter?.(getter);
+            },
             cancelThisRun: reason => {
               // Interrupt the runner that OWNS this turn: the child runner for a subagent turn
               // (turnConversationId !== session.id), the parent's builtRunner otherwise. Using

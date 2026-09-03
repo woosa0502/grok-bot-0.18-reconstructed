@@ -1,6 +1,7 @@
 import { isInjectedReminderMessage } from "./send-message-reminder-middleware.js";
 import { SAND_REACT_TO_MESSAGE_TOOL_NAME } from "./tools/sand-reaction-tool.js";
 import { SAND_SEND_MESSAGE_TOOL_NAME } from "./tools/send-message-tool.js";
+import { SAND_UPDATE_STATE_TOOL_NAME } from "./tools/sand-state-tool.js";
 
 export const DELIVERY_TOOL_NAMES = new Set([
   SAND_SEND_MESSAGE_TOOL_NAME,
@@ -99,10 +100,31 @@ export function isBlankAssistantMessage(message: CoreMessage): boolean {
   );
 }
 
+export const BOOKKEEPING_TOOL_NAMES = new Set([SAND_UPDATE_STATE_TOOL_NAME, "TodoWrite"]);
+
+export interface SilentTailOptions {
+  /**
+   * The turn delivered (an acknowledgement) and worked before the visible history starts — the
+   * context was compacted mid-turn, so the summary is now the boundary and the earlier
+   * SendMessage is no longer in `rawMessages`. Comes from the settle collectors.
+   */
+  readonly deliveredBeforeVisibleHistory?: boolean;
+}
+
+/**
+ * True when the turn told the user something (usually the opening acknowledgement) and then did
+ * work that never reached them: after the last successful delivery there are non-bookkeeping
+ * tool calls, or the turn ended on plain assistant text (never shown to the user), or the turn was
+ * compacted mid-way and nothing was delivered after the summary. Bookkeeping tools (memory,
+ * todo) after a final SendMessage are not "work". Turns with no delivery at all are the reply
+ * nudge's job, not this detector's.
+ */
 export function turnEndedOnSilentToolCalls(
   rawMessages: readonly unknown[],
+  options: SilentTailOptions = {},
 ): boolean {
   const messages = rawMessages.map(asCoreMessage);
+  const deliveredBefore = options.deliveredBeforeVisibleHistory === true;
   let tailIndex = messages.length - 1;
   while (tailIndex >= 0) {
     const message = messages[tailIndex];
@@ -119,9 +141,12 @@ export function turnEndedOnSilentToolCalls(
   }
 
   const tail = tailIndex >= 0 ? messages[tailIndex] : undefined;
-  if (tail === undefined || tail.role !== "assistant") return false;
-  const tailNames = toolCallNames(tail);
-  if (tailNames.length === 0 || hasDeliveryToolCall(tailNames)) return false;
+  // Nothing (or only the prompt/summary) after the boundary: silent iff the ack happened earlier.
+  if (tail === undefined || tail.role !== "assistant") return deliveredBefore;
+  const erroredIds = erroredToolResultIds(messages);
+  const delivers = (message: CoreMessage): boolean =>
+    deliveryToolCallIds(message).some((id) => !erroredIds.has(id));
+  if (delivers(tail)) return false;
 
   let boundary = -1;
   for (let index = tailIndex - 1; index >= 0; index -= 1) {
@@ -133,21 +158,20 @@ export function turnEndedOnSilentToolCalls(
     }
   }
 
-  const erroredIds = erroredToolResultIds(messages);
-  let ackedFirst = false;
+  let deliveriesAfterBoundary = 0;
+  let workSinceDelivery = 0;
   for (let index = boundary + 1; index <= tailIndex; index += 1) {
     const message = messages[index];
     if (message === undefined || message.role !== "assistant") continue;
-    const names = toolCallNames(message);
-    if (names.length === 0) continue;
-    if (!ackedFirst) {
-      if (!hasDeliveryToolCall(names)) return false;
-      ackedFirst = true;
-    } else if (
-      deliveryToolCallIds(message).some((id) => !erroredIds.has(id))
-    ) {
-      return false;
+    if (delivers(message)) {
+      deliveriesAfterBoundary += 1;
+      workSinceDelivery = 0;
+      continue;
     }
+    workSinceDelivery += toolCallNames(message).filter((name) =>
+      !DELIVERY_TOOL_NAMES.has(name) && !BOOKKEEPING_TOOL_NAMES.has(name)
+    ).length;
   }
-  return ackedFirst;
+  if (deliveredBefore && deliveriesAfterBoundary === 0) return true;
+  return deliveriesAfterBoundary > 0 && workSinceDelivery > 0;
 }
