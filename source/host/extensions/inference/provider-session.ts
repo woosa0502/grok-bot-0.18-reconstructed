@@ -317,7 +317,15 @@ function openRouterExecutor(
     toolCallStreaming: true,
     maxSteps: tools === undefined ? 1 : 8,
   });
-  const extendedUsage = result.usage.then(value => ({
+  // Hosts that omit usage from the stream (NVIDIA NIM without stream_options) hand the SDK NaN
+  // token counts; downstream proto fields are uint32 and reject NaN ("invalid uint 32: NaN").
+  const finite = (value: unknown): number => typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
+  const safeUsage = result.usage.then(value => ({
+    promptTokens: finite(value.promptTokens),
+    completionTokens: finite(value.completionTokens),
+    totalTokens: finite(value.totalTokens) || finite(value.promptTokens) + finite(value.completionTokens),
+  }));
+  const extendedUsage = safeUsage.then(value => ({
     inputTokens: value.promptTokens,
     outputTokens: value.completionTokens,
     cacheReadTokens: 0,
@@ -328,7 +336,7 @@ function openRouterExecutor(
   return {
     fullStream: result.fullStream,
     response: result.response,
-    usage: result.usage,
+    usage: safeUsage,
     extendedUsage,
     providerMetadata: result.providerMetadata,
     invocationId: Promise.resolve(invocationId),

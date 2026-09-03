@@ -34,6 +34,10 @@ import {
   stampBoxRequestEntry,
   type SendMessage,
 } from "./send-message-shaping.js";
+import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
+import { getSandRootDir } from "../../host-paths.js";
+import { join } from "node:path";
+import { openAiCompatibleHostForModel } from "../inference/provider-session.js";
 import { nextEntryId } from "./transcript-entry-ids.js";
 import type {
   TranscriptEntry,
@@ -139,6 +143,8 @@ export function connectCodeOf(error: unknown): string | undefined {
 }
 
 export interface TurnResult {
+  /** Final plain assistant text of the run (never shown to the user by itself). */
+  text?: string;
   sentMessageCount: number;
   reacted: boolean;
   aborted: boolean;
@@ -531,6 +537,16 @@ export class TurnRuntime {
     }
   }
 
+  /** True for a bot whose model id names an OpenAI-compatible host (see provider-session). */
+  isPlainTextDeliveryBot(agentId: string): boolean {
+    try {
+      const selection = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getAgentModelForAgentId(agentId);
+      return openAiCompatibleHostForModel(selection?.modelId) !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
   async ensureUserReply(
     runner: AgentRunner,
     result: TurnResult,
@@ -550,6 +566,27 @@ export class TurnRuntime {
     let attempts = 0;
     let delivered = !isDeliveryOwed(result);
     let streamOutputProduced = result.streamOutputProduced === true;
+    // Bots routed to an OpenAI-compatible host (nvidia/…) answer in plain text more often than they
+    // call SendMessage, and each nudge there costs minutes of queueing. Their final plain text IS the
+    // answer, so deliver it as the message instead of nudging. Codex bots keep the nudge path: their
+    // trailing plain text is usually an internal note, not an answer.
+    const plainText = typeof latest.text === "string" ? latest.text.trim() : "";
+    if (
+      !delivered &&
+      plainText.length > 0 &&
+      !latest.aborted &&
+      this.isPlainTextDeliveryBot(session.id) &&
+      typeof (runner as { emitUpdate?: unknown }).emitUpdate === "function"
+    ) {
+      (runner as unknown as { emitUpdate: (update: unknown) => void }).emitUpdate({
+        type: "send-message",
+        message: { type: "text", content: plainText },
+        timestampMs: Date.now(),
+      });
+      latest = { ...latest, sentMessageCount: latest.sentMessageCount + 1 };
+      delivered = true;
+      setTurnTraceAttributes(turnTrace, { "sand.plain_text_delivery": true });
+    }
     while (
       isDeliveryOwed(latest) &&
       attempts < MAX_REPLY_NUDGES &&

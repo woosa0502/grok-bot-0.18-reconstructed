@@ -25,3 +25,12 @@ test("the provider session honours the requested model on the openrouter path an
   assert.match(session, /openRouterExecutor\(this\.getMessages\(\), invocationId, definitions, undefined, this\.onUsage, undefined, modelFromContext\(ctx\) \?\? this\.modelId\)/);
   assert.match(session, /modelId: requestedModelId\.slice\(host\.length \+ 1\)/, "the host prefix is stripped before the request");
 });
+
+test("a routed bot's final plain text is delivered as its message instead of being nudged; token counts are sanitized", () => {
+  const runtime = read("source/host/extensions/transcript/turn-runtime.ts");
+  assert.match(runtime, /this\.isPlainTextDeliveryBot\(session\.id\)/);
+  assert.match(runtime, /message: \{ type: "text", content: plainText \}/);
+  assert.match(runtime, /return openAiCompatibleHostForModel\(selection\?\.modelId\) !== undefined;/);
+  const session = read("source/host/extensions/inference/provider-session.ts");
+  assert.match(session, /promptTokens: finite\(value\.promptTokens\)/);
+});
