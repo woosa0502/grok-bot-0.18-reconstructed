@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
-import { getKnowledgeIndex } from "./runner/knowledge-store.js";
+import { getKnowledgeIndex, readKnowledgePage } from "./runner/knowledge-store.js";
 import { ASIDE_BROWSE_ENABLED, createAsideBrowseSubagentConfig, isAsideBrowseSubagentType } from "./extensions/browse-runtime/subagent-config.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
@@ -2334,7 +2334,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       }),
       createKnowledgeSearchToolInputs: () => {
         const index = getKnowledgeIndex();
-        return index === undefined ? undefined : { index };
+        return index === undefined ? undefined : { index, readPage: (path: string) => readKnowledgePage(index.dir, path) };
       },
       createBoxAwaitToolInputs: (turn, _props): TurnAwaitToolFactoryInput => ({
         resourceAccessor: (() => {

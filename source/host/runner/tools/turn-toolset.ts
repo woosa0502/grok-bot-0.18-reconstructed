@@ -756,6 +756,7 @@ export interface TurnStateToolFactoryInput {
 /** Read-only search over the user's knowledge store (sites/ playbooks, rules/, lessons/). */
 export interface TurnKnowledgeSearchToolFactoryInput {
   readonly index: KnowledgeIndexLike;
+  readonly readPage: (path: string) => string | null;
 }
 
 export interface TurnSubagentManagementToolFactoryInput {
@@ -1226,7 +1227,7 @@ export function createTurnStateToolFactory(
 export function createTurnKnowledgeSearchToolFactory(
   input: TurnKnowledgeSearchToolFactoryInput,
 ): () => TurnTool {
-  return () => asTurnTool(createKnowledgeSearchTool({ index: input.index }));
+  return () => asTurnTool(createKnowledgeSearchTool({ index: input.index, readPage: input.readPage }));
 }
 
 export function createTurnSubagentManagementToolFactory(

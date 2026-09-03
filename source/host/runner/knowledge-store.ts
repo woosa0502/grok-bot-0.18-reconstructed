@@ -2,8 +2,8 @@
 // Lives under <sand root>/knowledge (override with SAND_KNOWLEDGE_DIR). Searched offline with SQLite FTS5;
 // Korean is handled by indexing CJK bigrams next to unicode61 tokens so two-syllable words still match.
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, basename } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join, basename, sep } from "node:path";
 import { getSandRootDir } from "../host-paths.js";
 
 export const KNOWLEDGE_SUBDIRS = ["sites", "rules", "lessons"] as const;
@@ -106,6 +106,15 @@ export function getKnowledgeIndex(): KnowledgeIndex | undefined {
   if (shared === undefined || shared.dir !== dir) shared = new KnowledgeIndex(dir);
   return shared;
 }
+const PAGE_MAX_CHARS = 16_000;
+/** Returns a page's content when the path is a markdown file inside the store (symlinks resolved), else null. */
+export function readKnowledgePage(dir: string, requested: string): string | null {
+  let root: string, target: string;
+  try { root = realpathSync(dir); target = realpathSync(requested); } catch { return null; }
+  if (!target.endsWith(".md") || !(target === root || target.startsWith(root + sep))) return null;
+  const text = readFileSync(target, "utf8");
+  return text.length > PAGE_MAX_CHARS ? `${text.slice(0, PAGE_MAX_CHARS)}\n…(truncated)` : text;
+}
 export function ensureKnowledgeDirs(): string { const dir = resolveKnowledgeDir(); for (const sub of KNOWLEDGE_SUBDIRS) mkdirSync(join(dir, sub), { recursive: true }); return dir; }
 
 /** System-prompt paragraph telling every bot where shared browser/site know-how lives and how to use it. */
@@ -115,7 +124,7 @@ export function renderKnowledgeStorePrompt(): string {
   if (!existsSync(dir)) return "";
   return [
     `Knowledge store: shared, durable know-how for web and site work, owned by the user and shared by every assistant. It lives at ${dir}: sites/<domain>.md (direct URLs, step procedures and quirks for one site), rules/ (operating rules for the browser worker), lessons/ (failure post-mortems and measurement records).`,
-    "Before any task that touches a website, call knowledge_search with the site's domain (and the task's key words) and follow a matching sites/ page — its direct URLs save most of the clicking. Read a hit with Read when the snippet is promising. Multi-page web work belongs to the 브라우저 bot (Aside engine); it reads the same store.",
+    "Before any task that touches a website, call knowledge_search with the site's domain (and the task's key words) and follow a matching sites/ page — its direct URLs save most of the clicking. To open a hit, call knowledge_search again with read_path (the store is host-only, so Read refuses it). Multi-page web work belongs to the 브라우저 bot (Aside engine); it reads the same store.",
     "The store is curated by measurement: do not edit sites/ pages yourself. If you learn a durable site quirk, record it in your own memory (update_state) and mention that it belongs in the knowledge store.",
   ].join("\n");
 }
