@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
+import { getKnowledgeIndex } from "./runner/knowledge-store.js";
 import { ASIDE_BROWSE_ENABLED, createAsideBrowseSubagentConfig, isAsideBrowseSubagentType } from "./extensions/browse-runtime/subagent-config.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
@@ -2331,6 +2332,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       createRosterToolInputs: () => ({
         dependencies: { listAgents: agentDirectoryProvider, listGroups: agentGroupsProvider },
       }),
+      createKnowledgeSearchToolInputs: () => {
+        const index = getKnowledgeIndex();
+        return index === undefined ? undefined : { index };
+      },
       createBoxAwaitToolInputs: (turn, _props): TurnAwaitToolFactoryInput => ({
         resourceAccessor: (() => {
           if (turn.remoteBoxResourceAccessor === undefined) {

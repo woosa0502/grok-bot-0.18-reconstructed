@@ -8,6 +8,7 @@ import {
 } from "./sand-agent-profile-prompt.js";
 import { SAND_EXTERNAL_SHELL_TOOL_NAME } from "../sand-activity.js";
 import { toModelVisiblePath } from "../host-paths.js";
+import { renderKnowledgeStorePrompt } from "./knowledge-store.js";
 import {
   isMemoryFreezeEnabled,
   projectMemoryHasFacts,
@@ -192,6 +193,8 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
       }
       const agent = renderMemorySystemPrompt(recall, modelVisibleLocation(store.getLocation()) ?? undefined);
       if (agent.length > 0) parts.push(agent);
+      const knowledge = renderKnowledgeStorePrompt();
+      if (knowledge.length > 0) parts.push(knowledge);
       return { render: parts.join("\n\n"), hasFacts };
     };
     const snapshots = deps.memorySnapshots();

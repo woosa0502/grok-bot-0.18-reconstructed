@@ -1,3 +1,5 @@
+import { createKnowledgeSearchTool } from "./knowledge-search-tool.js";
+import type { KnowledgeIndexLike } from "../knowledge-store.js";
 import {
   SAND_HIDDEN_PROMPT_MARKER,
   SAND_TRUSTED_AUTOMATION_PROMPT_MARKER,
@@ -588,6 +590,7 @@ export interface TurnToolFactories {
   listAgents?(): TurnTool;
   listGroups?(): TurnTool;
   updateState?(): TurnTool;
+  knowledgeSearch?(): TurnTool;
   externalShell?(): TurnTool | undefined;
   externalRead?(): TurnTool;
   externalAwait?(): TurnTool;
@@ -750,6 +753,10 @@ export interface TurnRosterToolFactoryInput {
 export interface TurnStateToolFactoryInput {
   readonly dependencies: SandStateDependencies;
 }
+/** Read-only search over the user's knowledge store (sites/ playbooks, rules/, lessons/). */
+export interface TurnKnowledgeSearchToolFactoryInput {
+  readonly index: KnowledgeIndexLike;
+}
 
 export interface TurnSubagentManagementToolFactoryInput {
   readonly controller: SubagentManagementController<unknown>;
@@ -798,6 +805,7 @@ export interface TurnToolsetFactoryInputs {
   readonly agentManagement?: TurnAgentManagementToolFactoryInput;
   readonly roster?: TurnRosterToolFactoryInput;
   readonly state?: TurnStateToolFactoryInput;
+  readonly knowledgeSearch?: TurnKnowledgeSearchToolFactoryInput;
   readonly subagentManagement?: TurnSubagentManagementToolFactoryInput;
   readonly mcpManagement?: TurnMcpManagementToolFactoryInput;
   readonly cloudAgent?: TurnCloudAgentToolFactoryInput;
@@ -922,6 +930,10 @@ export interface TurnToolsetHostFactoryProvider {
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
   ) => TurnStateToolFactoryInput;
+  readonly createKnowledgeSearchToolInputs?: (
+    turn: TurnToolsetTurnInput,
+    props: TurnToolsetBuildProps,
+  ) => TurnKnowledgeSearchToolFactoryInput | undefined;
   readonly createSubagentManagementToolInputs?: (
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
@@ -1211,6 +1223,11 @@ export function createTurnStateToolFactory(
 ): () => TurnTool {
   return () => asTurnTool(createSandStateTool(input.dependencies));
 }
+export function createTurnKnowledgeSearchToolFactory(
+  input: TurnKnowledgeSearchToolFactoryInput,
+): () => TurnTool {
+  return () => asTurnTool(createKnowledgeSearchTool({ index: input.index }));
+}
 
 export function createTurnSubagentManagementToolFactory(
   input: TurnSubagentManagementToolFactoryInput,
@@ -1253,6 +1270,7 @@ export function createTurnToolsetFactories(
   | "fileTransfer" | "requestBoxHelp" | "generateImage" | "webSearch" | "webFetch" | "externalAwait"
   | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead" | "boxLs" | "boxDelete" | "boxGrep" | "boxEdit" | "boxWrite" | "boxGlob"
   | "sendMessage" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "listAgents" | "listGroups" | "updateState"
+  | "knowledgeSearch"
   | "subagentManagement"
   | "mcpManagement" | "cloudAgent"
 > {
@@ -1350,6 +1368,9 @@ export function createTurnToolsetFactories(
     ...(input.state === undefined
       ? {}
       : { updateState: createTurnStateToolFactory(input.state) }),
+    ...(input.knowledgeSearch === undefined
+      ? {}
+      : { knowledgeSearch: createTurnKnowledgeSearchToolFactory(input.knowledgeSearch) }),
     ...(input.subagentManagement === undefined
       ? {}
       : {
@@ -1472,6 +1493,10 @@ export function createTurnToolsetFactoriesForTurn(
     ...(provider.createStateToolInputs === undefined
       ? {}
       : { state: provider.createStateToolInputs(turn, props) }),
+    ...((() => {
+      const knowledgeSearch = provider.createKnowledgeSearchToolInputs?.(turn, props);
+      return knowledgeSearch === undefined ? {} : { knowledgeSearch };
+    })()),
     ...(provider.createSubagentManagementToolInputs === undefined
       ? {}
       : {
@@ -1640,6 +1665,9 @@ export function buildTurnTools(
       if (updateState !== undefined) tools.push(updateState);
     }
   }
+  // knowledge_search is read-only and useful to every runner, subagents included.
+  const knowledgeSearch = factories.knowledgeSearch?.();
+  if (knowledgeSearch !== undefined) tools.push(knowledgeSearch);
 
   const agentId = host.getConversationId();
   const scoped = (
