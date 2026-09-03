@@ -42,6 +42,24 @@ interface WrapDeps {
   readonly client: () => BrowseClient;
   readonly emitUpdate: (update: RunnerUpdate) => void;
   readonly log: (message: string) => void;
+  /** Belmont's bot-to-bot delivery (transcript.sendToAgent); undefined when the transcript API is unavailable. */
+  readonly sendToAgent?: (toAgentId: string, text: string) => Promise<unknown> | unknown;
+}
+
+const AGENT_WAKE_CUE = "[agent]";
+/** Belmont wakes a bot for an inbound bot-to-bot message with a HIDDEN turn whose prompt starts with "[agent]" and
+ * carries the sender's id and the text (agent-messaging.ts buildAgentInboundWakePrompt). */
+export function parseInboundAgentWake(prompt: string): { fromId: string; fromName: string; text: string } | null {
+  if (!prompt.startsWith(AGENT_WAKE_CUE)) return null;
+  const head = prompt.match(/agents: (.+?) \(id: ([0-9a-fA-F-]{8,})\)\./);
+  const fromName = head?.[1] ?? "";
+  const fromId = head?.[2] ?? "";
+  if (fromName.length === 0 || fromId.length === 0) return null;
+  const lines = prompt.split("\n");
+  const blank = lines.indexOf("");
+  const body = (blank === -1 ? lines.slice(1) : lines.slice(blank + 1)).join("\n").trim();
+  const text = body.startsWith(`${fromName}: `) ? body.slice(fromName.length + 2) : body;
+  return { fromId, fromName, text: text.trim() };
 }
 
 function suspensionWidget(view: BrowseSessionView): Record<string, unknown> & { type: string } {
@@ -71,9 +89,15 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
   const result = (text: string, sent: number): SandAgentRunnerResult => ({ text, sentMessageCount: sent, reacted: false, aborted: false, streamOutputProduced: false });
 
   const run = async (prompt: string, options?: Record<string, unknown>): Promise<SandAgentRunnerResult> => {
-    if (options?.hidden === true) return { text: "", sentMessageCount: 0, reacted: true, aborted: false }; // nudges: nothing owed
-    const text = prompt.trim();
+    const inbound = options?.hidden === true ? parseInboundAgentWake(prompt) : null;
+    if (options?.hidden === true && inbound === null) return { text: "", sentMessageCount: 0, reacted: true, aborted: false }; // nudges: nothing owed
+    const text = inbound === null ? prompt.trim() : inbound.text;
     if (text.length === 0) return result("", 0);
+    const replyToSender = async (message: string) => {
+      if (inbound === null || deps.sendToAgent === undefined) return;
+      try { await deps.sendToAgent(inbound.fromId, message); } catch (error) { deps.log(`[browse-runtime] bot ${agentId}: reply to ${inbound.fromName} failed: ${error instanceof Error ? error.message : String(error)}`); }
+    };
+    if (inbound !== null) deps.log(`[browse-runtime] bot ${agentId}: inbound task from ${inbound.fromName}`);
     stopped = false;
     const client = deps.client();
     let link = readLink(agentId);
@@ -92,7 +116,9 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
       }
     } catch (error) {
       if (link !== null) { writeLink(agentId, null); } // a stale session (service restarted): start over next time
-      send({ type: "text", content: `[브라우저 봇 오류] ${error instanceof Error ? error.message : String(error)}` });
+      const message = `[브라우저 봇 오류] ${error instanceof Error ? error.message : String(error)}`;
+      send({ type: "text", content: message });
+      await replyToSender(message);
       return result("", 1);
     }
     for (;;) {
@@ -102,10 +128,21 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
       if (view.status === "suspended") {
         link.pendingKind = view.suspension?.kind ?? "approval"; writeLink(agentId, link);
         send(suspensionWidget(view));
+        await replyToSender(`[waiting] 사용자 확인이 필요해서 제 대화창에 카드로 물어봤습니다: ${view.suspension?.description ?? view.suspension?.kind ?? ""}`);
         return { ...result("", 1), awaitingUserSelection: true };
       }
-      if (view.status === "done") { send({ type: "text", content: view.result ?? "(작업이 끝났지만 답 문장이 없습니다)" }); return result(view.result ?? "", 1); }
-      if (view.status === "error") { send({ type: "text", content: `[브라우저 봇 오류] ${view.error ?? "unknown error"}` }); return result("", 1); }
+      if (view.status === "done") {
+        const answer = view.result ?? "(작업이 끝났지만 답 문장이 없습니다)";
+        send({ type: "text", content: answer });
+        await replyToSender(answer);
+        return result(view.result ?? "", 1);
+      }
+      if (view.status === "error") {
+        const message = `[브라우저 봇 오류] ${view.error ?? "unknown error"}`;
+        send({ type: "text", content: message });
+        await replyToSender(message);
+        return result("", 1);
+      }
       if (view.status === "stopped") return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     }

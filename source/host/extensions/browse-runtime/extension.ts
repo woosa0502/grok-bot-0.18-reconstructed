@@ -20,9 +20,10 @@ export interface BrowseRuntimeExtensionApi {
 /** Offers a browser worker whose brain is an Aside session (belmont-browse, local-only) as a Task subagent type. */
 export const browseRuntimeExtension = defineHostExtension<BrowseRuntimeExtensionApi, { log(message: string): void }>({
   id: HostExtensions.BrowseRuntime,
-  dependencies: [],
+  dependencies: [HostExtensions.Transcript],
   start(context) {
     const log = (message: string) => context.host.log(message);
+    const transcript = context.deps[HostExtensions.Transcript] as { sendToAgent?: (fromAgentId: string, toAgentId: string, text: string, images: unknown, priority: boolean) => unknown } | undefined;
     const links: BrowseLinkRegistry = new Map();
     const resolveClient = (): BrowseClient => {
       const client = BrowseClient.fromEnvironment();
@@ -50,7 +51,8 @@ export const browseRuntimeExtension = defineHostExtension<BrowseRuntimeExtension
           else if (typeof options.emitUpdate === "function") options.emitUpdate(update);
           else throw new TypeError("no emitUpdate available for the browse runtime");
         };
-        return wrapRunnerForAsideBot(runner, agentId, { client: resolveClient, emitUpdate, log });
+        const sendToAgent = transcript?.sendToAgent === undefined ? undefined : (toAgentId: string, text: string) => transcript.sendToAgent!(agentId, toAgentId, text, [], false);
+        return wrapRunnerForAsideBot(runner, agentId, { client: resolveClient, emitUpdate, log, ...(sendToAgent === undefined ? {} : { sendToAgent }) });
       },
     };
   },
