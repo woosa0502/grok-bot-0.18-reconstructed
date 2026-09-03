@@ -120,11 +120,21 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         deps.log(`[browse-runtime] bot ${agentId}: started ${created.id}`);
       }
     } catch (error) {
-      if (link !== null) { writeLink(agentId, null); } // a stale session (service restarted): start over next time
-      const message = `[브라우저 봇 오류] ${error instanceof Error ? error.message : String(error)}`;
-      send({ type: "text", content: message });
-      await replyToSender(message);
-      return result("", 1);
+      // Continuing/answering a session the service no longer holds (service restarted): drop the link and
+      // start the text as a fresh task right away instead of making the user resend it.
+      const detail = error instanceof Error ? error.message : String(error);
+      writeLink(agentId, null);
+      try {
+        if (link === null) throw error;
+        deps.log(`[browse-runtime] bot ${agentId}: ${link.browseId} unusable (${detail}); starting a fresh session`);
+        const created = await client.create({ task: text });
+        link = { browseId: created.id, pendingKind: null }; writeLink(agentId, link); freshTask = true;
+      } catch (fresh) {
+        const message = `[브라우저 봇 오류] ${fresh instanceof Error ? fresh.message : String(fresh)}`;
+        send({ type: "text", content: message });
+        await replyToSender(message);
+        return result("", 1);
+      }
     }
     for (;;) {
       if (stopped) return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
