@@ -35,6 +35,7 @@ export interface DispatchUserTurnArgs {
   readonly selectedVideos?: readonly unknown[];
   readonly fileAttachmentPaths: readonly string[];
   readonly attachedFileSizes: ReadonlyMap<string, number>;
+  readonly attachedFileNames?: ReadonlyMap<string, string>;
   readonly traceCtx?: unknown;
   readonly acceptedAtMs: number;
   readonly wasInFlight: boolean;
@@ -65,6 +66,7 @@ export async function dispatchUserTurn(
     selectedVideos,
     fileAttachmentPaths,
     attachedFileSizes,
+    attachedFileNames,
     traceCtx,
     acceptedAtMs,
     wasInFlight,
@@ -160,6 +162,7 @@ export async function dispatchUserTurn(
           selectedVideos,
           attachedFilePaths: fileAttachmentPaths,
           attachedFileSizes,
+          ...(attachedFileNames == null ? {} : { attachedFileNames }),
           messageId: userMessageId,
           recentUserMessages,
           replyContext,

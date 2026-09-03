@@ -715,6 +715,7 @@ function toGeneratedTurnPromptOptions(
     readonly selectedVideos?: readonly unknown[];
     readonly attachedFilePaths?: readonly string[];
     readonly attachedFileSizes?: ReadonlyMap<string, number>;
+    readonly attachedFileNames?: ReadonlyMap<string, string>;
     readonly richText?: string;
     readonly replyContext?: unknown;
     readonly messageId?: string;
@@ -742,6 +743,7 @@ function toGeneratedTurnPromptOptions(
     ...(selectedVideos === undefined ? {} : { selectedVideos }),
     ...(options.attachedFilePaths === undefined ? {} : { attachedFilePaths: options.attachedFilePaths }),
     ...(options.attachedFileSizes === undefined ? {} : { attachedFileSizes: options.attachedFileSizes }),
+    ...(options.attachedFileNames === undefined ? {} : { attachedFileNames: options.attachedFileNames }),
     ...(options.richText === undefined ? {} : { richText: options.richText }),
     ...(options.replyContext === undefined ? {} : { replyContext: options.replyContext }),
     ...(options.messageId === undefined ? {} : { messageId: options.messageId }),

@@ -24,20 +24,44 @@ export function buildAttachedFilesNote(
   filePaths: readonly string[],
   boxPathByHostPath: ReadonlyMap<string, string> = new Map(),
   sizeByPath: ReadonlyMap<string, number> = new Map(),
+  nameByPath: ReadonlyMap<string, string> = new Map(),
 ): string {
   const cleaned = filePaths.map((filePath) => filePath.trim()).filter(Boolean);
   if (cleaned.length === 0) return "";
+  let anyNamed = false;
   const list = cleaned.map((filePath) => {
     const boxPath = boxPathByHostPath.get(filePath);
     const size = sizeByPath.get(filePath);
     const sizeSuffix = size == null ? "" : ` (${formatAttachedFileSize(size)})`;
-    return `\n- ${filePath}${sizeSuffix}${boxPath == null ? "" : ` (also copied into your box at ${boxPath})`}`;
+    // Uploads are stored under a content hash, so the name the user knows is passed alongside the path.
+    const name = attachedFileDisplayName(filePath, nameByPath);
+    if (name != null) anyNamed = true;
+    return `\n- ${name == null ? "" : `"${name}": `}${filePath}${sizeSuffix}${boxPath == null ? "" : ` (also copied into your box at ${boxPath})`}`;
   }).join("");
+  const naming = anyNamed ? " The quoted name is what the user calls that file; use it when you refer to the file." : "";
   const anyStaged = cleaned.some((filePath) => boxPathByHostPath.has(filePath));
   const guidance = anyStaged
     ? 'They live on the user\'s computer, so read them with ExternalRead; the ones marked "also copied into your box" were staged into your box as well, so you can open those with Read at the box path shown.'
     : "They live on the user's computer, so read them with ExternalRead if they're relevant; they are not on your box, so use CopyToBox with the path if you need one there.";
-  return `The user attached ${cleaned.length === 1 ? "a file" : "these files"}. ${guidance}${list}`;
+  return `The user attached ${cleaned.length === 1 ? "a file" : "these files"}. ${guidance}${naming}${list}`;
+}
+
+/** The user-facing name for an uploaded file when it differs from the stored (hashed) file name. */
+export function attachedFileDisplayName(filePath: string, nameByPath: ReadonlyMap<string, string>): string | null {
+  const name = nameByPath.get(filePath)?.trim();
+  if (name == null || name.length === 0) return null;
+  const base = filePath.split(/[\\/]/).pop() ?? filePath;
+  return base === name ? null : name;
+}
+
+/** Images travel as inline image content, so their user-facing names are listed separately. */
+export function buildAttachedImageNamesNote(imagePaths: readonly string[], nameByPath: ReadonlyMap<string, string>): string {
+  const names = imagePaths.flatMap((imagePath) => {
+    const name = attachedFileDisplayName(imagePath, nameByPath);
+    return name == null ? [] : [`"${name}"`];
+  });
+  if (names.length === 0) return "";
+  return `The attached image${names.length === 1 ? " is" : "s are"} ${names.join(", ")} (in the order shown).`;
 }
 
 export interface ReplyContext { readonly targetId: string; readonly quote: string }

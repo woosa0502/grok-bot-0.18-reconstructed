@@ -10,7 +10,7 @@ import {
   type AgentProfilePromptSnapshot,
 } from "./sand-agent-profile-prompt.js";
 import { SAND_HIDDEN_PROMPT_MARKER, SAND_TRUSTED_AUTOMATION_PROMPT_MARKER } from "./sand-prompt-markers.js";
-import { appendUserReplyReminder, buildAttachedFilesNote, buildReplyContextNote, buildUserMessageAddressNote } from "./system-prompt.js";
+import { appendUserReplyReminder, buildAttachedFilesNote, buildAttachedImageNamesNote, buildReplyContextNote, buildUserMessageAddressNote } from "./system-prompt.js";
 import { bytesLookLikeVideoContainer } from "./video-container.js";
 import { collectPrependUserMessages, type ShellTerminalWatchHost } from "./shell-terminal-watch.js";
 import { SAND_BOX_WORKSPACE_ROOT } from "../cloud-agents/cloud-agent-images.js";
@@ -41,6 +41,7 @@ export interface TurnPromptOptions {
   readonly selectedVideos?: readonly SelectedVideo[];
   readonly attachedFilePaths?: readonly string[];
   readonly attachedFileSizes?: ReadonlyMap<string, number>;
+  readonly attachedFileNames?: ReadonlyMap<string, string>;
   readonly richText?: string;
   readonly replyContext?: unknown;
   readonly messageId?: string;
@@ -108,6 +109,7 @@ export interface GeneratedTurnPromptOptions {
   readonly selectedVideos?: readonly GeneratedSelectedVideo[];
   readonly attachedFilePaths?: readonly string[];
   readonly attachedFileSizes?: ReadonlyMap<string, number>;
+  readonly attachedFileNames?: ReadonlyMap<string, string>;
   readonly richText?: string;
   readonly replyContext?: unknown;
   readonly messageId?: string;
@@ -345,8 +347,10 @@ export function createPromptCollectorGlue<Context = unknown>(host: PromptCollect
     const reply = buildReplyContextNote(options.replyContext);
     let text = [address, reply].filter(Boolean).join("\n");
     text = text.length > 0 && args.trimmedPrompt.length > 0 ? `${text}\n${args.trimmedPrompt}` : text || args.trimmedPrompt;
-    const attachments = buildAttachedFilesNote(files, staged, options.attachedFileSizes);
+    const attachments = buildAttachedFilesNote(files, staged, options.attachedFileSizes, options.attachedFileNames);
     if (attachments.length > 0) text = text.length > 0 ? `${text}\n\n${attachments}` : attachments;
+    const imageNames = buildAttachedImageNamesNote((options.selectedImages ?? []).flatMap((image) => image.path == null ? [] : [image.path]), options.attachedFileNames ?? new Map());
+    if (imageNames.length > 0) text = text.length > 0 ? `${text}\n\n${imageNames}` : imageNames;
     const epoch = args.compactionEpoch();
     const reminder = getAutomationStatusReminderForTurn(epoch, options.automationWake?.id);
     const above = options.isSilenceAllowed === true;
@@ -385,8 +389,10 @@ export function createPromptCollectorGlue<Context = unknown>(host: PromptCollect
     const reply = buildReplyContextNote(options.replyContext);
     let text = [address, reply].filter(Boolean).join("\n");
     text = text.length > 0 && args.trimmedPrompt.length > 0 ? `${text}\n${args.trimmedPrompt}` : text || args.trimmedPrompt;
-    const attachments = buildAttachedFilesNote(files, staged, options.attachedFileSizes);
+    const attachments = buildAttachedFilesNote(files, staged, options.attachedFileSizes, options.attachedFileNames);
     if (attachments.length > 0) text = text.length > 0 ? `${text}\n\n${attachments}` : attachments;
+    const imageNames = buildAttachedImageNamesNote((options.selectedImages ?? []).flatMap((image) => image.path == null ? [] : [image.path]), options.attachedFileNames ?? new Map());
+    if (imageNames.length > 0) text = text.length > 0 ? `${text}\n\n${imageNames}` : imageNames;
     const epoch = args.compactionEpoch();
     const reminder = getAutomationStatusReminderForTurn(epoch, options.automationWake?.id);
     const above = options.isSilenceAllowed === true;
