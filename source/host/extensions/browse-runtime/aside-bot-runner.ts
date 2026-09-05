@@ -2,7 +2,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RunnerUpdate, SandAgentRunnerResult } from "../../runner/sand-agent-runner.js";
 import { getSandAgentsRootDir } from "../../storage/agent-paths.js";
-import type { BrowseClient, BrowseSessionView } from "./browse-client.js";
+import type { AsideMessage, BrowseClient, BrowseSessionView } from "./browse-client.js";
 import { parseSuspensionAnswer } from "./browse-subagent-session.js";
 
 export const ASIDE_BOT_RUNTIME = "aside-browse";
@@ -13,7 +13,7 @@ const POLL_MS = 1_000;
 const FALLBACK_MODEL = process.env.SAND_ASIDE_BROWSE_FALLBACK_MODEL?.trim() || "gpt-5.5";
 const FALLBACK_THINKING = process.env.SAND_ASIDE_BROWSE_FALLBACK_THINKING?.trim() || "high";
 
-interface BotLink { browseId: string; pendingKind: string | null }
+interface BotLink { browseId: string; pendingKind: string | null; /** newest Aside message timestamp already shown in the bot chat */ lastSeenTs?: number }
 
 /** A roster bot opts in by carrying `"runtime": "aside-browse"` in its profile.json. */
 export function isAsideBotAgent(agentId: string): boolean {
@@ -66,6 +66,38 @@ export function parseInboundAgentWake(prompt: string): { fromId: string; fromNam
   return { fromId, fromName, text: text.trim() };
 }
 
+/** Aside chats untouched for longer than this are not adopted as "the current chat". */
+const ADOPT_MAX_AGE_MS = 6 * 60 * 60 * 1_000;
+
+/** The chat the user currently has open in the Aside browser: the most recently updated session. */
+async function currentAsideSession(client: BrowseClient): Promise<{ id: string; updatedAt: number } | null> {
+  try {
+    const sessions = await client.asideSessions(1);
+    const s = sessions[0];
+    return s !== undefined && Date.now() - s.updatedAt < ADOPT_MAX_AGE_MS ? { id: s.id, updatedAt: s.updatedAt } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Mirrors messages that appeared in the linked Aside session (typed in the fork's own chat UI) into the bot
+ * chat. Returns the number of lines shown; advances link.lastSeenTs. */
+async function mirrorAsideMessages(agentId: string, link: BotLink, client: BrowseClient, send: (m: Record<string, unknown> & { type: string }) => void, log: (m: string) => void): Promise<number> {
+  let messages: AsideMessage[];
+  try { messages = await client.asideMessages(link.browseId, link.lastSeenTs ?? 0); } catch { return 0; }
+  let shown = 0;
+  for (const m of messages) {
+    if (m.timestamp <= (link.lastSeenTs ?? 0)) continue;
+    link.lastSeenTs = m.timestamp;
+    const text = m.text.trim();
+    if (text.length === 0) continue;
+    send({ type: "text", content: m.role === "user" ? `[Aside에서 입력] ${text}` : text });
+    shown += 1;
+  }
+  if (shown > 0) { writeLink(agentId, link); log(`[browse-runtime] bot ${agentId}: mirrored ${shown} Aside message(s) from ${link.browseId}`); }
+  return shown;
+}
+
 function suspensionWidget(view: BrowseSessionView): Record<string, unknown> & { type: string } {
   const s = view.suspension;
   const request = (s?.request ?? {}) as { questions?: { question?: string; header?: string; options?: ({ label?: string } | string)[] }[] };
@@ -92,9 +124,35 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
   const send = (message: Record<string, unknown> & { type: string }) => deps.emitUpdate({ type: "send-message", message, timestampMs: Date.now() });
   const result = (text: string, sent: number): SandAgentRunnerResult => ({ text, sentMessageCount: sent, reacted: false, aborted: false, streamOutputProduced: false });
 
+  /** No link yet: continue the chat currently open in the Aside browser instead of starting a new one. */
+  const adoptCurrent = async (): Promise<BotLink | null> => {
+    const current = await currentAsideSession(deps.client());
+    if (current === null) return null;
+    const link: BotLink = { browseId: current.id, pendingKind: null, lastSeenTs: 0 };
+    writeLink(agentId, link);
+    deps.log(`[browse-runtime] bot ${agentId}: adopted the current Aside chat ${current.id}`);
+    return link;
+  };
+  /** Follows the user into a newer chat opened in the Aside browser (unless a suspension is pending here). */
+  const followNewest = async (link: BotLink): Promise<BotLink> => {
+    if (link.pendingKind !== null) return link;
+    const current = await currentAsideSession(deps.client());
+    if (current === null || current.id === link.browseId || current.updatedAt <= (link.lastSeenTs ?? 0)) return link;
+    const next: BotLink = { browseId: current.id, pendingKind: null, lastSeenTs: 0 };
+    writeLink(agentId, next);
+    deps.log(`[browse-runtime] bot ${agentId}: following the newer Aside chat ${current.id} (was ${link.browseId})`);
+    return next;
+  };
+
   const run = async (prompt: string, options?: Record<string, unknown>): Promise<SandAgentRunnerResult> => {
     const inbound = options?.hidden === true ? parseInboundAgentWake(prompt) : null;
-    if (options?.hidden === true && inbound === null) return { text: "", sentMessageCount: 0, reacted: true, aborted: false }; // nudges: nothing owed
+    if (options?.hidden === true && inbound === null) {
+      // Nudges: nothing owed, but use them to surface what the user typed in the Aside browser meanwhile.
+      const linked = readLink(agentId);
+      const existing = linked === null ? await adoptCurrent() : await followNewest(linked);
+      const shown = existing === null ? 0 : await mirrorAsideMessages(agentId, existing, deps.client(), send, deps.log);
+      return { text: "", sentMessageCount: shown, reacted: true, aborted: false };
+    }
     const text = inbound === null ? prompt.trim() : inbound.text;
     if (text.length === 0) return result("", 0);
     const replyToSender = async (message: string) => {
@@ -104,7 +162,10 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
     if (inbound !== null) deps.log(`[browse-runtime] bot ${agentId}: inbound task from ${inbound.fromName}`);
     stopped = false;
     const client = deps.client();
-    let link = readLink(agentId);
+    const linked = readLink(agentId);
+    let link = linked === null ? await adoptCurrent() : await followNewest(linked);
+    let mirrored = 0;
+    if (link !== null) mirrored = await mirrorAsideMessages(agentId, link, client, send, deps.log);
     let freshTask = false, retried = false;
     try {
       if (link !== null && link.pendingKind !== null) {
@@ -113,10 +174,11 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         deps.log(`[browse-runtime] bot ${agentId}: answered suspension on ${link.browseId}`);
       } else if (link !== null) {
         await client.continue(link.browseId, text);
+        link.lastSeenTs = Date.now(); writeLink(agentId, link);
         deps.log(`[browse-runtime] bot ${agentId}: continued ${link.browseId}`);
       } else {
         const created = await client.create({ task: text });
-        link = { browseId: created.id, pendingKind: null }; writeLink(agentId, link); freshTask = true;
+        link = { browseId: created.id, pendingKind: null, lastSeenTs: Date.now() }; writeLink(agentId, link); freshTask = true;
         deps.log(`[browse-runtime] bot ${agentId}: started ${created.id}`);
       }
     } catch (error) {
@@ -150,7 +212,9 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         const answer = view.result ?? "(작업이 끝났지만 답 문장이 없습니다)";
         send({ type: "text", content: answer });
         await replyToSender(answer);
-        return result(view.result ?? "", 1);
+        // Keep the mirror cursor past this turn so the bot's own exchange is not echoed back later.
+        try { const tail = await client.asideMessages(link.browseId, 0); const last = tail[tail.length - 1]; if (last !== undefined) { link.lastSeenTs = Math.max(link.lastSeenTs ?? 0, last.timestamp); writeLink(agentId, link); } } catch { /* mirror cursor is best effort */ }
+        return result(view.result ?? "", 1 + mirrored);
       }
       if (view.status === "error") {
         if (freshTask && !retried && FALLBACK_MODEL !== "off") {

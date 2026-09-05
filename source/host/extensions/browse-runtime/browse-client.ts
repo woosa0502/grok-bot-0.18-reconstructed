@@ -13,6 +13,22 @@ export interface BrowseSessionView {
   readonly suspension: { readonly kind: string; readonly description: string; readonly request?: unknown } | null;
 }
 
+export interface AsideSessionSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly status: string | null;
+  readonly unread: boolean;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly projectId: string | null;
+}
+export interface AsideMessage {
+  readonly role: "user" | "assistant";
+  readonly text: string;
+  readonly timestamp: number;
+  readonly id: string | null;
+}
+
 /** Thin HTTP client for belmont-browse's serve.mjs (local, bearer token from its serve.json). */
 export class BrowseClient {
   constructor(readonly baseUrl: string, readonly token: string) {}
@@ -53,4 +69,8 @@ export class BrowseClient {
   /** Sends a follow-up user message into a finished session (same Aside conversation, full context kept). */
   continue(id: string, text: string): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/continue`, { text }); }
   stop(id: string): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/stop`, {}); }
+  /** Sessions the Aside UI in the fork lists as recent chats (newest first). */
+  asideSessions(limit = 20): Promise<AsideSessionSummary[]> { return this.#request("GET", `/aside/sessions?limit=${limit}`); }
+  /** User/assistant messages of an Aside session newer than `since` (ms), oldest first. */
+  asideMessages(id: string, since = 0): Promise<AsideMessage[]> { return this.#request("GET", `/aside/sessions/${id}/messages?since=${since}`); }
 }
