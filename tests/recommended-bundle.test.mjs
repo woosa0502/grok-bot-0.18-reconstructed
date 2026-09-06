@@ -75,10 +75,10 @@ test("SAND_MANAGER_ONLY_CHAT refuses user prompts to worker bots with a visible 
 
 // ---------- 4. durable group-turn wakes ----------
 
-test("a group post persists a group-turn marker that settles only after the turn ran", () => {
+test("a group post persists a group-turn marker that settles only after completed processing", () => {
   const rooms = read("source/host/extensions/transcript/shared-rooms.ts");
   assert.match(rooms, /agentMessage: \{ from: \{ id: fromAgentId, name: member\.name \}, text: message, displayed: true, group: true \}/);
-  assert.match(rooms, /finally \{\s*this\.tm\.pendingWakes\.clearSettledPendingWake\(\{ agentId: groupId, kind: "agent-message", workId: wakeId \}\);/);
+  assert.match(rooms, /if \(result\?\.completed === true && wasStopped\?\.\(\) !== true && this\.tm\.isAgentUserStopped\?\.\(groupId\) !== true\) \{\s*this\.tm\.pendingWakes\.clearSettledPendingWake\(\{ agentId: groupId, kind: "agent-message", workId: wakeId \}\);/);
   const rearm = read("source/host/extensions/transcript/pending-wake-rearm.ts");
   assert.match(rearm, /marker\.agentMessage\?\.group === true/);
   assert.match(rearm, /rerunGroupTurnWake/);

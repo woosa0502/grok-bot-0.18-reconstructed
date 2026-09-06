@@ -10,7 +10,7 @@
   "scripts": {
     "bootstrap": "node scripts/bootstrap-runtime.mjs",
     "build": "node scripts/build.mjs",
-    "check": "npm run typecheck && npm run source:typecheck && npm test",
+    "check": "npm run typecheck && npm run source:typecheck && npm test && npm run mobile:check",
     "frontend:build": "vite build --config frontend/vite.config.ts",
     "frontend:recover": "node scripts/recover-frontend.mjs",
     "native:patch": "node scripts/apply-third-party-patches.mjs",
@@ -31,7 +31,11 @@
     "codex:auth:login": "node scripts/pi-codex-auth.mjs login",
     "codex:auth:logout": "node scripts/pi-codex-auth.mjs logout",
     "codex:models": "node scripts/pi-codex-auth.mjs models",
-    "belmont:manager": "node scripts/setup-belmont-manager.mjs"
+    "belmont:manager": "node scripts/setup-belmont-manager.mjs",
+    "mobile:check": "node scripts/check-mobile-source.mjs",
+    "mobile:build": "npm --prefix grok-mobile-belmont-pwa run build",
+    "frontend:build:audited": "node scripts/build-editable-renderer.mjs",
+    "wsl:setup:editable": "node scripts/setup-editable-wsl.mjs"
   },
   "devDependencies": {
     "@electron/asar": "4.2.1",
@@ -58,6 +62,8 @@
     "@bufbuild/protobuf": "1.10.1",
     "@connectrpc/connect": "1.6.1",
     "@connectrpc/connect-node": "1.6.1",
+    "@earendil-works/pi-ai": "0.84.3",
+    "@earendil-works/pi-coding-agent": "0.84.3",
     "@jimp/core": "1.6.0",
     "@jimp/js-bmp": "1.6.0",
     "@jimp/js-gif": "1.6.0",
@@ -65,6 +71,7 @@
     "@jimp/js-png": "1.6.0",
     "@jimp/js-tiff": "1.6.0",
     "@jimp/plugin-resize": "1.6.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@opentelemetry/api": "1.9.0",
     "@opentelemetry/context-async-hooks": "2.6.1",
     "@opentelemetry/core": "2.2.0",
@@ -133,9 +140,7 @@
     "web-tree-sitter": "0.21.0",
     "ws": "8.20.0",
     "zod": "^3.25.76",
-    "zod-to-json-schema": "3.24.5",
-    "@earendil-works/pi-ai": "0.84.3",
-    "@earendil-works/pi-coding-agent": "0.84.3"
+    "zod-to-json-schema": "3.24.5"
   },
   "overrides": {
     "node-addon-api": "8.5.0",

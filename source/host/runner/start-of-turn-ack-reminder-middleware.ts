@@ -1,9 +1,11 @@
 import {
   countToolCallsSinceLastSendMessage,
+  getUserMessageText,
   isInjectedReminderMessage,
   type MessageLike,
   type PromptExecutor,
 } from "./send-message-reminder-middleware.js";
+import { SAND_HIDDEN_PROMPT_MARKER } from "./sand-prompt-markers.js";
 import { SAND_SEND_MESSAGE_TOOL_NAME } from "./tools/send-message-tool.js";
 
 export const DEFAULT_START_OF_TURN_ACK_THRESHOLD = 1;
@@ -40,11 +42,17 @@ export function hasTextSendMessageCall(message: MessageLike): boolean {
   });
 }
 
+/** A hidden self-initiated wake (routine, nudge, task continuation): nobody is waiting on an opening ack. */
+export function isHiddenPromptMessage(message: MessageLike): boolean {
+  return getUserMessageText(message)?.includes(SAND_HIDDEN_PROMPT_MARKER) ?? false;
+}
+
 export function hasTextSendMessageSinceTurnStart(messages: readonly MessageLike[]): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message == null || isInjectedReminderMessage(message)) continue;
-    if (message.role === "user" || message.role === "system") return false;
+    // The turn boundary. A person opened it → an ack is owed; a hidden wake opened it → nothing is.
+    if (message.role === "user" || message.role === "system") return isHiddenPromptMessage(message);
     if (hasTextSendMessageCall(message)) return true;
   }
   return false;

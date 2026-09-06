@@ -186,9 +186,10 @@ export function createTranscriptionManagerEnsure(deps: {
   let transcriptionManager: SandTranscriptionManager | undefined;
   return async (): Promise<SandTranscriptionManager> => {
     if (transcriptionManager != null) return transcriptionManager;
-    const authService = await deps.ensureCursorAuthService();
     transcriptionManager = new SandTranscriptionManager({
-      getCursorAccessToken: (options) => authService.getValidAccessToken(options),
+      // Local media transcription has its own explicit provider configuration.
+      // Resolve Cursor credentials only when the nonlocal backend actually needs them.
+      getCursorAccessToken: async (options) => (await deps.ensureCursorAuthService()).getValidAccessToken(options),
       getMachineId: deps.getMachineId,
       ...(deps.createClient == null ? {} : { createClient: deps.createClient }),
     });

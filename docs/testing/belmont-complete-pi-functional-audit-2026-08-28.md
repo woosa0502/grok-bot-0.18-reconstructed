@@ -52,7 +52,7 @@
 - `[direct_observation]` 다음 미추적 파일은 다른 작업자의 복원 초안이며 production import가 없어 `CODE_PRESENT_UNINTEGRATED`이다.
 
 ```text
-docs/BELMONT_FUNCTIONAL_COMPLETION_ROADMAP.md
+docs/belmont-functional-completion-roadmap.md
 frontend/src/recovered/runtime/model-catalog-reconciliation.ts
 source/host/runner/recovered-production-stream-retry.ts
 source/host/runner/recovered-video-subagent-configs.ts
@@ -448,7 +448,7 @@ AGT 116,247,248,249,259,260,263,265,319,433,441
 - `STRUCTURE_COMPLETE_UNVERIFIED-2026-08-26.md` — 산술 분류는 재현되나 case-by-case acceptance 주장은 무효.
 - `belmont-reconstructed-tools-test-2026-08-27.md` — 시간순 진단 log로만 유효. 438/823 완료 주장은 축소해야 한다.
 - `belmont-code-review-2026-08-28.md` — useful input이지만 `eb5890b` 기준이고 remediation 후반이 앞부분과 모순된다. 80/80 표기도 폐기한다.
-- 미추적 `BELMONT_FUNCTIONAL_COMPLETION_ROADMAP.md` — Pi 방향은 유효하지만 base가 오래됐고 “Cursor compatibility 유지”는 최신 Codex-only 목표와 충돌한다.
+- 미추적 `belmont-functional-completion-roadmap.md` — Pi 방향은 유효하지만 base가 오래됐고 “Cursor compatibility 유지”는 최신 Codex-only 목표와 충돌한다.
 
 ## 8. 79개 커밋 재검토 원장
 

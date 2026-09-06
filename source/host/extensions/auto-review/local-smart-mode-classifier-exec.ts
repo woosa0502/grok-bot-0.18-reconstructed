@@ -56,6 +56,14 @@ export type LocalSmartModeClassifierDecision =
   | { readonly decision: "block"; readonly blockReason: string; readonly proposedAllowRule?: string };
 
 export const LOCAL_SMART_MODE_CLASSIFIER_DEFAULT_REASONING: CodexReasoningEffort = "low";
+/**
+ * Codex/Pi default for the classifier. The verdict is one small JSON object, and the wrapper
+ * rejects the tool call outright when the budget runs out, so latency is the whole game: on
+ * 2026-09-05 the provider default (gpt-5.5) missed the budget 66 times in five hours and each
+ * miss failed an ordinary Gmail search or shell call with "Please review manually". The cheap
+ * fast tier decides in time; `SAND_AUTO_REVIEW_CLASSIFIER_MODEL` still overrides it.
+ */
+export const LOCAL_SMART_MODE_CLASSIFIER_DEFAULT_CODEX_MODEL = "gpt-5.6-luna";
 export const LOCAL_SMART_MODE_CLASSIFIER_MAX_ARGUMENTS_CHARS = 16_000;
 export const LOCAL_SMART_MODE_CLASSIFIER_MAX_CONTEXT_MESSAGE_CHARS = 4_000;
 export const LOCAL_SMART_MODE_CLASSIFIER_MAX_REASON_CHARS = 500;
@@ -222,21 +230,29 @@ function configuredClassifierModel(): string | undefined {
   return value === undefined || value.length === 0 ? undefined : value;
 }
 
+function defaultClassifierModel(provider: LocalAutoReviewInferenceProvider): string | undefined {
+  return provider === "codex" ? LOCAL_SMART_MODE_CLASSIFIER_DEFAULT_CODEX_MODEL : undefined;
+}
+
 function configuredClassifierReasoning(): CodexReasoningEffort {
   const value = process.env.SAND_AUTO_REVIEW_CLASSIFIER_REASONING?.trim();
-  return value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh"
+  return value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max"
     ? value
     : LOCAL_SMART_MODE_CLASSIFIER_DEFAULT_REASONING;
 }
 
 export function createLocalSmartModeClassifierExecutor(options: LocalSmartModeClassifierExecutorOptions) {
   const { runText } = options;
-  const modelId = options.modelId ?? configuredClassifierModel();
+  const modelId = options.modelId ?? configuredClassifierModel() ?? defaultClassifierModel(options.provider);
   const reasoning = options.reasoning ?? configuredClassifierReasoning();
+  const modelLabel = `model=${modelId ?? "provider-default"}${options.provider === "codex" ? `, reasoning=${reasoning}` : ""}`;
   return {
     async execute(ctx: Context, args: SmartModeClassifierArgs): Promise<SmartModeClassifierResult> {
       const mode = ctx.get(smartModeClassifierModeKey) ?? "enforce";
       const prompt = buildLocalSmartModeClassifierPrompt(args, mode);
+      const startedAt = performance.now();
+      // One line per verdict so the timeout budget and model choice can be tuned from the host log.
+      const report = (outcome: string) => console.info(`[sand][auto-review] classifier ${outcome} in ${Math.round(performance.now() - startedAt)}ms (action=${args.target?.action?.trim() || "unknown"}, ${modelLabel})`);
       let text: string;
       try {
         text = await runText({
@@ -247,11 +263,19 @@ export function createLocalSmartModeClassifierExecutor(options: LocalSmartModeCl
           ...(options.provider === "codex" ? { reasoning } : {}),
         });
       } catch (error: unknown) {
-        if (isAbortError(error) || ctx.signal.aborted) throw error;
+        if (isAbortError(error) || ctx.signal.aborted) {
+          report("aborted");
+          throw error;
+        }
+        report("request-failed");
         return errorResult(`local_classifier_request_failed: ${describeError(error)}`);
       }
       const decision = parseLocalSmartModeClassifierResponse(text);
-      if (decision === undefined) return errorResult(`local_classifier_unparseable_response: ${text.slice(0, 200)}`);
+      if (decision === undefined) {
+        report("unparseable");
+        return errorResult(`local_classifier_unparseable_response: ${text.slice(0, 200)}`);
+      }
+      report(decision.decision);
       return toSmartModeClassifierResult(decision);
     },
   };

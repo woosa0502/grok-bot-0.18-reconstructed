@@ -373,12 +373,12 @@ async function readReferenceImages(
       const result = await readExecutor.execute(context, new ReadArgs({ path, toolCallId }));
       if (result.result.case !== "success") {
         logger.warn(context, "[generate-image] ref image read failed", { imagePath: logImagePath });
-        return null;
+        throw new Error("A requested reference image could not be read.");
       }
       const output = result.result.value.output;
       if (output.case !== "data" || !output.value || output.value.length === 0) {
         logger.warn(context, "[generate-image] ref image read empty", { imagePath: logImagePath });
-        return null;
+        throw new Error("A requested reference image was empty or did not contain image bytes.");
       }
       logger.info(context, "[generate-image] ref image read success", { imagePath: logImagePath, dataLength: output.value.length });
       return {
@@ -387,10 +387,10 @@ async function readReferenceImages(
       };
     } catch (error) {
       logger.error(context, "[generate-image] ref image read failed", { imagePath: logImagePath, error: error instanceof Error ? error.message : String(error) });
-      return null;
+      throw error;
     }
   }));
-  return results.filter((result): result is ReadReferenceImage => result !== null && result !== undefined);
+  return results;
 }
 
 function stripDataUriPrefix(imageData: string): string {

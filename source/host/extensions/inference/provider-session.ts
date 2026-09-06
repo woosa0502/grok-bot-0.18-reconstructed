@@ -23,7 +23,8 @@ interface ProviderMessage extends LabelMessage { role: string; content: string |
 type RoutedProvider = Exclude<SandInferenceProvider, "cursor">;
 type UsageRecord = { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number };
 type RoutedToolExecutor = (tool: Loose, args: unknown, toolCallId: string) => Promise<unknown>;
-export type CodexReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+// "max" exists on the gpt-5.6 tier (Codex model catalog: low…xhigh, max); Pi clamps it per model.
+export type CodexReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 type ProviderExecutorContext = { readonly signal?: AbortSignal; readonly modelId?: string; readonly reasoning?: CodexReasoningEffort; readonly systemPrompt?: string };
 type PiRuntimeModule = typeof import("./pi-codex-runtime.js");
 
@@ -127,9 +128,9 @@ function configuredCodexModel(): string {
 // The original default model id "gpt-5.5-high-fast" folded reasoning into the model name. Routing
 // through Pi splits reasoning into its own axis, so the "high" half is restored here as the default
 // effort (env-overridable) rather than silently falling back to the model's own default. (PI-P1-02)
-function configuredCodexReasoningEffort(): "minimal" | "low" | "medium" | "high" | "xhigh" {
+function configuredCodexReasoningEffort(): CodexReasoningEffort {
   const selected = process.env.SAND_CODEX_REASONING_EFFORT?.trim();
-  return selected === "minimal" || selected === "low" || selected === "medium" || selected === "high" || selected === "xhigh" ? selected : "high";
+  return isCodexReasoningEffort(selected) ? selected : "high";
 }
 
 function signalFromContext(context: unknown): AbortSignal | undefined {
@@ -144,8 +145,8 @@ function modelFromContext(context: unknown): string | undefined {
   return typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : undefined;
 }
 
-function isCodexReasoningEffort(value: unknown): value is CodexReasoningEffort {
-  return value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
+export function isCodexReasoningEffort(value: unknown): value is CodexReasoningEffort {
+  return value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max";
 }
 
 function reasoningFromContext(context: unknown): CodexReasoningEffort | undefined {
@@ -178,12 +179,21 @@ function lazyPiCodexExecutor(options: PiCodexExecutorOptions) {
       }
     }
   })();
+  // A consumer that stops at fullStream — an aborted auto-review classifier request, a caller
+  // that only needs the text — never awaits the derived promises, so a rejection there (the abort
+  // reason, a runtime failure) surfaced as four host unhandledRejections per event (264 on
+  // 2026-09-05, one quartet per classifier timeout). Mark them handled; awaiting them still throws.
+  const derived = <Value>(select: (value: Awaited<typeof executor>) => Value): Promise<Value> => {
+    const promise = executor.then(select);
+    promise.catch(() => undefined);
+    return promise;
+  };
   return {
     fullStream,
-    response: executor.then(value => value.response),
-    usage: executor.then(value => value.usage),
-    extendedUsage: executor.then(value => value.extendedUsage),
-    providerMetadata: executor.then(value => value.providerMetadata),
+    response: derived(value => value.response),
+    usage: derived(value => value.usage),
+    extendedUsage: derived(value => value.extendedUsage),
+    providerMetadata: derived(value => value.providerMetadata),
     invocationId: Promise.resolve(options.invocationId),
   };
 }

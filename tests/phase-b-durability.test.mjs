@@ -77,9 +77,9 @@ test("agent messages persist before delivery and settle only after the wake ran 
 test("background completions persist their result into the marker and clear only after revival (P1-04)", () => {
   const source = read("source/host/extensions/transcript/completion-revivals.ts");
   assert.ok(source.indexOf("this.persistCompletionIntoMarker(completion);") < source.indexOf("void this.reviveForSubagentCompletions"), "subagent result stored on arrival");
-  assert.match(source, /const result = await this\.runSubagentRevival\(agentId, completions\);[\s\S]{0,700}if \(result\.outcome !== "dropped" \|\| result\.reason === "quiesced"\)/);
+  assert.match(source, /const result = await this\.runSubagentRevival\(agentId, completions\);[\s\S]{0,700}if \(result\.outcome === "delivered"\)/);
   assert.ok(source.indexOf("this.persistShellCompletionIntoMarker(completion);") >= 0);
-  assert.match(source, /const outcome = await this\.runShellRevival\(agentId, completions\);[\s\S]{0,500}if \(outcome !== "dropped"\)/);
+  assert.match(source, /const outcome = await this\.runShellRevival\(agentId, completions\);[\s\S]{0,500}if \(outcome === "delivered"\)/);
 });
 
 test("rearm replays stored payloads: agent messages, real completions, and re-dispatch info", () => {

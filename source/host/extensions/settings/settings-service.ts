@@ -13,7 +13,7 @@ export function isValidIanaTimeZone(value: string): boolean { try { new Intl.Dat
 export interface HostSettingsUpdate {
   notifications?: unknown; mcpCustomInstructions?: Record<string, string>; mcpCustomInstructionsByServerId?: Record<string, string>;
   mcpDisabledToolsByServerId?: Record<string, string[]>; mcpCustomInstructionsAccountScope?: string | null; mcpBoxServers?: string[];
-  userTimeZone?: string; userTimeZoneOverride?: string; agentDefaultModel?: SandAgentModelSelection | null; computerUseModel?: SandAgentModelSelection | null;
+  userTimeZone?: string; userTimeZoneOverride?: string; userLanguage?: string | null; agentDefaultModel?: SandAgentModelSelection | null; computerUseModel?: SandAgentModelSelection | null;
   autoReviewInstructions?: SandAutoReviewInstructions; localToolPermission?: unknown; webauthnProxyEnabled?: boolean; pinnedAgentIds?: string[];
   sidebarSections?: SidebarSection[]; hasSeenOnboarding?: boolean; featureFlagOverrides?: Record<string, boolean>; inferenceProvider?: unknown;
 }
@@ -29,8 +29,8 @@ export class SettingsService {
     const userTimeZone = this.store.getDetectedUserTimeZone(); const userTimeZoneOverride = this.store.getUserTimeZoneOverride();
     const agentDefaultModel = this.store.getAgentDefaultModel(); const computerUseModel = this.store.getComputerUseModel();
     const scope = this.store.getMcpCustomInstructionsAccountScope(); const pinnedAgentIds = this.store.getPinnedAgentIds();
-    const sidebarSections = this.store.getSidebarSections(); const hasSeenOnboarding = this.store.getHasSeenOnboarding();
-    return { notifications: this.store.getNotificationConfig(), mcpCustomInstructions: this.store.getMcpCustomInstructions(), mcpCustomInstructionsByServerId: this.store.getMcpCustomInstructionsByServerId(), mcpDisabledToolsByServerId: this.store.getMcpDisabledToolsByServerId(), ...(scope === undefined ? {} : { mcpCustomInstructionsAccountScope: scope }), mcpBoxServers: this.store.getMcpBoxServers(), autoReviewInstructions: this.store.getAutoReviewInstructions(), localToolPermission: this.store.getLocalToolPermission(), webauthnProxyEnabled: this.store.getWebauthnProxyEnabled(), inferenceProvider: this.store.getInferenceProvider(), inferenceRouterUsage: this.store.getInferenceRouterUsage(), ...(userTimeZone === undefined ? {} : { userTimeZone }), ...(userTimeZoneOverride === undefined ? {} : { userTimeZoneOverride }), ...(agentDefaultModel === undefined ? {} : { agentDefaultModel }), ...(computerUseModel === undefined ? {} : { computerUseModel }), ...(pinnedAgentIds === undefined ? {} : { pinnedAgentIds }), sidebarSections: sidebarSections ?? [], ...(hasSeenOnboarding === undefined ? {} : { hasSeenOnboarding }) };
+    const sidebarSections = this.store.getSidebarSections(); const hasSeenOnboarding = this.store.getHasSeenOnboarding(); const userLanguage = this.store.getUserLanguage();
+    return { notifications: this.store.getNotificationConfig(), mcpCustomInstructions: this.store.getMcpCustomInstructions(), mcpCustomInstructionsByServerId: this.store.getMcpCustomInstructionsByServerId(), mcpDisabledToolsByServerId: this.store.getMcpDisabledToolsByServerId(), ...(scope === undefined ? {} : { mcpCustomInstructionsAccountScope: scope }), mcpBoxServers: this.store.getMcpBoxServers(), autoReviewInstructions: this.store.getAutoReviewInstructions(), localToolPermission: this.store.getLocalToolPermission(), webauthnProxyEnabled: this.store.getWebauthnProxyEnabled(), inferenceProvider: this.store.getInferenceProvider(), inferenceRouterUsage: this.store.getInferenceRouterUsage(), ...(userTimeZone === undefined ? {} : { userTimeZone }), ...(userTimeZoneOverride === undefined ? {} : { userTimeZoneOverride }), ...(agentDefaultModel === undefined ? {} : { agentDefaultModel }), ...(computerUseModel === undefined ? {} : { computerUseModel }), ...(pinnedAgentIds === undefined ? {} : { pinnedAgentIds }), sidebarSections: sidebarSections ?? [], ...(hasSeenOnboarding === undefined ? {} : { hasSeenOnboarding }), ...(userLanguage === undefined ? {} : { userLanguage }), agentModelsByAgentId: this.store.getAgentModelsByAgentId() };
   }
   setHostSettings(update: HostSettingsUpdate) {
     const previousUserTimeZone = this.store.getUserTimeZone(); this.store.setNotificationConfig(update.notifications ?? {});
@@ -48,6 +48,7 @@ export class SettingsService {
     if (update.pinnedAgentIds !== undefined) this.store.setPinnedAgentIds(update.pinnedAgentIds);
     if (update.sidebarSections !== undefined) this.store.setSidebarSections(update.sidebarSections);
     if (update.hasSeenOnboarding !== undefined) this.store.setHasSeenOnboarding(update.hasSeenOnboarding);
+    if (update.userLanguage === null) this.store.setUserLanguage(undefined); else if (typeof update.userLanguage === "string") this.store.setUserLanguage(update.userLanguage);
     if (isSandInferenceProvider(update.inferenceProvider)) this.store.setInferenceProvider(update.inferenceProvider);
     if (update.featureFlagOverrides !== undefined) for (const listener of [...this.featureFlagOverrideListeners]) listener(update.featureFlagOverrides);
     if (update.computerUseModel === null) this.store.setComputerUseModel(undefined); else if (isSandAgentModelSelection(update.computerUseModel)) this.store.setComputerUseModel(update.computerUseModel);
@@ -59,6 +60,17 @@ export class SettingsService {
   getAgentDefaultModel(): SandAgentModelSelection | undefined { return this.store.getAgentDefaultModel(); }
   getComputerUseModel(): SandAgentModelSelection | undefined { return this.store.getComputerUseModel(); }
   getUserTimeZone(): string | undefined { return this.store.getUserTimeZone(); }
+  getUserLanguage(): string | undefined { return this.store.getUserLanguage(); }
+  /** Per-bot model selection (settings.json agentModelsByAgentId); read by the runner on every turn, so it applies without a restart. */
+  getAgentModelForAgentId(agentId: string): SandAgentModelSelection | undefined { return this.store.getAgentModelForAgentId(agentId); }
+  getAgentModelsByAgentId(): Record<string, SandAgentModelSelection> { return this.store.getAgentModelsByAgentId(); }
+  setAgentModelForAgentId(agentId: string, selection: SandAgentModelSelection | null | undefined): SandAgentModelSelection | undefined {
+    if (selection === null || selection === undefined) this.store.setAgentModelForAgentId(agentId, undefined);
+    else if (isSandAgentModelSelection(selection)) this.store.setAgentModelForAgentId(agentId, selection);
+    else throw new Error("invalid model selection: expected { modelId, maxMode, parameters }");
+    for (const listener of [...this.changeListeners]) listener({ fields: ["agentModelsByAgentId"] });
+    return this.store.getAgentModelForAgentId(agentId);
+  }
   getAutoReviewInstructions(): SandAutoReviewInstructions { return this.store.getAutoReviewInstructions(); }
   getLocalToolPermission(): SandLocalToolPermission { return this.store.getLocalToolPermission(); }
   setLocalToolPermission(value: SandLocalToolPermission): void { this.store.setLocalToolPermission(value); }

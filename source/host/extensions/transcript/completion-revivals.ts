@@ -2,6 +2,8 @@ import { sandErrorDetail } from "../../ports/telemetry.js";
 import { describeAgentRunError } from "./agent-run-error.js";
 import type { QuietWakeOrigin } from "./sand-pending-wake-store.js";
 import { classifyAgentError } from "./turn-runtime.js";
+import { runBackgroundTask } from "./background-task-continuation.js";
+import { settlePendingWakeWorkflow } from "./pending-wake-workflow.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
 export function describeQuietOriginNote(origin: QuietWakeOrigin): string {
   const source =
@@ -108,6 +110,7 @@ export class CompletionRevivals {
    * revival redelivers the real result at the next start instead of losing it.
    */
   private persistCompletionIntoMarker(completion: SubagentCompletion): void {
+    if (this.tm.isAgentUserStopped?.(completion.parentAgentId) === true) return;
     const store = this.tm.pendingWakeStore;
     if (store == null) return;
     const kind = this.subagentWakeKind(completion.subagentType);
@@ -137,6 +140,7 @@ export class CompletionRevivals {
   }
 
   handleBackgroundSubagentCompletion(completion: SubagentCompletion): void {
+    if (this.tm.isAgentUserStopped?.(completion.parentAgentId) === true) return;
     if (this.tm.sessions.deletedAgentIds.has(completion.parentAgentId)) {
       this.tm.telemetry.reportSubagentRevival({
         parentAgentId: completion.parentAgentId,
@@ -163,6 +167,7 @@ export class CompletionRevivals {
   async reviveForSubagentCompletions(agentId: string): Promise<void> {
     if (
       !this.tm.execution.canExecute ||
+      this.tm.isAgentUserStopped?.(agentId) === true ||
       this.revivingSubagentAgentIds.has(agentId)
     )
       return;
@@ -172,12 +177,12 @@ export class CompletionRevivals {
         const completions = this.pendingSubagentCompletions.get(agentId) ?? [];
         this.pendingSubagentCompletions.delete(agentId);
         const result = await this.runSubagentRevival(agentId, completions);
-        // Phase B (P1-04): the durable marker settles only after the parent's
-        // revival turn actually ran (or its own resume path owns it). A crash
-        // before that leaves the stored result to be redelivered at next start.
-        if (result.outcome !== "dropped" || result.reason === "quiesced")
+        // Phase B (P1-04): a partial/aborted revival still owns unfinished work. Its
+        // payload stays durable even if an upgrade also has a generic resume path.
+        // Only completed processing of this result settles the delivery marker.
+        if (result.outcome === "delivered")
           for (const completion of completions)
-            this.tm.pendingWakes.clearSettledPendingWake({
+            settlePendingWakeWorkflow(this.tm, {
               agentId,
               kind: this.subagentWakeKind(completion.subagentType),
               workId: completion.subagentAgentId,
@@ -199,8 +204,9 @@ export class CompletionRevivals {
     agentId: string,
     completions: readonly SubagentCompletion[],
   ): Promise<Record<string, unknown>> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId) as (() => boolean) | undefined;
     if (completions.length === 0) return { outcome: "delivered" };
-    if (!this.tm.execution.canExecute)
+    if (!this.tm.execution.canExecute || this.tm.isAgentUserStopped?.(agentId) === true)
       return { outcome: "dropped", reason: "no_runner" };
     let session: any;
     try {
@@ -208,9 +214,11 @@ export class CompletionRevivals {
     } catch {
       return { outcome: "dropped", reason: "session_unavailable" };
     }
+    if (wasStopped?.() === true || this.tm.isAgentUserStopped?.(agentId) === true)
+      return { outcome: "dropped", reason: "user_stopped" };
     const runner = this.tm.runnerRegistry.getRunner(session);
     this.tm.runLifecycle.beginSessionRun(session);
-    let result: Record<string, unknown> = { outcome: "delivered" };
+    let result: Record<string, unknown> = { outcome: "dropped", reason: "not_run" };
     await this.tm.runLifecycle.enqueueExclusiveRun(
       session.id,
       async () => {
@@ -222,7 +230,10 @@ export class CompletionRevivals {
         try {
           const unanswered =
             this.tm.widgetResponses.collectUnansweredQuestionPrompts(session);
-          const runResult = await runner.run(
+          const settled = await runBackgroundTask(
+            this.tm,
+            session,
+            runner,
             buildSubagentRevivalPrompt(completions),
             {
               hidden: true,
@@ -230,15 +241,19 @@ export class CompletionRevivals {
               autoReviewEpoch: "continue",
               ...unanswered,
             },
+            () => wasStopped?.() !== true,
+            completions.map((completion) => ({ agentId, kind: this.subagentWakeKind(completion.subagentType), workId: completion.subagentAgentId })),
           );
+          const runResult = settled.result;
           await this.tm.roster.emitAgentUpdate(session.id);
-          if (runResult.aborted) result = { outcome: "superseded" };
-          else if (runResult.quiescedForUpgrade === true) {
+          if (runResult.quiescedForUpgrade === true) {
             this.tm.upgradeResume.markAgentResumePendingForQuiescedRevival(
               session,
             );
             result = { outcome: "dropped", reason: "quiesced" };
-          } else
+          } else if (runResult.aborted) result = { outcome: "superseded" };
+          else if (!settled.completed) result = { outcome: "dropped", reason: "unfinished", stopReason: settled.reason };
+          else
             result = {
               outcome: "delivered",
               sentMessageCount: runResult.sentMessageCount,
@@ -261,6 +276,7 @@ export class CompletionRevivals {
 
   /** Phase B (P1-04): persist the shell outcome into its wake marker on arrival. */
   private persistShellCompletionIntoMarker(completion: ShellCompletion): void {
+    if (this.tm.isAgentUserStopped?.(completion.agentId) === true) return;
     const store = this.tm.pendingWakeStore;
     if (store == null) return;
     const existing = (store.listPending() as Record<string, unknown>[]).find(
@@ -289,6 +305,7 @@ export class CompletionRevivals {
   }
 
   handleBackgroundShellCompletion(completion: ShellCompletion): void {
+    if (this.tm.isAgentUserStopped?.(completion.agentId) === true) return;
     this.persistShellCompletionIntoMarker(completion);
     if (
       !this.tm.pendingWakes.enqueuePendingWake(
@@ -311,6 +328,7 @@ export class CompletionRevivals {
   async reviveForShellCompletions(agentId: string): Promise<void> {
     if (
       !this.tm.execution.canExecute ||
+      this.tm.isAgentUserStopped?.(agentId) === true ||
       this.revivingShellAgentIds.has(agentId)
     )
       return;
@@ -321,9 +339,9 @@ export class CompletionRevivals {
         this.pendingShellCompletions.delete(agentId);
         const outcome = await this.runShellRevival(agentId, completions);
         // Phase B (P1-04): settle the durable marker only after delivery.
-        if (outcome !== "dropped")
+        if (outcome === "delivered")
           for (const completion of completions)
-            this.tm.pendingWakes.clearSettledPendingWake({
+            settlePendingWakeWorkflow(this.tm, {
               agentId,
               kind: "shell",
               workId: completion.shellId,
@@ -337,11 +355,11 @@ export class CompletionRevivals {
     agentId: string,
     completions: readonly ShellCompletion[],
   ): Promise<string> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId) as (() => boolean) | undefined;
     if (completions.length === 0) return "delivered";
-    let lastOutcome = "delivered";
+    let lastOutcome = "dropped";
     const report = (outcome: string, extras: Record<string, unknown> = {}) => {
-      // Quiesced-for-upgrade has its own resume path — treat it as settled here.
-      lastOutcome = extras.reason === "quiesced" ? "quiesced" : outcome;
+      lastOutcome = outcome;
       this.tm.telemetry.reportShellRevival({
         conversationId: agentId,
         outcome,
@@ -350,7 +368,7 @@ export class CompletionRevivals {
         ...extras,
       });
     };
-    if (!this.tm.execution.canExecute) {
+    if (!this.tm.execution.canExecute || this.tm.isAgentUserStopped?.(agentId) === true) {
       report("dropped", { reason: "no_runner" });
       return lastOutcome;
     }
@@ -359,6 +377,10 @@ export class CompletionRevivals {
       session = await this.tm.sessions.resolveBackgroundSession(agentId);
     } catch {
       report("dropped", { reason: "session_unavailable" });
+      return lastOutcome;
+    }
+    if (wasStopped?.() === true || this.tm.isAgentUserStopped?.(agentId) === true) {
+      report("dropped", { reason: "user_stopped" });
       return lastOutcome;
     }
     const runner = this.tm.runnerRegistry.getRunner(session);
@@ -372,7 +394,10 @@ export class CompletionRevivals {
           "background-revival",
         );
         try {
-          const runResult = await runner.run(
+          const settled = await runBackgroundTask(
+            this.tm,
+            session,
+            runner,
             buildShellRevivalPrompt(completions),
             {
               hidden: true,
@@ -382,14 +407,18 @@ export class CompletionRevivals {
                 session,
               ),
             },
+            () => wasStopped?.() !== true,
+            completions.map((completion) => ({ agentId, kind: "shell" as const, workId: completion.shellId })),
           );
-          if (runResult.aborted) report("superseded");
-          else if (runResult.quiescedForUpgrade === true) {
+          const runResult = settled.result;
+          if (runResult.quiescedForUpgrade === true) {
             this.tm.upgradeResume.markAgentResumePendingForQuiescedRevival(
               session,
             );
             report("dropped", { reason: "quiesced" });
-          } else
+          } else if (runResult.aborted) report("superseded");
+          else if (!settled.completed) report("dropped", { reason: "unfinished", stopReason: settled.reason });
+          else
             report("delivered", {
               sentMessageCount: runResult.sentMessageCount,
             });

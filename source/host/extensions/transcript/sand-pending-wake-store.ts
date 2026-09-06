@@ -36,6 +36,11 @@ export interface DurableCompletionPayload {
   detail?: string;
   outputPath?: string;
 }
+export interface PendingWakeReference {
+  readonly agentId: string;
+  readonly kind: PendingWakeKind;
+  readonly workId: string;
+}
 export interface DurablePendingWakeMarker extends PendingWakeMarker {
   quietOrigin?: QuietWakeOrigin;
   interruptedByRecreate?: boolean;
@@ -43,6 +48,22 @@ export interface DurablePendingWakeMarker extends PendingWakeMarker {
   completion?: DurableCompletionPayload;
   /** Original task prompt persisted at dispatch, so a lost child can be re-dispatched. */
   taskPrompt?: string;
+  /** Same-agent source wake(s) whose work this child/result continues. */
+  workflowParents?: readonly PendingWakeReference[];
+  /** A peer requester's source wake(s), returned only when replying to that peer. */
+  replyToWorkflow?: readonly PendingWakeReference[];
+}
+function coerceWakeReferences(value: unknown): PendingWakeReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (item == null || typeof item !== "object") return [];
+    const ref = item as Record<string, unknown>;
+    return typeof ref.agentId === "string" && ref.agentId.length > 0
+      && typeof ref.workId === "string" && ref.workId.length > 0
+      && PENDING_WAKE_KINDS.includes(ref.kind as PendingWakeKind)
+      ? [{ agentId: ref.agentId, kind: ref.kind as PendingWakeKind, workId: ref.workId }]
+      : [];
+  });
 }
 export function coerceQuietOrigin(
   value: unknown,
@@ -69,6 +90,8 @@ export function coerceMarker(entry: unknown): DurablePendingWakeMarker | null {
   )
     return null;
   const quietOrigin = coerceQuietOrigin(e.quietOrigin);
+  const parents = coerceWakeReferences(e.workflowParents).filter((ref) =>
+    ref.agentId !== e.agentId || ref.kind !== e.kind || ref.workId !== e.workId);
   return {
     agentId: e.agentId,
     kind: e.kind as PendingWakeKind,
@@ -96,6 +119,8 @@ export function coerceMarker(entry: unknown): DurablePendingWakeMarker | null {
     ...(typeof e.taskPrompt === "string" && e.taskPrompt.length > 0
       ? { taskPrompt: e.taskPrompt }
       : {}),
+    ...(parents.length > 0 ? { workflowParents: parents } : {}),
+    ...(coerceWakeReferences(e.replyToWorkflow).length > 0 ? { replyToWorkflow: coerceWakeReferences(e.replyToWorkflow) } : {}),
   };
 }
 function coerceAgentMessage(value: unknown): DurableAgentMessagePayload | null {
@@ -189,6 +214,10 @@ export function upsertPendingWakeMarker(
     ...(marker.taskPrompt == null && previous?.taskPrompt != null
       ? { taskPrompt: previous.taskPrompt }
       : {}),
+    ...(marker.workflowParents == null && previous?.workflowParents != null
+      ? { workflowParents: previous.workflowParents } : {}),
+    ...(marker.replyToWorkflow == null && previous?.replyToWorkflow != null
+      ? { replyToWorkflow: previous.replyToWorkflow } : {}),
   };
   return [
     ...existing.filter(
@@ -230,6 +259,33 @@ export class SandPendingWakeStore {
       return true;
     } catch {
       return false;
+    }
+  }
+  clearSettledWorkflow(source: PendingWakeReference): PendingWakeReference[] {
+    try {
+      const pending = this.readPending();
+      const same = (left: PendingWakeReference, right: PendingWakeReference): boolean =>
+        left.agentId === right.agentId && left.kind === right.kind && left.workId === right.workId;
+      const original = pending.find((marker) => same(marker, source));
+      if (original == null) return [];
+      let remaining = pending.filter((marker) => !same(marker, source));
+      const cleared: PendingWakeReference[] = [source];
+      const candidates = [...original.workflowParents ?? []];
+      for (let index = 0; index < candidates.length; index += 1) {
+        const parent = candidates[index]!;
+        if (parent.agentId !== source.agentId || cleared.some((ref) => same(ref, parent))) continue;
+        // Another live child/reply still depends on this exact source: its processing is not done.
+        if (remaining.some((marker) => marker.workflowParents?.some((ref) => same(ref, parent)))) continue;
+        const marker = remaining.find((item) => same(item, parent));
+        if (marker == null) continue;
+        remaining = remaining.filter((item) => !same(item, parent));
+        cleared.push(parent);
+        candidates.push(...marker.workflowParents ?? []);
+      }
+      remaining.length === 0 ? this.deleteFile() : this.write(remaining);
+      return cleared;
+    } catch {
+      return [];
     }
   }
   clearAgent(agentId: string): void {

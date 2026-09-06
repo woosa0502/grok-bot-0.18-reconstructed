@@ -1,9 +1,5 @@
-// A7: the MCP management tool surface must be honest in local Codex mode —
-// the catalog is local (plugin-catalog.json / mcp.json), execution is
-// stdio-only, and there is no Cursor account or per-server account slots.
-// AddMcpServer (remote-url only, stored-but-never-run locally) is not offered,
-// account-slot tools stay off regardless of the multi-account gate, and no
-// offered description advertises the Cursor account.
+// Local mode exposes HTTP/SSE setup and installation-scoped account lifecycle;
+// cloud mode retains its multi-account feature gate and backend wording.
 import assert from "node:assert/strict";
 import path from "node:path";
 import { test } from "node:test";
@@ -31,7 +27,7 @@ async function loadFactory() {
 
 const management = {}; // descriptions and the offered set are decided at build time
 
-test("local mode: no AddMcpServer, no account-slot tools, no Cursor-account wording", async () => {
+test("local mode offers URL and account tools without Cursor-account wording", async () => {
   const { createMcpManagementTools } = await loadFactory();
   const tools = createMcpManagementTools(
     management, undefined, undefined,
@@ -40,9 +36,9 @@ test("local mode: no AddMcpServer, no account-slot tools, no Cursor-account word
     { localMode: true },
   );
   const names = tools.map((tool) => tool.name);
-  assert.ok(!names.includes("AddMcpServer"), "AddMcpServer must not be offered locally");
-  assert.ok(!names.includes("RemoveMcpAccount"), "account-slot tools stay off locally");
-  assert.ok(!names.includes("RenameMcpAccount"), "account-slot tools stay off locally");
+  assert.ok(names.includes("AddMcpServer"), "remote URL setup is supported locally");
+  assert.ok(names.includes("RemoveMcpAccount"), "local accounts can be removed");
+  assert.ok(names.includes("RenameMcpAccount"), "local account labels can be renamed");
   const describe = (tool) => String(tool.descriptionGenerator?.() ?? tool.description ?? "");
   for (const tool of tools) {
     assert.ok(!/Cursor account/i.test(describe(tool)), `${tool.name} must not advertise a Cursor account locally`);
@@ -52,6 +48,9 @@ test("local mode: no AddMcpServer, no account-slot tools, no Cursor-account word
   assert.match(describe(search), /local plugin catalog/);
   const install = tools.find((tool) => tool.name === "InstallPlugin");
   assert.match(describe(install), /local MCP configuration/);
+  const localWithoutRemoteGate = createMcpManagementTools(management, undefined, undefined, () => false, undefined, { localMode: true });
+  assert.ok(localWithoutRemoteGate.some(tool => tool.name === "RenameMcpAccount"));
+  assert.match(describe(tools.find(tool => tool.name === "AddMcpServer")), /local MCP configuration/);
 });
 
 test("cloud mode surface is unchanged: AddMcpServer offered, account tools follow the gate", async () => {

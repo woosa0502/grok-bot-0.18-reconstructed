@@ -1,4 +1,5 @@
 import { turnEndedOnSilentToolCalls } from "./turn-shape.js";
+import { readOpenTodos, runWorkShape, type OpenTodo } from "./turn-open-work.js";
 import { StepTiming } from "../../packages/proto/generated/agent/v1/agent_pb.js";
 import {
   runTurnMemory,
@@ -106,6 +107,13 @@ export interface CompletedTurnArgs {
   readonly finalState: TurnCheckpoint;
   readonly turnStartedAtMs: number;
   readonly hidden: boolean;
+  /**
+   * A hidden closing-send nudge run: silent-tail detection still applies so the runtime can nudge
+   * again (bounded) when the model keeps working without reporting.
+   */
+  readonly closingNudge?: boolean;
+  /** A hidden task-continuation run (the runtime handed the turn back over an unfinished todo list). */
+  readonly taskContinuation?: boolean;
   readonly trimmedPrompt: string;
   readonly session: TurnSession;
   readonly baseContext: unknown;
@@ -124,6 +132,16 @@ export interface TurnSettleResult extends TurnResultFlags {
   readonly sentMessageCount: number;
   readonly reacted: boolean;
   readonly endedOnSilentToolCalls?: boolean;
+  /** Unfinished TodoWrite items in the persisted state after this run (top-level runs only). */
+  readonly openTodos?: readonly OpenTodo[];
+  /** A failed task-state read is not evidence that no work remains. */
+  readonly taskCompletionUnknown?: boolean;
+  /** Non-delivery, non-bookkeeping tool calls the model made in this run. */
+  readonly workToolCalls?: number;
+  /** TodoWrite calls in the run (turn-open-work). */
+  readonly todoWrites?: number;
+  /** The run's last work handed the task to another agent/subagent (its reply will revive us). */
+  readonly handedOff?: boolean;
 }
 
 export function createTurnSettle(
@@ -134,6 +152,9 @@ export function createTurnSettle(
   let sentMessageCount = 0;
   let reacted = false;
   let endedOnSilentToolCalls = false;
+  let openTodos: readonly OpenTodo[] | undefined;
+  let taskCompletionUnknown = false;
+  let workShape: ReturnType<typeof runWorkShape> | undefined;
   const agentMessages: string[] = [];
 
   const collectors = {
@@ -310,15 +331,35 @@ export function createTurnSettle(
       ),
     }));
 
-    if (!host.isSubagentRunner && !args.hidden) {
+    const continuesAcknowledgedTurn = args.closingNudge === true || args.taskContinuation === true;
+    if (!host.isSubagentRunner && (!args.hidden || continuesAcknowledgedTurn)) {
       // A mid-turn compaction replaces the history with a summary: the opening acknowledgement is
       // no longer visible in the prompt messages, but the collectors still know it was sent.
       const compactedThisTurn =
         args.finalState.summaryArchives.length > summaryArchivesAtTurnStart;
       endedOnSilentToolCalls = turnEndedOnSilentToolCalls(
         host.latestPromptMessages(),
-        { deliveredBeforeVisibleHistory: compactedThisTurn && sentMessageCount > 0 },
+        {
+          deliveredBeforeVisibleHistory: compactedThisTurn && sentMessageCount > 0,
+          ...(continuesAcknowledgedTurn ? { continuesAcknowledgedTurn: true } : {}),
+        },
       );
+    }
+    if (!host.isSubagentRunner) {
+      // Task-continuation signal (see turn-open-work): the model's own todo list after this run, and
+      // whether the run did work / handed the task off. Read failures explicitly block completion.
+      workShape = runWorkShape(host.latestPromptMessages());
+      try {
+        openTodos = await readOpenTodos(
+          args.finalState as { readonly todos?: readonly Uint8Array[] },
+          host.getBlobStore() as Parameters<typeof readOpenTodos>[1],
+          args.baseContext,
+        );
+        taskCompletionUnknown = false;
+      } catch {
+        openTodos = undefined;
+        taskCompletionUnknown = true;
+      }
     }
 
     if (
@@ -408,6 +449,11 @@ export function createTurnSettle(
       ...(endedOnSilentToolCalls
         ? { endedOnSilentToolCalls: true }
         : {}),
+      ...(openTodos === undefined ? {} : { openTodos }),
+      ...(taskCompletionUnknown ? { taskCompletionUnknown: true } : {}),
+      ...(workShape === undefined
+        ? {}
+        : { workToolCalls: workShape.workToolCalls, handedOff: workShape.handedOff, todoWrites: workShape.todoWrites }),
       ...(flags.streamOutputProduced === true
         ? { streamOutputProduced: true }
         : {}),

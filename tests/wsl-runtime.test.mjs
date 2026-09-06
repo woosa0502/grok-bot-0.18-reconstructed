@@ -69,6 +69,10 @@ test("WSL runtime owns an isolated local Codex host", () => {
   // backend here; an explicit env value still wins.
   assert.equal(host.SAND_MULTITASK, "1");
   assert.equal(wslHostEnvironment({ profileDir, env: { SAND_MULTITASK: "0" } }).SAND_MULTITASK, "0");
+  assert.equal(host.SAND_SMART_MODE_CLASSIFIER_TIMEOUT_MS, "30000", "local Codex classifier gets a wider budget than upstream's 10s");
+  assert.equal(wslHostEnvironment({ profileDir, env: { SAND_SMART_MODE_CLASSIFIER_TIMEOUT_MS: "5000" } }).SAND_SMART_MODE_CLASSIFIER_TIMEOUT_MS, "5000");
+  assert.equal(host.SAND_AUTO_REVIEW_CLASSIFIER_REASONING, "max", "house rule: Luna (the classifier default) runs at max, never below xhigh");
+  assert.equal(wslHostEnvironment({ profileDir, env: { SAND_AUTO_REVIEW_CLASSIFIER_REASONING: "low" } }).SAND_AUTO_REVIEW_CLASSIFIER_REASONING, "low");
   // Gateway auth is required so the local-exec daemon can attach (the channel is 401
   // without a token, which left ExternalShell permanently "not connected").
   assert.equal(host.SAND_GATEWAY_REQUIRE_AUTH, "1");

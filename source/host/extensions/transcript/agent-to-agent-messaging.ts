@@ -11,6 +11,9 @@ import { loadAgentInboundImages } from "./send-message-shaping.js";
 import { nextEntryId } from "./transcript-entry-ids.js";
 import { getTranscript } from "./transcript-store.js";
 import { classifyAgentError } from "./turn-runtime.js";
+import { runBackgroundTask } from "./background-task-continuation.js";
+import { agentMessageWorkflowFields, settlePendingWakeWorkflow } from "./pending-wake-workflow.js";
+import type { PendingWakeReference } from "./sand-pending-wake-store.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
 
 export interface AgentInboundMessage {
@@ -23,6 +26,8 @@ export interface AgentInboundMessage {
   priority?: boolean;
   isDisplayed?: boolean;
   isRedriven?: boolean;
+  workflowParents?: readonly PendingWakeReference[];
+  replyToWorkflow?: readonly PendingWakeReference[];
 }
 export function partitionAgentInbound<T extends { priority?: boolean }>(
   messages: readonly T[],
@@ -60,6 +65,9 @@ export class AgentToAgentMessaging {
     images: readonly { url: string; alt?: string }[] = [],
     priority = false,
   ): Promise<string> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(toAgentId) as (() => boolean) | undefined;
+    const isStopped = (): boolean => wasStopped?.() === true || this.tm.isAgentUserStopped?.(toAgentId) === true;
+    if (isStopped()) return "That agent was stopped by the user; the message was not accepted.";
     const message = clampAgentMessage(text);
     if (message.length === 0) return "Message was empty; nothing was sent.";
     if (toAgentId === fromAgentId) return "An agent can't message itself.";
@@ -68,6 +76,7 @@ export class AgentToAgentMessaging {
     if (this.tm.groupChat.isRemoteRoomAgentId(toAgentId))
       return "That is a shared chat hosted by another user; agents can't message it directly.";
     const roster = await this.tm.sessionStore.listAgents();
+    if (isStopped()) return "That agent was stopped by the user; the message was not accepted.";
     const target = roster.find((agent: any) => agent.id === toAgentId);
     if (target == null) return `No agent found with id ${toAgentId}.`;
     if (target.isGroup) {
@@ -112,6 +121,7 @@ export class AgentToAgentMessaging {
       timestampMs: Date.now(),
       ...(images.length === 0 ? {} : { images }),
       ...(priority ? { priority: true } : {}),
+      ...agentMessageWorkflowFields(fromAgentId, toAgentId),
     };
     // Durable delivery (Phase B / AUDIT-5): the message is persisted as a
     // pending-wake marker before anything is delivered, and only cleared after
@@ -146,6 +156,7 @@ export class AgentToAgentMessaging {
   }
 
   persistInboundMarker(toAgentId: string, inbound: AgentInboundMessage): boolean {
+    if (this.tm.isAgentUserStopped?.(toAgentId) === true) return false;
     if (inbound.id == null) return false;
     return this.tm.pendingWakeStore?.markPending({
       agentId: toAgentId,
@@ -153,6 +164,8 @@ export class AgentToAgentMessaging {
       workId: inbound.id,
       markedAtMs: inbound.timestampMs,
       title: `Message from ${inbound.from.name}`,
+      ...(inbound.workflowParents == null ? {} : { workflowParents: inbound.workflowParents }),
+      ...(inbound.replyToWorkflow == null ? {} : { replyToWorkflow: inbound.replyToWorkflow }),
       agentMessage: {
         from: inbound.from,
         text: inbound.text,
@@ -165,7 +178,7 @@ export class AgentToAgentMessaging {
 
   clearInboundMarker(toAgentId: string, inbound: AgentInboundMessage): void {
     if (inbound.id == null) return;
-    this.tm.pendingWakes.clearSettledPendingWake({
+    settlePendingWakeWorkflow(this.tm, {
       agentId: toAgentId,
       kind: "agent-message",
       workId: inbound.id,
@@ -199,6 +212,7 @@ export class AgentToAgentMessaging {
   async reviveForAgentInbound(agentId: string): Promise<void> {
     if (
       !this.tm.execution.canExecute ||
+      this.tm.isAgentUserStopped?.(agentId) === true ||
       this.revivingAgentInboundIds.has(agentId)
     )
       return;
@@ -220,13 +234,15 @@ export class AgentToAgentMessaging {
     agentId: string,
     messages: readonly AgentInboundMessage[],
   ): Promise<void> {
-    if (messages.length === 0 || !this.tm.execution.canExecute) return;
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId) as (() => boolean) | undefined;
+    if (messages.length === 0 || !this.tm.execution.canExecute || this.tm.isAgentUserStopped?.(agentId) === true) return;
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(agentId);
     } catch {
       return;
     }
+    if (wasStopped?.() === true || this.tm.isAgentUserStopped?.(agentId) === true) return;
     if (
       this.tm.groupChat.isGroupSession(session) ||
       this.tm.groupChat.isRemoteRoomSession(session)
@@ -246,6 +262,10 @@ export class AgentToAgentMessaging {
     await this.tm.runLifecycle.enqueueExclusiveRun(
       session.id,
       async () => {
+        if (wasStopped?.() === true || this.tm.isAgentUserStopped?.(agentId) === true) {
+          this.tm.runLifecycle.endSessionRun(session);
+          return;
+        }
         this.tm.turnRuntime.activeRequestPrompts.delete(session.id);
         this.tm.turnRuntime.activeRequestSources.set(session.id, "agent");
         this.tm.backgroundWakes.dmPreemptedWakeAgentIds.delete(session.id);
@@ -270,20 +290,27 @@ export class AgentToAgentMessaging {
               return;
             }
             const selectedImages = await loadAgentInboundImages(message.images);
-            const result = await runner.run(
+            const settled = await runBackgroundTask(
+              this.tm,
+              session,
+              runner,
               buildAgentInboundWakePrompt(message),
               {
                 hidden: true,
                 isSilenceAllowed: true,
                 ...(selectedImages.length === 0 ? {} : { selectedImages }),
               },
+              () => wasStopped?.() !== true,
+              message.id == null ? [] : [{ agentId, kind: "agent-message", workId: message.id }],
             );
+            const result = settled.result;
             const preempted =
               this.tm.backgroundWakes.dmPreemptedWakeAgentIds.delete(
                 session.id,
               );
             if (result.aborted && result.quiescedForUpgrade !== true) {
-              if (!preempted || this.tm.sessions.isAgentGone(agentId)) return;
+              if (!preempted || this.tm.sessions.isAgentGone(agentId)
+                || wasStopped?.() === true || this.tm.isAgentUserStopped?.(agentId) === true) return;
               const redrivable = messages
                 .slice(index)
                 .filter((remaining) => remaining.isRedriven !== true)
@@ -302,7 +329,23 @@ export class AgentToAgentMessaging {
                 );
               return;
             }
-            // Delivered: only now does the durable marker settle (AUDIT-5).
+            if (!settled.completed) {
+              // This run consumed only the current message. Preserve the unstarted tail in the
+              // in-memory queue so a wait on its child cannot strand later accepted messages until
+              // restart. The waiting message itself stays durable and is not immediately replayed.
+              const tail = messages.slice(index + 1).map((remaining) => ({ ...remaining, isDisplayed: true }));
+              if (tail.length > 0) this.pendingAgentInbound.set(agentId, mergeAgentInboundQueue(
+                this.pendingAgentInbound.get(agentId) ?? [], tail,
+              ));
+              // Keep the current payload for a linked completion or later explicit resume;
+              // immediately replaying that idle/pending message would create an unbounded loop.
+              this.tm.telemetry.reportPendingWake({
+                conversationId: agentId, outcome: "deferred", kind: "agent-message",
+                workId: message.id ?? "", reason: settled.reason,
+              });
+              return;
+            }
+            // Completed: only now does the durable marker settle (AUDIT-5).
             this.clearInboundMarker(agentId, message);
           }
           await this.tm.roster.emitAgentUpdate(session.id);

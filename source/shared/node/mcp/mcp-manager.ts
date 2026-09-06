@@ -334,6 +334,7 @@ export class SandMcpManager {
   ): Promise<void> {
     const writer = this.requireAccountWriter(),
       { config, serverIdsByName } = await writer.getConfigForEdit();
+    for (const name of Object.keys(servers)) if (Object.hasOwn(config.mcpServers, name)) throw new SandMcpConfigError(`MCP server "${name}" already exists. Choose a different name.`);
     await writer.setConfig(
       { mcpServers: { ...config.mcpServers, ...servers } },
       serverIdsByName,
@@ -356,11 +357,13 @@ export class SandMcpManager {
       )?.[0];
     if (name == null || !(name in current.config.mcpServers))
       return this.classifyRemoveOutcome(id, await this.listServers());
+    const removedConfig = current.config.mcpServers[name];
     const servers = { ...current.config.mcpServers };
     delete servers[name];
     const ids = { ...current.serverIdsByName };
     delete ids[name];
     await writer.setConfig({ mcpServers: servers }, ids);
+    if (removedConfig != null && "url" in removedConfig) await this.backendMcpExec.forgetServer?.(removedConfig.url);
     this.authWatches.clearPendingAuthWatchesForServer(id);
     const displayName = row?.name;
     const sameNameRows =
@@ -453,6 +456,7 @@ export class SandMcpManager {
     const attributedRows = rows.filter((row: any) => !row.isTeamServer);
     await writer.uninstallPlugin({ pluginId: BigInt(id) });
     for (const row of attributedRows) {
+      if ("url" in row.config) await this.backendMcpExec.forgetServer?.(row.config.url);
       this.authWatches.clearPendingAuthWatchesForServer(row.id);
       const sameNameRows =
         display?.servers.filter((server: any) => server.name === row.name)
@@ -554,6 +558,8 @@ export class SandMcpManager {
   }
   async dispose(): Promise<void> {
     this.authWatches.clearAllPendingAuthWatches();
+    this.boxRuntime?.dispose?.();
+    await this.backendMcpExec.dispose?.();
   }
   async reload(): Promise<void> {
     this.generation += 1;

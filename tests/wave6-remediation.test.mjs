@@ -113,15 +113,19 @@ test("tools discovery reconciles box tools and the mcp extension polls it", () =
 
 // ---------- AUDIT-W17: Computer defaults, readiness, honest prompt ----------
 
-test("local Computer is default-on with a binary readiness gate, and the local prompt says the desktop is shared", () => {
+test("local Computer is default-on with a binary readiness gate, and the prompt distinguishes shared files from per-bot screens", async () => {
   const computer = read("source/host/box/local-computer-use.ts");
   assert.match(computer, /LOCAL_COMPUTER_REQUIRED_BINARIES = \["Xvfb", "xdotool", "ffmpeg"\]/);
   assert.match(computer, /process\.env\.SAND_LOCAL_COMPUTER_USE !== "0" && missingComputerBinaries\.length === 0/);
   const launcher = read("scripts/lib/wsl-runtime.mjs");
   assert.match(launcher, /SAND_LOCAL_COMPUTER_USE: env\.SAND_LOCAL_COMPUTER_USE \?\? "1"/);
-  const prompt = read("source/host/runner/system-prompt.ts");
-  assert.match(prompt, /sharedLocalDesktop: true/);
-  assert.match(prompt, /in this local build the desktop is shared too/);
+  const { SAND_SYSTEM_PROMPT_LOCAL_CODEX: prompt } = await loadModule("source/host/runner/system-prompt.ts");
+  assert.match(prompt, /ONE computer shared by all of this user's agents/);
+  assert.match(prompt, /files and installed tools are shared/);
+  assert.match(prompt, /each top-level bot has its own desktop screen/);
+  assert.match(prompt, /Your computerUse subagent shares YOUR bot's screen/);
+  assert.match(prompt, /only one computerUse subagent drive it at a time/);
+  assert.doesNotMatch(prompt, /ONE screen on that machine|in this local build the desktop is shared too/);
 });
 
 // ---------- P1-02: stable prompt-cache affinity ----------
@@ -134,7 +138,7 @@ test("codex model calls reuse one cache session id instead of a per-call UUID", 
   assert.match(session, /this\.#cacheSessionId = cacheSessionId != null && cacheSessionId\.length > 0 \? cacheSessionId : crypto\.randomUUID\(\);/);
   assert.match(session, /this\.#cacheSessionId,\s*\);/);
   const shellSource = read("source/host/runner/turn-run-shell.ts");
-  assert.match(shellSource, /createProviderPromptSession\(inferenceProvider, resolvedModelId, resolvedReasoning, input\.conversationId\)/);
+  assert.match(shellSource, /createProviderPromptSession\(turnProvider, resolvedModelId, resolvedReasoning, input\.conversationId\)/);
   const runtime = read("source/host/extensions/inference/pi-codex-runtime.ts");
   assert.match(runtime, /sessionId: options\.cacheSessionId \?\? options\.invocationId,/);
 });

@@ -8,6 +8,8 @@ import { LOCAL_BROWSER_USE_ENABLED, localBrowserShellExecutor, localBrowserWindo
 import { shellExecutorResource } from "../packages/agent-exec/shell.js";
 import { createSandMcpTextSpiller, isLargeOutputSpillEnabled } from "./runner/large-output-spill.js";
 import { createLocalPdfTextExtractor } from "./runner/local-pdf-text-extractor.js";
+import { normalizePathOnlySelectedVideo } from "./selected-media-inputs.js";
+import { isMediaProviderConfigured } from "../shared/node/media-provider.js";
 
 // One extractor per host process: the Read tools share its per-path text cache semantics upstream.
 const localPdfTextExtractor = createLocalPdfTextExtractor();
@@ -36,6 +38,7 @@ import {
   type ProductionTurnToolsetHostInput,
 } from "./runner-production-bridge.js";
 import { NoopConversationActionReceiver } from "../packages/agent-core/conversation-actions/remote.js";
+import { ConversationStateStructure } from "../packages/proto/generated/agent/v1/agent_pb.js";
 import {
   RequestContext,
   RequestContextEnv,
@@ -51,6 +54,7 @@ import type {
   AutomationReview,
   WorkflowRecord,
 } from "./runner/tools/sand-state-tool.js";
+import type { WorkflowRecord as LibraryWorkflowRecord } from "../shared/workflow-model.js";
 import type {
   CloudAgentApi,
   CloudAgentToolContext,
@@ -77,6 +81,7 @@ import type {
   TurnReadToolFactoryInput,
   TurnWebFetchToolFactoryInput,
   TurnWebSearchToolFactoryInput,
+  TurnGenerateImageToolFactoryInput,
 } from "./runner/tools/turn-toolset.js";
 import type {
   RemoteResource,
@@ -140,7 +145,10 @@ import {
   type ProductionTurnAgentOwnerInput,
 } from "./runner/production-turn-agent-owner.js";
 import {
+  bindProductionTurnRunShellConversationState,
   createProductionTurnRunShellHostInput,
+  type ProductionTurnConversationState,
+  type ProductionTurnRunShellAdapterInput,
 } from "./runner/production-turn-run-shell-adapter.js";
 import {
   createPromptCollectorGlue,
@@ -737,7 +745,10 @@ function toGeneratedTurnPromptOptions(
       ...(typeof record.mimeType === "string" ? { mimeType: record.mimeType } : {}),
     }];
   });
-  const selectedVideos = options.selectedVideos?.filter(isGeneratedSelectedVideo);
+  const selectedVideos = options.selectedVideos?.flatMap(value => {
+    const video = isGeneratedSelectedVideo(value) ? value : normalizePathOnlySelectedVideo(value);
+    return video === undefined ? [] : [video];
+  });
   return {
     ...(selectedImages === undefined ? {} : { selectedImages }),
     ...(selectedVideos === undefined ? {} : { selectedVideos }),
@@ -1337,7 +1348,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     // (createSubagentRunner), but the per-turn owner input is built later from runOptions, which
     // carries only the child's conversation id. This map bridges the two — keyed by conversation id
     // — so createAgentOwnerInput can attach the subagentType and the local inference path can resolve
-    // a per-type model + reasoning selection. Entries are removed when the subagent run settles.
+    // a per-type model + reasoning selection. Entries last until the child session is disposed,
+    // including all turns produced by steering that same session.
     const subagentTypeByConversationId = new Map<string, string>();
     // Same bridge for the child's runner: cancelThisRun is built into the per-turn owner input from
     // the shared runnerOptions closure, which captures the PARENT's builtRunner — so a child turn's
@@ -1629,6 +1641,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           userMemory: promptUserMemoryProvider,
           projectMemory: promptProjectMemoryProvider,
           isLocalCodexMode: () => isLocalCodexMode(process.env),
+          isImageGenerationEnabled: () => getGenerateImageToolInputs() !== undefined,
           // Phase B (B-2 subset): when a manager is designated, every OTHER
           // persistent agent is told it works in a managed team — delegated-job
           // results go back to the manager, who reports to the user.
@@ -1644,16 +1657,25 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           requestContext: {
             resolve: () => {
               const resolved = productionRequestContext.resolve();
+              const userLanguage = method(settings, "getUserLanguage")?.();
               return {
                 timeZone: resolved.timeZone ?? "UTC",
                 ...(typeof resolved.userFullName === "string"
                   ? { userFullName: resolved.userFullName }
                   : {}),
+                ...(typeof userLanguage === "string" && userLanguage.length > 0
+                  ? { userLanguage }
+                  : {}),
               };
             },
           },
           automationStore: () => null,
-          workflowStore: () => null,
+          // The skill library section (pointer + the skills enabled for this bot, with the file to
+          // Read). It was null here, so no bot ever saw its skills listed; a bot asked to follow a
+          // skill had to list the data folder to find it (2026-09-05).
+          workflowStore: () => (session.workflows != null && typeof (session.workflows as { list?: unknown }).list === "function"
+            ? (session.workflows as { getLocation(): string | null | undefined; list(): readonly LibraryWorkflowRecord[] })
+            : null),
           channelStore: () => null,
           connectorManifests: CONNECTOR_MANIFESTS,
           sendToAgentImpl: sendToAgent,
@@ -2279,13 +2301,36 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       };
     };
 
+    function getGenerateImageToolInputs(): TurnGenerateImageToolFactoryInput | undefined {
+      const service = runnerOptions.generateImageService;
+      const resourceAccessor = runnerOptions.generateImageResourceAccessor;
+      if (
+        isSharedRoomTurn
+        || typeof service !== "function"
+        || typeof resourceAccessor !== "object"
+        || resourceAccessor === null
+        || typeof Reflect.get(resourceAccessor, "get") !== "function"
+        || (isLocalCodexMode(process.env) && !isMediaProviderConfigured("image", process.env))
+      ) return undefined;
+      return {
+        dependencies: {
+          resourceAccessor: resourceAccessor as TurnGenerateImageToolFactoryInput["dependencies"]["resourceAccessor"],
+          generateImageService: (context, description, filename, referenceImages, aspectRatio) =>
+            service(context, description, filename ?? "", referenceImages ?? [], aspectRatio),
+          requestContext: { env: { projectFolder: dirname(session.dbPath) } },
+        },
+      };
+    }
+
     const createTurnToolsetFactoryProvider = (
       dependencies: ProductionTurnHostDependencies,
       turnInputs?: ProductionTurnToolInputs,
     ): TurnToolsetHostFactoryProvider => {
       const cloudAgent = dependencies.cloudAgent;
       const mcpManagement = dependencies.mcpManagement;
+      const generateImage = getGenerateImageToolInputs();
       const provider: TurnToolsetHostFactoryProvider = {
+      ...(generateImage === undefined ? {} : { createGenerateImageToolInputs: () => generateImage }),
       createSendMessageToolInputs: turn => ({
         dependencies: turn.emitUpdate === undefined
           ? dependencies.sendMessage
@@ -3054,35 +3099,37 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 agentId: string,
                 args: SubagentAdapterArgs,
               ): SubagentSession => {
-                if (typeof args.subagentType === "string" && args.subagentType.length > 0) {
-                  subagentTypeByConversationId.set(agentId, args.subagentType);
+                if (subagentTypeByConversationId.has(agentId) || runnerByConversationId.has(agentId)) {
+                  throw new TypeError("subagent session already has an owner");
                 }
                 if (ASIDE_BROWSE_ENABLED && isAsideBrowseSubagentType(args.subagentType)) {
                   // belmont-browse: this child's brain is an Aside session behind the local browse service.
                   const createBrowseSession = method(extensions.api("browse-runtime"), "createSubagentSession");
                   if (createBrowseSession === undefined) throw new TypeError("browse-runtime extension is not bound");
                   const browseSession = createBrowseSession(agentId) as SubagentSession;
+                  subagentTypeByConversationId.set(agentId, args.subagentType);
+                  let disposal: Promise<void> | undefined;
                   // Delegate method by method: the session is a class instance, so a spread would
                   // drop its prototype methods (getObservedToolCallCount etc.).
                   return {
-                    run: async (prompt, options) => {
-                      try {
-                        return await browseSession.run(prompt, options);
-                      } finally {
-                        subagentTypeByConversationId.delete(agentId);
-                      }
-                    },
+                    run: (prompt, options) => browseSession.run(prompt, options),
                     interrupt: reason => browseSession.interrupt(reason),
                     getResolvedOutline: () => browseSession.getResolvedOutline(),
                     getObservedToolCallCount: () => browseSession.getObservedToolCallCount(),
                     getActivitySnapshot: () => browseSession.getActivitySnapshot(),
                     getTranscriptPath: () => browseSession.getTranscriptPath(),
-                    dispose: () => browseSession.dispose?.(),
+                    dispose: () => {
+                      disposal ??= Promise.resolve().then(async () => {
+                        try { await browseSession.dispose?.(); }
+                        finally { subagentTypeByConversationId.delete(agentId); }
+                      });
+                      return disposal;
+                    },
                   };
                 }
-                const childConversationState = () => {
+                const childConversationState: ProductionTurnConversationState["getConversationState"] = () => {
                   const runner = runnerByConversationId.get(agentId) as {
-                    getAgentConversationStateStructure?: () => unknown;
+                    getAgentConversationStateStructure?: ProductionTurnConversationState["getConversationState"];
                   } | undefined;
                   if (typeof runner?.getAgentConversationStateStructure === "function") {
                     return runner.getAgentConversationStateStructure();
@@ -3110,19 +3157,37 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   // the settle host is created before prepareTurn runs, so identity must not
                   // come from any shared per-prepare stamp.
                   productionTurnRunShell: {
-                    ...(runnerOptions.productionTurnRunShell as Record<string, unknown>),
+                    ...bindProductionTurnRunShellConversationState(
+                      runnerOptions.productionTurnRunShell as ProductionTurnRunShellAdapterInput,
+                      {
+                        getConversationState: childConversationState,
+                        compactionEpoch: () => compactionEpochFromConversationState(childConversationState()),
+                      },
+                    ),
                     createSettleHost: () => createProductionTurnSettleHost(agentId),
                     getConversationId: () => agentId,
-                    getConversationState: childConversationState,
-                    compactionEpoch: () => {
-                      try { return compactionEpochFromConversationState(childConversationState()); }
-                      catch { return 0; }
-                    },
                   } as typeof runnerOptions.productionTurnRunShell,
                 });
-                bindSessionOwnedRunner(child);
+                try {
+                  // initialState is the outline state, not the generated Agent checkpoint.
+                  // Seed the latter before attaching shared services: otherwise the first
+                  // read falls back to the parent's AgentStore and imports its history.
+                  const initializeChildCheckpoint = method(child, "setAgentConversationStateStructure");
+                  if (initializeChildCheckpoint === undefined) {
+                    throw new TypeError("child generated checkpoint owner is not bound");
+                  }
+                  initializeChildCheckpoint(new ConversationStateStructure());
+                  bindSessionOwnedRunner(child);
+                } catch (error) {
+                  // Construction has allocated a runner, but it is not yet published.
+                  // Release partial bindings without ever exposing type/runner ownership.
+                  try { void Promise.resolve(method(child, "dispose")?.()).catch(() => {}); } catch {}
+                  throw error;
+                }
                 ownedRunners.add(child);
                 runnerByConversationId.set(agentId, child as { interrupt?: (reason: string) => boolean | void });
+                subagentTypeByConversationId.set(agentId, args.subagentType);
+                let disposal: Promise<void> | undefined;
                 return {
                   run: async (prompt, options) => {
                     // Fire the subagentStart / subagentStop lifecycle hooks around the
@@ -3165,10 +3230,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                       subagentError = error instanceof Error ? error.message : String(error);
                       throw error;
                     } finally {
-                      // The subagent has finished all its turns; drop its type + runner mappings.
-                      // A resume re-dispatches through createSubagentRunner and re-populates them.
-                      subagentTypeByConversationId.delete(agentId);
-                      runnerByConversationId.delete(agentId);
+                      // A turn can unwind for steering. Ownership remains bound until the
+                      // runtime reaches terminal settlement and disposes this session.
                       try {
                         await executeRemoteSubagentStopHook({ ctx: productionContext, subagentId: agentId, subagentType: args.subagentType, status: subagentStatus, durationMs: Date.now() - subagentStartedAt, messageCount: 0, toolCallCount: observedToolCalls, loopCount: 0, task: prompt, description: args.subagentType, ...(subagentError === undefined ? {} : { errorMessage: subagentError }), parentConversationId: session.id, requestContext: hookRequestContext, options: hookOptions });
                       } catch { /* hook must not break the subagent */ }
@@ -3183,9 +3246,18 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   getTranscriptPath: () => child.getTranscriptPath(),
                   // Deregister from the owning pool and dispose the child runner so a
                   // completed/released subagent does not leak until host shutdown.
-                  dispose: async () => {
-                    ownedRunners.delete(child);
-                    try { await (child as { dispose?: () => void | Promise<void> }).dispose?.(); } catch { /* already disposed */ }
+                  dispose: () => {
+                    disposal ??= Promise.resolve().then(async () => {
+                      try { await (child as { dispose?: () => void | Promise<void> }).dispose?.(); }
+                      finally {
+                        if (runnerByConversationId.get(agentId) === child) {
+                          runnerByConversationId.delete(agentId);
+                          subagentTypeByConversationId.delete(agentId);
+                        }
+                        ownedRunners.delete(child);
+                      }
+                    });
+                    return disposal;
                   },
                 };
               };

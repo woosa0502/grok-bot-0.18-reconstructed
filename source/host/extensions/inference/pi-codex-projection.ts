@@ -120,6 +120,12 @@ export function base64LooksLikeImage(base64: string): boolean {
 
 const OMITTED_IMAGE_NOTE = "[attached image omitted: the bytes are not a valid image]";
 
+function unprocessedAttachmentNote(part: Loose): string | undefined {
+  if (part.type !== "file" && part.type !== "audio" && part.type !== "video") return undefined;
+  const mime = typeof (part.mimeType ?? part.mediaType) === "string" ? String(part.mimeType ?? part.mediaType) : String(part.type);
+  return `[Attached ${mime} content was not processed by this inference path. Do not claim to have read, heard, or watched it. Audio/video attachments require media preprocessing; other files must be supplied as text or through the file-reading tools.]`;
+}
+
 function userContent(parts: readonly unknown[]): Extract<Message, { role: "user" }>["content"] {
   const content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] = [];
   for (const raw of parts) {
@@ -133,6 +139,9 @@ function userContent(parts: readonly unknown[]): Extract<Message, { role: "user"
       const data = imageData(imagePartSource(part));
       if (data != null && base64LooksLikeImage(data)) content.push({ type: "image", data, mimeType: imageMimeType(part) });
       else if (data != null) content.push({ type: "text", text: OMITTED_IMAGE_NOTE });
+    } else {
+      const note = unprocessedAttachmentNote(part);
+      if (note) content.push({ type: "text", text: note });
     }
   }
   return content;
@@ -148,6 +157,9 @@ function toolResultContent(value: unknown): Extract<Message, { role: "toolResult
         const data = imageData(imagePartSource(part));
         if (data != null && base64LooksLikeImage(data)) projected.push({ type: "image", data, mimeType: imageMimeType(part) });
         else if (data != null) projected.push({ type: "text", text: OMITTED_IMAGE_NOTE });
+      } else if (part) {
+        const note = unprocessedAttachmentNote(part);
+        if (note) projected.push({ type: "text", text: note });
       }
     }
     if (projected.length > 0) return projected;

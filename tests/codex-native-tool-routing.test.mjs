@@ -21,7 +21,8 @@ test("Pi Codex is loaded lazily so unrelated Belmont bundles do not absorb the c
 test("Pi emits delegated tool calls while Belmont retains execution ownership", async () => {
   const runtime = await source("source/host/extensions/inference/pi-codex-runtime.ts");
   const projection = await source("source/host/extensions/inference/pi-codex-projection.ts");
-  assert.match(runtime, /createPiContext\(options\.messages, options\.definitions/);
+  assert.match(runtime, /const messages = await preprocessMedia\(options\.messages, resolved\.model\.input\.includes\("image"\), options\.signal\)/);
+  assert.match(runtime, /createPiContext\(messages, options\.definitions/);
   assert.match(runtime, /yield projected/);
   assert.doesNotMatch(runtime, /executeTool/);
   assert.match(projection, /event\.type === "toolcall_end"/);
@@ -54,7 +55,7 @@ test("bot-selected Codex model survives executor state and reaches Pi catalog va
   // their own selection (model id + effort) from settings, and reasoning threads through the context
   // alongside modelId (reasoningFromContext ?? this.reasoning).
   assert.match(provider, /reasoningFromContext\(ctx\) \?\? this\.reasoning/);
-  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, resolvedModelId, resolvedReasoning, input\.conversationId\)/);
+  assert.match(turnShell, /createProviderPromptSession\(turnProvider, resolvedModelId, resolvedReasoning, input\.conversationId\)/);
   assert.match(runtime, /models\.getModel\(CODEX_PROVIDER, selectedId\)/);
   assert.match(runtime, /Unknown Pi Codex model/);
 });

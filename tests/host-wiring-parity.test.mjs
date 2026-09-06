@@ -52,13 +52,15 @@ test("local Codex mode hides Cursor cloud agents and image generation honestly",
   const experiments = read("source/host/extensions/experiments/extension.ts");
   assert.match(experiments, /isCloudAgentsDisabledByTeam: \(\) => isLocalCodexMode\(process\.env\)/);
   const prompt = read("source/host/runner/system-prompt.ts");
-  assert.match(prompt, /export const SAND_SYSTEM_PROMPT_LOCAL_CODEX = buildSandBaseSystemPrompt\(\{\s*cloudAgentsEnabled: false,\s*imageGenerationEnabled: false,\s*sharedLocalDesktop: true,\s*localCodexMode: true\s*\}\)/);
-  // AUDIT-W17: the local build has ONE shared desktop; the local prompt must not
-  // claim per-agent screens, while the cloud prompt keeps the per-agent wording.
-  assert.match(prompt, /in this local build the desktop is shared too/);
+  assert.match(prompt, /export const SAND_SYSTEM_PROMPT_LOCAL_CODEX = buildSandBaseSystemPrompt\(\{\s*cloudAgentsEnabled: false,\s*imageGenerationEnabled: false,\s*localCodexMode: true\s*\}\)/);
+  // Top-level bots have separate displays; their own computerUse children share
+  // that bot's screen and therefore still require exclusive desktop control.
+  assert.match(prompt, /each top-level bot has its own desktop screen/);
+  assert.match(prompt, /Your computerUse subagent shares YOUR bot's screen/);
+  assert.doesNotMatch(prompt, /in this local build the desktop is shared too/);
   assert.match(prompt, /Image generation is not available in this setup: there is no GenerateImage tool/);
   const assembly = read("source/host/runner/system-prompt-assembly.ts");
-  assert.match(assembly, /deps\.isLocalCodexMode\?\.\(\) === true\s*\? SAND_SYSTEM_PROMPT_LOCAL_CODEX/);
+  assert.match(assembly, /deps\.isLocalCodexMode\?\.\(\) === true\s*\? deps\.isImageGenerationEnabled\?\.\(\) === true\s*\? SAND_SYSTEM_PROMPT_LOCAL_CODEX_WITH_IMAGES\s*: SAND_SYSTEM_PROMPT_LOCAL_CODEX/);
   const localMode = read("source/electron-main/adapters/local-codex-mode.ts");
   for (const gate of ["sand_usage_page", "sand_teach_by_demonstration", "sand_agent_network", "sand_get_grok_bot_ios", "publish_user_skills", "sand_auto_update_when_idle"]) {
     assert.match(localMode, new RegExp(`${gate}: false`));

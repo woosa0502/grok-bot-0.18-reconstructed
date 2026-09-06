@@ -1,4 +1,6 @@
 import path from "node:path";
+import { usesLocalMediaPreprocessing } from "../../shared/node/local-media-routing.js";
+import { hydrateSelectedAttachmentData } from "./context-processing-hydration.js";
 
 import type { Context } from "../context/core.js";
 import { createLogger } from "../context/logger.js";
@@ -70,7 +72,7 @@ interface ImagePart {
   readonly mimeType: string;
   readonly providerOptions?: { readonly cursor: { readonly mimeType?: string; readonly videoFps?: number } };
 }
-type UserContentPart = TextPart | ImagePart;
+type UserContentPart = TextPart | ImagePart | { readonly type: "file"; readonly data: Uint8Array; readonly mimeType: string };
 
 interface ResourceAccessor {
   get(resource: typeof writeExecutorResource): { execute(ctx: Context, args: WriteArgs): Promise<unknown> };
@@ -175,6 +177,7 @@ export async function processSelectedContext(
   videoFilePaths: string[];
   documentFilePaths: string[];
 }> {
+  ctx.signal.throwIfAborted();
   const userContent: UserContentPart[] = [];
   const selectedImages: SelectedImageValue[] = [];
   const selectedVideos: SelectedVideoValue[] = [];
@@ -248,19 +251,30 @@ export async function processSelectedContext(
       ...(config3.conversationId === undefined ? {} : { conversationId: config3.conversationId }),
     });
   }));
-  const documentProcessingPromise = Promise.all(selectedContext.selectedDocuments.map((selectedDocument, index) => processSelectedDocumentAttachment({
+  const documentProcessingPromise = Promise.all(selectedContext.selectedDocuments.map(async (selectedDocument, index) => {
+    if (usesLocalMediaPreprocessing(_modelId) && selectedDocument.mimeType.startsWith("audio/")) {
+      const hydrated = await hydrateSelectedAttachmentData({
+        ctx, blobStore: blobStore!, attachment: selectedDocument, dataOrBlobId: selectedDocument.dataOrBlobId,
+        maxBytes: 100 * 1024 * 1024, missingBlobError: "Audio attachment not found in blob store", sizeErrorLabel: "Audio",
+        withBlobId: (blobId) => new SelectedDocument({ ...selectedDocument, dataOrBlobId: { case: "blobId", value: blobId } }),
+      });
+      return { selectedDocument: hydrated.processedAttachment, docData: hydrated.data, mimeType: selectedDocument.mimeType, filename: selectedDocument.filename, documentFilePath: undefined };
+    }
+    return processSelectedDocumentAttachment({
     ctx,
     blobStore,
     selectedDocument,
     index,
     requestContext,
     resourceAccessor,
-  })));
+    });
+  }));
   const [imageResults, videoResults, documentResults] = await Promise.all([
     imageProcessingPromise,
     videoProcessingPromise,
     documentProcessingPromise,
   ]);
+  ctx.signal.throwIfAborted();
   blobHydrationDuration.histogram(ctx, performance.now() - blobHydrationStart, {
     hasImages: hasImages ? "true" : "false",
     hasVideos: hasVideos ? "true" : "false",
@@ -288,6 +302,10 @@ export async function processSelectedContext(
         providerOptions: { cursor: { mimeType: result.mimeType, ...(result.fps === undefined ? {} : { videoFps: result.fps }) } },
       });
     } else if (result.videoData) {
+      if (usesLocalMediaPreprocessing(_modelId)) {
+        userContent.push({ type: "file", data: new Uint8Array(result.videoData), mimeType: result.mimeType });
+        continue;
+      }
       userContent.push({
         type: "image",
         image: `data:${result.mimeType};base64,${Buffer.from(result.videoData).toString("base64")}`,
@@ -297,6 +315,9 @@ export async function processSelectedContext(
     }
   }
   for (const result of documentResults) {
+    if (usesLocalMediaPreprocessing(_modelId) && result.mimeType.startsWith("audio/") && result.docData) {
+      userContent.push({ type: "file", data: new Uint8Array(result.docData), mimeType: result.mimeType });
+    }
     if (result.selectedDocument) selectedDocuments.push(result.selectedDocument);
     if (result.documentFilePath) {
       documentFilePaths.push(result.documentFilePath);

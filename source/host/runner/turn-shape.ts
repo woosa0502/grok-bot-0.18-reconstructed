@@ -109,6 +109,12 @@ export interface SilentTailOptions {
    * SendMessage is no longer in `rawMessages`. Comes from the settle collectors.
    */
   readonly deliveredBeforeVisibleHistory?: boolean;
+  /**
+   * This run continues a turn that already acknowledged the user (a closing-send nudge run). Work
+   * done here that ends without a delivery is silent; ending at once with no work is the model
+   * saying there was nothing more to report, and is not.
+   */
+  readonly continuesAcknowledgedTurn?: boolean;
 }
 
 /**
@@ -173,5 +179,8 @@ export function turnEndedOnSilentToolCalls(
     ).length;
   }
   if (deliveredBefore && deliveriesAfterBoundary === 0) return true;
+  if (options.continuesAcknowledgedTurn === true && deliveriesAfterBoundary === 0) {
+    return workSinceDelivery > 0;
+  }
   return deliveriesAfterBoundary > 0 && workSinceDelivery > 0;
 }

@@ -72,6 +72,7 @@ export class UpgradeRecreateResume {
     source: string,
     options?: { automationId?: string; automationRunId?: string },
   ): void {
+    if (this.tm.isAgentUserStopped?.(session.id) === true) return;
     this.tm.upgradeResumeStore?.markPending({
       agentId: session.id,
       markedAtMs: Date.now(),
@@ -86,6 +87,7 @@ export class UpgradeRecreateResume {
   }
 
   markAgentResumePendingForQuiescedRevival(session: { id: string }): void {
+    if (this.tm.isAgentUserStopped?.(session.id) === true) return;
     const store = this.tm.upgradeResumeStore;
     if (store == null) return;
     if (
@@ -112,13 +114,15 @@ export class UpgradeRecreateResume {
   }
 
   async resumeUpgradeAgent(marker: UpgradeResumeMarker): Promise<void> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(marker.agentId);
+    if (this.tm.isAgentUserStopped?.(marker.agentId) === true) return;
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(marker.agentId);
     } catch {
       return;
     }
-    if (this.tm.groupChat.isGroupSession(session)) return;
+    if (wasStopped?.() === true || this.tm.groupChat.isGroupSession(session)) return;
     const runner = this.tm.runnerRegistry.getRunner(session);
     this.tm.runLifecycle.beginSessionRun(session);
     const resumedSource =
@@ -247,7 +251,8 @@ export class UpgradeRecreateResume {
     const ids = [...new Set([...agentIds, ...local])];
     let resumed = 0;
     for (const agentId of ids) {
-      if (this.tm.sessions.isAgentGone(agentId)) continue;
+      if (this.tm.sessions.isAgentGone(agentId) ||
+          this.tm.isAgentUserStopped?.(agentId) === true) continue;
       const marker = this.tm.upgradeResumeStore
         ?.listPending()
         .find(
@@ -268,6 +273,7 @@ export class UpgradeRecreateResume {
     if (!this.tm.execution.canExecute || isRecreateWakeCarryDisabled()) return;
     const now = Date.now();
     for (const marker of coercePendingWakeMarkers(carriedPendingWakes)) {
+      if (this.tm.isAgentUserStopped?.(marker.agentId) === true) continue;
       if (marker.kind !== "cloud-agent" && marker.kind !== "shell") continue;
       const report = (outcome: string, reason?: string): void => {
         this.tm.telemetry.reportPendingWake({
@@ -317,6 +323,7 @@ export class UpgradeRecreateResume {
     marker: DurablePendingWakeMarker,
     report: (outcome: string, reason?: string) => void,
   ): void {
+    if (this.tm.isAgentUserStopped?.(marker.agentId) === true) return;
     report("dropped_with_notice");
     this.tm.backgroundWakes.handleBackgroundShellCompletion({
       agentId: marker.agentId,

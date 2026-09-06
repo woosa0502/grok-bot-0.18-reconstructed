@@ -18,6 +18,7 @@ import {
   createSandCursorBackendClient,
   getSandInferenceBackendUrl,
 } from "../../../shared/node/cursor-backend/cursor-inference.js";
+import { createLocalMcpExec, withLocalMcpAccounts } from "../../../shared/node/mcp/local-mcp-exec.js";
 import { SandMcpManager } from "../../../shared/node/mcp/mcp-manager.js";
 import { isLocalCodexMode, localCodexAccountCacheScope } from "../../../shared/node/local-codex-account.js";
 import { createLocalMcpWriter, localCatalogEntryToMarketplacePlugin, localEffectivePlugins, localMcpServersFromConfig, readLocalMcpConfig, readLocalPluginCatalog, readLocalPluginInstalls } from "../../../shared/node/mcp/local-mcp-store.js";
@@ -157,7 +158,7 @@ export function createHostMcp(deps: CreateHostMcpOptions): McpHostPort {
     },
     add: async (args: { name: string; configJson: string }) => toInstalledServers(await mutate(() => manager.addServer(args))),
     removeServer: async (serverId: string) => { const result = await mutate(() => manager.removeServer(serverId)); return { removed: result.removed, ...(result.reason == null ? {} : { reason: result.reason }), servers: toInstalledServers(result.state) }; },
-    restart: async () => toInstalledServers(await mutate(() => manager.reloadServers())),
+    restart: async () => { await (deps.backendMcpExec as { restart?(): Promise<void> }).restart?.(); return toInstalledServers(await mutate(() => manager.reloadServers())); },
     authenticate: async (serverId: string, accountKey: string, requestingAgentId?: string, forceReauth?: boolean) => { const result = toAuthResult(await manager.authenticateServer(serverId, accountKey, requestingAgentId ?? null, forceReauth)); if (result.kind === "started") deps.onServersMutated?.(); return result; },
     logoutAccount: async ({ serverId, accountKey }: { serverId: string; accountKey: string }) => toInstalledServers(await mutate(() => manager.logoutAccount(serverId, accountKey))),
     renameAccount: async ({ serverId, accountKey, newAccountKey }: { serverId: string; accountKey: string; newAccountKey: string }) => toInstalledServers(await mutate(() => manager.renameAccount(serverId, accountKey, newAccountKey))),
@@ -202,7 +203,7 @@ function readLocalMcpServers(sandRootDir: string | undefined): AccountMcpServer[
   if (sandRootDir == null || sandRootDir.length === 0) return [];
   // Shared with the desktop Plugins page: <sandRoot>/mcp.json (+ plugin-installs.json
   // for plugin attribution). Stable numeric ids, stdio `cwd` preserved.
-  return localMcpServersFromConfig(readLocalMcpConfig(sandRootDir), readLocalPluginInstalls(sandRootDir));
+  return withLocalMcpAccounts(sandRootDir, localMcpServersFromConfig(readLocalMcpConfig(sandRootDir), readLocalPluginInstalls(sandRootDir)));
 }
 export class McpHostService {
   readonly authCompletionListeners = new Set<(event: unknown) => void>();
@@ -222,7 +223,8 @@ export class McpHostService {
         getMachineId: credentials.getMachineId,
       }) as unknown as AccountMcpClient,
     };
-    const backendMcpExec = createDashboardSandBackendMcpExec({
+    const localRoot = isLocalCodexMode() ? deps.sandRootDir : undefined;
+    const backendMcpExec = localRoot !== undefined ? createLocalMcpExec(localRoot) : createDashboardSandBackendMcpExec({
       getAccessToken: accountMcpDeps.getAccessToken,
       getMachineId: accountMcpDeps.getMachineId,
       createClient: (credentials) => createSandCursorBackendClient(DashboardService, {
@@ -239,6 +241,7 @@ export class McpHostService {
       getMachineId: deps.auth.getMachineId,
       accountServersProvider: async () => {
         const local = readLocalMcpServers(deps.sandRootDir);
+        if (isLocalCodexMode()) return { servers: local, cacheScope: localCodexAccountCacheScope() };
         const account = await fetchAccountMcpServers(accountMcpDeps);
         if (local.length === 0) return account;
         // Merge local stdio servers with any account servers. In local/codex mode

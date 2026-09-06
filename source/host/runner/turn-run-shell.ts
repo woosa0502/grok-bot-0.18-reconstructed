@@ -11,6 +11,7 @@ import {
   type PromptExecutor,
 } from "./send-message-reminder-middleware.js";
 import { createStartOfTurnAckReminderMiddleware } from "./start-of-turn-ack-reminder-middleware.js";
+import { createPromptMessagesRecorder, createPromptMessagesSnapshotMiddleware } from "./prompt-messages-snapshot-middleware.js";
 import { SimplePromptToolExecutor } from "../../packages/agent/tool-stream-executor.js";
 import {
   createShellWatchGeneratedStateProjection,
@@ -28,7 +29,7 @@ import type {
   PromptSnapshotStore,
 } from "./system-prompt-assembly.js";
 import type { SummarizationPromptSession } from "../../packages/agent-summarization/summarization-handler.js";
-import { createProviderPromptSession, openAiCompatibleHostForModel, type CodexReasoningEffort } from "../extensions/inference/provider-session.js";
+import { createProviderPromptSession, openAiCompatibleHostForModel, type CodexReasoningEffort, isCodexReasoningEffort } from "../extensions/inference/provider-session.js";
 import { getSandRootDir } from "../host-paths.js";
 import { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { AgentProfilePromptSnapshot } from "./sand-agent-profile-prompt.js";
@@ -164,7 +165,7 @@ export interface TurnAgentRunContext<ContextValue> {
 const LOCAL_SUMMARY_MODEL = process.env.SAND_CODEX_SUMMARY_MODEL?.trim() || "gpt-5.6-luna";
 const LOCAL_SUMMARY_REASONING: CodexReasoningEffort = ((): CodexReasoningEffort => {
   const effort = process.env.SAND_CODEX_SUMMARY_EFFORT?.trim();
-  return effort === "minimal" || effort === "low" || effort === "medium" || effort === "high" || effort === "xhigh" ? effort : "medium";
+  return isCodexReasoningEffort(effort) ? effort : "medium";
 })();
 
 export async function createTurnAgentRunContext<ContextValue>(
@@ -214,7 +215,7 @@ export async function createTurnAgentRunContext<ContextValue>(
   const resolvedModelId = agentSelection?.modelId ?? input.modelId;
   const resolvedReasoning = ((): CodexReasoningEffort | undefined => {
     const effort = reasoningEffortFromSelection(agentSelection);
-    return effort === "minimal" || effort === "low" || effort === "medium" || effort === "high" || effort === "xhigh" ? effort : undefined;
+    return isCodexReasoningEffort(effort) ? effort : undefined;
   })();
   // A per-bot model id that names an OpenAI-compatible host ("nvidia/…") routes that bot through
   // the openrouter executor regardless of the global provider, so one roster bot can run on a free
@@ -252,7 +253,13 @@ export async function createTurnAgentRunContext<ContextValue>(
   const profileUpdateForTurn = input.systemPromptAssembly?.getAgentProfileUpdateForTurn(
     profilePromptSnapshot,
   );
-  const baseExecutor = (): PromptExecutor => agent.getExecutor();
+  // Silent-stop postmortem part 2: the Agent asks for a fresh executor per runStream / summary /
+  // step, so "the latest executor's messages" can be a stale snapshot at settle time. Record the
+  // messages of every model call instead (innermost wrapper, after all reminders) and hand the
+  // settle step that recording; it is exactly what the model last saw, whichever executor it was.
+  const promptMessagesRecorder = createPromptMessagesRecorder();
+  const baseExecutor = (): PromptExecutor =>
+    createPromptMessagesSnapshotMiddleware(promptMessagesRecorder)(agent.getExecutor());
   const toolSession = {
     getExecutor: () => {
       const withDiskPressure = diskPressureReminderEpisodeId == null
@@ -267,7 +274,7 @@ export async function createTurnAgentRunContext<ContextValue>(
         ? withSendMessage
         : createStartOfTurnAckReminderMiddleware()(withSendMessage);
       const toolExecutor = new SimplePromptToolExecutor(executor);
-      input.onLatestPromptMessages?.(() => toolExecutor.getMessages());
+      input.onLatestPromptMessages?.(() => promptMessagesRecorder.latest());
       return toolExecutor;
     },
   };
@@ -404,6 +411,10 @@ export interface TurnRunOptions {
   }[];
   readonly replyContext?: unknown;
   readonly hidden?: boolean;
+  /** Hidden closing-send nudge: keep silent-tail detection on so the nudge can repeat (bounded). */
+  readonly closingNudge?: boolean;
+  /** Hidden task-continuation run: the runtime handed the turn back over an unfinished todo list. */
+  readonly taskContinuation?: boolean;
   readonly isSilenceAllowed?: boolean;
   readonly autoReviewEpoch?: "continue" | "new";
   readonly lineage?: {
@@ -856,6 +867,8 @@ export function createTurnRunShell(host: TurnRunShellHost) {
           finalState,
           turnStartedAtMs,
           hidden: options.hidden === true,
+          closingNudge: options.closingNudge === true,
+          taskContinuation: options.taskContinuation === true,
           trimmedPrompt,
           session: prepared.session,
           baseContext: context,

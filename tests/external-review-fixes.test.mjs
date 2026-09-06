@@ -134,7 +134,7 @@ test("r3#5: the manager bootstrap reconciles a drifted persona and sweeper, not 
 test("r4#1: payload-bearing markers are never pre-cleared during rearm (no loss window)", () => {
   const rearm = read("source/host/extensions/transcript/pending-wake-rearm.ts");
   assert.match(rearm, /const carriesPayload = marker\.kind === "agent-message" \|\| marker\.completion != null;/);
-  assert.match(rearm, /if \(!carriesPayload && !\(marker\.kind === "shell" && marker\.interruptedByRecreate === true\)\)\s*store\.clearOne/);
+  assert.match(rearm, /if \(!carriesPayload && \(marker\.workflowParents\?\.length \?\? 0\) === 0\s*&& !\(marker\.kind === "shell" && marker\.interruptedByRecreate === true\)\)\s*store\.clearOne/);
   // The redeliver path no longer needs (and must not rely on) a late re-persist,
   // and the lost-child path must not strip a stored completion via upsert.
   assert.doesNotMatch(rearm, /Re-persist first \(rearmPendingWakes cleared/);

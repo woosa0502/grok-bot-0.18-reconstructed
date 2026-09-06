@@ -1,0 +1,42 @@
+// Parity driver: send one prompt to a Belmont bot through the host gateway, print every new transcript entry
+// as it arrives, answer widgets like a user (default "허용"), and stop after the reply has been quiet for a while.
+// usage: node drive.mjs <agentId> "<prompt>" [--answer=허용] [--quiet=45] [--max=900] [--out=result.json]
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+const SAND = path.resolve(import.meta.dirname, "../../../../.cache/belmont-wsl-profile/sand-data");
+const gw = JSON.parse(readFileSync(path.join(SAND, "gateway.json"), "utf8"));
+const args = process.argv.slice(2); const opt = Object.fromEntries(args.filter((a) => a.startsWith("--")).map((a) => a.slice(2).split("=")));
+const [agent, task] = args.filter((a) => !a.startsWith("--"));
+const answer = opt.answer ?? "허용"; const quietMs = Number(opt.quiet ?? 45) * 1000; const maxMs = Number(opt.max ?? 900) * 1000;
+const api = async (m, body) => { const r = await fetch(`http://127.0.0.1:${gw.port}/api/${m}`, { method: "POST", headers: { authorization: `Bearer ${gw.token}`, "content-type": "application/json" }, body: JSON.stringify(body ?? {}), signal: AbortSignal.timeout(30_000) }); if (!r.ok) throw new Error(`${m}: ${r.status} ${await r.text()}`); return r.json(); };
+const t0 = Date.now(); const stamp = () => `+${((Date.now() - t0) / 1000).toFixed(0)}s`;
+const seen = new Set((await api("getAgentTranscriptTail", { id: agent, limit: 60 })).entries.map((e) => e.id));
+const log = []; const say = (line) => { console.log(line); log.push(line); };
+await api("sendPrompt", { agentId: agent, prompt: task, clientNonce: crypto.randomUUID() });
+say(`${stamp()} prompt sent: ${task.slice(0, 120)}`);
+let widgets = 0, lastNew = Date.now(), lastText = null, texts = 0, firstReplyAt = null;
+while (Date.now() - t0 < maxMs) {
+  await new Promise((r) => setTimeout(r, 2000));
+  const tail = await api("getAgentTranscriptTail", { id: agent, limit: 60 });
+  for (const e of tail.entries) {
+    if (seen.has(e.id)) continue;
+    seen.add(e.id); lastNew = Date.now();
+    const m = e.message ?? {};
+    if (m.type === "widget") {
+      widgets += 1; const w = typeof m.widget === "string" ? m.widget : JSON.stringify(m.widget ?? m);
+      say(`${stamp()} [widget] ${w.slice(0, 200)}`);
+      if (answer !== "none") {
+        const options = Array.isArray(m.widget?.options) ? m.widget.options : [];
+        const byLabel = options.find((o) => o.label === answer || o.value === answer);
+        const value = byLabel?.value ?? (options[0]?.value ?? answer); // the UI sends the option's value ("allow"/"confirm"), never the label
+        await api("respondToWidget", { entryId: e.id, value, agentId: agent }); say(`${stamp()} [user] answered: ${value}`);
+      }
+    } else if (m.type === "text") { texts += 1; lastText = m.content; firstReplyAt ??= Date.now(); say(`${stamp()} [text] ${String(m.content).replace(/\n/g, " ⏎ ").slice(0, 400)}`); }
+    else if (e.kind !== "message") say(`${stamp()} [${e.kind}:${m.type ?? ""}] ${JSON.stringify(m).slice(0, 160)}`);
+  }
+  const health = await fetch(`http://127.0.0.1:${gw.port}/health`).then((r) => r.json()).catch(() => ({}));
+  if (lastText && Date.now() - lastNew > quietMs && !health.isBusy) break;
+}
+const summary = { agent, task, elapsedSec: Math.round((Date.now() - t0) / 1000), firstReplySec: firstReplyAt === null ? null : Math.round((firstReplyAt - t0) / 1000), texts, widgets, final: lastText };
+say(`${stamp()} done texts=${texts} widgets=${widgets}`);
+if (opt.out) writeFileSync(opt.out, JSON.stringify({ ...summary, log }, null, 2));

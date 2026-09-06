@@ -23,6 +23,7 @@ export function isRateLimitLikeMessage(message: string): boolean {
     || lower.includes("usage limit");
 }
 import { effectiveContextWindowTokens } from "./context-window.js";
+import { createMediaPreprocessor } from "./media-preprocessing.js";
 import {
   BelmontPiCredentialStore,
   migrateBelmontCliCredential,
@@ -79,6 +80,7 @@ const GROK_ROUTER_SYSTEM_PROMPT = [
 ].join("\n");
 
 let runtimePromise: Promise<ModelRuntime> | undefined;
+const preprocessMedia = createMediaPreprocessor();
 
 export function resolvePiCodexCredentialPath(): string {
   return process.env.SAND_PI_CODEX_AUTH_PATH?.trim() || join(getSandRootDir(), "pi-auth.json");
@@ -189,7 +191,8 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
     try {
       options.signal?.throwIfAborted();
       const resolved = await resolveModel(options.modelId, options.signal);
-      const context = createPiContext(options.messages, options.definitions, options.systemPrompt ?? GROK_ROUTER_SYSTEM_PROMPT);
+      const messages = await preprocessMedia(options.messages, resolved.model.input.includes("image"), options.signal);
+      const context = createPiContext(messages, options.definitions, options.systemPrompt ?? GROK_ROUTER_SYSTEM_PROMPT);
       const stream = resolved.runtime.streamSimple(resolved.model, context, {
         ...(options.signal == null ? {} : { signal: options.signal }),
         ...(options.reasoning == null ? {} : { reasoning: options.reasoning }),

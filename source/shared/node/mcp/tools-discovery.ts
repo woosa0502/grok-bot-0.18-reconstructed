@@ -79,6 +79,12 @@ export function createMcpToolsDiscovery(
   let toolsCacheEpoch = 0;
   let toolsColdWarmScheduled = false;
   const firstCallReported = new Map<string, { ok: boolean; failed: boolean }>();
+  const unsubscribeRemoteTools = core.backendMcpExec.subscribeToolsChanged?.(() => {
+    const epoch = ++toolsCacheEpoch;
+    toolsCacheEntry = null;
+    firstCallReported.clear();
+    void warmToolsCache(epoch).catch(() => {});
+  });
   const resultFactory = deps.resultFactory ?? generatedMcpResultFactory;
   const discoveryDeadline =
     deps.deadline ??
@@ -363,6 +369,7 @@ export function createMcpToolsDiscovery(
 
   async function isHttpProvider(providerIdentifier: string): Promise<boolean> {
     try {
+      if (core.backendMcpExec.supportsLocalServerIds === true) return core.backendMcpExec.hasServerIdentifier(providerIdentifier);
       const echoedRow = core
         .lastAccountDisplayConfig()
         ?.servers.find((server: any) =>
@@ -405,6 +412,7 @@ export function createMcpToolsDiscovery(
         args: toJsonArgs(args.args),
         toolCallId: args.toolCallId,
         agentId: auditIdentity?.agentId,
+        ...(auditIdentity?.signal === undefined ? {} : { signal: auditIdentity.signal }),
       });
       reportFirstCall(args.providerIdentifier, result.result.case !== "error");
       return result;
@@ -494,7 +502,8 @@ export function createMcpToolsDiscovery(
           `Tool "${args.toolName}" is disabled for "${displayName}".`,
         );
       }
-      const raw = await executeToolRaw(args, auditIdentity);
+      const contextSignal = typeof _ctx === "object" && _ctx != null && "signal" in _ctx && _ctx.signal instanceof AbortSignal ? _ctx.signal : undefined;
+      const raw = await executeToolRaw(args, contextSignal === undefined ? auditIdentity : { ...auditIdentity, signal: contextSignal });
       return applyCustomInstructionsToMcpResult(
         raw,
         displayName,
@@ -565,6 +574,7 @@ export function createMcpToolsDiscovery(
       lastPushedBoxConfigJson = null;
     },
     isBoxExecWired: (): boolean => boxMcpExecSlot != null,
+    dispose(): void { unsubscribeRemoteTools?.(); },
   };
 }
 

@@ -44,7 +44,7 @@ test("resolution picks main, per-subagent-type, subagent default, and runner fal
       : store.agentDefaultModel;
     const modelId = selection?.modelId ?? fallbackModelId;
     const effort = reasoningEffortFromSelection(selection);
-    const reasoning = ["minimal", "low", "medium", "high", "xhigh"].includes(effort) ? effort : undefined;
+    const reasoning = ["minimal", "low", "medium", "high", "xhigh", "max"].includes(effort) ? effort : undefined;
     return { modelId, reasoning };
   };
   const executorSelection = { modelId: "gpt-5.6-sol", maxMode: true, parameters: [{ id: "effort", value: "xhigh" }] };

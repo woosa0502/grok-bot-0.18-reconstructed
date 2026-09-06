@@ -1,4 +1,6 @@
 import path from "node:path";
+import { isLocalCodexMode } from "../../shared/node/local-codex-account.js";
+import { loadSelectedAudioDocuments } from "../selected-media-inputs.js";
 import { SAND_BOX_READ_TOOL_NAME, SAND_BOX_SHELL_TOOL_NAME } from "../sand-activity.js";
 import { buildMcpCustomInstructionsSystemPromptSection } from "../../shared/mcp-custom-instructions.js";
 import {
@@ -94,7 +96,7 @@ export interface TurnActionAssembly {
       readonly value: {
         readonly userMessage: {
           readonly text: string; readonly messageId: string; readonly richText?: string;
-          readonly selectedContext?: { readonly selectedImages: readonly unknown[]; readonly selectedVideos: readonly SelectedVideo[] };
+          readonly selectedContext?: { readonly selectedImages: readonly unknown[]; readonly selectedVideos: readonly SelectedVideo[]; readonly selectedDocuments?: readonly unknown[] };
         };
         readonly prependUserMessages: readonly unknown[];
       };
@@ -290,13 +292,16 @@ export function createPromptCollectorGlue<Context = unknown>(host: PromptCollect
     } catch { return null; }
   }
 
-  async function resolveSelectedVideosForTurn(videos: readonly SelectedVideo[]): Promise<SelectedVideo[]> {
-    if (videos.length === 0 || host.isSubagentRunner !== true) return [...videos];
+  async function resolveSelectedVideosForTurn(videos: readonly SelectedVideo[], signal = (host.ctx as { signal?: AbortSignal } | undefined)?.signal): Promise<SelectedVideo[]> {
+    signal?.throwIfAborted();
+    if (videos.length === 0 || (host.isSubagentRunner !== true && !isLocalCodexMode())) return [...videos];
     const resolved: SelectedVideo[] = [];
     for (const video of videos) {
+      signal?.throwIfAborted();
       if (video.data != null || video.blobId != null) { resolved.push(video); continue; }
       const videoPath = video.path.trim();
       const bytes = await host.readVideoAttachmentBytes?.(videoPath) ?? await readBoxVideoBytes(videoPath);
+      signal?.throwIfAborted();
       if (bytes == null) throw new SandVideoAttachmentError(`Cannot read video attachment for review: ${video.filename ?? (videoPath || "unknown")}.`);
       resolved.push({ ...video, data: bytes });
     }
@@ -305,16 +310,20 @@ export function createPromptCollectorGlue<Context = unknown>(host: PromptCollect
 
   async function resolveGeneratedSelectedVideosForTurn(
     videos: readonly GeneratedSelectedVideo[],
+    signal = (host.ctx as { signal?: AbortSignal } | undefined)?.signal,
   ): Promise<GeneratedSelectedVideo[]> {
-    if (videos.length === 0 || host.isSubagentRunner !== true) return [...videos];
+    signal?.throwIfAborted();
+    if (videos.length === 0 || (host.isSubagentRunner !== true && !isLocalCodexMode())) return [...videos];
     const resolved: GeneratedSelectedVideo[] = [];
     for (const video of videos) {
+      signal?.throwIfAborted();
       if (video.dataOrBlobId.case !== undefined) {
         resolved.push(video);
         continue;
       }
       const videoPath = video.path.trim();
       const bytes = await host.readVideoAttachmentBytes?.(videoPath) ?? await readBoxVideoBytes(videoPath);
+      signal?.throwIfAborted();
       if (bytes == null) {
         throw new SandVideoAttachmentError(
           `Cannot read video attachment for review: ${video.filename || (videoPath || "unknown")}.`,
@@ -359,6 +368,7 @@ export function createPromptCollectorGlue<Context = unknown>(host: PromptCollect
     if (options.appendReplyReminder === true && options.hidden !== true) text = appendUserReplyReminder(text);
     if (options.hidden === true) text = `${SAND_HIDDEN_PROMPT_MARKER}${options.automationWake == null || options.automationWake.containsUntrustedEventText === true ? "" : SAND_TRUSTED_AUTOMATION_PROMPT_MARKER}${text}`;
     const videos = await resolveSelectedVideosForTurn(options.selectedVideos ?? []);
+    const audio = isLocalCodexMode() ? await loadSelectedAudioDocuments(files, (host.ctx as { signal?: AbortSignal } | undefined)?.signal) : [];
     const images = options.selectedImages ?? [];
     const richText = options.richText?.trim();
     const prepended = [...await host.collectPrependUserMessages?.(options.recentUserMessages ?? [], options.messageId) ?? []];
@@ -367,7 +377,7 @@ export function createPromptCollectorGlue<Context = unknown>(host: PromptCollect
     const userMessage = {
       text, messageId: options.messageId ?? "",
       ...(richText == null || richText.length === 0 ? {} : { richText }),
-      ...(images.length === 0 && videos.length === 0 ? {} : { selectedContext: { selectedImages: images, selectedVideos: videos } }),
+      ...(images.length === 0 && videos.length === 0 && audio.length === 0 ? {} : { selectedContext: { selectedImages: images, selectedVideos: videos, selectedDocuments: audio } }),
     };
     return { action: { action: { case: "userMessageAction", value: { userMessage, prependUserMessages: prepended } } }, automationStatusReminder: reminder, automationStatusCompactionEpoch: epoch };
   }
@@ -379,6 +389,8 @@ export function createPromptCollectorGlue<Context = unknown>(host: PromptCollect
     readonly profileUpdateForTurn?: { readonly text: string };
     readonly compactionEpoch: () => number;
   }): Promise<GeneratedTurnActionAssembly> {
+    const signal = (args.runCtx as { signal?: AbortSignal } | undefined)?.signal;
+    signal?.throwIfAborted();
     const { options } = args;
     const files = options.attachedFilePaths ?? [];
     let staged = new Map<string, string>();
@@ -406,9 +418,10 @@ export function createPromptCollectorGlue<Context = unknown>(host: PromptCollect
       path: image.path ?? "",
       mimeType: image.mimeType ?? "",
     }));
-    const selectedVideos = await resolveGeneratedSelectedVideosForTurn(options.selectedVideos ?? []);
-    const selectedContext = selectedImages.length > 0 || selectedVideos.length > 0
-      ? new SelectedContext({ selectedImages, selectedVideos })
+    const selectedVideos = await resolveGeneratedSelectedVideosForTurn(options.selectedVideos ?? [], signal);
+    const selectedDocuments = isLocalCodexMode() ? await loadSelectedAudioDocuments(files, signal) : [];
+    const selectedContext = selectedImages.length > 0 || selectedVideos.length > 0 || selectedDocuments.length > 0
+      ? new SelectedContext({ selectedImages, selectedVideos, selectedDocuments })
       : undefined;
     const richText = options.richText?.trim();
     const collect = async () => host.shellWatchHost != null

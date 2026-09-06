@@ -157,11 +157,13 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
   const now = host.now ?? Date.now;
   const subagentSessions = new Map<string, SubagentSession>();
   const backgroundSubagentRuns = new Map<string, Promise<void>>();
+  const backgroundSubagentOwners = new Map<string, SubagentSession>();
   const subagentMeta = new Map<string, RuntimeMeta>();
   const subagentRegistry = new Map<string, SubagentRecord>();
   const subagentOutlines = new Map<string, readonly unknown[]>();
   const pendingSubagentSteers = new Map<string, string>();
   const abortingSubagents = new Set<string>();
+  const settlingSubagents = new Set<string>();
 
   let onBackgroundSubagentDispatched:
     | ((event: {
@@ -219,69 +221,90 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
       status: "running",
     });
 
-    logLifecycle("dispatched", params.subagentAgentId);
-    onBackgroundSubagentDispatched?.({
-      parentAgentId,
-      subagentAgentId: params.subagentAgentId,
-      subagentType: params.subagentType,
-      toolCallId: params.toolCallId,
-      subagentRequestId: computeSubagentRequestId(params.toolCallId),
+    startBackgroundSubagentTurn(params.subagentAgentId, params.run, () => {
+      logLifecycle("dispatched", params.subagentAgentId);
+      onBackgroundSubagentDispatched?.({
+        parentAgentId,
+        subagentAgentId: params.subagentAgentId,
+        subagentType: params.subagentType,
+        toolCallId: params.toolCallId,
+        subagentRequestId: computeSubagentRequestId(params.toolCallId),
+      });
+      host.onPendingWakeArmed?.({
+        parentAgentId,
+        kind: "subagent",
+        workId: params.subagentAgentId,
+        title,
+        subagentType: params.subagentType,
+        taskPrompt: params.prompt.slice(0, 8_000),
+        ...(params.quietOrigin == null ? {} : { quietOrigin: params.quietOrigin }),
+      });
+      emitSubagentsChanged();
+      host.emitAsyncTasksChanged();
     });
-    host.onPendingWakeArmed?.({
-      parentAgentId,
-      kind: "subagent",
-      workId: params.subagentAgentId,
-      title,
-      subagentType: params.subagentType,
-      taskPrompt: params.prompt.slice(0, 8_000),
-      ...(params.quietOrigin == null ? {} : { quietOrigin: params.quietOrigin }),
-    });
-    emitSubagentsChanged();
-    host.emitAsyncTasksChanged();
-    startBackgroundSubagentTurn(params.subagentAgentId, params.run);
   }
 
   function startBackgroundSubagentTurn(
     subagentAgentId: string,
     runTurn: () => Promise<SubagentRunResult>,
+    beforeRun?: () => void,
   ): void {
-    let turn: Promise<SubagentRunResult>;
-    try {
-      turn = runTurn();
-    } catch (error) {
-      turn = Promise.reject(error);
-    }
-
-    const promise = turn
-      .then((result) =>
-        settleBackgroundSubagentTurn(
-          subagentAgentId,
-          result.aborted
-            ? { status: "aborted" }
-            : { status: "completed", text: result.text },
-        ),
-      )
-      .catch((error: unknown) =>
-        settleBackgroundSubagentTurn(subagentAgentId, {
-          status: "error",
-          error: errorMessage(error),
-        }),
-      );
+    // Register ownership before user callbacks or runTurn can reenter dispatch.
+    // The promise covers outline capture, disposal and completion delivery too.
+    const runner = subagentSessions.get(subagentAgentId);
+    const meta = subagentMeta.get(subagentAgentId);
+    let resolveTurn!: (result: SubagentRunResult | PromiseLike<SubagentRunResult>) => void;
+    let rejectTurn!: (error: unknown) => void;
+    const turn = new Promise<SubagentRunResult>((resolve, reject) => {
+      resolveTurn = resolve;
+      rejectTurn = reject;
+    });
+    const promise = turn.then(
+      result => settleBackgroundSubagentTurn(
+        subagentAgentId,
+        result.aborted ? { status: "aborted" } : { status: "completed", text: result.text },
+        runner,
+        meta,
+      ),
+      error => settleBackgroundSubagentTurn(
+        subagentAgentId,
+        { status: "error", error: errorMessage(error) },
+        runner,
+        meta,
+      ),
+    ).catch(error => {
+      // A delivery observer must not start settlement for the same owner twice.
+      try { host.log?.(`[sand][subagent] settlement failed ${subagentAgentId}: ${errorMessage(error)}`); } catch {}
+    }).finally(() => {
+      // A steering turn installs a replacement lifecycle under the same ID.
+      if (backgroundSubagentRuns.get(subagentAgentId) === promise) {
+        backgroundSubagentRuns.delete(subagentAgentId);
+        backgroundSubagentOwners.delete(subagentAgentId);
+      }
+    });
     backgroundSubagentRuns.set(subagentAgentId, promise);
+    if (runner != null) backgroundSubagentOwners.set(subagentAgentId, runner);
+    try {
+      beforeRun?.();
+      resolveTurn(runTurn());
+    } catch (error) {
+      rejectTurn(error);
+    }
   }
 
   async function settleBackgroundSubagentTurn(
     subagentAgentId: string,
     outcome: RunOutcome,
+    runner: SubagentSession | undefined,
+    meta: RuntimeMeta | undefined,
   ): Promise<void> {
-    backgroundSubagentRuns.delete(subagentAgentId);
     const pendingSteer = pendingSubagentSteers.get(subagentAgentId);
-    const runner = subagentSessions.get(subagentAgentId);
-    const meta = subagentMeta.get(subagentAgentId);
 
     if (
       pendingSteer != null
       && runner != null
+      && subagentSessions.get(subagentAgentId) === runner
+      && subagentMeta.get(subagentAgentId) === meta
       && !abortingSubagents.has(subagentAgentId)
     ) {
       pendingSubagentSteers.delete(subagentAgentId);
@@ -295,112 +318,127 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
     }
 
     pendingSubagentSteers.delete(subagentAgentId);
-    const aborted = abortingSubagents.delete(subagentAgentId);
-    const record = subagentRegistry.get(subagentAgentId);
-    if (record != null) {
-      record.status = aborted || outcome.status === "aborted"
-        ? "aborted"
-        : outcome.status === "completed"
-          ? "done"
-          : "error";
-      logLifecycle("settled", subagentAgentId, record.status);
-      emitSubagentsChanged();
-    }
-    host.emitAsyncTasksChanged();
-
-    if (runner != null) {
+    settlingSubagents.add(subagentAgentId);
+    try {
       try {
-        subagentOutlines.set(
-          subagentAgentId,
-          await runner.getResolvedOutline(),
-        );
-      } catch {}
-    }
+        if (runner != null) {
+          try {
+            const outline = await runner.getResolvedOutline();
+            if (subagentMeta.get(subagentAgentId) === meta) {
+              subagentOutlines.set(subagentAgentId, outline);
+            }
+          } catch {}
+        }
+        host.computerUse.freeWindow(subagentAgentId);
+        const isComputerUse = meta != null
+          && host.isComputerUseSubagentType?.(meta.subagentType) === true;
+        if (isComputerUse && meta != null) {
+          const usage = runner?.getComputerUseUsageSnapshot?.();
+          host.onComputerUseUsage?.({
+            parentAgentId: meta.parentAgentId,
+            subagentAgentId,
+            subagentType: meta.subagentType,
+            subagentRequestId: computeSubagentRequestId(meta.toolCallId),
+            ...(usage?.modelId == null ? {} : { modelId: usage.modelId }),
+            outcome: abortingSubagents.has(subagentAgentId) || outcome.status === "aborted"
+              ? "aborted"
+              : outcome.status,
+            durationMs: Math.max(0, now() - meta.startedAtMs),
+            toolCallCount: runner?.getObservedToolCallCount() ?? 0,
+            turnEndedCount: usage?.turnEndedCount ?? 0,
+            ...(usage?.usage == null ? {} : { usage: usage.usage }),
+          });
 
-    host.computerUse.freeWindow(subagentAgentId);
-    subagentSessions.delete(subagentAgentId);
-    subagentMeta.delete(subagentAgentId);
+          if (host.actionAuditor != null && runner != null) {
+            const actionCounts: Record<string, number> = {};
+            let actionCount = 0;
+            for (const [kind, count] of runner.getComputerUseAuditActionCounts?.() ?? []) {
+              actionCounts[kind] = count;
+              actionCount += count;
+            }
+            host.actionAuditor.record({
+              // AUDIT-W6: the computer-use session belongs to the CHILD subagent,
+              // so the audit row is attributed to it (the parent stays traceable
+              // via turnId's subagent request id).
+              agentId: subagentAgentId,
+              ...(meta.toolCallId.length === 0
+                ? {}
+                : { turnId: computeSubagentRequestId(meta.toolCallId) }),
+              boxId: host.resolveBoxId(),
+              occurredAtMs: now(),
+              action: {
+                kind: "computerUseSession",
+                toolCallId: meta.toolCallId,
+                actionCount,
+                actionCounts,
+                durationMs: Math.max(0, now() - meta.startedAtMs),
+                screenshotCount: actionCounts.screenshot ?? 0,
+              },
+            });
+          }
+        }
+      } catch (error) {
+        outcome = { status: "error", error: errorMessage(error) };
+      } finally {
+        // Dispose exactly once, including failures in usage/audit observers.
+        try { await runner?.dispose?.(); } catch (error) {
+          outcome = { status: "error", error: errorMessage(error) };
+        }
+      }
 
-    const isComputerUse = meta != null
-      && host.isComputerUseSubagentType?.(meta.subagentType) === true;
-    if (isComputerUse && meta != null) {
-      const usage = runner?.getComputerUseUsageSnapshot?.();
-      host.onComputerUseUsage?.({
+      // Stop can arrive while outline collection or disposal is awaiting.
+      const aborted = abortingSubagents.delete(subagentAgentId);
+      const record = subagentRegistry.get(subagentAgentId);
+      if (record != null) {
+        record.status = aborted || outcome.status === "aborted"
+          ? "aborted"
+          : outcome.status === "completed"
+            ? "done"
+            : "error";
+        logLifecycle("settled", subagentAgentId, record.status);
+        emitSubagentsChanged();
+      }
+      host.emitAsyncTasksChanged();
+
+      if (aborted) {
+        if (meta != null) {
+          host.onPendingWakeDisarmed?.({
+            parentAgentId: meta.parentAgentId,
+            kind: "subagent",
+            workId: subagentAgentId,
+          });
+        }
+        return;
+      }
+      if (meta == null || onBackgroundSubagentSettled == null) return;
+
+      await onBackgroundSubagentSettled({
         parentAgentId: meta.parentAgentId,
         subagentAgentId,
         subagentType: meta.subagentType,
-        subagentRequestId: computeSubagentRequestId(meta.toolCallId),
-        ...(usage?.modelId == null ? {} : { modelId: usage.modelId }),
-        outcome: aborted || outcome.status === "aborted"
-          ? "aborted"
-          : outcome.status,
-        durationMs: Math.max(0, now() - meta.startedAtMs),
-        toolCallCount: runner?.getObservedToolCallCount() ?? 0,
-        turnEndedCount: usage?.turnEndedCount ?? 0,
-        ...(usage?.usage == null ? {} : { usage: usage.usage }),
+        toolCallId: meta.toolCallId,
+        title: meta.title,
+        status: outcome.status === "completed" ? "completed" : "error",
+        result: outcome.status === "completed"
+          ? outcome.text.trim().length > 0
+            ? outcome.text.trim()
+            : "(the task finished without producing any text output)"
+          : outcome.status === "aborted"
+            ? "The background task was interrupted before it finished."
+            : outcome.error,
+        ...(meta.quietOrigin == null ? {} : { quietOrigin: meta.quietOrigin }),
       });
-
-      if (host.actionAuditor != null && runner != null) {
-        const actionCounts: Record<string, number> = {};
-        let actionCount = 0;
-        for (const [kind, count] of runner.getComputerUseAuditActionCounts?.() ?? []) {
-          actionCounts[kind] = count;
-          actionCount += count;
-        }
-        host.actionAuditor.record({
-          // AUDIT-W6: the computer-use session belongs to the CHILD subagent,
-          // so the audit row is attributed to it (the parent stays traceable
-          // via turnId's subagent request id).
-          agentId: subagentAgentId,
-          ...(meta.toolCallId.length === 0
-            ? {}
-            : { turnId: computeSubagentRequestId(meta.toolCallId) }),
-          boxId: host.resolveBoxId(),
-          occurredAtMs: now(),
-          action: {
-            kind: "computerUseSession",
-            toolCallId: meta.toolCallId,
-            actionCount,
-            actionCounts,
-            durationMs: Math.max(0, now() - meta.startedAtMs),
-            screenshotCount: actionCounts.screenshot ?? 0,
-          },
-        });
+    } finally {
+      // Public session maps can be replaced by an adapter. Never delete a
+      // newer owner after an await or callback from the old lifecycle.
+      if (subagentSessions.get(subagentAgentId) === runner) {
+        subagentSessions.delete(subagentAgentId);
       }
-    }
-
-    // The subagent has settled; dispose its runner (which deregisters it from the owning pool),
-    // otherwise a completed background subagent's runner leaks until host shutdown.
-    try { await runner?.dispose?.(); } catch {}
-
-    if (aborted) {
-      if (meta != null) {
-        host.onPendingWakeDisarmed?.({
-          parentAgentId: meta.parentAgentId,
-          kind: "subagent",
-          workId: subagentAgentId,
-        });
+      if (subagentMeta.get(subagentAgentId) === meta) {
+        subagentMeta.delete(subagentAgentId);
       }
-      return;
+      settlingSubagents.delete(subagentAgentId);
     }
-    if (meta == null || onBackgroundSubagentSettled == null) return;
-
-    onBackgroundSubagentSettled({
-      parentAgentId: meta.parentAgentId,
-      subagentAgentId,
-      subagentType: meta.subagentType,
-      toolCallId: meta.toolCallId,
-      title: meta.title,
-      status: outcome.status === "completed" ? "completed" : "error",
-      result: outcome.status === "completed"
-        ? outcome.text.trim().length > 0
-          ? outcome.text.trim()
-          : "(the task finished without producing any text output)"
-        : outcome.status === "aborted"
-          ? "The background task was interrupted before it finished."
-          : outcome.error,
-      ...(meta.quietOrigin == null ? {} : { quietOrigin: meta.quietOrigin }),
-    });
   }
 
   function buildRunningSubagentInfo(
@@ -409,7 +447,7 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
     if (!backgroundSubagentRuns.has(subagentAgentId)) return null;
     const meta = subagentMeta.get(subagentAgentId);
     if (meta == null) return null;
-    const runner = subagentSessions.get(subagentAgentId);
+    const runner = backgroundSubagentOwners.get(subagentAgentId);
     return {
       subagentId: subagentAgentId,
       subagentType: meta.subagentType,
@@ -438,10 +476,12 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
     subagentAgentId: string,
     message: string,
   ): "ok" | "not-running" {
-    const runner = subagentSessions.get(subagentAgentId);
+    const runner = backgroundSubagentOwners.get(subagentAgentId);
     if (
       runner == null
+      || subagentSessions.get(subagentAgentId) !== runner
       || !backgroundSubagentRuns.has(subagentAgentId)
+      || settlingSubagents.has(subagentAgentId)
       || abortingSubagents.has(subagentAgentId)
     ) return "not-running";
 
@@ -453,7 +493,7 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
   function abortSubagent(
     subagentAgentId: string,
   ): "ok" | "not-running" {
-    const runner = subagentSessions.get(subagentAgentId);
+    const runner = backgroundSubagentOwners.get(subagentAgentId);
     if (runner == null || !backgroundSubagentRuns.has(subagentAgentId)) {
       return "not-running";
     }
@@ -520,7 +560,11 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
     },
     getSubagentOutline,
     async drainBackgroundSubagents(): Promise<void> {
-      await Promise.allSettled([...backgroundSubagentRuns.values()]);
+      // Settling an interrupted turn can enqueue its steered replacement.
+      // Drain the session lifecycle, not only the turns present at entry.
+      while (backgroundSubagentRuns.size > 0) {
+        await Promise.allSettled([...backgroundSubagentRuns.values()]);
+      }
     },
     setBackgroundSubagentHandler(
       handler: (completion: BackgroundSubagentCompletion) => void,

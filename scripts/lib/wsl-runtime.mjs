@@ -107,6 +107,15 @@ export function wslHostEnvironment({ profileDir, env = process.env, localBinDir 
     // false and Task fails with "No subagent types are available". resolveMultitaskEnabled
     // honours SAND_MULTITASK ahead of the gate, so set it on for the local build.
     SAND_MULTITASK: env.SAND_MULTITASK ?? "1",
+    // Auto-review classifier budget. Upstream's 10s budget is tuned for the Cursor backend
+    // classifier; here the classifier is a general Codex model call and 10s produced spurious
+    // "timed out" rejections of ordinary tool calls (8 in the first two hours of 2026-09-05).
+    // An explicit value in the variable always wins over this default.
+    SAND_SMART_MODE_CLASSIFIER_TIMEOUT_MS: env.SAND_SMART_MODE_CLASSIFIER_TIMEOUT_MS ?? "30000",
+    // The classifier defaults to gpt-5.6-luna (source default). House rule on this host
+    // (2026-09-05): Luna runs at "max" by default and never below xhigh (the Codex catalog lists
+    // low…xhigh, max for gpt-5.6-luna). An explicit value in the variable always wins.
+    SAND_AUTO_REVIEW_CLASSIFIER_REASONING: env.SAND_AUTO_REVIEW_CLASSIFIER_REASONING ?? "max",
     // Enable the replacement memory pipeline (background synthesis, "dreaming") locally.
     // The gate normally pins on the first AUTHENTICATED Statsig bootstrap, which never
     // happens without a Cursor account; the experiments extension pins local Codex mode

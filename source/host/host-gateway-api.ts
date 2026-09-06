@@ -213,6 +213,20 @@ export function createHostGatewayApi(
     },
     promptAcceptanceStatus: (args: any) =>
       method(manager, "promptAcceptanceStatus")(args),
+    interruptAgent: (args: unknown) => {
+      const request = args as { id?: unknown; expectedStopGuard?: unknown; expectedClientNonce?: unknown } | null;
+      const id = request?.id;
+      if (typeof id !== "string" || id.trim().length === 0)
+        throw new Error("Malformed interruptAgent request");
+      for (const expected of [request?.expectedStopGuard, request?.expectedClientNonce])
+        if (expected !== undefined && (typeof expected !== "string" || expected.length === 0))
+          throw new Error("Malformed interruptAgent expectation");
+      markActive("user_action");
+      return method(manager, "interruptAgent")(id, {
+        ...(typeof request?.expectedStopGuard === "string" ? { expectedStopGuard: request.expectedStopGuard } : {}),
+        ...(typeof request?.expectedClientNonce === "string" ? { expectedClientNonce: request.expectedClientNonce } : {}),
+      });
+    },
     respondToWidget: (args: any) => {
       markActive("user_action");
       method(telemetry.analytics, "trackEvent")("sand.widget.responded", {
@@ -352,8 +366,19 @@ export function createHostGatewayApi(
 
     getAgentMemories: (args: any) =>
       method(manager, "getAgentMemories")(args.id),
+    addAgentMemory: (args: any) =>
+      method(manager, "addAgentMemory")(args.id, args.content, args.tier),
     deleteAgentMemory: (args: any) =>
       method(manager, "deleteAgentMemory")(args.id, args.memoryId),
+    getAgentModelSelection: (args: any) => ({
+      id: args.id,
+      selection: method(settings, "getAgentModelForAgentId")(args.id) ?? null,
+      defaultSelection: method(settings, "getAgentDefaultModel")() ?? null,
+    }),
+    setAgentModelSelection: (args: any) => ({
+      id: args.id,
+      selection: method(settings, "setAgentModelForAgentId")(args.id, args.selection ?? null) ?? null,
+    }),
     clearAgentMemories: (args: any) =>
       method(manager, "clearAgentMemories")(args.id),
     getAgentAutomations: (args: any) =>

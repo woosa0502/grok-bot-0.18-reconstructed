@@ -1,4 +1,5 @@
 import path from "node:path";
+import { usesLocalMediaPreprocessing } from "../../shared/node/local-media-routing.js";
 
 import type { Context } from "../context/core.js";
 import { createLogger } from "../context/logger.js";
@@ -92,7 +93,8 @@ export async function processSelectedVideoData({
   conversationId,
 }: ProcessSelectedVideoDataArgs): Promise<ProcessedSelectedVideoData> {
   const materializeToFilesystem = selectedVideo.materializeToFilesystem === true;
-  if (!materializeToFilesystem && !isGeminiModelId(modelId)) {
+  const localPreprocessing = usesLocalMediaPreprocessing(modelId);
+  if (!materializeToFilesystem && !isGeminiModelId(modelId) && !localPreprocessing) {
     throw new Error("Video attachments are only supported for Gemini models");
   }
   const fps = selectedVideo.fps;
@@ -104,7 +106,7 @@ export async function processSelectedVideoData({
     throw new Error(`Video attachments require a video/* mime type, got ${mimeType}`);
   }
 
-  const useSignedUrl = !materializeToFilesystem &&
+  const useSignedUrl = !localPreprocessing && !materializeToFilesystem &&
     privacyMode !== undefined &&
     isSignedUrlStorageAllowed(privacyMode) &&
     attachedMediaUrlProvider !== undefined;

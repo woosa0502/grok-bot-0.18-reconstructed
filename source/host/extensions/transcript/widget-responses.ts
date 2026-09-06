@@ -8,6 +8,7 @@ import {
   settlePendingLocalToolPermissionEntry,
 } from "../../../shared/transcript.js";
 import { buildSecretProvidedAck } from "../../runner/tools/sand-secret-request.js";
+import { decodeAsideSuspensionAnswer, encodeAsideSuspensionAnswer } from "../browse-runtime/browse-suspension.js";
 import { SPEND_GUARD_VALUE_PREFIX } from "./sand-automation-spend-guard.js";
 import {
   describeReactedMessageQuote,
@@ -82,7 +83,19 @@ export class WidgetResponses {
     let modelPrompt = trimmedValue;
     let guardApplied = false;
     try {
+      // Bind custom replies as well as button values to the card actually answered, never the
+      // current/latest Aside suspension. Old cards can remain visible after a newer question appears.
+      const asideIdentity = widgetEntry?.kind === "send-message" && (widgetEntry.message as any)?.type === "widget"
+        ? (widgetEntry.message as any).widget?.asideSuspension as { toolCallId?: unknown; questionIndex?: unknown } | undefined
+        : undefined;
+      if (asideIdentity !== undefined) {
+        if (typeof asideIdentity.toolCallId !== "string" || asideIdentity.toolCallId.length === 0 || (asideIdentity.questionIndex !== undefined && (!Number.isInteger(asideIdentity.questionIndex) || (asideIdentity.questionIndex as number) < 0))) throw new Error("Invalid Aside question identity.");
+        const encoded = decodeAsideSuspensionAnswer(trimmedValue);
+        if (encoded !== null && (encoded.toolCallId !== asideIdentity.toolCallId || encoded.questionIndex !== asideIdentity.questionIndex)) throw new Error("The Aside answer does not belong to this question card.");
+        modelPrompt = encodeAsideSuspensionAnswer({ toolCallId: asideIdentity.toolCallId, ...(typeof asideIdentity.questionIndex === "number" ? { questionIndex: asideIdentity.questionIndex } : {}) }, encoded?.answer ?? trimmedValue);
+      }
       if (
+        asideIdentity === undefined &&
         trimmedValue.startsWith(SPEND_GUARD_VALUE_PREFIX) &&
         targetAgentId != null
       ) {

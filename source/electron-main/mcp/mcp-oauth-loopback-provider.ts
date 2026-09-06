@@ -1,3 +1,6 @@
+import { isLocalCodexMode } from "../../shared/node/local-codex-account.js";
+import { getSandRootDir } from "../../host/host-paths.js";
+import { completeLocalMcpOAuth } from "../../shared/node/mcp/local-mcp-oauth.js";
 import { DashboardService } from "../../packages/proto/generated/aiserver/v1/dashboard_connect.js";
 import { createSandCursorBackendClient } from "../../shared/node/cursor-backend/cursor-inference.js";
 import { createDashboardSandBackendMcpExec, type DashboardMcpExecClient } from "../../shared/node/cursor-backend/backend-mcp-exec.js";
@@ -31,7 +34,7 @@ export function createProductionMcpOAuthLoopbackFactory(ports: ProductionMcpOAut
       createClient: (credentials) => createGeneratedBackendClient(credentials),
     });
     return createSandMcpOAuthLoopback({
-      completeOAuth: (args) => backendMcpExec.completeOAuth(args),
+      completeOAuth: (args) => isLocalCodexMode() ? completeLocalMcpOAuth(getSandRootDir(), args) : backendMcpExec.completeOAuth(args),
       log: ports.log,
       ...(ports.onConnectorAuth == null ? {} : { onCallback: ports.onConnectorAuth }),
     });

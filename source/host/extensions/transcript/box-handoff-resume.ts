@@ -166,14 +166,15 @@ export class BoxHandoffResume {
     prompt: string,
     errorTitle: string,
   ): Promise<void> {
-    if (!this.tm.execution.canExecute) return;
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId);
+    if (!this.tm.execution.canExecute || this.tm.isAgentUserStopped?.(agentId) === true) return;
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(agentId);
     } catch {
       return;
     }
-    if (this.tm.groupChat.isGroupSession(session)) return;
+    if (wasStopped?.() === true || this.tm.groupChat.isGroupSession(session)) return;
     const runner = this.tm.runnerRegistry.getRunner(session);
     this.tm.runLifecycle.beginSessionRun(session);
     const ackToken = this.tm.ackObligations.mintAckRunToken(session.id);

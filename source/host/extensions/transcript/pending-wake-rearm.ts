@@ -1,4 +1,5 @@
 import type { TranscriptManagerLike } from "./transcript-hub.js";
+import { pendingWakeWorkflowFields } from "./pending-wake-workflow.js";
 
 export function isRecreateWakeCarryDisabled(): boolean {
   return process.env.SAND_DISABLE_RECREATE_WAKE_CARRY === "1";
@@ -24,6 +25,7 @@ interface PendingWakeMarker {
   };
   completion?: { status: string; result?: string; detail?: string; outputPath?: string };
   taskPrompt?: string;
+  workflowParents?: readonly { agentId: string; kind: WakeKind; workId: string }[];
 }
 
 export class PendingWakeRearm {
@@ -41,10 +43,12 @@ export class PendingWakeRearm {
     const store = this.tm.pendingWakeStore;
     if (
       store == null ||
+      this.tm.isAgentUserStopped?.(event.parentAgentId) === true ||
       this.tm.sessions.deletedAgentIds.has(event.parentAgentId)
     )
       return false;
     const written = store.markPending({
+      ...pendingWakeWorkflowFields(event.parentAgentId),
       agentId: event.parentAgentId,
       kind: event.kind,
       workId: event.workId,
@@ -123,7 +127,19 @@ export class PendingWakeRearm {
         reason: "stale",
         isQuietOrigin: marker.quietOrigin != null,
       });
-    for (const marker of store.listPending() as PendingWakeMarker[]) {
+    const pending = store.listPending() as PendingWakeMarker[];
+    for (const marker of pending) {
+      if (this.tm.isAgentUserStopped?.(marker.agentId) === true) {
+        store.clearOne(marker.agentId, marker.kind, marker.workId);
+        continue;
+      }
+      // A source waiting on a child/reply is resumed through that dependent's result. Replaying
+      // both after restart would dispatch the original task again before its first child settles.
+      const hasDependent = pending.some((candidate) => candidate.agentId === marker.agentId
+        && (candidate.kind !== marker.kind || candidate.workId !== marker.workId)
+        && candidate.workflowParents?.some((parent) => parent.agentId === marker.agentId
+          && parent.kind === marker.kind && parent.workId === marker.workId));
+      if (hasDependent) continue;
       if (this.tm.sessions.isAgentGone(marker.agentId)) {
         this.tm.telemetry.reportPendingWake({
           conversationId: marker.agentId,
@@ -142,7 +158,8 @@ export class PendingWakeRearm {
       // during session recovery (external review r4). Their delivery paths
       // settle the marker only after the wake turn actually ran.
       const carriesPayload = marker.kind === "agent-message" || marker.completion != null;
-      if (!carriesPayload && !(marker.kind === "shell" && marker.interruptedByRecreate === true))
+      if (!carriesPayload && (marker.workflowParents?.length ?? 0) === 0
+        && !(marker.kind === "shell" && marker.interruptedByRecreate === true))
         store.clearOne(marker.agentId, marker.kind, marker.workId);
       void this.rearmPendingWake(marker, now);
     }
@@ -152,8 +169,10 @@ export class PendingWakeRearm {
     nowMs: number,
     options?: { successReason?: string },
   ): Promise<void> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(marker.agentId);
+    if (this.tm.isAgentUserStopped?.(marker.agentId) === true) return;
     const report = (outcome: string, reason?: string) => {
-      if (outcome === "rearm_failed")
+      if (outcome === "rearm_failed" && wasStopped?.() !== true)
         this.tm.pendingWakeStore?.markPending(marker);
       const effectiveReason =
         reason ?? (outcome === "rearmed" ? options?.successReason : undefined);
@@ -174,6 +193,7 @@ export class PendingWakeRearm {
       report("rearm_failed", "session_unavailable");
       return;
     }
+    if (wasStopped?.() === true) return;
     // Durable group-turn wake (r bundle #4): a group post's marker targets the
     // GROUP session — re-run the members' response turn before the generic
     // group-session skip below would drop it.
@@ -362,17 +382,22 @@ export class PendingWakeRearm {
     // members' response turn was lost. Re-run it; the marker settles after the
     // turn actually ran, mirroring the 1:1 delivery contract.
     const groupId = marker.agentId;
+    const wasStopped = this.tm.captureAgentStopGuard?.(groupId);
     const epoch = (this.tm as { sendPipeline: { nextTurnEpoch(session: unknown): number } }).sendPipeline.nextTurnEpoch(session);
     this.tm.runLifecycle.beginSessionRun(session);
     void this.tm.runLifecycle.enqueueExclusiveRun(
       session.id,
       async () => {
+        if (wasStopped?.() === true || this.tm.isAgentUserStopped?.(groupId) === true) {
+          this.tm.runLifecycle.endSessionRun(session);
+          return;
+        }
         (this.tm as { turnRuntime: { activeRequestSources: Map<string, string> } }).turnRuntime.activeRequestSources.set(session.id, "agent");
-        try {
-          return await (this.tm.groupChat as unknown as { runGroupTurn(session: unknown, epoch: number, extra: unknown, source: string): Promise<unknown> }).runGroupTurn(session, epoch, undefined, "agent");
-        } finally {
+        const result = await this.tm.groupChat.runGroupTurn(session, epoch, undefined, "agent");
+        if (result?.completed === true && wasStopped?.() !== true && this.tm.isAgentUserStopped?.(groupId) !== true) {
           this.clearSettledPendingWake({ agentId: groupId, kind: "agent-message", workId: marker.workId });
         }
+        return result;
       },
       { lane: "agent", source: "agent" },
     );
@@ -417,7 +442,8 @@ export class PendingWakeRearm {
     agentId: string,
     items: T[],
   ): boolean {
-    if (this.tm.sessions.isAgentGone(agentId)) return false;
+    if (this.tm.sessions.isAgentGone(agentId) ||
+        this.tm.isAgentUserStopped?.(agentId) === true) return false;
     const queued = queue.get(agentId) ?? [];
     queued.push(...items);
     queue.set(agentId, queued);

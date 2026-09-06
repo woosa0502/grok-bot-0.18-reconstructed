@@ -54,6 +54,9 @@ export class SharedRooms {
     text: string,
     priority = false,
   ): Promise<string> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(groupId);
+    const isStopped = (): boolean => wasStopped?.() === true || this.tm.isAgentUserStopped?.(groupId) === true;
+    if (isStopped()) return "That group was stopped by the user; the message was not accepted.";
     const message = clampAgentMessage(text);
     if (message.length === 0) return "Message was empty; nothing was sent.";
     if (isPassContent(message)) {
@@ -68,6 +71,7 @@ export class SharedRooms {
     } catch {
       return `No group found with id ${groupId}.`;
     }
+    if (isStopped()) return "That group was stopped by the user; the message was not accepted.";
     const config = readSandGroupConfig(dirname(roomSession.dbPath));
     if (config == null) return `${groupId} is not a group chat.`;
     if (!config.memberIds.includes(fromAgentId)) {
@@ -82,6 +86,7 @@ export class SharedRooms {
       name: "An agent",
       description: "",
     };
+    if (isStopped()) return "That group was stopped by the user; the message was not accepted.";
     this.tm.productAnalytics.trackEvent("sand.agent_message.sent", {
       from_agent_id: fromAgentId,
       to_agent_id: groupId,
@@ -113,17 +118,21 @@ export class SharedRooms {
     void this.tm.runLifecycle.enqueueExclusiveRun(
       roomSession.id,
       async () => {
+        if (wasStopped?.() === true || this.tm.isAgentUserStopped?.(groupId) === true) {
+          this.tm.runLifecycle.endSessionRun(roomSession);
+          return;
+        }
         this.tm.turnRuntime.activeRequestSources.set(roomSession.id, "agent");
-        try {
-          return await this.tm.groupChat.runGroupTurn(
+        const result = await this.tm.groupChat.runGroupTurn(
             roomSession,
             epoch,
             undefined,
             "agent",
           );
-        } finally {
+        if (result?.completed === true && wasStopped?.() !== true && this.tm.isAgentUserStopped?.(groupId) !== true) {
           this.tm.pendingWakes.clearSettledPendingWake({ agentId: groupId, kind: "agent-message", workId: wakeId });
         }
+        return result;
       },
       { lane: "agent", source: "agent" },
     );

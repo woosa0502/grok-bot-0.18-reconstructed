@@ -6,7 +6,7 @@
 - 원장: [안정 ID 기준선](audit/grok-feature-registry.jsonl) · [현재 materialized 원장](audit/grok-feature-registry-active.jsonl) · [append-only 보정](audit/grok-feature-registry-updates.jsonl)
 - 주의: 이 문서는 테스트 대상 후보 원장이다. 실사용 `PASS`나 제품 전체 검증 완료를 뜻하지 않는다.
 - 2026-08-25 · 울트라코드 4단계(독립추출→100%파일정독→적대검증/중복제거→도달경로분류/재분해)
-- 재현 근거: `audit/AUDIT-METHOD.md`, `audit/verdict-ledger.csv`, `audit/audited-files.sha256`
+- 재현 근거: `audit/audit-method.md`, `audit/verdict-ledger.csv`, `audit/audited-files.sha256`
 - 전 소스 1,763파일 100% 정독 · 후보 2,475 → 적대검증 → **검증 누락 1325행**
 - 복합행동 재분해 완료: 1325행 → **원자 행동 1500개** (+175)
 

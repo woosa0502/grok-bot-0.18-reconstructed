@@ -14,7 +14,7 @@ import { sandErrorDetail } from "../../ports/telemetry.js";
 import { errorMessage } from "../../../shared/errors.js";
 import { formatRemoteAgentId } from "../../../shared/agents/sharing.js";
 import { describeAgentRunError } from "./agent-run-error.js";
-import { GroupChatOrchestrator } from "./group-chat-orchestrator.js";
+import { GroupChatOrchestrator, type GroupRunResult } from "./group-chat-orchestrator.js";
 import {
   isBackgroundAutomationTrigger,
   normalizeAutomationErrorKind,
@@ -24,6 +24,7 @@ import { createUserMessage } from "./send-message-shaping.js";
 import { nextEntryId } from "./transcript-entry-ids.js";
 import { getTranscript } from "./transcript-store.js";
 import { classifyAgentError } from "./turn-runtime.js";
+import { runBackgroundTask } from "./background-task-continuation.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
 
 export type FireAutomationOutcome = "ok" | "error" | "interrupted" | undefined;
@@ -69,9 +70,9 @@ export class AutomationRunPath {
     session: any,
     automation: AutomationRecord,
     events?: readonly Record<string, unknown>[],
-  ): Promise<void> {
+  ): Promise<GroupRunResult> {
     const config = readSandGroupConfig(dirname(session.dbPath));
-    if (config == null) return;
+    if (config == null) return { completed: false, reason: "empty", memberTurns: 0 };
     const isActive = this.tm.sessions.activeSession?.id === session.id;
     const entries = isActive
       ? getTranscript()
@@ -97,7 +98,7 @@ export class AutomationRunPath {
         "automation",
       ),
     );
-    await orchestrator.run({
+    return orchestrator.run({
       group: this.tm.groupChat.groupIdentityFor(session),
       memberIds: [
         ...config.memberIds,
@@ -109,7 +110,8 @@ export class AutomationRunPath {
   async fireAutomation(
     args: FireAutomationArgs,
   ): Promise<FireAutomationOutcome> {
-    if (!this.tm.execution.canExecute) return undefined;
+    const wasStopped = this.tm.captureAgentStopGuard?.(args.agentId) as (() => boolean) | undefined;
+    if (!this.tm.execution.canExecute || this.tm.isAgentUserStopped?.(args.agentId) === true) return undefined;
     const runKey = `${args.agentId}:${args.automation.id}`;
     const eventBatch = args.events ?? [];
     const isEventFire = eventBatch.length > 0;
@@ -136,6 +138,7 @@ export class AutomationRunPath {
       } catch {
         return undefined;
       }
+      if (wasStopped?.() === true || this.tm.isAgentUserStopped?.(args.agentId) === true) return "interrupted";
       const isGroup = this.tm.groupChat.isGroupSession(session);
       const runner = isGroup ? null : this.tm.runnerRegistry.getRunner(session);
       let spendGuardReminder: string | undefined;
@@ -175,12 +178,18 @@ export class AutomationRunPath {
         },
       });
       this.recordAutomationRun(session, args.automation.id);
+      if (wasStopped?.() === true || this.tm.isAgentUserStopped?.(args.agentId) === true) return "interrupted";
       const automationsBeforeRun = session.automations.listDefinitions();
       this.tm.runLifecycle.beginSessionRun(session);
       await this.tm.runLifecycle.enqueueExclusiveRun(
         session.id,
         async () => {
           runOutcome = "error";
+          if (wasStopped?.() === true || this.tm.isAgentUserStopped?.(args.agentId) === true) {
+            runOutcome = "interrupted";
+            this.tm.runLifecycle.endSessionRun(session);
+            return;
+          }
           this.tm.turnRuntime.activeRequestSources.set(
             session.id,
             "automation",
@@ -203,18 +212,21 @@ export class AutomationRunPath {
           let sentMessageCount: number | undefined;
           try {
             if (isGroup) {
-              await this.runGroupAutomation(
+              const groupResult = await this.runGroupAutomation(
                 session,
                 args.automation,
                 isEventFire ? eventBatch : undefined,
               );
+              const groupCompleted = groupResult.completed && wasStopped?.() !== true
+                && this.tm.isAgentUserStopped?.(session.id) !== true;
               this.finishAutomationRun(
                 session,
                 args.automation.id,
                 runId,
-                "ok",
+                groupCompleted ? "ok" : "error",
+                groupCompleted ? undefined : `The group task is unfinished (${groupResult.reason}); member completion was not established.`,
               );
-              telemetryOutcome = "ok";
+              telemetryOutcome = groupCompleted ? "ok" : "interrupted";
             } else if (runner != null) {
               const currentAutomation =
                 session.automations.get(args.automation.id) ?? args.automation;
@@ -223,7 +235,10 @@ export class AutomationRunPath {
                   args.automation.id,
                   notice.id,
                 );
-              const result = await runner.run(
+              const settled = await runBackgroundTask(
+                this.tm,
+                session,
+                runner,
                 `${buildAutomationWakePrompt(currentAutomation, { timeZone: this.tm.sessionStore.getUserTimeZone(), ...(isEventFire ? { events: eventBatch } : {}), ...(args.trigger === "manual" ? { trigger: "manual" as const } : {}) })}${spendGuardReminder == null ? "" : `\n\n${spendGuardReminder}`}`,
                 {
                   hidden: true,
@@ -243,7 +258,9 @@ export class AutomationRunPath {
                       ),
                   }),
                 },
+                () => wasStopped?.() !== true,
               );
+              const result = settled.result;
               sentMessageCount = result.sentMessageCount;
               if (result.quiescedForUpgrade) {
                 this.finishAutomationRun(
@@ -267,12 +284,14 @@ export class AutomationRunPath {
                   session,
                   args.automation.id,
                   runId,
-                  result.aborted ? "error" : "ok",
+                  settled.completed ? "ok" : "error",
                   result.aborted
                     ? "Interrupted before it finished."
-                    : undefined,
+                    : settled.completed
+                      ? undefined
+                      : `The task is unfinished (${settled.reason}); its remaining work was preserved.`,
                 );
-                telemetryOutcome = result.aborted ? "interrupted" : "ok";
+                telemetryOutcome = settled.completed ? "ok" : "interrupted";
               }
             }
             await this.tm.roster.emitAgentUpdate(session.id);

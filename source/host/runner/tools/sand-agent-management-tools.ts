@@ -94,8 +94,8 @@ export const createAgentParameters = z.object({
   description: z.string().trim().default("").describe(
     "The new agent's persona / instructions: what it is for and how it should behave. This becomes its profile and shapes its replies. Optional but strongly recommended.",
   ),
-  reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional().describe(
-    "Optional reasoning effort for the new agent's model. Pick lower efforts (minimal/low) for quick mechanical workers and higher ones (high/xhigh) for analysis-heavy teammates; omit to inherit the default.",
+  reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]).optional().describe(
+    "Optional reasoning effort for the new agent's model. House rule: gpt-5.6-luna runs at max (never below xhigh); pick high/xhigh/max for analysis-heavy teammates; omit to inherit the default.",
   ),
   deny_tools: z.array(z.string().trim().min(1)).optional().describe(
     'Optional least-privilege list: tool names the new agent must NOT get (e.g. ["ExternalShell","ExternalRead"] for a worker that should never touch the user\'s computer). SendMessage can never be denied. Omit for the full toolkit.',

@@ -179,7 +179,10 @@ export class MemoryService {
   agentHasContent(agentDir: string): boolean { return agentMemoryHasContent(agentDir); }
   enableMemorySynthesis(service: { start(): void; dispose(): void; recordTurn?(agentId: string, exchange: unknown): void }): void { this.synthesis?.dispose(); this.synthesis = service; service.start(); }
   list({ agentId }: { agentId: string }): MemoryRecord[] { return this.storeForAgent(agentId).listMemories(); }
-  remove({ agentId, id }: { agentId: string; id: string }): boolean { const removed = this.storeForAgent(agentId).removeMemory(id); if (removed) this.emit(); return removed; }
+  /** Writes one fact for an agent from outside a turn (the phone's autofill / form). Returns null when the content is empty or a duplicate. */
+  add({ agentId, content, kind }: { agentId: string; content: string; kind: MemoryKind }): MemoryRecord | null { const record = this.storeForAgent(agentId).addMemory(content, Date.now(), kind); if (record != null) this.emit(); return record; }
+  // Callers name the key both ways (the transcript manager sends memoryId); accept either so a delete from the UI or the phone actually removes the line.
+  remove({ agentId, id, memoryId }: { agentId: string; id?: string; memoryId?: string }): boolean { const key = id ?? memoryId; if (key === undefined) return false; const removed = this.storeForAgent(agentId).removeMemory(key); if (removed) this.emit(); return removed; }
   clear({ agentId }: { agentId: string }): void { this.storeForAgent(agentId).clearMemories(); this.emit(); }
   setActiveAgent(agentId: string | null): void { if (this.activeAgentId === agentId) return; this.activeAgentId = agentId; this.emit(); }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }

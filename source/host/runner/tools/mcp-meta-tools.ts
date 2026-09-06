@@ -2,6 +2,10 @@ import {
   buildToolCallExecutionTimedOutMessage,
   toolCallExecutionGuardMs,
 } from "../../../packages/agent/tools/tool-execution-timeout.js";
+import {
+  toolExecutionTimeoutSuspensionKey,
+  type ToolExecutionTimeoutSuspension,
+} from "../../../packages/agent/tools/tool-timeout-suspension.js";
 
 export function sandToolCallExecutionTimeoutMs(
   toolName: string,
@@ -53,6 +57,95 @@ async function withTimeout<Result>(
   }
 }
 
+interface SuspendableContextLike {
+  readonly signal: AbortSignal;
+  get<T>(key: unknown): T;
+  with<T>(key: unknown, value: T): unknown;
+  withCancel(): [unknown, (reason?: unknown) => void];
+}
+
+function isSuspendableContext(value: unknown): value is SuspendableContextLike {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.get === "function"
+    && typeof candidate.with === "function"
+    && typeof candidate.withCancel === "function"
+    && typeof candidate.signal === "object";
+}
+
+/**
+ * Per-call budget that behaves like the shipped tool timeout (packages/agent/tools/common.ts):
+ * it pauses while the tool is parked on an Auto-review approval (withToolExecutionTimeoutSuspended)
+ * and, when the budget really runs out, cancels the child context so the approval's abort listener
+ * retires it. The plain race this replaced killed CallMcpTool after 840s while its approval card was
+ * still waiting for the user, and left the approval pending — every later side effect was then
+ * refused with "Another action is waiting for Auto-review approval" until the next user message
+ * (Gmail cleanup, 2026-09-05 13:26 and 10:55). A context without cancel/suspension support keeps
+ * the old race.
+ */
+export async function runWithSuspendableTimeout<Context, Result>(
+  context: Context,
+  milliseconds: number,
+  createError: () => Error,
+  operation: (ctx: Context) => Promise<Result>,
+): Promise<Result> {
+  if (!isSuspendableContext(context)) return withTimeout(operation(context), milliseconds, createError);
+  const parentSuspension = context.get<ToolExecutionTimeoutSuspension | undefined>(toolExecutionTimeoutSuspensionKey);
+  const [childCtx, cancel] = context.withCancel();
+  const child = childCtx as SuspendableContextLike;
+  let finished = false;
+  let timedOut = false;
+  let remainingMs = milliseconds;
+  let armedAtMs: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let suspendCount = 0;
+  const disarm = () => {
+    if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+    if (armedAtMs !== undefined) { remainingMs = Math.max(0, remainingMs - (Date.now() - armedAtMs)); armedAtMs = undefined; }
+  };
+  const arm = () => {
+    if (finished || suspendCount > 0 || timer !== undefined) return;
+    armedAtMs = Date.now();
+    timer = setTimeout(() => {
+      timer = undefined;
+      armedAtMs = undefined;
+      timedOut = true;
+      cancel(createError());
+    }, remainingMs);
+    timer.unref?.();
+  };
+  const suspension: ToolExecutionTimeoutSuspension = {
+    suspend: () => {
+      const resumeParent = parentSuspension?.suspend();
+      suspendCount += 1;
+      disarm();
+      let resumed = false;
+      return () => {
+        if (resumed) return;
+        resumed = true;
+        suspendCount -= 1;
+        arm();
+        resumeParent?.();
+      };
+    },
+  };
+  const timeoutCtx = child.with(toolExecutionTimeoutSuspensionKey, suspension) as Context;
+  arm();
+  try {
+    return await Promise.race([
+      operation(timeoutCtx),
+      new Promise<never>((_resolve, reject) => {
+        child.signal.addEventListener("abort", () => {
+          if (timedOut) reject(createError());
+        }, { once: true });
+      }),
+    ]);
+  } finally {
+    finished = true;
+    disarm();
+  }
+}
+
 export function wrapDynamicInvocationToolWithTimeout<
   Context,
   Handler,
@@ -63,6 +156,8 @@ export function wrapDynamicInvocationToolWithTimeout<
   tool: Tool,
   dynamicToolRegistry: DynamicToolRegistry,
   isComputerUseSubagent: boolean,
+  timeoutMsFor: (effectiveToolName: string) => number = (name) =>
+    sandToolCallExecutionTimeoutMs(name, isComputerUseSubagent),
 ): Tool {
   return {
     ...tool,
@@ -75,17 +170,15 @@ export function wrapDynamicInvocationToolWithTimeout<
       let rawArguments = "";
       for await (const chunk of argumentsStream) rawArguments += chunk;
       const effectiveToolName = dynamicToolRegistry.resolveToolName(rawArguments) ?? tool.name;
-      const executionTimeoutMs = sandToolCallExecutionTimeoutMs(
-        effectiveToolName,
-        isComputerUseSubagent,
-      );
+      const executionTimeoutMs = timeoutMsFor(effectiveToolName);
       const replay = (async function* () {
         yield rawArguments;
       })();
-      return withTimeout(
-        tool.execute(context, interactionHandler, replay, meta),
+      return runWithSuspendableTimeout(
+        context,
         executionTimeoutMs,
         () => new SandToolCallExecutionTimeoutError(effectiveToolName, executionTimeoutMs),
+        (ctx) => tool.execute(ctx, interactionHandler, replay, meta),
       );
     },
   };

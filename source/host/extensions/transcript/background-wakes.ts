@@ -147,7 +147,9 @@ export class BackgroundWakes {
     agentId: string,
     failures: readonly any[],
   ): Promise<boolean> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId);
     if (failures.length === 0) return true;
+    if (this.tm.isAgentUserStopped?.(agentId) === true) return true;
     if (!this.tm.execution.canExecute) return false;
     let session: any;
     try {
@@ -155,7 +157,7 @@ export class BackgroundWakes {
     } catch (error) {
       return error instanceof AgentGoneError;
     }
-    if (this.tm.groupChat.isGroupSession(session)) return true;
+    if (wasStopped?.() === true || this.tm.groupChat.isGroupSession(session)) return true;
     await this.runBackgroundWake(
       session,
       "connector",
@@ -201,7 +203,9 @@ export class BackgroundWakes {
     agentId: string,
     envelopes: readonly any[],
   ): Promise<void> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId);
     if (envelopes.length === 0 || !this.tm.execution.canExecute) return;
+    if (this.tm.isAgentUserStopped?.(agentId) === true) return;
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(agentId);
@@ -209,6 +213,7 @@ export class BackgroundWakes {
       return;
     }
     if (
+      wasStopped?.() === true ||
       this.tm.groupChat.isGroupSession(session) ||
       this.tm.groupChat.isRemoteRoomSession(session)
     )
@@ -323,7 +328,8 @@ export class BackgroundWakes {
     return { total: ids.length, scheduled };
   }
   async scheduleBroadcast(agentId: string, message: string): Promise<boolean> {
-    if (this.tm.sessions.isAgentGone(agentId)) return false;
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId);
+    if (this.tm.sessions.isAgentGone(agentId) || this.tm.isAgentUserStopped?.(agentId) === true) return false;
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(agentId);
@@ -331,6 +337,7 @@ export class BackgroundWakes {
       return false;
     }
     if (
+      wasStopped?.() === true ||
       this.tm.groupChat.isGroupSession(session) ||
       this.tm.groupChat.isRemoteRoomSession(session)
     )
@@ -357,6 +364,7 @@ export class BackgroundWakes {
       void this.recordTimelineEvent(agentId, event);
   }
   async recordTimelineEvent(agentId: string, event: unknown): Promise<void> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId);
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(agentId);
@@ -365,7 +373,8 @@ export class BackgroundWakes {
     }
     if (this.tm.groupChat.isGroupSession(session)) return;
     this.appendTimelineEventEntry(session, event);
-    if (!this.tm.runLifecycle.runningAgentIds().has(agentId))
+    if (wasStopped?.() !== true && this.tm.isAgentUserStopped?.(agentId) !== true &&
+        !this.tm.runLifecycle.runningAgentIds().has(agentId))
       this.queueEventWake(agentId, event);
   }
   appendTimelineEventEntry(session: any, event: unknown): void {
@@ -412,14 +421,16 @@ export class BackgroundWakes {
     }
   }
   async runEventWake(agentId: string, events: readonly any[]): Promise<void> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId);
     if (events.length === 0 || !this.tm.execution.canExecute) return;
+    if (this.tm.isAgentUserStopped?.(agentId) === true) return;
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(agentId);
     } catch {
       return;
     }
-    if (!this.tm.groupChat.isGroupSession(session))
+    if (wasStopped?.() !== true && !this.tm.groupChat.isGroupSession(session))
       await this.runBackgroundWake(
         session,
         "event",
@@ -446,6 +457,7 @@ export class BackgroundWakes {
     trayTitle: string,
     errorSource = requestSource,
   ): Promise<void> {
+    if (this.tm.isAgentUserStopped?.(session.id) === true) return;
     const runner = this.tm.runnerRegistry.getRunner(session);
     this.tm.runLifecycle.beginSessionRun(session);
     await this.tm.runLifecycle.enqueueExclusiveRun(

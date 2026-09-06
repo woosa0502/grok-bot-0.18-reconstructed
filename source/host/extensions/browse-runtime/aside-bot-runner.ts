@@ -2,18 +2,29 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RunnerUpdate, SandAgentRunnerResult } from "../../runner/sand-agent-runner.js";
 import { getSandAgentsRootDir } from "../../storage/agent-paths.js";
-import type { AsideMessage, BrowseClient, BrowseSessionView } from "./browse-client.js";
-import { parseSuspensionAnswer } from "./browse-subagent-session.js";
+import { isBrowseServiceError, sendBrowseFollowUp, type AsideMessage, type BrowseClient, type BrowseSessionView } from "./browse-client.js";
+import { decodeAsideSuspensionAnswer, encodeAsideSuspensionAnswer, parseSuspensionAnswer, suspensionQuestions, type BrowseQuestionAnswer } from "./browse-suspension.js";
 
 export const ASIDE_BOT_RUNTIME = "aside-browse";
 const LINK_FILENAME = "browse-runtime.json";
 const POLL_MS = 1_000;
-// The service runs the cheap default model (luna). When a fresh task fails outright, retry it once with the
-// strong model instead of handing the user an error. SAND_ASIDE_BROWSE_FALLBACK_MODEL=off disables the retry.
+// A model unavailable before native execution may be retried once. Failures after execution starts
+// require an explicit follow-up: replaying a task could repeat external actions.
 const FALLBACK_MODEL = process.env.SAND_ASIDE_BROWSE_FALLBACK_MODEL?.trim() || "gpt-5.5";
 const FALLBACK_THINKING = process.env.SAND_ASIDE_BROWSE_FALLBACK_THINKING?.trim() || "high";
 
-interface BotLink { browseId: string; pendingKind: string | null; /** newest Aside message timestamp already shown in the bot chat */ lastSeenTs?: number }
+interface BotLink {
+  browseId: string;
+  pendingKind: string | null;
+  pendingToolCallId?: string | undefined;
+  pendingRequest?: unknown;
+  pendingDescription?: string | undefined;
+  pendingAnswers?: BrowseQuestionAnswer[];
+  ownerAgentId?: string;
+  source?: "created" | "selected" | "legacy";
+  /** Newest Aside message timestamp already shown in the bot chat. */
+  lastSeenTs?: number;
+}
 
 /** A roster bot opts in by carrying `"runtime": "aside-browse"` in its profile.json. */
 export function isAsideBotAgent(agentId: string): boolean {
@@ -27,11 +38,18 @@ export function isAsideBotAgent(agentId: string): boolean {
 
 function linkPath(agentId: string): string { return join(getSandAgentsRootDir(), agentId, LINK_FILENAME); }
 function readLink(agentId: string): BotLink | null {
-  try { return existsSync(linkPath(agentId)) ? JSON.parse(readFileSync(linkPath(agentId), "utf8")) as BotLink : null; } catch { return null; }
+  let link: BotLink;
+  try {
+    if (!existsSync(linkPath(agentId))) return null;
+    link = JSON.parse(readFileSync(linkPath(agentId), "utf8")) as BotLink;
+  } catch { return null; }
+  if (typeof link?.browseId !== "string" || link.browseId.length === 0) return null;
+  if (link.ownerAgentId !== undefined && link.ownerAgentId !== agentId) throw new Error("The saved Aside session belongs to another bot; explicitly select a session with /aside link <session-id>.");
+  return { ...link, pendingKind: link.pendingKind ?? null, ownerAgentId: agentId, source: link.source ?? "legacy" };
 }
 function writeLink(agentId: string, link: BotLink | null): void {
   if (link === null) { try { unlinkSync(linkPath(agentId)); } catch { /* absent */ } return; }
-  writeFileSync(linkPath(agentId), JSON.stringify(link, null, 2));
+  writeFileSync(linkPath(agentId), JSON.stringify({ ...link, ownerAgentId: agentId }, null, 2));
 }
 /** Called when the user clears the bot's conversation: the next message starts a fresh Aside session. */
 export function forgetAsideBotLink(agentId: string): void { writeLink(agentId, null); }
@@ -50,6 +68,11 @@ interface WrapDeps {
   readonly sendToAgent?: (toAgentId: string, text: string) => Promise<unknown> | unknown;
 }
 
+/** Aside answers carry inline citation markup (<citation refs="…">text</citation>); the bot chat shows the text only. */
+export function stripAsideCitations(text: string): string {
+  return text.replace(/<citation\b[^>]*>([\s\S]*?)<\/citation>/g, "$1").replace(/<citation\b[^>]*\/>/g, "").replace(/[ \t]+\n/g, "\n").trim();
+}
+
 const AGENT_WAKE_CUE = "[agent]";
 /** Belmont wakes a bot for an inbound bot-to-bot message with a HIDDEN turn whose prompt starts with "[agent]" and
  * carries the sender's id and the text (agent-messaging.ts buildAgentInboundWakePrompt). */
@@ -66,132 +89,244 @@ export function parseInboundAgentWake(prompt: string): { fromId: string; fromNam
   return { fromId, fromName, text: text.trim() };
 }
 
-/** Aside chats untouched for longer than this are not adopted as "the current chat". */
-const ADOPT_MAX_AGE_MS = 6 * 60 * 60 * 1_000;
-
-/** The chat the user currently has open in the Aside browser: the most recently updated session. */
-async function currentAsideSession(client: BrowseClient): Promise<{ id: string; updatedAt: number } | null> {
-  try {
-    const sessions = await client.asideSessions(1);
-    const s = sessions[0];
-    return s !== undefined && Date.now() - s.updatedAt < ADOPT_MAX_AGE_MS ? { id: s.id, updatedAt: s.updatedAt } : null;
-  } catch {
-    return null;
-  }
+/** A routine (automation) fires as a HIDDEN turn whose prompt embeds the saved instruction between these two
+ * lines (automation.ts buildAutomationWakePrompt). The browser bot runs that instruction as a task in Aside. */
+const AUTOMATION_SAVED_HEAD = "What you saved to do each time:";
+const AUTOMATION_SAVED_TAIL = "Carry it out now.";
+export function parseAutomationWake(prompt: string): string | null {
+  const start = prompt.indexOf(AUTOMATION_SAVED_HEAD);
+  if (start === -1) return null;
+  const rest = prompt.slice(start + AUTOMATION_SAVED_HEAD.length);
+  const end = rest.indexOf(AUTOMATION_SAVED_TAIL);
+  const body = (end === -1 ? rest : rest.slice(0, end)).trim();
+  return body.length > 0 ? body : null;
 }
 
 /** Mirrors messages that appeared in the linked Aside session (typed in the fork's own chat UI) into the bot
  * chat. Returns the number of lines shown; advances link.lastSeenTs. */
-async function mirrorAsideMessages(agentId: string, link: BotLink, client: BrowseClient, send: (m: Record<string, unknown> & { type: string }) => void, log: (m: string) => void): Promise<number> {
+async function mirrorAsideMessages(agentId: string, link: BotLink, client: BrowseClient, send: (m: Record<string, unknown> & { type: string }) => void, log: (m: string) => void, stillCurrent: () => boolean = () => true): Promise<number> {
   let messages: AsideMessage[];
   try { messages = await client.asideMessages(link.browseId, link.lastSeenTs ?? 0); } catch { return 0; }
+  if (!stillCurrent()) return 0;
   let shown = 0;
   for (const m of messages) {
     if (m.timestamp <= (link.lastSeenTs ?? 0)) continue;
     link.lastSeenTs = m.timestamp;
     const text = m.text.trim();
     if (text.length === 0) continue;
-    send({ type: "text", content: m.role === "user" ? `[Aside에서 입력] ${text}` : text });
+    send({ type: "text", content: m.role === "user" ? `[Aside에서 입력] ${text}` : stripAsideCitations(text) });
     shown += 1;
   }
-  if (shown > 0) { writeLink(agentId, link); log(`[browse-runtime] bot ${agentId}: mirrored ${shown} Aside message(s) from ${link.browseId}`); }
+  if (shown > 0) {
+    // A nudge must not overwrite answers or a selection saved while its message fetch was in flight.
+    const latest = readLink(agentId);
+    if (latest?.browseId === link.browseId) {
+      latest.lastSeenTs = Math.max(latest.lastSeenTs ?? 0, link.lastSeenTs ?? 0);
+      writeLink(agentId, latest);
+    }
+    log(`[browse-runtime] bot ${agentId}: mirrored ${shown} Aside message(s) from ${link.browseId}`);
+  }
   return shown;
 }
 
-function suspensionWidget(view: BrowseSessionView): Record<string, unknown> & { type: string } {
-  const s = view.suspension;
-  const request = (s?.request ?? {}) as { questions?: { question?: string; header?: string; options?: ({ label?: string } | string)[] }[] };
-  if (s?.kind === "ask-user-question") {
-    const q = request.questions?.[0];
-    const options = (q?.options ?? []).map((o) => (typeof o === "string" ? o : o.label ?? "")).filter((label) => label.length > 0).slice(0, 6);
-    return { type: "widget", widget: { prompt: q?.question ?? s.description, options: options.map((label, i) => ({ label, value: label, ...(i === 0 ? { style: "primary" } : {}) })) } };
+function suspensionWidget(link: BotLink): Record<string, unknown> & { type: string } {
+  const identity = { toolCallId: link.pendingToolCallId ?? "", ...(link.pendingKind === "ask-user-question" ? { questionIndex: link.pendingAnswers?.length ?? 0 } : {}) };
+  const answerValue = (answer: string) => encodeAsideSuspensionAnswer(identity, answer);
+  if (link.pendingKind === "ask-user-question") {
+    const questions = suspensionQuestions(link.pendingRequest);
+    const index = link.pendingAnswers?.length ?? 0;
+    const q = questions[index];
+    const progress = questions.length > 1 ? `[${index + 1}/${questions.length}] ` : "";
+    const prompt = `${progress}${q?.header ? `${q.header}: ` : ""}${q?.question || link.pendingDescription || "답변을 입력해주세요."}`;
+    const options = q?.options ?? [];
+    const help = questions.length > 1 ? questions.map((question, i) => `${i + 1}. ${question.header ? `${question.header}: ` : ""}${question.question}`).join("\n") : "";
+    if (options.length === 0) return { type: "text", content: `${prompt}${help ? `\n\n${help}` : ""}\n\n답변을 입력해주세요.` };
+    return { type: "widget", widget: { prompt, asideSuspension: identity, allowCustom: true, ...(help || options.length > 6 ? { helpText: [help, options.length > 6 ? `전체 선택지: ${options.join(" / ")}` : ""].filter(Boolean).join("\n\n") } : {}), options: options.slice(0, 6).map((label, i) => ({ label, value: answerValue(label), ...(i === 0 ? { style: "primary" } : {}) })) } };
   }
-  const isConfirm = s?.kind === "action-confirmation";
+  const isConfirm = link.pendingKind === "action-confirmation";
   return {
     type: "widget",
     widget: {
-      prompt: `${isConfirm ? "진행 확인" : "승인 필요"}: ${s?.description ?? ""}`.trim(),
-      options: [{ label: isConfirm ? "진행" : "허용", value: isConfirm ? "confirm" : "allow", style: "primary" }, { label: isConfirm ? "취소" : "거절", value: isConfirm ? "cancel" : "deny", style: "danger" }],
+      asideSuspension: identity,
+      prompt: `${isConfirm ? "진행 확인" : "승인 필요"}: ${link.pendingDescription ?? ""}`.trim(),
+      options: [{ label: isConfirm ? "진행" : "허용", value: answerValue(isConfirm ? "confirm" : "allow"), style: "primary" }, { label: isConfirm ? "취소" : "거절", value: answerValue(isConfirm ? "cancel" : "deny"), style: "danger" }],
     },
   };
 }
 
 /** Wraps a bot's runner so that its user turns are served by an Aside browse session; everything else delegates. */
 export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: string, deps: WrapDeps): T {
-  let stopped = false;
+  let generation = 0;
   let activity: readonly string[] = [];
   let toolCalls = 0;
   const send = (message: Record<string, unknown> & { type: string }) => deps.emitUpdate({ type: "send-message", message, timestampMs: Date.now() });
   const result = (text: string, sent: number): SandAgentRunnerResult => ({ text, sentMessageCount: sent, reacted: false, aborted: false, streamOutputProduced: false });
 
-  /** No link yet: continue the chat currently open in the Aside browser instead of starting a new one. */
-  const adoptCurrent = async (): Promise<BotLink | null> => {
-    const current = await currentAsideSession(deps.client());
-    if (current === null) return null;
-    const link: BotLink = { browseId: current.id, pendingKind: null, lastSeenTs: 0 };
-    writeLink(agentId, link);
-    deps.log(`[browse-runtime] bot ${agentId}: adopted the current Aside chat ${current.id}`);
-    return link;
-  };
-  /** Follows the user into a newer chat opened in the Aside browser (unless a suspension is pending here). */
-  const followNewest = async (link: BotLink): Promise<BotLink> => {
-    if (link.pendingKind !== null) return link;
-    const current = await currentAsideSession(deps.client());
-    if (current === null || current.id === link.browseId || current.updatedAt <= (link.lastSeenTs ?? 0)) return link;
-    const next: BotLink = { browseId: current.id, pendingKind: null, lastSeenTs: 0 };
-    writeLink(agentId, next);
-    deps.log(`[browse-runtime] bot ${agentId}: following the newer Aside chat ${current.id} (was ${link.browseId})`);
-    return next;
-  };
-
   const run = async (prompt: string, options?: Record<string, unknown>): Promise<SandAgentRunnerResult> => {
-    const inbound = options?.hidden === true ? parseInboundAgentWake(prompt) : null;
-    if (options?.hidden === true && inbound === null) {
+    const cardAnswer = options?.hidden === true ? null : decodeAsideSuspensionAnswer(prompt.trim());
+    // A concrete selection is intentional UI mirroring. Account-wide recency is never ownership.
+    const selection = options?.hidden !== true ? prompt.trim().match(/^\/aside\s+(link\s+([A-Za-z0-9_-]{1,128})|unlink)$/) : null;
+    if (selection !== null) {
+      const selectionGeneration = ++generation;
+      if (selection[1] === "unlink") {
+        forgetAsideBotLink(agentId);
+        send({ type: "text", content: "Aside 대화 연결을 해제했습니다. 다음 메시지는 새 작업으로 시작합니다." });
+        return result("", 1);
+      }
+      try {
+        const id = selection[2]!;
+        const view = await deps.client().get(id);
+        if (selectionGeneration !== generation) return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
+        const link: BotLink = { browseId: id, pendingKind: view.suspension?.kind ?? null, pendingToolCallId: view.suspension?.toolCallId, pendingRequest: view.suspension?.request, pendingDescription: view.suspension?.description, source: "selected", lastSeenTs: 0 };
+        writeLink(agentId, link);
+        send({ type: "text", content: `Aside 대화 ${id}에 연결했습니다.` });
+        const shown = await mirrorAsideMessages(agentId, link, deps.client(), send, deps.log, () => selectionGeneration === generation);
+        if (selectionGeneration !== generation) return { text: "", sentMessageCount: 1 + shown, reacted: false, aborted: true };
+        if (link.pendingKind !== null) send(suspensionWidget(link));
+        return { ...result("", 1 + shown + (link.pendingKind === null ? 0 : 1)), ...(link.pendingKind === null ? {} : { awaitingUserSelection: true }) };
+      } catch (error) {
+        send({ type: "text", content: `[브라우저 봇 오류] ${error instanceof Error ? error.message : String(error)}` });
+        return result("", 1);
+      }
+    }
+    const wakeInfo = options?.hidden === true ? (options as { automationWake?: { id?: string; name?: string } }).automationWake : undefined;
+    const routineTask = wakeInfo === undefined ? null : parseAutomationWake(prompt);
+    const inbound = options?.hidden === true && routineTask === null ? parseInboundAgentWake(prompt) : null;
+    if (options?.hidden === true && inbound === null && routineTask === null) {
       // Nudges: nothing owed, but use them to surface what the user typed in the Aside browser meanwhile.
-      const linked = readLink(agentId);
-      const existing = linked === null ? await adoptCurrent() : await followNewest(linked);
-      const shown = existing === null ? 0 : await mirrorAsideMessages(agentId, existing, deps.client(), send, deps.log);
+      const existing = readLink(agentId);
+      const shown = existing === null ? 0 : await mirrorAsideMessages(agentId, existing, deps.client(), send, deps.log, () => readLink(agentId)?.browseId === existing.browseId);
       return { text: "", sentMessageCount: shown, reacted: true, aborted: false };
     }
-    const text = inbound === null ? prompt.trim() : inbound.text;
+    const text = routineTask ?? (inbound === null ? cardAnswer?.answer ?? prompt.trim() : inbound.text);
     if (text.length === 0) return result("", 0);
+    if (routineTask !== null) {
+      deps.log(`[browse-runtime] bot ${agentId}: routine "${wakeInfo?.name ?? ""}" runs as an Aside task`);
+      send({ type: "text", content: `[루틴 "${wakeInfo?.name ?? ""}" 실행] ${routineTask}` });
+    }
     const replyToSender = async (message: string) => {
       if (inbound === null || deps.sendToAgent === undefined) return;
       try { await deps.sendToAgent(inbound.fromId, message); } catch (error) { deps.log(`[browse-runtime] bot ${agentId}: reply to ${inbound.fromName} failed: ${error instanceof Error ? error.message : String(error)}`); }
     };
     if (inbound !== null) deps.log(`[browse-runtime] bot ${agentId}: inbound task from ${inbound.fromName}`);
-    stopped = false;
+    const runGeneration = ++generation;
     const client = deps.client();
-    const linked = readLink(agentId);
-    let link = linked === null ? await adoptCurrent() : await followNewest(linked);
+    let link = readLink(agentId);
     let mirrored = 0;
-    if (link !== null) mirrored = await mirrorAsideMessages(agentId, link, client, send, deps.log);
+    if (link !== null) mirrored = await mirrorAsideMessages(agentId, link, client, send, deps.log, () => runGeneration === generation);
+    if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
     let freshTask = false, retried = false;
     try {
+      if (cardAnswer !== null && (link === null || link.pendingKind === null)) throw new Error("This Aside question is no longer pending. Its answer was not submitted as a new task.");
       if (link !== null && link.pendingKind !== null) {
-        await client.answer(link.browseId, parseSuspensionAnswer(link.pendingKind, text));
-        link.pendingKind = null; writeLink(agentId, link);
+        // Automation wakes and other bots are tasks, not human answers to this bot's pending card.
+        if (options?.hidden === true) {
+          const message = "[브라우저 봇] 사용자 답변을 기다리고 있어 자동 작업을 시작하지 않았습니다.";
+          send({ type: "text", content: message });
+          await replyToSender(message);
+          return { ...result("", 1), awaitingUserSelection: true };
+        }
+        const pending = await client.get(link.browseId);
+        if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
+        if (pending.status !== "suspended" || pending.suspension === null) {
+          link.pendingKind = null;
+          delete link.pendingToolCallId;
+          delete link.pendingRequest;
+          delete link.pendingDescription;
+          delete link.pendingAnswers;
+          writeLink(agentId, link);
+          throw new Error("The browser session no longer has this pending question. Your answer was not submitted as a new task.");
+        }
+        if (!pending.suspension.toolCallId) throw new Error("The Aside service did not provide an exact question identity. The answer was not submitted.");
+        if (link.pendingToolCallId !== pending.suspension.toolCallId || link.pendingKind !== pending.suspension.kind || (link.pendingRequest !== undefined && JSON.stringify(link.pendingRequest) !== JSON.stringify(pending.suspension.request))) {
+          link.pendingKind = pending.suspension.kind;
+          link.pendingToolCallId = pending.suspension.toolCallId;
+          link.pendingRequest = pending.suspension.request;
+          link.pendingDescription = pending.suspension.description;
+          link.pendingAnswers = [];
+          writeLink(agentId, link);
+          send({ type: "text", content: "Aside의 질문이 변경되어 최신 질문을 표시합니다." });
+          send(suspensionWidget(link));
+          return { ...result("", 2 + mirrored), awaitingUserSelection: true };
+        }
+        if ((cardAnswer !== null && cardAnswer.toolCallId !== link.pendingToolCallId) || (cardAnswer?.questionIndex !== undefined && cardAnswer.questionIndex !== (link.pendingAnswers?.length ?? 0))) {
+          send(suspensionWidget(link));
+          return { ...result("", 1 + mirrored), awaitingUserSelection: true };
+        }
+        link.pendingKind = pending.suspension.kind;
+        link.pendingRequest = pending.suspension.request;
+        link.pendingDescription = pending.suspension.description;
+        let response: unknown;
+        const questions = suspensionQuestions(link.pendingRequest);
+        if (link.pendingKind === "ask-user-question" && questions.length > 1) {
+          const index = link.pendingAnswers?.length ?? 0;
+          const question = questions[index];
+          if (question === undefined) throw new Error("The question set changed; select the Aside session again before answering.");
+          const parsed = parseSuspensionAnswer(link.pendingKind, text, { questions: [question] }) as { answers: BrowseQuestionAnswer[] };
+          const answers = [...(link.pendingAnswers ?? []), ...parsed.answers];
+          if (answers.length < questions.length) {
+            link.pendingAnswers = answers;
+            writeLink(agentId, link);
+            send(suspensionWidget(link));
+            return { ...result("", 1 + mirrored), awaitingUserSelection: true };
+          }
+          response = { answers };
+        } else response = parseSuspensionAnswer(link.pendingKind, text, link.pendingRequest);
+        await client.answer(link.browseId, response, link.pendingToolCallId!);
+        if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
+        link.pendingKind = null;
+        delete link.pendingToolCallId;
+        delete link.pendingRequest;
+        delete link.pendingDescription;
+        delete link.pendingAnswers;
+        writeLink(agentId, link);
         deps.log(`[browse-runtime] bot ${agentId}: answered suspension on ${link.browseId}`);
       } else if (link !== null) {
-        await client.continue(link.browseId, text);
+        await sendBrowseFollowUp(client, link.browseId, text);
+        if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
         link.lastSeenTs = Date.now(); writeLink(agentId, link);
-        deps.log(`[browse-runtime] bot ${agentId}: continued ${link.browseId}`);
+        deps.log(`[browse-runtime] bot ${agentId}: sent follow-up to ${link.browseId}`);
       } else {
         const created = await client.create({ task: text });
-        link = { browseId: created.id, pendingKind: null, lastSeenTs: Date.now() }; writeLink(agentId, link); freshTask = true;
+        if (runGeneration !== generation) {
+          await client.stop(created.id);
+          return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
+        }
+        link = { browseId: created.id, pendingKind: null, source: "created", lastSeenTs: Date.now() }; writeLink(agentId, link); freshTask = true;
         deps.log(`[browse-runtime] bot ${agentId}: started ${created.id}`);
       }
     } catch (error) {
-      // Continuing/answering a session the service no longer holds (service restarted): drop the link and
-      // start the text as a fresh task right away instead of making the user resend it.
+      if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
       const detail = error instanceof Error ? error.message : String(error);
-      writeLink(agentId, null);
       try {
-        if (link === null) throw error;
-        deps.log(`[browse-runtime] bot ${agentId}: ${link.browseId} unusable (${detail}); starting a fresh session`);
+        // A transient/conflict error does not prove absence. An approval answer must never become a task.
+        if (link === null || link.pendingKind !== null || !isBrowseServiceError(error, "SESSION_NOT_FOUND")) throw error;
+        deps.log(`[browse-runtime] bot ${agentId}: ${link.browseId} missing (${detail}); starting a fresh session`);
         const created = await client.create({ task: text });
-        link = { browseId: created.id, pendingKind: null }; writeLink(agentId, link); freshTask = true;
+        if (runGeneration !== generation) {
+          await client.stop(created.id);
+          return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
+        }
+        link = { browseId: created.id, pendingKind: null, source: "created", lastSeenTs: Date.now() }; writeLink(agentId, link); freshTask = true;
       } catch (fresh) {
+        if ((isBrowseServiceError(fresh, "SESSION_SUSPENDED") || isBrowseServiceError(fresh, "STALE_SUSPENSION")) && link !== null) {
+          // A question may have appeared after the last poll or in the deliberately linked Aside UI.
+          try {
+            const view = await client.get(link.browseId);
+            if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
+            if (view.status === "suspended") {
+              link.pendingKind = view.suspension?.kind ?? "approval";
+              link.pendingToolCallId = view.suspension?.toolCallId;
+              link.pendingRequest = view.suspension?.request;
+              link.pendingDescription = view.suspension?.description;
+              link.pendingAnswers = [];
+              writeLink(agentId, link);
+              send(suspensionWidget(link));
+              await replyToSender("[waiting] 사용자 답변을 기다리고 있습니다.");
+              return { ...result("", 1 + mirrored), awaitingUserSelection: true };
+            }
+          } catch { /* Report the original conflict while preserving the link. */ }
+        }
         const message = `[브라우저 봇 오류] ${fresh instanceof Error ? fresh.message : String(fresh)}`;
         send({ type: "text", content: message });
         await replyToSender(message);
@@ -199,53 +334,79 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
       }
     }
     for (;;) {
-      if (stopped) return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
+      if (runGeneration !== generation) return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
       const view = await client.get(link.browseId);
+      if (runGeneration !== generation) return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
       activity = view.activity; toolCalls = view.toolCalls;
       if (view.status === "suspended") {
-        link.pendingKind = view.suspension?.kind ?? "approval"; writeLink(agentId, link);
-        send(suspensionWidget(view));
+        link.pendingKind = view.suspension?.kind ?? "approval";
+        link.pendingToolCallId = view.suspension?.toolCallId;
+        link.pendingRequest = view.suspension?.request;
+        link.pendingDescription = view.suspension?.description;
+        link.pendingAnswers = [];
+        // Move the mirror cursor past our own prompt (stored in the Aside chat by now) so the answer turn does
+        // not echo it back as "[Aside에서 입력] …".
+        try { const tail = await client.asideMessages(link.browseId, 0); const last = tail[tail.length - 1]; if (last !== undefined) link.lastSeenTs = Math.max(link.lastSeenTs ?? 0, last.timestamp); } catch { /* keep the cursor */ }
+        if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
+        writeLink(agentId, link);
+        send(suspensionWidget(link));
         await replyToSender(`[waiting] 사용자 확인이 필요해서 제 대화창에 카드로 물어봤습니다: ${view.suspension?.description ?? view.suspension?.kind ?? ""}`);
         return { ...result("", 1), awaitingUserSelection: true };
       }
       if (view.status === "done") {
-        const answer = view.result ?? "(작업이 끝났지만 답 문장이 없습니다)";
+        const answer = view.result === null || view.result === undefined ? "(작업이 끝났지만 답 문장이 없습니다)" : stripAsideCitations(view.result);
         send({ type: "text", content: answer });
         await replyToSender(answer);
         // Keep the mirror cursor past this turn so the bot's own exchange is not echoed back later.
-        try { const tail = await client.asideMessages(link.browseId, 0); const last = tail[tail.length - 1]; if (last !== undefined) { link.lastSeenTs = Math.max(link.lastSeenTs ?? 0, last.timestamp); writeLink(agentId, link); } } catch { /* mirror cursor is best effort */ }
+        try { const tail = await client.asideMessages(link.browseId, 0); const last = tail[tail.length - 1]; if (runGeneration === generation && last !== undefined) { link.lastSeenTs = Math.max(link.lastSeenTs ?? 0, last.timestamp); writeLink(agentId, link); } } catch { /* mirror cursor is best effort */ }
         return result(view.result ?? "", 1 + mirrored);
       }
       if (view.status === "error") {
-        if (freshTask && !retried && FALLBACK_MODEL !== "off") {
+        const safeModelFallback = view.errorCode === "MODEL_UNAVAILABLE"
+          && view.executionStarted === false
+          && view.toolCalls === 0
+          && view.modelCalls === 0;
+        if (freshTask && !retried && FALLBACK_MODEL !== "off" && safeModelFallback) {
           retried = true;
           deps.log(`[browse-runtime] bot ${agentId}: ${link.browseId} failed (${view.error ?? "unknown"}); retrying with ${FALLBACK_MODEL}/${FALLBACK_THINKING}`);
           try {
             const created = await client.create({ task: text, model: FALLBACK_MODEL, thinking: FALLBACK_THINKING });
-            link = { browseId: created.id, pendingKind: null }; writeLink(agentId, link);
+            if (runGeneration !== generation) {
+              await client.stop(created.id);
+              return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
+            }
+            link = { browseId: created.id, pendingKind: null, source: "created", lastSeenTs: Date.now() }; writeLink(agentId, link);
             send({ type: "text", content: `[브라우저 봇] 기본 모델이 실패해서 ${FALLBACK_MODEL}(으)로 다시 시도합니다. (${view.error ?? "unknown error"})` });
             continue;
           } catch (error) { deps.log(`[browse-runtime] bot ${agentId}: fallback start failed: ${error instanceof Error ? error.message : String(error)}`); }
         }
-        const message = `[브라우저 봇 오류] ${view.error ?? "unknown error"}`;
+        const message = `[브라우저 봇 오류] ${view.error ?? "unknown error"}\n기존 작업을 유지했습니다. 계속할 내용을 알려주세요.`;
         send({ type: "text", content: message });
         await replyToSender(message);
         return result("", 1);
       }
-      if (view.status === "stopped") return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
+      if (view.status === "stopped" || view.status === "interrupted") return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     }
   };
   const overrides: Partial<RunnerLike> & { wouldRecoverViaPrepend: undefined } = {
     run,
     interrupt: (reason: string) => {
-      stopped = true;
+      generation += 1;
       const link = readLink(agentId);
       // Belmont interrupts the previous turn whenever a new user message arrives ("superseded by a
       // new user message"), including the answer to our own approval/question card. That must not
       // kill the Aside session: the answer resumes it. Only other interrupts (user stop, cancel) do.
       const superseded = /superseded/i.test(reason);
-      if (link !== null && !superseded && link.pendingKind === null) void deps.client().stop(link.browseId).catch(() => undefined);
+      if (link !== null && !superseded) {
+        void deps.client().stop(link.browseId).catch(() => undefined);
+        link.pendingKind = null;
+        delete link.pendingToolCallId;
+        delete link.pendingRequest;
+        delete link.pendingDescription;
+        delete link.pendingAnswers;
+        writeLink(agentId, link);
+      }
       deps.log(`[browse-runtime] bot ${agentId}: interrupted (${reason})${superseded ? " — session kept" : ""}`);
       return true;
     },

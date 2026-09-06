@@ -71,6 +71,7 @@ export interface ProductionTurnRunShellAdapterInput {
     readonly runContext: Context;
     readonly prompt: string;
     readonly options: GeneratedTurnPromptOptions;
+    readonly conversationState?: ProductionTurnConversationState;
   }) => Promise<Awaited<ReturnType<typeof createProductionTurnAgentRunInput>>>;
   readonly promptOptions: (
     prompt: string,
@@ -109,6 +110,22 @@ export interface ProductionTurnRunShellAdapterInput {
   readonly lastReactionApplied?: () => boolean;
   readonly cancelThisRun: ProductionTurnAgentOwner["runContext"]["scope"]["cancelThisRun"];
   readonly onRunUnwind?: () => void;
+}
+
+export interface ProductionTurnConversationState {
+  readonly compactionEpoch: ProductionTurnAgentRunInput["compactionEpoch"];
+  readonly getConversationState: ProductionTurnAgentRunInput["getConversationState"];
+}
+
+/** Rebind the actual producer, not unused properties on an assembled adapter. */
+export function bindProductionTurnRunShellConversationState(
+  input: ProductionTurnRunShellAdapterInput,
+  conversationState: ProductionTurnConversationState,
+): ProductionTurnRunShellAdapterInput {
+  return {
+    ...input,
+    createRunInput: turn => input.createRunInput({ ...turn, conversationState }),
+  };
 }
 
 /**
@@ -182,7 +199,7 @@ export function createProductionTurnRunShellHostInput(
       cancelThisRun,
       emitUpdate,
     }),
-    createRunInput: async ({ owner, runContext, prompt, options }) =>
+    createRunInput: async ({ owner, runContext, prompt, options, conversationState }) =>
       createProductionTurnAgentRunInput({
         runCtx: runContext,
         trimmedPrompt: prompt.trim(),
@@ -191,8 +208,8 @@ export function createProductionTurnRunShellHostInput(
         ...(owner.runContext.profileUpdateForTurn === undefined
           ? {}
           : { profileUpdateForTurn: owner.runContext.profileUpdateForTurn }),
-        compactionEpoch,
-        getConversationState,
+        compactionEpoch: conversationState?.compactionEpoch ?? compactionEpoch,
+        getConversationState: conversationState?.getConversationState ?? getConversationState,
         ...(mcp === undefined ? {} : { mcp }),
         ...(onMcpDiscoveryFailed === undefined
           ? {}

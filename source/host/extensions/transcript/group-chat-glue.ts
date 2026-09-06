@@ -36,14 +36,16 @@ import { createGroupMemberActivityTracker } from "../../sand-activity.js";
 import {
   beginTurnTrace,
   markTurnTraceError,
-  resolveTurnTraceOutcome,
   resolveTurnTraceType,
   setTurnTraceAttributes,
 } from "../../send-trace-host.js";
 import {
   GroupChatOrchestrator,
   type GroupOrchestratorDeps,
+  type GroupMemberTurnResult,
+  type GroupRunResult,
 } from "./group-chat-orchestrator.js";
+import { runBackgroundTask } from "./background-task-continuation.js";
 import { describeAgentRunError } from "./agent-run-error.js";
 import { AgentGoneError } from "./session-runtime.js";
 import { nextEntryId } from "./transcript-entry-ids.js";
@@ -221,14 +223,14 @@ export class GroupChatGlue {
     epoch: number,
     traceCtx?: unknown,
     lane = "background",
-  ): Promise<void> {
+  ): Promise<GroupRunResult> {
     try {
       const config = readSandGroupConfig(dirname(session.dbPath));
-      if (config == null) return;
+      if (config == null) return { completed: false, reason: "empty", memberTurns: 0 };
       const orchestrator = new GroupChatOrchestrator(
         this.groupOrchestratorDeps(session, epoch, traceCtx, lane),
       );
-      await orchestrator.run({
+      const result = await orchestrator.run({
         group: this.groupIdentityFor(session),
         memberIds: [
           ...config.memberIds,
@@ -236,6 +238,7 @@ export class GroupChatGlue {
         ],
       });
       await this.tm.roster.emitAgentUpdate(session.id);
+      return result;
     } catch (error) {
       this.tm.trayErrors.pushError({
         agentId: session.id,
@@ -243,6 +246,7 @@ export class GroupChatGlue {
         ...describeAgentRunError(error),
       });
       await this.tm.roster.emitAgentUpdate(session.id);
+      return { completed: false, reason: "unknown", memberTurns: 0 };
     } finally {
       this.tm.runLifecycle.endSessionRun(session);
     }
@@ -255,6 +259,10 @@ export class GroupChatGlue {
     lane = "background",
     requestSource?: string,
   ): GroupOrchestratorDeps {
+    const wasStopped = this.tm.captureAgentStopGuard?.(session.id) as (() => boolean) | undefined;
+    const isCurrent = (): boolean => wasStopped?.() !== true
+      && this.tm.isAgentUserStopped?.(session.id) !== true
+      && this.tm.sendPipeline.currentTurnEpoch(session) === epoch;
     const live = createGroupMemberStream();
     const config = readSandGroupConfig(dirname(session.dbPath));
     const remoteMembers = config?.remoteMembers ?? [];
@@ -267,7 +275,7 @@ export class GroupChatGlue {
           session,
           request,
           live,
-          () => this.tm.sendPipeline.currentTurnEpoch(session) === epoch,
+          isCurrent,
           traceCtx,
           lane,
           requestSource,
@@ -276,7 +284,7 @@ export class GroupChatGlue {
         this.postGroupMemberMessage(session, member, content, live);
       },
       finalizeMemberTurn: () => this.finalizeGroupMemberStream(session, live),
-      isCurrent: () => this.tm.sendPipeline.currentTurnEpoch(session) === epoch,
+      isCurrent,
     };
   }
 
@@ -320,11 +328,17 @@ export class GroupChatGlue {
     traceCtx?: unknown,
     lane = "background",
     requestSource?: string,
-  ): Promise<string[]> {
+  ): Promise<readonly string[] | GroupMemberTurnResult> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(request.member.id) as (() => boolean) | undefined;
+    const isCurrent = (): boolean => isRoomTurnCurrent()
+      && wasStopped?.() !== true
+      && this.tm.isAgentUserStopped?.(roomSession.id) !== true
+      && this.tm.isAgentUserStopped?.(request.member.id) !== true;
+    if (!isCurrent()) return { messages: [], completed: false, reason: "aborted" };
     if (isRemoteAgentId(request.member.id)) {
       return this.runRemoteGroupMemberTurn(roomSession, request.member);
     }
-    if (!this.tm.execution.canExecuteGroupMember) return [];
+    if (!this.tm.execution.canExecuteGroupMember) return { messages: [], completed: false, reason: "unknown" };
 
     let effective = request;
     if (this.tm.sharedRooms.sharedRoomConfigOf(roomSession) != null) {
@@ -345,13 +359,15 @@ export class GroupChatGlue {
         effective.member.id,
       );
     } catch {
-      return [];
+      return { messages: [], completed: false, reason: "unknown" };
     }
     const sent: string[] = [];
+    let outcome: GroupMemberTurnResult = { messages: sent, completed: false, reason: "unknown" };
     let lastReactionApplied = false;
     let trackActivity = createGroupMemberActivityTracker();
     const transport = {
       onUpdate: (update: any) => {
+        if (!isCurrent()) return;
         this.tm.runLifecycle.applyActivityTransition(
           memberSession.id,
           trackActivity(update),
@@ -378,6 +394,10 @@ export class GroupChatGlue {
     };
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
+      if (!isCurrent()) {
+        this.tm.runLifecycle.endSessionRun(memberSession);
+        return { messages: [], completed: false, reason: "aborted" };
+      }
       this.finalizeGroupMemberStream(roomSession, live);
       lastReactionApplied = false;
       trackActivity = createGroupMemberActivityTracker();
@@ -394,7 +414,7 @@ export class GroupChatGlue {
           );
           let registeredRunner: any;
           try {
-            if (attempt > 1 && !isRoomTurnCurrent()) return;
+            if (!isCurrent()) { outcome = { messages: [], completed: false, reason: "aborted" }; return; }
             registeredRunner = this.tm.execution.createGroupMemberRunner(
               memberSession,
               this.tm.runnerRegistry.runnerHooksFor(memberSession, transport),
@@ -426,12 +446,36 @@ export class GroupChatGlue {
               },
             });
             try {
-              const memberResult = await registeredRunner.run(prompt, {
+              const options = {
                 traceCtx: memberTurnTrace?.context ?? traceCtx,
                 requestSource,
-              });
+              };
+              // Normal room conversation stays one model turn per member. A scheduled group
+              // task must settle each member's actual work before the routine can be called ok.
+              if (requestSource === "automation") {
+                const settled = await runBackgroundTask(this.tm, memberSession, registeredRunner, prompt, {
+                  ...options, isSilenceAllowed: true,
+                }, isCurrent);
+                const hasEvidence = settled.result.openTodos !== undefined;
+                outcome = {
+                  messages: sent,
+                  completed: settled.completed && hasEvidence,
+                  reason: hasEvidence ? settled.reason : "unknown",
+                };
+              } else {
+                const memberResult = await registeredRunner.run(prompt, options);
+                outcome = {
+                  messages: sent,
+                  completed: !memberResult.aborted && !memberResult.quiescedForUpgrade
+                    && !memberResult.awaitingUserSelection && !memberResult.handedOff
+                    && !memberResult.taskCompletionUnknown && memberResult.openTodos?.length === 0,
+                  reason: memberResult.aborted || !isCurrent() ? "aborted"
+                    : memberResult.openTodos === undefined ? "unknown" : "member_pending",
+                };
+              }
+              if (!isCurrent()) outcome = { messages: [], completed: false, reason: "aborted" };
               setTurnTraceAttributes(memberTurnTrace, {
-                "sand.outcome": resolveTurnTraceOutcome(memberResult),
+                "sand.outcome": outcome.completed ? "success" : outcome.reason,
               });
             } catch (error) {
               markTurnTraceError(memberTurnTrace, error);
@@ -442,7 +486,8 @@ export class GroupChatGlue {
               } catch {}
             }
           } catch {
-            // A failed member turn is a pass, not a room-wide failure.
+            // Preserve conversational resilience, but a failed member is not successful work.
+            outcome = { messages: sent, completed: false, reason: "error" };
           } finally {
             if (
               this.tm.runnerRegistry.activeGroupMemberRunners.get(
@@ -465,7 +510,7 @@ export class GroupChatGlue {
         sent.length > 0 ||
         lastReactionApplied ||
         attempt >= 3 ||
-        !isRoomTurnCurrent()
+        !isCurrent()
       ) {
         break;
       }
@@ -477,7 +522,7 @@ export class GroupChatGlue {
         break;
       }
     }
-    return sent;
+    return outcome;
   }
 
   async runRemoteGroupMemberTurn(

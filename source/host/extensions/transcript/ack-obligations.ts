@@ -16,6 +16,7 @@ export class AckObligations {
   constructor(readonly tm: TranscriptManagerLike) {}
 
   recordAckObligationSend(session: any, acceptedAtMs: number): void {
+    if (this.tm.isAgentUserStopped?.(session.id) === true) return;
     const store = this.tm.ackObligationStore;
     if (store == null || this.tm.runLifecycle.runScheduler == null) return;
     this.clearAckRedriveTimer(session.id);
@@ -142,6 +143,7 @@ export class AckObligations {
       store == null ||
       this.tm.runLifecycle.runScheduler == null ||
       this.tm.disposed ||
+      this.tm.isAgentUserStopped?.(agentId) === true ||
       this.tm.upgradeResume.quiescingForUpgrade ||
       store.get(agentId) == null
     )
@@ -170,12 +172,14 @@ export class AckObligations {
     agentId: string,
     trigger: "idle" | "boot",
   ): Promise<void> {
+    const wasStopped = this.tm.captureAgentStopGuard?.(agentId);
     const store = this.tm.ackObligationStore;
     if (
       store == null ||
       this.tm.runLifecycle.runScheduler == null ||
       !this.tm.execution.canExecute ||
       this.tm.disposed ||
+      this.tm.isAgentUserStopped?.(agentId) === true ||
       this.tm.upgradeResume.quiescingForUpgrade
     )
       return;
@@ -202,6 +206,7 @@ export class AckObligations {
       this.scheduleAckRedriveAfterIdle(agentId);
       return;
     }
+    if (wasStopped?.() === true) return;
     if (
       this.tm.groupChat.isGroupSession(session) ||
       this.tm.groupChat.isRemoteRoomSession(session)

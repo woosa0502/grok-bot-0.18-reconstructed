@@ -40,6 +40,8 @@ import { UpgradeRecreateResume } from "./upgrade-recreate-resume.js";
 import { WidgetResponses } from "./widget-responses.js";
 import { WorkflowCommands } from "./workflow-commands.js";
 import { ClientSideToolV2Producer } from "./client-side-tool-v2-producer.js";
+import { AgentUserStopController, interruptTranscriptAgent, runExplicitTranscriptPrompt, USER_STOP_FILE_NAME,
+  type AgentStopExpectation, type AgentStopResult } from "./agent-user-stop.js";
 
 export interface TaskBoundary {
   settled(): Promise<void>;
@@ -142,6 +144,7 @@ function invoke(target: unknown, method: string, args: any[]): any {
 }
 
 export class TranscriptManager {
+  readonly userStops: AgentUserStopController;
   readonly clientSideToolV2 = new ClientSideToolV2Producer();
   readonly sendPipeline = new SendPipeline(this);
   readonly turnRuntime = new TurnRuntime(this);
@@ -199,6 +202,11 @@ export class TranscriptManager {
     }),
     readonly clock: Clock = realClock,
   ) {
+    this.userStops = new AgentUserStopController(
+      typeof sessionStore.rootDir === "string"
+        ? join(dirname(sessionStore.rootDir), USER_STOP_FILE_NAME)
+        : null,
+    );
     this.sessionStore.setBeingDeletedPredicate?.((id: string) =>
       this.sessions.deletedAgentIds.has(id),
     );
@@ -221,7 +229,13 @@ export class TranscriptManager {
     this.agentRunLifecycleObserver?.(event);
   }
   setTurnExecution(execution: TurnExecutionPort): void {
-    this.execution = execution;
+    this.execution = {
+      ...execution,
+      createRunner: (session: any, ...args: any[]) =>
+        this.userStops.guardRunner(session.id, execution.createRunner(session, ...args)),
+      createGroupMemberRunner: (session: any, ...args: any[]) =>
+        this.userStops.guardRunner(session.id, execution.createGroupMemberRunner(session, ...args)),
+    };
   }
   setTelemetry(telemetry: any): void {
     this.telemetry = telemetry;
@@ -353,8 +367,16 @@ export class TranscriptManager {
   async getAgentMemories(agentId: string) {
     return this.memory.list({ agentId });
   }
+  async addAgentMemory(agentId: string, content: string, tier: unknown) {
+    const kind = tier === "profile" ? "profile" : "log";
+    const text = typeof content === "string" ? content.trim() : "";
+    if (text.length === 0) throw new Error("memory content is empty");
+    const record = this.memory.add({ agentId, content: text, kind });
+    await this.clearMemoryPromptSnapshot(agentId);
+    return record;
+  }
   async deleteAgentMemory(agentId: string, memoryId: string) {
-    const result = await this.memory.remove({ agentId, memoryId });
+    const result = await this.memory.remove({ agentId, id: memoryId, memoryId });
     await this.clearMemoryPromptSnapshot(agentId);
     return result;
   }
@@ -413,6 +435,18 @@ export class TranscriptManager {
 
   promptAcceptanceStatus(...args: any[]) {
     return invoke(this.sendPipeline, "promptAcceptanceStatus", args);
+  }
+  isAgentUserStopped(agentId: string): boolean {
+    return this.userStops.isStopped(agentId);
+  }
+  captureAgentStopGuard(agentId: string): () => boolean {
+    return this.userStops.captureStopGuard(agentId);
+  }
+  runExplicitUserPrompt<T>(agentId: string | undefined, task: () => T, clientNonce?: string): T {
+    return runExplicitTranscriptPrompt(this, agentId, task, clientNonce);
+  }
+  interruptAgent(agentId: string, expected?: AgentStopExpectation): Promise<AgentStopResult> {
+    return interruptTranscriptAgent(this, agentId, expected);
   }
   sendPrompt(...args: any[]) {
     return invoke(this.sendPipeline, "sendPrompt", args);

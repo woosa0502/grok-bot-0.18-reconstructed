@@ -2,6 +2,9 @@ import { createDeadlinePolicy, realClock, type DeadlinePolicy } from "../../inte
 import { AiService } from "../../packages/proto/generated/aiserver/v1/aiserver_connect.js";
 import { TranscribeAudioRequest, type TranscribeAudioResponse } from "../../packages/proto/generated/aiserver/v1/aiserver_pb.js";
 import { createSandCursorBackendClient } from "../../shared/node/cursor-backend/cursor-inference.js";
+import { isLocalCodexMode } from "../../shared/node/local-codex-account.js";
+import { transcribeAudioInput } from "../../shared/node/audio-transcription.js";
+import type { MediaProviderOptions } from "../../shared/node/media-provider.js";
 
 const TRANSCRIBE_TIMEOUT_MS = 60_000;
 const DEFAULT_TRANSCRIBE_LANGUAGE = "en-US";
@@ -25,6 +28,7 @@ export interface SandTranscriptionOptions {
   readonly clientForTesting?: TranscribeAudioClient;
   readonly createClient?: (credentials: Pick<SandTranscriptionOptions, "getCursorAccessToken" | "getMachineId" | "onRequestId">) => TranscribeAudioClient;
   readonly deadline?: DeadlinePolicy;
+  readonly mediaProvider?: MediaProviderOptions;
 }
 
 export class SandTranscriptionManager {
@@ -49,6 +53,14 @@ export class SandTranscriptionManager {
 
   async transcribe(args: { readonly audio: Uint8Array; readonly mimeType: string; readonly language?: string }): Promise<{ text: string; transcriptionTimeMs: number }> {
     if (args.audio.length === 0) throw new SandTranscribeEmptyAudioError();
+    if (isLocalCodexMode(this.options.mediaProvider?.env ?? process.env)) {
+      const started = performance.now();
+      const text = await (this.options.deadline ?? transcribeDeadline).run((signal) => transcribeAudioInput(args.audio, args.mimeType, {
+        ...this.options.mediaProvider,
+        ...(args.language ? { language: args.language } : {}),
+      }, signal));
+      return { text, transcriptionTimeMs: performance.now() - started };
+    }
     const language = args.language != null && args.language.length > 0 ? args.language : DEFAULT_TRANSCRIBE_LANGUAGE;
     const response = await (this.options.deadline ?? transcribeDeadline).run((signal) =>
       this.getClient().transcribeAudio(new TranscribeAudioRequest({

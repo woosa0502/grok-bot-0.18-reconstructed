@@ -56,7 +56,11 @@ test("the local prompt keeps honest denials and gains the local realities", asyn
   const { SAND_SYSTEM_PROMPT_LOCAL_CODEX: local } = await promptsPromise;
   // Honest denial beats silent removal for features the model might still try.
   assert.match(local, /Image generation is not available in this setup: there is no GenerateImage tool/);
-  assert.match(local, /in this local build the desktop is shared too/);
+  assert.match(local, /ONE computer shared by all of this user's agents/);
+  assert.match(local, /files and installed tools are shared/);
+  assert.match(local, /each top-level bot has its own desktop screen/);
+  assert.match(local, /Your computerUse subagent shares YOUR bot's screen/);
+  assert.doesNotMatch(local, /in this local build the desktop is shared too|ONE screen on that machine/);
   // The local replacements: connectors come from local MCP config, and
   // repository work happens on this machine instead of a cloud agent.
   assert.match(local, /connectors come from the local MCP configuration on this machine/);

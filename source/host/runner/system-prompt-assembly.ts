@@ -26,11 +26,13 @@ import {
   SAND_MCP_MULTI_ACCOUNT_PROMPT_SECTION,
   SAND_SYSTEM_PROMPT_CLOUD_AGENTS_DISABLED,
   SAND_SYSTEM_PROMPT_LOCAL_CODEX,
+  SAND_SYSTEM_PROMPT_LOCAL_CODEX_WITH_IMAGES,
 } from "./system-prompt.js";
 import { renderAutomationsSystemPrompt, type AutomationRecord } from "../automations/automation.js";
 import { renderTimeZoneSystemPrompt } from "../../shared/timezone.js";
 import { renderUserIdentitySystemPrompt } from "../sand-user-identity.js";
-import { renderWorkflowsSystemPrompt } from "../../shared/workflow-model.js";
+import { renderUserLanguageSystemPrompt } from "../../shared/user-language.js";
+import { promptSkillsFromWorkflows, renderWorkflowsSystemPrompt, type WorkflowRecord } from "../../shared/workflow-model.js";
 import { renderChannelsSystemPrompt, type ChannelConnectionSummary } from "../../shared/channel-messaging.js";
 import { renderAgentDirectorySystemPrompt, type AgentAddress, type AgentGroupAddress } from "../agents/agent-messaging.js";
 import { spotlightPromptSection } from "../../shared/sand-spotlight.js";
@@ -77,9 +79,9 @@ export interface SystemPromptAssemblyDependencies {
   } | null;
   readonly isMemoryFreezeEnabled?: () => boolean;
   readonly isBoxScopedSubagent: () => boolean;
-  readonly requestContext: { resolve(): { readonly timeZone: string; readonly userFullName?: string } };
+  readonly requestContext: { resolve(): { readonly timeZone: string; readonly userFullName?: string; readonly userLanguage?: string } };
   readonly automationStore: () => { getLocation(): string | null | undefined; list(): readonly AutomationRecord[]; listDefinitions?(): readonly AutomationRecord[] } | null;
-  readonly workflowStore: () => { getLocation(): string | null | undefined } | null;
+  readonly workflowStore: () => { getLocation(): string | null | undefined; list?(): readonly WorkflowRecord[] } | null;
   readonly channelStore: () => { getLocation(): string | null | undefined; listConnections(): readonly ChannelConnectionSummary[] } | null;
   readonly connectorManifests: readonly ConnectorManifest[];
   readonly sendToAgentImpl?: unknown;
@@ -93,8 +95,10 @@ export interface SystemPromptAssemblyDependencies {
   readonly mcpManagement: () => unknown;
   readonly isMcpMultiAccountEnabled?: () => boolean;
   readonly isCloudAgentsDisabledByTeam?: () => boolean;
-  /** Local Codex mode selects the base prompt without cloud agents or image generation. */
+  /** Local Codex mode selects the base prompt without Cursor cloud agents. */
   readonly isLocalCodexMode?: () => boolean;
+  /** Uses the same bound-service capability as the GenerateImage tool factory. */
+  readonly isImageGenerationEnabled?: () => boolean;
   /**
    * Managed-team awareness (Phase B / B-2 subset): a section injected for
    * worker agents when a manager agent is designated, so delegated-job results
@@ -216,6 +220,11 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     return rendered.length > 0 ? rendered : null;
   }
 
+  function getUserLanguageSection(): string | null {
+    const rendered = renderUserLanguageSystemPrompt(deps.requestContext.resolve().userLanguage);
+    return rendered.length > 0 ? rendered : null;
+  }
+
   function getAutomationsSection(): string | null {
     const store = deps.automationStore();
     if (store == null) return null;
@@ -230,7 +239,8 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
   function getWorkflowsSection(): string | null {
     const store = deps.workflowStore();
     if (store == null) return null;
-    const rendered = renderWorkflowsSystemPrompt(modelVisibleLocation(store.getLocation()));
+    const skills = promptSkillsFromWorkflows(store.list?.() ?? []).map((skill) => ({ ...skill, filePath: modelVisibleLocation(skill.filePath) ?? skill.filePath }));
+    const rendered = renderWorkflowsSystemPrompt(modelVisibleLocation(store.getLocation()), skills);
     return rendered.length > 0 ? rendered : null;
   }
 
@@ -263,7 +273,9 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     const base = deps.isSystemPromptOverridden
       ? deps.basePrompt
       : deps.isLocalCodexMode?.() === true
-        ? SAND_SYSTEM_PROMPT_LOCAL_CODEX
+        ? deps.isImageGenerationEnabled?.() === true
+          ? SAND_SYSTEM_PROMPT_LOCAL_CODEX_WITH_IMAGES
+          : SAND_SYSTEM_PROMPT_LOCAL_CODEX
         : cloudDisabled ? SAND_SYSTEM_PROMPT_CLOUD_AGENTS_DISABLED : deps.basePrompt;
     const sections = [base];
     if (deps.isSpotlightEnabled?.() !== false) sections.push(spotlightPromptSection({ canSendMessage: !deps.isSubagentRunner }));
@@ -272,6 +284,7 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     if (deps.isSharedRoomRunner) return sections.join("\n\n");
     const add = (value: string | null | undefined): void => { if (value != null && value.length > 0) sections.push(value); };
     add(getUserIdentitySection());
+    add(getUserLanguageSection());
     if (!deps.isSubagentRunner && !deps.isSystemPromptOverridden && deps.isMultitaskEnabled?.() === true) add(deps.multitaskSection);
     if (deps.isSystemPromptOverridden && !deps.isSubagentRunner && cloudDisabled) add(SAND_CLOUD_AGENTS_DISABLED_PROMPT_SECTION);
     if (!deps.isSubagentRunner && deps.mcpManagement() != null && deps.isMcpMultiAccountEnabled?.() === true) add(SAND_MCP_MULTI_ACCOUNT_PROMPT_SECTION);

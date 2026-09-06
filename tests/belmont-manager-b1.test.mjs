@@ -78,7 +78,7 @@ test("top-level turns consult the per-agent selection ahead of the global defaul
   const shell = read("source/host/runner/turn-run-shell.ts");
   assert.match(shell, /: settingsStore\.getAgentModelForAgentId\(input\.conversationId\) \?\? settingsStore\.getAgentDefaultModel\(\);/);
   const tool = read("source/host/runner/tools/sand-agent-management-tools.ts");
-  assert.match(tool, /reasoning: z\.enum\(\["minimal", "low", "medium", "high", "xhigh"\]\)\.optional\(\)/);
+  assert.match(tool, /reasoning: z\.enum\(\["minimal", "low", "medium", "high", "xhigh", "max"\]\)\.optional\(\)/);
   assert.match(tool, /resolved\.setAgentModelSelection\?\.\(created\.id, \{/);
   const composition = read("source/host/host-runner-composition.ts");
   // rev 2 (external review #4): reasoning-only selections inherit the CURRENT

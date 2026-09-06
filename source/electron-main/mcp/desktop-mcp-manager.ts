@@ -18,6 +18,7 @@ import { pinMcpDiagnosticsReporter } from "../../shared/node/mcp/mcp-diagnostics
 import { getSandRootDir } from "../../host/host-paths.js";
 import { isLocalCodexMode, localCodexAccountCacheScope } from "../../shared/node/local-codex-account.js";
 import { createLocalMcpWriter, localCatalogEntryToMarketplacePlugin, localEffectivePlugins, localMcpServersFromConfig, readLocalMcpConfig, readLocalPluginCatalog, readLocalPluginInstalls } from "../../shared/node/mcp/local-mcp-store.js";
+import { createLocalMcpExec, withLocalMcpAccounts } from "../../shared/node/mcp/local-mcp-exec.js";
 import { SandMcpManager } from "../../shared/node/mcp/mcp-manager.js";
 import { createMcpToolsDiscovery } from "../../shared/node/mcp/tools-discovery.js";
 
@@ -82,17 +83,17 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
     getBackendUrl: getSandInferenceBackendUrl,
     createClient: generatedAccountClient,
   };
-  const backendMcpExec = createDashboardSandBackendMcpExec({
+  const localMode = isLocalCodexMode(process.env);
+  const localSandRoot = localMode ? getSandRootDir() : undefined;
+  const backendMcpExec = localSandRoot === undefined ? createDashboardSandBackendMcpExec({
     getAccessToken: accountMcpDeps.getAccessToken,
     getMachineId: accountMcpDeps.getMachineId,
     createClient: generatedBackendClient,
-  });
+  }) : createLocalMcpExec(localSandRoot);
   // Local Codex mode: the Plugins page (Marketplace / Yours) and every mutation are
   // served from local files under the sand root (mcp.json, plugin-catalog.json,
   // plugin-installs.json — shared/node/mcp/local-mcp-store.ts) instead of the Cursor
   // account backend, which needs an access token this build never has.
-  const localMode = isLocalCodexMode(process.env);
-  const localSandRoot = localMode ? getSandRootDir() : undefined;
   const manager = new SandMcpManager({
     settingsStore: options.settingsStore,
     onAccountScopeApplied: options.onAccountScopeApplied,
@@ -104,7 +105,7 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
         }
       : {
           accountServersProvider: async () => ({
-            servers: localMcpServersFromConfig(readLocalMcpConfig(localSandRoot), readLocalPluginInstalls(localSandRoot)),
+            servers: withLocalMcpAccounts(localSandRoot, localMcpServersFromConfig(readLocalMcpConfig(localSandRoot), readLocalPluginInstalls(localSandRoot))),
             cacheScope: localCodexAccountCacheScope(),
           }),
           accountMcpWriter: createLocalMcpWriter(localSandRoot),
@@ -137,13 +138,9 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
     },
   });
   manager.setBoxRuntime(discovery);
-  let routedToolsSnapshot: unknown[] = [];
-  let routedToolsWarm: Promise<unknown[]> | null = null;
-  const warmRoutedTools = (): Promise<unknown[]> => routedToolsWarm ??= discovery.getTools().then((tools: unknown[]) => (routedToolsSnapshot = tools), (error: unknown) => {
-    routedToolsWarm = null;
-    throw error;
-  });
-  void warmRoutedTools().catch((error: unknown) => reportDesktopEdgeFailure("mcp-manager", "routed-tools-warm", error));
+  // Discovery already owns an invalidatable cache. A second permanent snapshot
+  // here hid remote list_changed, disabled tools, and connector removal forever.
+  void discovery.getTools().catch((error: unknown) => reportDesktopEdgeFailure("mcp-manager", "routed-tools-warm", error));
   let hasKickedInstallBackfill = false;
   const kickInstallBackfillOnce = (): void => {
     if (hasKickedInstallBackfill || localMode) return;
@@ -162,16 +159,12 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
     updatePluginInstall: (request, getAccessToken) => manager.updatePluginInstall(request, getAccessToken),
     removeServer: (serverId) => manager.removeServer(serverId),
     uninstallPlugin: (pluginId) => manager.uninstallPlugin(pluginId),
-    // Local stdio servers have no OAuth connector step; report "not-configured" so the
-    // Connect button degrades instead of opening a Cursor-backend auth flow.
-    authenticateServer: async (serverId, accountKey, trigger) => localMode
-      ? { status: "not-configured", serverName: (await manager.listServers() as { servers?: readonly { id: string; name: string }[] }).servers?.find((server) => server.id === serverId)?.name }
-      : manager.authenticateServer(serverId, accountKey, null, false, trigger ?? null),
+    authenticateServer: (serverId, accountKey, trigger) => manager.authenticateServer(serverId, accountKey, null, false, trigger ?? null),
     renameAccount: (args) => manager.renameAccount(args.serverId, args.accountKey, args.newAccountKey),
     removeAccount: (args) => manager.removeAccount(args.serverId, args.accountKey),
     setServerCustomInstructions: (request) => manager.setServerCustomInstructions(request),
     listServerTools: (serverId) => manager.listServerTools(serverId),
-    listRoutedTools: async () => routedToolsSnapshot.length > 0 ? routedToolsSnapshot : await warmRoutedTools(),
+    listRoutedTools: () => discovery.getTools(),
     executeRoutedTool: (request) => discovery.executeTool(
       undefined,
       {

@@ -7,6 +7,7 @@ import { acquireBelmontRuntimeLock } from "./lib/wsl-runtime-lock.mjs";
 import { assertWslBuildSourceIdentity, captureWslBuildSourceIdentity } from "./lib/wsl-build-lineage.mjs";
 import { collectWslRuntimeLineage, writeWslRuntimeLineage } from "./lib/wsl-runtime-lineage.mjs";
 import { ensureLocalBrowserRuntime } from "./lib/local-browser-runtime.mjs";
+import { selectRendererRuntime } from "./lib/renderer-runtime-selection.mjs";
 import {
   assertSupportedNodeRuntime,
   assertWslGuiRuntime,
@@ -27,8 +28,9 @@ assertWslGuiRuntime();
 warnMissingBoxBinaries();
 
 const electronBinary = path.join(repoRoot, "node_modules", "electron", "dist", "electron");
-const appRoot = path.join(repoRoot, ".build", "belmont-wsl-runtime");
-const profileDir = process.env.BELMONT_WSL_PROFILE?.trim() || path.join(repoRoot, ".cache", "belmont-wsl-profile");
+const selection = selectRendererRuntime({ repoRoot, args: process.argv.slice(2), env: process.env });
+const appRoot = selection.runtimeRoot;
+const profileDir = selection.profileDir;
 const dataRoot = wslDataRoot(profileDir);
 const hostEntry = path.join(appRoot, "dist", "host", "host-main.cjs");
 const buildLineagePath = path.join(appRoot, "dist", "wsl-build-lineage.json");

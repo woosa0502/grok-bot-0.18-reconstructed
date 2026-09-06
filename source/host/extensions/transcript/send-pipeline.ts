@@ -31,7 +31,7 @@ import {
 } from "./send-thread-stamping.js";
 import { nextEntryId } from "./transcript-entry-ids.js";
 import { getTranscript, removeEntry } from "./transcript-store.js";
-import { sendInputDigest } from "./prompt-acceptance-ledger.js";
+import { PromptAcceptanceDigestMismatchError, sendInputDigest } from "./prompt-acceptance-ledger.js";
 import {
   dispatchUserTurn,
   type RecoverySend,
@@ -77,6 +77,7 @@ export class SendPipeline {
   readonly latestRecoverySends = new Map<string, RecoverySend>();
   readonly recoveryBreakEpochs = new Map<string, number>();
   readonly inFlightSends = new Map<string, Promise<void>>();
+  readonly inFlightSendDigests = new Map<string, string>();
   readonly boxRequests: BoxRequestEntries;
 
   constructor(readonly tm: TranscriptManagerLike) {
@@ -98,15 +99,16 @@ export class SendPipeline {
   }
 
   async sendPrompt(prompt: string, options: SendPromptOptions): Promise<void> {
+    if (prompt.trim().length === 0 && (options.attachmentPaths?.length ?? 0) === 0) return;
+    // Pin the implicit target before asynchronous admission/attachment work.
+    const agentId = options.agentId ?? this.tm.sessions.activeSession?.id;
+    if (agentId != null) options = { ...options, agentId };
     const nonce = options.clientNonce?.length ? options.clientNonce : undefined;
-    if (nonce == null) return this.sendPromptOnce(prompt, options);
-    const inFlight = this.inFlightSends.get(nonce);
-    if (inFlight != null) {
-      console.log(
-        "[sand] duplicate send (nonce still in flight) — coalescing onto the running attempt",
-      );
-      return inFlight;
-    }
+    const runExplicitPrompt = (task: () => Promise<void>) =>
+      this.tm.runExplicitUserPrompt != null
+        ? this.tm.runExplicitUserPrompt(agentId, task, nonce)
+        : this.tm.userStops?.runUserPrompt(agentId, task, nonce) ?? task();
+    if (nonce == null) return runExplicitPrompt(() => this.sendPromptOnce(prompt, options));
     const digest = sendInputDigest({
       ...(options.agentId == null ? {} : { agentId: options.agentId }),
       prompt,
@@ -120,6 +122,15 @@ export class SendPipeline {
         ? {}
         : { attachmentNames: options.attachmentNames }),
     });
+    const inFlight = this.inFlightSends.get(nonce);
+    if (inFlight != null) {
+      if (this.inFlightSendDigests.get(nonce) !== digest)
+        throw new PromptAcceptanceDigestMismatchError(nonce);
+      console.log(
+        "[sand] duplicate send (nonce still in flight) — coalescing onto the running attempt",
+      );
+      return inFlight;
+    }
     const admission = this.tm.acceptanceLedger.admitSend({
       accountSlot: HOST_ACCOUNT_SLOT,
       clientNonce: nonce,
@@ -131,8 +142,9 @@ export class SendPipeline {
       );
       return;
     }
-    const pending = this.sendPromptOnce(prompt, options, { digest });
+    const pending = runExplicitPrompt(() => this.sendPromptOnce(prompt, options, { digest }));
     this.inFlightSends.set(nonce, pending);
+    this.inFlightSendDigests.set(nonce, digest);
     try {
       await pending;
     } catch (error) {
@@ -143,6 +155,7 @@ export class SendPipeline {
       throw error;
     } finally {
       this.inFlightSends.delete(nonce);
+      this.inFlightSendDigests.delete(nonce);
     }
   }
 

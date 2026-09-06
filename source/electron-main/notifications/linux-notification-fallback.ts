@@ -7,9 +7,9 @@ import { existsSync } from "node:fs";
 //   1. `notify-send` (libnotify-bin) when installed;
 //   2. under WSL, a Windows balloon tip via powershell.exe (interop) so the
 //      notification appears in the Windows tray.
-// The port mimics the small surface SandOsNotificationManager uses: on("click")
-// is unavailable in both fallbacks (accepted loss), and "close" fires when the
-// spawned notifier exits so the manager's active-set bookkeeping still works.
+// Both notifiers report the default action on stdout. The port forwards it to
+// SandOsNotificationManager's existing click handler, which focuses the agent.
+// A notification daemon must support actions to make Linux clicks available.
 
 export type LinuxNotifierKind = "notify-send" | "windows-powershell";
 
@@ -28,6 +28,14 @@ export interface FallbackNotificationPort {
 }
 
 export const WSL_POWERSHELL_PATH = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+const DEFAULT_NOTIFICATION_ACTION = "default";
+
+export interface FallbackNotifierProcess {
+  on(event: "exit" | "close" | "error", listener: () => void): unknown;
+  readonly stdout?: { on(event: "data", listener: (chunk: Buffer | string) => void): unknown } | null;
+  unref?(): void;
+  kill?(): unknown;
+}
 
 export function detectLinuxNotifier(
   env: NodeJS.ProcessEnv = process.env,
@@ -47,49 +55,94 @@ const escapePowerShellSingleQuoted = (value: string): string => value.replace(/'
 
 export function buildNotifyCommand(kind: LinuxNotifierKind, options: FallbackNotificationOptions): { command: string; args: string[] } {
   if (kind === "notify-send") {
-    return { command: "notify-send", args: ["-u", options.urgency === "critical" ? "critical" : "normal", "-a", "Grok Bot", "--", options.title, options.body] };
+    return { command: "notify-send", args: ["-u", options.urgency === "critical" ? "critical" : "normal", "-a", "Grok Bot", "--wait", "--expire-time=8000", `--action=${DEFAULT_NOTIFICATION_ACTION}=Open Grok Bot`, ...(options.silent ? ["--hint=boolean:suppress-sound:true"] : []), "--", options.title, options.body] };
   }
-  const title = escapePowerShellSingleQuoted(options.title).slice(0, 120);
-  const body = escapePowerShellSingleQuoted(options.body).slice(0, 240);
+  const title = escapePowerShellSingleQuoted(options.title.slice(0, 120));
+  const body = escapePowerShellSingleQuoted(options.body.slice(0, 240));
   const script = [
     "[void][reflection.assembly]::LoadWithPartialName('System.Windows.Forms')",
     "[void][reflection.assembly]::LoadWithPartialName('System.Drawing')",
     "$n = New-Object System.Windows.Forms.NotifyIcon",
+    "$timer = New-Object System.Windows.Forms.Timer",
     "$n.Icon = [System.Drawing.SystemIcons]::Information",
     "$n.Visible = $true",
-    `$n.ShowBalloonTip(7000, '${title}', '${body}', [System.Windows.Forms.ToolTipIcon]::${options.urgency === "critical" ? "Warning" : "Info"})`,
-    "Start-Sleep -Seconds 8",
-    "$n.Dispose()",
+    `$n.add_BalloonTipClicked({ [Console]::Out.WriteLine('${DEFAULT_NOTIFICATION_ACTION}'); [Console]::Out.Flush(); [System.Windows.Forms.Application]::ExitThread() })`,
+    "$n.add_BalloonTipClosed({ [System.Windows.Forms.Application]::ExitThread() })",
+    "$timer.Interval = 8000",
+    "$timer.add_Tick({ [System.Windows.Forms.Application]::ExitThread() })",
+    `try { $timer.Start(); $n.ShowBalloonTip(7000, '${title}', '${body}', [System.Windows.Forms.ToolTipIcon]::${options.urgency === "critical" ? "Warning" : "Info"}); [System.Windows.Forms.Application]::Run() } finally { $timer.Stop(); $timer.Dispose(); $n.Dispose() }`,
   ].join("; ");
-  return { command: WSL_POWERSHELL_PATH, args: ["-NoProfile", "-NonInteractive", "-Command", script] };
+  return { command: WSL_POWERSHELL_PATH, args: ["-NoProfile", "-NonInteractive", "-STA", "-Command", script] };
 }
 
 export function createFallbackNotification(
   kind: LinuxNotifierKind,
   options: FallbackNotificationOptions,
-  spawnProcess: (command: string, args: readonly string[]) => { on(event: "exit" | "error", listener: () => void): unknown; unref?: () => void } = (command, args) => spawn(command, [...args], { stdio: "ignore", detached: true }),
+  spawnProcess: (command: string, args: readonly string[]) => FallbackNotifierProcess = (command, args) => spawn(command, [...args], { stdio: ["ignore", "pipe", "ignore"], windowsHide: true }),
 ): FallbackNotificationPort {
   const closeListeners: Array<() => void> = [];
+  const clickListeners: Array<() => void> = [];
   let closed = false;
+  let clicked = false;
+  let shown = false;
+  let pendingOutput = "";
+  let child: FallbackNotifierProcess | undefined;
+  const emitClick = () => {
+    if (closed || clicked) return;
+    clicked = true;
+    for (const listener of clickListeners.splice(0)) listener();
+  };
+  const consumeOutput = (chunk: Buffer | string) => {
+    if (closed || clicked) return;
+    pendingOutput += chunk.toString();
+    const lines = pendingOutput.split(/\r?\n/);
+    pendingOutput = lines.pop() ?? "";
+    for (const line of lines) if (line === DEFAULT_NOTIFICATION_ACTION) emitClick();
+    // Only a short fixed action id is valid; do not retain arbitrary child output.
+    if (pendingOutput.length > 128) pendingOutput = "";
+  };
   const emitClose = () => {
     if (closed) return;
     closed = true;
+    clickListeners.length = 0;
+    pendingOutput = "";
     for (const listener of closeListeners.splice(0)) listener();
   };
   return {
-    on(event, callback) { if (event === "close") closeListeners.push(callback); },
-    once(event, callback) { if (event === "close") closeListeners.push(callback); },
+    on(event, callback) {
+      if (closed) return;
+      if (event === "close") closeListeners.push(callback);
+      if (event === "click" && !clicked) clickListeners.push(callback);
+    },
+    once(event, callback) {
+      if (closed) return;
+      if (event === "close") closeListeners.push(callback);
+      if (event === "click" && !clicked) clickListeners.push(callback);
+    },
     show() {
+      if (closed || shown) return;
+      shown = true;
       try {
         const { command, args } = buildNotifyCommand(kind, options);
-        const child = spawnProcess(command, args);
-        child.on("exit", emitClose);
+        child = spawnProcess(command, args);
+        child.stdout?.on("data", consumeOutput);
+        // Node can emit exit before the last stdout bytes arrive. Wait for close
+        // when a pipe exists, otherwise compatibility ports may use exit alone.
+        child.on("exit", () => { if (child?.stdout == null) emitClose(); });
+        child.on("close", () => {
+          if (pendingOutput === DEFAULT_NOTIFICATION_ACTION) emitClick();
+          emitClose();
+        });
         child.on("error", emitClose);
         child.unref?.();
       } catch {
         emitClose();
       }
     },
-    close() { emitClose(); },
+    close() {
+      if (closed) return;
+      emitClose();
+      try { child?.kill?.(); } catch { /* the owned notifier may already have exited */ }
+    },
   };
 }

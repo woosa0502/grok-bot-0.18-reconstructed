@@ -157,7 +157,7 @@ export class SandMcpAuthWatchLifecycle {
     let status: any;
     try {
       status = await this.deps.backendMcpExec.checkAuthStatus({
-        serverId: parseInt32McpServerId(serverId),
+        serverId: this.deps.backendMcpExec.supportsLocalServerIds === true ? serverId : parseInt32McpServerId(serverId),
         accountKey,
         oauthRedirectUri: MCP_OAUTH_LOOPBACK_CALLBACK_URL,
         forceReauth,

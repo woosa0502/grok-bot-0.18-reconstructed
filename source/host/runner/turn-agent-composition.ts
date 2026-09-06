@@ -121,6 +121,7 @@ import {
   type PromptExecutor as ReminderPromptExecutor,
 } from "./send-message-reminder-middleware.js";
 import { createStartOfTurnAckReminderMiddleware } from "./start-of-turn-ack-reminder-middleware.js";
+import { createPromptMessagesRecorder, createPromptMessagesSnapshotMiddleware } from "./prompt-messages-snapshot-middleware.js";
 import { createSandBrowserUseSubagentConfig } from "./tools/sand-browser-use-subagent.js";
 import { createSandComputerUseSubagentConfig } from "./tools/sand-computer-use-subagent.js";
 import { createHostComputerToolDependencies } from "./host-computer-tool-dependencies.js";
@@ -192,9 +193,13 @@ export interface TurnAgentToolSessionInput {
 export function createTurnToolSession(
   input: TurnAgentToolSessionInput,
 ): TurnAgentToolSession {
+  const promptMessagesRecorder = createPromptMessagesRecorder();
   return {
     getExecutor: () => {
-      const base = input.getExecutor();
+      // Innermost: records what each model call actually received (see turn-run-shell).
+      const base = createPromptMessagesSnapshotMiddleware(promptMessagesRecorder)(
+        input.getExecutor(),
+      );
       const withDiskPressure = input.diskPressureReminderEpisodeId == null
         ? base
         : createDiskPressureReminderMiddleware(
@@ -207,7 +212,7 @@ export function createTurnToolSession(
         ? withSendMessage
         : createStartOfTurnAckReminderMiddleware()(withSendMessage);
       const toolExecutor = new SimplePromptToolExecutor(executor);
-      input.onLatestPromptMessages?.(() => toolExecutor.getMessages());
+      input.onLatestPromptMessages?.(() => promptMessagesRecorder.latest());
       return toolExecutor;
     },
   };

@@ -166,6 +166,39 @@ test("local classifier executor honours model / reasoning overrides", async () =
   await executor.execute(fakeContext(), args);
   assert.equal(seen[0].modelId, "gpt-5.4-mini");
   assert.equal(seen[0].reasoning, "minimal");
+
+  // No override: Codex classifies on the fast tier (the verdict is one JSON object and a missed
+  // budget rejects the tool call), other providers keep their configured model; the env wins.
+  const savedEnv = process.env.SAND_AUTO_REVIEW_CLASSIFIER_MODEL;
+  delete process.env.SAND_AUTO_REVIEW_CLASSIFIER_MODEL;
+  try {
+    const request = async (provider) => {
+      const requests = [];
+      const defaulted = classifier.createLocalSmartModeClassifierExecutor({ provider, runText: async (r) => { requests.push(r); return '{"decision":"allow"}'; } });
+      await defaulted.execute(fakeContext(), args);
+      return requests[0];
+    };
+    assert.equal(classifier.LOCAL_SMART_MODE_CLASSIFIER_DEFAULT_CODEX_MODEL, "gpt-5.6-luna");
+    assert.equal((await request("codex")).modelId, "gpt-5.6-luna");
+    assert.equal((await request("codex")).reasoning, "low");
+    assert.equal((await request("claude-code")).modelId, undefined);
+    assert.equal((await request("openrouter")).modelId, undefined);
+    process.env.SAND_AUTO_REVIEW_CLASSIFIER_MODEL = "gpt-5.5";
+    assert.equal((await request("codex")).modelId, "gpt-5.5", "an explicit classifier model wins over the fast-tier default");
+    const savedReasoning = process.env.SAND_AUTO_REVIEW_CLASSIFIER_REASONING;
+    try {
+      process.env.SAND_AUTO_REVIEW_CLASSIFIER_REASONING = "max";
+      assert.equal((await request("codex")).reasoning, "max", "the gpt-5.6 'max' level passes through the env validator");
+      process.env.SAND_AUTO_REVIEW_CLASSIFIER_REASONING = "ultra";
+      assert.equal((await request("codex")).reasoning, "low", "unknown levels fall back to the default");
+    } finally {
+      if (savedReasoning === undefined) delete process.env.SAND_AUTO_REVIEW_CLASSIFIER_REASONING;
+      else process.env.SAND_AUTO_REVIEW_CLASSIFIER_REASONING = savedReasoning;
+    }
+  } finally {
+    if (savedEnv === undefined) delete process.env.SAND_AUTO_REVIEW_CLASSIFIER_MODEL;
+    else process.env.SAND_AUTO_REVIEW_CLASSIFIER_MODEL = savedEnv;
+  }
   assert.equal(classifier.isLocalAutoReviewInferenceProvider("cursor"), false);
   for (const provider of ["codex", "claude-code", "openrouter"]) assert.equal(classifier.isLocalAutoReviewInferenceProvider(provider), true);
 });
@@ -185,7 +218,7 @@ test("local computer-use Computer tool goes through the auto-review preflight", 
   const composition = await read("source/host/runner/turn-agent-composition.ts");
   assert.match(composition, /\.\.\.\(turn\.computerAutoReview === undefined \? \{\} : \{ autoReview: turn\.computerAutoReview \}\)/u, "the direct-from-accessor Computer dependencies must carry the turn's computer auto-review options");
   const host = await read("source/host/host-runner-composition.ts");
-  assert.match(host, /resolveDisplayNumber: async \(\) => localComputerDisplayNumber\(\)/u, "local computer auto-review must resolve the local Xvfb display");
+  assert.match(host, /resolveDisplayNumber: async \(\) => localComputerDisplayNumber\(session\.id\)/u, "local computer auto-review must resolve the local Xvfb display");
   assert.match(host, /computerAutoReview: localComputerAutoReview/u, "the production turn must hand the computer auto-review options to the toolset");
   const computerTool = await read("source/host/runner/tools/sand-computer-tool.ts");
   assert.match(computerTool, /SAND_LOCAL_COMPUTER_USE === "1"\) return SAND_COMPUTER_PAGE_STATE_CHROME_UNREACHABLE/u, "local mode must not probe a box Chrome for the display-state identity");
@@ -232,4 +265,20 @@ test("local classifier module stays free of provider SDK imports so it bundles s
   const source = await readFile(path.join(repositoryRoot, CLASSIFIER_ENTRY), "utf8");
   const valueImports = [...source.matchAll(/^import (?!type )[^;]*from "([^"]+)";/gmu)].map(match => match[1]);
   for (const specifier of valueImports) assert.doesNotMatch(specifier, /inference\//u, `${specifier} must not be a value import of the inference layer`);
+});
+
+test("routed Pi executor marks its derived promises handled so an aborted classifier request cannot raise unhandledRejections", async () => {
+  // 2026-09-05: every auto-review classifier timeout (cancelAttempt → abort) logged four
+  // "[sand-host] unhandledRejection (kept alive)" quartets — response / usage / extendedUsage /
+  // providerMetadata rejecting with nobody awaiting them because runRoutedProviderText stops at
+  // fullStream on error.
+  const source = await readFile(path.join(repositoryRoot, "source/host/extensions/inference/provider-session.ts"), "utf8");
+  const start = source.indexOf("function lazyPiCodexExecutor(");
+  assert.ok(start >= 0);
+  const body = source.slice(start, source.indexOf("function codexExecutor(", start));
+  assert.match(body, /const promise = executor\.then\(select\);\s*promise\.catch\(\(\) => undefined\);\s*return promise;/u);
+  for (const field of ["response", "usage", "extendedUsage", "providerMetadata"]) {
+    assert.match(body, new RegExp(`${field}: derived\\(value => value\\.${field}\\)`, "u"), `${field} must go through derived()`);
+  }
+  assert.doesNotMatch(body, /executor\.then\(value => value\.(?:response|usage|extendedUsage|providerMetadata)\)/u);
 });

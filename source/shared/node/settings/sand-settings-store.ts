@@ -36,7 +36,7 @@ export interface SandStoredSettings {
   conciergeConsent: "unset" | "allowed" | "denied"; settingsMigrations: string[];
   hasSeenOnboarding?: boolean; hasSeenOnboardingAccountScope?: string; updateTrackOverride?: SandUpdateTrack; themePreference?: SandThemePreference;
   agentDefaultModel?: SandAgentModelSelection; computerUseModel?: SandAgentModelSelection; subagentDefaultModel?: SandAgentModelSelection; agentModelsBySubagentType?: Record<string, SandAgentModelSelection>; agentModelsByAgentId?: Record<string, SandAgentModelSelection>; agentToolPolicyByAgentId?: Record<string, SandAgentToolPolicy>; notifications?: Record<string, unknown>;
-  userTimeZone?: string; userTimeZoneOverride?: string; autoReviewInstructions?: SandAutoReviewInstructions;
+  userTimeZone?: string; userTimeZoneOverride?: string; userLanguage?: string; autoReviewInstructions?: SandAutoReviewInstructions;
   localToolPermission?: SandLocalToolPermission; localToolPermissionCeiling?: SandLocalToolPermission;
   inferenceProvider?: SandInferenceProvider; inferenceRouterUsage?: SandInferenceRouterUsage;
   boxRuntime?: SandBoxRuntime;
@@ -95,7 +95,7 @@ function parseSettings(value: unknown): SandStoredSettings | null {
     if (Object.keys(policyByAgent).length > 0) result.agentToolPolicyByAgentId = policyByAgent;
   }
   if (typeof raw.notifications === "object" && raw.notifications != null && !Array.isArray(raw.notifications)) result.notifications = raw.notifications as Record<string, unknown>;
-  for (const key of ["userTimeZone", "userTimeZoneOverride", "mcpCustomInstructionsAccountScope"] as const) if (typeof raw[key] === "string" && raw[key].length > 0) result[key] = raw[key];
+  for (const key of ["userTimeZone", "userTimeZoneOverride", "userLanguage", "mcpCustomInstructionsAccountScope"] as const) if (typeof raw[key] === "string" && raw[key].length > 0) result[key] = raw[key];
   if (typeof raw.autoReviewInstructions === "object" && raw.autoReviewInstructions != null) result.autoReviewInstructions = normalizeSandAutoReviewInstructions(raw.autoReviewInstructions as Record<string, unknown>);
   if (isSandLocalToolPermission(raw.localToolPermission)) result.localToolPermission = raw.localToolPermission;
   if (isSandLocalToolPermission(raw.localToolPermissionCeiling)) result.localToolPermissionCeiling = raw.localToolPermissionCeiling;
@@ -154,6 +154,10 @@ export class SandSettingsStore {
   getSubagentDefaultModel(): SandAgentModelSelection | undefined { return this.load().subagentDefaultModel; }
   getAgentModelForSubagentType(subagentType: string): SandAgentModelSelection | undefined { return this.load().agentModelsBySubagentType?.[subagentType]; }
   getAgentModelForAgentId(agentId: string): SandAgentModelSelection | undefined { return this.load().agentModelsByAgentId?.[agentId]; }
+  getAgentModelsByAgentId(): Record<string, SandAgentModelSelection> { return { ...(this.load().agentModelsByAgentId ?? {}) }; }
+  /** The language the user wants replies in (a phone-side preference rendered into every bot's prompt). */
+  getUserLanguage(): string | undefined { return this.load().userLanguage; }
+  setUserLanguage(value: string | undefined): void { this.update((s) => { const { userLanguage: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed === undefined || trimmed.length === 0 ? rest : { ...rest, userLanguage: trimmed.slice(0, 40) }; }); }
   getAgentToolPolicy(agentId: string): SandAgentToolPolicy | undefined { return this.load().agentToolPolicyByAgentId?.[agentId]; }
   setAgentToolPolicy(agentId: string, policy: SandAgentToolPolicy | undefined): void {
     this.update((s) => {

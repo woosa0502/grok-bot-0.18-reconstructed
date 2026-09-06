@@ -159,12 +159,18 @@ export class RunLifecycle {
       ackToken?: string;
     },
   ): Promise<void> {
+    // Execute cancelled callbacks for their finally/accounting paths, while the
+    // runner guard returns aborted without starting work from an obsolete scope.
+    const previousStopGuard = this.tm.userStops?.getState(agentId).stopGuard;
+    const scopedTask = this.tm.userStops?.bindQueuedWork(agentId, task) ?? task;
+    if (previousStopGuard !== this.tm.userStops?.getState(agentId).stopGuard)
+      void this.tm.roster.emitAgentUpdate?.(agentId);
     if (this.runScheduler != null)
-      return this.runScheduler.enqueue(agentId, task, options);
+      return this.runScheduler.enqueue(agentId, scopedTask, options);
     const previous = this.runChains.get(agentId) ?? Promise.resolve();
     const result = previous.then(() => {
       this.tm.sendPipeline.sendAttachmentBatchIds.delete(agentId);
-      return task();
+      return scopedTask();
     });
     this.runChains.set(
       agentId,
@@ -301,6 +307,8 @@ export class RunLifecycle {
     const running = this.runningAgentIds();
     const subagentParents = this.tm.roster.liveSubagentParentIds();
     return agents.map((agent) => {
+      const isUserStopped = this.tm.userStops?.isUserStopped(agent.id) === true;
+      const stopState = this.tm.userStops?.getState(agent.id) ?? { stopGuard: null, userIntentRevision: 0 };
       const isRunningTurn = running.has(agent.id);
       const isRunning = isRunningTurn || subagentParents.has(agent.id);
       const isComposingMessage =
@@ -314,6 +322,9 @@ export class RunLifecycle {
         : undefined;
       if (
         agent.isRunning === isRunning &&
+        (agent.isUserStopped ?? false) === isUserStopped &&
+        (agent.stopGuard ?? null) === stopState.stopGuard &&
+        (agent.userIntentRevision ?? 0) === stopState.userIntentRevision &&
         (agent.isRunningTurn ?? false) === isRunningTurn &&
         agent.isComposingMessage === isComposingMessage &&
         (agent.isRetrying ?? false) === isRetrying &&
@@ -323,6 +334,8 @@ export class RunLifecycle {
         return agent;
       return {
         ...agent,
+        ...stopState,
+        isUserStopped,
         isRunning,
         isRunningTurn,
         isComposingMessage,

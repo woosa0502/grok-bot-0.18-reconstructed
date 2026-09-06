@@ -38,6 +38,16 @@ import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-s
 import { getSandRootDir } from "../../host-paths.js";
 import { join } from "node:path";
 import { openAiCompatibleHostForModel } from "../inference/provider-session.js";
+import {
+  buildParkedTaskWidget,
+  hasUnansweredParkedTaskCard,
+  buildTaskContinuationPrompt,
+  decideTaskContinuation,
+  shouldParkTask,
+  turnHasUnapprovedCard,
+  type OpenTodo,
+  type TaskStopReason,
+} from "../../runner/turn-open-work.js";
 import { nextEntryId } from "./transcript-entry-ids.js";
 import type {
   TranscriptEntry,
@@ -47,10 +57,12 @@ import { getTranscript, updateEntry } from "./transcript-store.js";
 import type { LiveTranscriptSession } from "./session-runtime.js";
 
 export const MAX_REPLY_NUDGES = 3;
+/** Closing-send nudges per turn: each one re-runs the model, so keep the loop bounded. */
+export const MAX_CLOSING_SEND_NUDGES = 3;
 export const REPLY_NUDGE_PROMPT =
   "Your previous turn left the user without the result they're waiting on — you never called SendMessage that turn, or every SendMessage you tried failed to deliver. Either way they received nothing and are still waiting. Do not assume a send from an earlier turn covered it: an opening acknowledgement back then did not deliver this result (ack ≠ delivery). Deliver the result now by actually invoking the SendMessage tool — make a real tool/function call, not text you write. Plain assistant text is NEVER shown to the user; only a real SendMessage tool invocation reaches them, so if you don't call the tool they just keep seeing silence.";
 export const CLOSING_SEND_NUDGE_PROMPT =
-  "Your previous turn acknowledged the user and then ran tool calls, but ended without a follow-up SendMessage — the last thing the user saw is that opening acknowledgement, so whatever the tool calls produced after it never reached them. If that work produced the result or answer they are waiting on, deliver it now by actually invoking the SendMessage tool — make a real tool/function call, not text you write. Plain assistant text is NEVER shown to the user; only a real SendMessage tool invocation reaches them. If the work is genuinely unfinished, continue it and send the result once you have it. If the acknowledgement already contained the complete answer and the later work produced nothing new for the user, end the turn without sending anything.";
+  "Your previous turn acknowledged the user and then ran tool calls, but ended without a follow-up SendMessage — the last thing the user saw is that opening acknowledgement, so whatever the tool calls produced after it never reached them. If that work produced the result or answer they are waiting on, deliver it now by actually invoking the SendMessage tool — make a real tool/function call, not text you write. Plain assistant text is NEVER shown to the user; only a real SendMessage tool invocation reaches them. If the work is genuinely unfinished, continue it and send the result once you have it. A progress update is not a result: while the task the user asked for is still unfinished and not waiting on them, keep working in this turn until it is done or genuinely blocked, then report. If the acknowledgement already contained the complete answer and the later work produced nothing new for the user, end the turn without sending anything.";
 export const TASK_ERROR_RESULT_CLASS = "task_error_result";
 export const CONNECT_CODE_NAMES = [
   "Canceled",
@@ -148,10 +160,21 @@ export interface TurnResult {
   sentMessageCount: number;
   reacted: boolean;
   aborted: boolean;
+  /** Unfinished TodoWrite items after the run (see turn-open-work). */
+  openTodos?: readonly OpenTodo[];
+  taskCompletionUnknown?: boolean;
+  /** Non-delivery, non-bookkeeping tool calls in the run. */
+  workToolCalls?: number;
+  /** TodoWrite calls in the run (turn-open-work). */
+  todoWrites?: number;
+  /** The run ended by handing the task to another agent/subagent. */
+  handedOff?: boolean;
   quiescedForUpgrade?: boolean;
   streamOutputProduced?: boolean;
   endedOnSilentToolCalls?: boolean;
   awaitingUserSelection?: boolean;
+  /** A stopped model run can still leave its task pending. */
+  taskStopReason?: TaskStopReason;
 }
 
 export interface AgentRunner {
@@ -453,6 +476,7 @@ export class TurnRuntime {
             turnCtx,
             turnTrace,
             turn,
+            startedAtMs,
           );
           settledResult = settled.result;
           if (
@@ -478,10 +502,13 @@ export class TurnRuntime {
           }
         }
         turn.finalize(
-          result.aborted || result.quiescedForUpgrade ? "cancelled" : "success",
+          settledResult.aborted || settledResult.quiescedForUpgrade
+            || (settledResult.taskStopReason != null && settledResult.taskStopReason !== "done")
+            ? "cancelled" : "success",
         );
         setTurnTraceAttributes(turnTrace, {
-          "sand.outcome": resolveTurnTraceOutcome(settledResult),
+          "sand.outcome": settledResult.taskStopReason != null && settledResult.taskStopReason !== "done"
+            ? settledResult.taskStopReason : resolveTurnTraceOutcome(settledResult),
         });
         await this.tm.roster.emitAgentUpdate(session.id);
         this.tm.automationRuntime.emitAutomations(session);
@@ -556,6 +583,7 @@ export class TurnRuntime {
     traceCtx: unknown,
     turnTrace: HostTrace | undefined,
     turn?: Record<string, any>,
+    startedAtMs: number = Date.now(),
   ): Promise<{
     result: TurnResult;
     replyNudgeAttempts: number;
@@ -566,6 +594,13 @@ export class TurnRuntime {
     let attempts = 0;
     let delivered = !isDeliveryOwed(result);
     let streamOutputProduced = result.streamOutputProduced === true;
+    const transcriptEntries = (): readonly TranscriptEntry[] =>
+      session.id !== this.tm.sessions.activeSession?.id
+        ? (session.db.getTranscriptEntries() as TranscriptEntry[])
+        : getTranscript();
+    const unapprovedCardThisTurn = (): boolean => turnHasUnapprovedCard(transcriptEntries(), startedAtMs);
+    const parkedCardPending = (): boolean => hasUnansweredParkedTaskCard(transcriptEntries(), latest.openTodos ?? []);
+    const heldByParkedCard = (): boolean => (latest.todoWrites ?? 0) === 0 && parkedCardPending();
     // Bots routed to an OpenAI-compatible host (nvidia/…) answer in plain text more often than they
     // call SendMessage, and each nudge there costs minutes of queueing. Their final plain text IS the
     // answer, so deliver it as the message instead of nudging. Codex bots keep the nudge path: their
@@ -575,6 +610,10 @@ export class TurnRuntime {
       !delivered &&
       plainText.length > 0 &&
       !latest.aborted &&
+      latest.taskCompletionUnknown !== true &&
+      latest.quiescedForUpgrade !== true &&
+      this.tm.isAgentUserStopped?.(session.id) !== true &&
+      epoch === this.tm.sendPipeline.currentTurnEpoch(session) &&
       this.isPlainTextDeliveryBot(session.id) &&
       typeof (runner as { emitUpdate?: unknown }).emitUpdate === "function"
     ) {
@@ -589,50 +628,164 @@ export class TurnRuntime {
     }
     while (
       isDeliveryOwed(latest) &&
+      !latest.aborted &&
+      latest.taskCompletionUnknown !== true &&
+      latest.quiescedForUpgrade !== true &&
+      latest.handedOff !== true &&
+      latest.awaitingUserSelection !== true &&
+      !unapprovedCardThisTurn() &&
+      !heldByParkedCard() &&
+      this.tm.isAgentUserStopped?.(session.id) !== true &&
       attempts < MAX_REPLY_NUDGES &&
       epoch === this.tm.sendPipeline.currentTurnEpoch(session)
     ) {
       attempts += 1;
-      latest = await runner.run(REPLY_NUDGE_PROMPT, {
+      const nudged = await runner.run(REPLY_NUDGE_PROMPT, {
         hidden: true,
         ackToken,
         traceCtx,
         onModelResolved: (id: string) => turn?.setModel(id),
       });
+      latest = {
+        ...nudged,
+        ...(nudged.openTodos === undefined && latest.openTodos !== undefined ? { openTodos: latest.openTodos } : {}),
+        workToolCalls: (latest.workToolCalls ?? 0) + (nudged.workToolCalls ?? 0),
+      };
       delivered ||= !isDeliveryOwed(latest);
       streamOutputProduced ||= latest.streamOutputProduced === true;
       if (latest.aborted) break;
     }
-    if (
-      latest.endedOnSilentToolCalls === true &&
-      !latest.aborted &&
-      latest.awaitingUserSelection !== true &&
-      epoch === this.tm.sendPipeline.currentTurnEpoch(session)
-    ) {
-      setTurnTraceAttributes(turnTrace, { "sand.closing_send_nudge": true });
-      let nudged: TurnResult | undefined;
-      try {
-        nudged = await runner.run(CLOSING_SEND_NUDGE_PROMPT, {
+    // Task continuation: while the model's own todo list still has unfinished items and the run did
+    // not end waiting on someone (approval/question widget, a handoff to another bot), hand the turn
+    // back with a hidden wake — the Aside engine's "poll until done", using the todo list as the
+    // done signal. Bounded by a run cap, one idle run, and a wall-clock budget (turn-open-work).
+    // A turn that did no work (a greeting, a status question, "잠깐 멈춰") does not restart a parked
+    // task by itself: it counts as the one idle run, so the loop only follows real work.
+    let continuations = 0;
+    let continuationStopReason: TaskStopReason = "done";
+    let closingNudges = 0;
+    let idleContinuations = (latest.workToolCalls ?? 0) > 0 ? 0 : 1;
+    // An approval / permission card raised this turn that the user has not answered yes to (pending,
+    // denied, expired) means the user is in the loop: do not hand the turn back and re-raise it.
+    // A parked-task card for this same list that the user has not answered: they were already asked.
+    // A run that did not touch the list (a quick chore while the task sits parked) neither restarts
+    // it nor drops a second card; touching the list (TodoWrite) or answering the card lifts the hold.
+    settlement: for (;;) {
+      for (;;) {
+        const decision = decideTaskContinuation({
+          openTodos: latest.openTodos,
+          taskCompletionUnknown: latest.taskCompletionUnknown === true,
+          aborted: latest.aborted || latest.quiescedForUpgrade === true || this.tm.isAgentUserStopped?.(session.id) === true,
+          awaitingUserSelection: latest.awaitingUserSelection === true || unapprovedCardThisTurn() || heldByParkedCard(),
+          handedOff: latest.handedOff === true,
+          continuations,
+          idleContinuations,
+          elapsedMs: Date.now() - startedAtMs,
+        });
+        if (!decision.continue || epoch !== this.tm.sendPipeline.currentTurnEpoch(session)) {
+          continuationStopReason = epoch !== this.tm.sendPipeline.currentTurnEpoch(session)
+            ? "aborted" : decision.continue ? "aborted" : decision.reason;
+          if (continuations > 0) {
+            setTurnTraceAttributes(turnTrace, {
+              "sand.task_continuations": continuations,
+              "sand.task_continuation_stop": decision.continue ? "superseded" : decision.reason,
+            });
+            console.info(
+              `[sand][turn] task continuation for ${session.id}: ${continuations} run(s), stopped (${decision.continue ? "superseded" : decision.reason}), ${latest.openTodos?.length ?? 0} item(s) still open`,
+            );
+          }
+          // Parked: the bot was working and stopped short with items open. Leave a resume card in the
+          // chat so the user can tap 이어가기 (or 그만두기) whenever they come back; the answer arrives as
+          // the next user turn and the loop above takes over again.
+          const park = {
+            reason: continuationStopReason,
+            openTodos: latest.openTodos,
+            workToolCalls: latest.workToolCalls ?? 0,
+            continuations,
+          };
+          if (
+            !decision.continue &&
+            shouldParkTask(park) &&
+            !parkedCardPending() &&
+            typeof (runner as { emitUpdate?: unknown }).emitUpdate === "function"
+          ) {
+            (runner as unknown as { emitUpdate: (update: unknown) => void }).emitUpdate({
+              type: "send-message",
+              message: buildParkedTaskWidget(park.reason, latest.openTodos ?? []),
+              timestampMs: Date.now(),
+            });
+            setTurnTraceAttributes(turnTrace, { "sand.task_parked": park.reason });
+            console.info(
+              `[sand][turn] task parked for ${session.id}: ${park.reason}, ${latest.openTodos?.length ?? 0} open item(s); resume card sent`,
+            );
+          }
+          break;
+        }
+        continuations += 1;
+        const openTodos = latest.openTodos ?? [];
+        console.info(
+          `[sand][turn] task continuation ${continuations} for ${session.id}: ${openTodos.length} open item(s)`,
+        );
+        const continued = await runner.run(buildTaskContinuationPrompt(openTodos), {
           hidden: true,
+          taskContinuation: true,
           ackToken,
           traceCtx,
           onModelResolved: (id: string) => turn?.setModel(id),
         });
-        latest = nudged;
-        delivered ||= !isDeliveryOwed(nudged);
-        streamOutputProduced ||= nudged.streamOutputProduced === true;
-      } finally {
-        this.tm.telemetry.reportClosingSendNudge({
-          conversationId: session.id,
-          delivered:
-            nudged != null && (nudged.sentMessageCount > 0 || nudged.reacted),
-          sentMessageCount: nudged?.sentMessageCount ?? 0,
-          aborted: nudged?.aborted ?? false,
-        });
+        latest = { ...continued, ...(continued.openTodos === undefined && latest.openTodos !== undefined ? { openTodos: latest.openTodos } : {}) };
+        delivered ||= !isDeliveryOwed(continued);
+        streamOutputProduced ||= continued.streamOutputProduced === true;
+        idleContinuations = (continued.workToolCalls ?? 0) > 0 ? 0 : idleContinuations + 1;
       }
+      // The nudged run is settled with silent-tail detection kept on (closingNudge), so a model that
+      // sends a progress note and keeps working without reporting is nudged again, up to a bound.
+      while (
+        latest.endedOnSilentToolCalls === true &&
+        continuationStopReason === "done" &&
+        !latest.aborted &&
+        latest.quiescedForUpgrade !== true &&
+        latest.handedOff !== true &&
+        this.tm.isAgentUserStopped?.(session.id) !== true &&
+        latest.awaitingUserSelection !== true &&
+        closingNudges < MAX_CLOSING_SEND_NUDGES &&
+        epoch === this.tm.sendPipeline.currentTurnEpoch(session)
+      ) {
+        closingNudges += 1;
+        setTurnTraceAttributes(turnTrace, {
+          "sand.closing_send_nudge": true,
+          "sand.closing_send_nudges": closingNudges,
+        });
+        let nudged: TurnResult | undefined;
+        try {
+          nudged = await runner.run(CLOSING_SEND_NUDGE_PROMPT, {
+            hidden: true,
+            closingNudge: true,
+            ackToken,
+            traceCtx,
+            onModelResolved: (id: string) => turn?.setModel(id),
+          });
+          latest = nudged;
+          delivered ||= !isDeliveryOwed(nudged);
+          streamOutputProduced ||= nudged.streamOutputProduced === true;
+        } finally {
+          this.tm.telemetry.reportClosingSendNudge({
+            conversationId: session.id,
+            delivered:
+              nudged != null && (nudged.sentMessageCount > 0 || nudged.reacted),
+            sentMessageCount: nudged?.sentMessageCount ?? 0,
+            aborted: nudged?.aborted ?? false,
+          });
+        }
+        // A closing nudge is a real model run too. If it started more work, inspect that work with
+        // the same remaining continuation budget instead of reporting a stale earlier "done".
+        idleContinuations = (latest.workToolCalls ?? 0) > 0 || (latest.todoWrites ?? 0) > 0 ? 0 : 1;
+        continue settlement;
+      }
+      break;
     }
     return {
-      result: latest,
+      result: { ...latest, taskStopReason: continuationStopReason },
       replyNudgeAttempts: attempts,
       deliveryOwed: !delivered,
       streamOutputProduced,

@@ -1,4 +1,4 @@
-// The browser roster bot retries a fresh task once with the strong model when the cheap default model fails.
+// Fallback is allowed only when the service proves a model was unavailable before any native execution.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -13,7 +13,7 @@ async function loadRunnerModule() {
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 }
 
-test("a failed first session is retried once with gpt-5.5 and the retry's answer is delivered", async () => {
+test("a verified pre-execution model-unavailability failure retries once and delivers the answer", async () => {
   const sandRoot = mkdtempSync(path.join(os.tmpdir(), "belmont-aside-bot-"));
   const agentId = "11111111-2222-4333-8444-555555555555";
   mkdirSync(path.join(sandRoot, "agents", agentId), { recursive: true });
@@ -25,7 +25,7 @@ test("a failed first session is retried once with gpt-5.5 and the retry's answer
     const created = [];
     const client = {
       create: async (body) => { created.push(body); return { id: `s${created.length}`, status: "queued" }; },
-      get: async (id) => (id === "s1" ? { status: "error", error: "model exploded", activity: [], toolCalls: 0 } : { status: "done", result: "완료: 3개", activity: [], toolCalls: 2 }),
+      get: async (id) => (id === "s1" ? { status: "error", error: "model unavailable", errorCode: "MODEL_UNAVAILABLE", executionStarted: false, activity: [], toolCalls: 0, modelCalls: 0 } : { status: "done", result: "완료: 3개", activity: [], toolCalls: 2 }),
       answer: async () => { throw new Error("unexpected"); }, continue: async () => { throw new Error("unexpected"); }, stop: async () => ({}),
     };
     const sent = [];
