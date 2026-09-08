@@ -50,6 +50,7 @@ function validateReply(method: string, value: unknown): unknown {
 
 export interface ProductionCoordinatorClient {
   readonly ready: Promise<void>;
+  retryConnection(): Promise<void>;
   call(method: string, args?: unknown): Promise<unknown>;
   getAgentTranscriptWindow(args: CoordinatorTranscriptWindowRequest): Promise<CoordinatorTranscriptWindowResponse>;
   getAgentThread(args: CoordinatorAgentThreadRequest): Promise<CoordinatorAgentThreadResponse>;
@@ -67,6 +68,8 @@ export function createCoordinatorClient(portBridge: CoordinatorPortBridge): Prod
   let nextRequestId = 0;
   let disposed = false;
   let serving = false;
+  let portRequestId = 0;
+  let requestFailed = false;
   let resolveReady = () => {};
   let rejectReady = (_reason: unknown) => {};
   const makeReady = () => new Promise<void>((resolve, reject) => {
@@ -83,6 +86,22 @@ export function createCoordinatorClient(portBridge: CoordinatorPortBridge): Prod
     pending.clear();
   };
   let claim: ReturnType<CoordinatorPortBridge["claim"]> = null;
+  const onRequestError = (message: string, failedRequestId?: number) => {
+    if (disposed || failedRequestId !== portRequestId || port !== null) return;
+    requestFailed = true;
+    serving = false;
+    rejectCalls(`coordinator port request failed: ${message}`);
+    for (const listener of transportListeners) listener("down");
+  };
+  const requestPort = () => {
+    if (disposed || claim === null) return;
+    const requestId = ++portRequestId;
+    try {
+      claim.request(requestId);
+    } catch (error) {
+      onRequestError(String(error), requestId);
+    }
+  };
   const disconnect = (expectedPort: TransferredCoordinatorPort, reason: string) => {
     if (disposed || port !== expectedPort) return;
     port = null;
@@ -91,7 +110,7 @@ export function createCoordinatorClient(portBridge: CoordinatorPortBridge): Prod
     for (const listener of transportListeners) listener("down");
     currentReady = makeReady();
     currentReady.catch(() => {});
-    claim?.request();
+    requestPort();
   };
 
   const handleMessage = (expectedPort: TransferredCoordinatorPort, value: unknown) => {
@@ -133,18 +152,21 @@ export function createCoordinatorClient(portBridge: CoordinatorPortBridge): Prod
   };
 
   claim = portBridge.claim({
+    onRequestError,
     onPort(nextPort) {
       if (disposed) return nextPort.close();
+      portRequestId += 1;
       const replacesLivePort = port != null;
       if (replacesLivePort) rejectCalls("coordinator session replaced");
       const previousPort = port;
       port = nextPort;
       previousPort?.close();
       serving = false;
-      if (replacesLivePort) {
+      if (replacesLivePort || requestFailed) {
         currentReady = makeReady();
         currentReady.catch(() => {});
       }
+      requestFailed = false;
       nextPort.addEventListener("message", (event) => handleMessage(nextPort, event.data));
       nextPort.addEventListener("close", () => disconnect(nextPort, "coordinator port closed"));
       nextPort.start();
@@ -152,7 +174,7 @@ export function createCoordinatorClient(portBridge: CoordinatorPortBridge): Prod
     }
   });
   if (claim == null) return null;
-  claim.request();
+  requestPort();
 
   const call = async (method: string, args: unknown = {}) => {
     await currentReady;
@@ -164,7 +186,17 @@ export function createCoordinatorClient(portBridge: CoordinatorPortBridge): Prod
   };
 
   return {
-    ready,
+    get ready() { return currentReady; },
+    async retryConnection() {
+      if (disposed) throw new Error("coordinator source disposed");
+      if (port === null && requestFailed) {
+        currentReady = makeReady();
+        currentReady.catch(() => {});
+        requestFailed = false;
+        requestPort();
+      }
+      await currentReady;
+    },
     call,
     getAgentTranscriptWindow: async (args) => await call("getAgentTranscriptWindow", args) as CoordinatorTranscriptWindowResponse,
     getAgentThread: async (args) => await call("getAgentThread", args) as CoordinatorAgentThreadResponse,
@@ -177,11 +209,13 @@ export function createCoordinatorClient(portBridge: CoordinatorPortBridge): Prod
     },
     subscribeTransport(listener) {
       transportListeners.add(listener);
+      if (requestFailed) listener("down");
       return () => transportListeners.delete(listener);
     },
     dispose() {
       if (disposed) return;
       disposed = true;
+      portRequestId += 1;
       port?.postMessage({ kind: "lifecycle", phase: "shutdown", reason: "requested", detail: null });
       claim.release();
       rejectCalls("coordinator source disposed");

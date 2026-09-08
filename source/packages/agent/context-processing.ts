@@ -8,7 +8,7 @@ import { createHistogram } from "../metrics/index.js";
 import { getBlobId, type BlobStore } from "../agent-kv/blob-store.js";
 import { asyncMapValues } from "../utils/promise-extras.js";
 import { writeExecutorResource } from "../agent-exec/write.js";
-import { WriteArgs } from "../proto/generated/agent/v1/write_exec_pb.js";
+import { WriteArgs, type WriteResult } from "../proto/generated/agent/v1/write_exec_pb.js";
 import { AgentMode, type SimulatedMsgReason as SimulatedMsgReasonValue } from "../proto/generated/agent/v1/agent_pb.js";
 import {
   InvocationContext,
@@ -75,7 +75,7 @@ interface ImagePart {
 type UserContentPart = TextPart | ImagePart | { readonly type: "file"; readonly data: Uint8Array; readonly mimeType: string };
 
 interface ResourceAccessor {
-  get(resource: typeof writeExecutorResource): { execute(ctx: Context, args: WriteArgs): Promise<unknown> };
+  get(resource: typeof writeExecutorResource): { execute(ctx: Context, args: WriteArgs): Promise<WriteResult> };
 }
 
 interface ProcessRequestContext extends AttachmentPathRequestContext {
@@ -218,17 +218,24 @@ export async function processSelectedContext(
   const imageProcessingPromise = Promise.all(selectedContext.selectedImages.map(async (selectedImage, index) => {
     const hydrated = await hydrateSelectedImageData({ ctx, blobStore: blobStore!, selectedImage });
     const mimeType = selectedImage.mimeType.trim() || (hydrated.imageData ? detectImageMimeType(hydrated.imageData, selectedImage.path) : undefined) || "image/png";
-    const imageFilePath = writeSelectedImageToProjectAssets({
-      ctx,
-      imageData: hydrated.imageData,
-      selectedImage,
-      resolvedMimeType: mimeType,
-      index,
-      enableImageFiles: config3.enableImageFiles,
-      requestContext,
-      resourceAccessor,
-    });
-    return { selectedImage: hydrated.selectedImage, imageData: hydrated.imageData, mimeType, imageFilePath };
+    let imageFilePath: string | undefined;
+    try {
+      imageFilePath = await writeSelectedImageToProjectAssets({
+        ctx,
+        imageData: hydrated.imageData,
+        selectedImage,
+        resolvedMimeType: mimeType,
+        index,
+        enableImageFiles: config3.enableImageFiles,
+        requestContext,
+        resourceAccessor,
+      });
+    } catch (error) {
+      ctx.signal.throwIfAborted();
+      if (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError") throw error;
+    }
+    const materializationFailed = config3.enableImageFiles && hydrated.imageData !== undefined && imageFilePath === undefined;
+    return { selectedImage: hydrated.selectedImage, imageData: hydrated.imageData, mimeType, imageFilePath, materializationFailed };
   }));
   const videoProcessingPromise = Promise.all(selectedContext.selectedVideos.map(async (selectedVideo, index) => {
     const pathOnly = await processSelectedVideoPathOnly({ ctx, selectedVideo, requestContext });
@@ -286,10 +293,15 @@ export async function processSelectedContext(
   for (const result of imageResults) {
     if (result.selectedImage) selectedImages.push(result.selectedImage);
     if (result.imageFilePath) imageFilePaths.push(result.imageFilePath);
+    if (result.materializationFailed) userContent.push({ type: "text", text: "[The attached image could not be saved to the filesystem. Its image content is included below, but no saved file is available.]" });
     if (result.imageData) userContent.push({ type: "image", image: new Uint8Array(result.imageData), mimeType: result.mimeType });
   }
   for (const result of videoResults) {
     if (result.processedSelectedVideo) selectedVideos.push(result.processedSelectedVideo);
+    if ("materializationError" in result && result.materializationError) {
+      userContent.push({ type: "text", text: `[The attached video could not be saved to the filesystem: ${result.materializationError} The attachment is retained, but no saved file is available to read or watch.]` });
+      continue;
+    }
     if (result.localFilePath) {
       videoFilePaths.push(result.localFilePath);
       allVideoInfos.push({ path: result.localFilePath });

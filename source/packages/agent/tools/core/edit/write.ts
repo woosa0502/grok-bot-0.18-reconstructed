@@ -11,6 +11,7 @@ import { PiWriteToolArgs, PiWriteToolError, PiWriteToolRejected, PiWriteToolResu
 import { PiWriteToolCall } from "../../../../proto/generated/agent/v1/pi_write_tool_pb.js";
 import { WriteArgs } from "../../../../proto/generated/agent/v1/write_exec_pb.js";
 import { WORKTREE_GUARD_ERROR } from "../../../../utils/path-utils.js";
+import { waitForFileMutationLock } from "../file-mutation-lock.js";
 import { ToolCallArgParseError, ToolCallUnexpectedEnvironmentError, createZodAgentTool } from "../../common.js";
 
 const WRITE_DESCRIPTION = "Create a new file, or completely overwrite an existing one. Provide `path` (absolute, or relative to the workspace root) and the full `contents` to write. Use this to create files; use edit_file to change part of an existing file.";
@@ -69,6 +70,7 @@ export function createWriteTool(
       createWriteToolCall(new PiWriteToolCall({ args: toolArgs })),
       meta.toolCallId,
       async ctx => {
+        using mutationLock = await waitForFileMutationLock(ctx, resourceAccessor);
         const writeResult = await writeExecutor.execute(ctx, new WriteArgs({ path: filePath, fileText: contents, toolCallId: meta.toolCallId }), { execId: meta.toolCallId });
         switch (writeResult.result.case) {
           case "success": {

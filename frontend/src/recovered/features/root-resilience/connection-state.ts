@@ -31,12 +31,13 @@ export interface CoordinatorConnectionSource {
   getAccountStatus(): Promise<CursorAuthStatus>;
   subscribeAccount(listener: (status: CursorAuthStatus) => void): () => void;
   subscribeTransport(listener: (state: CoordinatorTransportState) => void): () => void;
+  reconnect?(): Promise<void>;
   retry(): Promise<unknown>;
 }
 
 /** Adapter for the existing coordinator/account-session edges; no new bridge API. */
 export function createCoordinatorConnectionSource(
-  client: Pick<ProductionCoordinatorClient, "ready" | "subscribeTransport">,
+  client: Pick<ProductionCoordinatorClient, "ready" | "subscribeTransport" | "retryConnection">,
   bridge: Pick<DesktopBridge, "cursorAccount">,
   retry: () => Promise<unknown>
 ): CoordinatorConnectionSource {
@@ -45,6 +46,7 @@ export function createCoordinatorConnectionSource(
     getAccountStatus: () => bridge.cursorAccount.getStatus(),
     subscribeAccount: (listener) => bridge.cursorAccount.onStatusChanged(listener),
     subscribeTransport: (listener) => client.subscribeTransport(listener),
+    reconnect: () => client.retryConnection(),
     retry
   };
 }
@@ -124,6 +126,7 @@ export function createCoordinatorConnectionController(
   let started = false;
   let disposed = false;
   let retryInFlight: Promise<boolean> | null = null;
+  let reconnectInFlight: Promise<void> | null = null;
   let retryWaiter: RetryWaiter | null = null;
   const listeners = new Set<() => void>();
   let stopAccount: (() => void) | null = null;
@@ -153,13 +156,19 @@ export function createCoordinatorConnectionController(
     if (retryInFlight != null) return retryInFlight;
     const expectedGeneration = generation;
     setSnapshot({ ...snapshot, isRetrying: true });
-    const request = source.retry().then(() => {
+    const request = Promise.resolve().then(() => {
+      // Finish notifying transport subscribers before a roster retry captures
+      // the renderer's current transport generation.
+      if (isCurrent(expectedGeneration)) return source.retry();
+    }).then(() => {
       if (!isCurrent(expectedGeneration)) return false;
+      if (retryInFlight === request) retryInFlight = null;
       setSnapshot({ ...snapshot, failureCode: null, isRetrying: false });
       resolveQueuedRetry(true);
       return true;
     }, (reason: unknown) => {
       if (!isCurrent(expectedGeneration)) return false;
+      if (retryInFlight === request) retryInFlight = null;
       // A replacement can reject the current call before the new session is
       // ready. Keep the user's retry queued for the connected event.
       if (snapshot.transport !== "connected") {
@@ -190,11 +199,15 @@ export function createCoordinatorConnectionController(
     const identityChanged = snapshot.accountIdentity != null && snapshot.accountIdentity !== nextIdentity;
     if (identityChanged) {
       generation += 1;
+      retryInFlight = null;
+      reconnectInFlight = null;
       retryWaiter?.resolve(false);
       retryWaiter = null;
     }
     if (status.kind !== "logged-in") {
       generation += 1;
+      retryInFlight = null;
+      reconnectInFlight = null;
       retryWaiter?.resolve(false);
       retryWaiter = null;
       setSnapshot({ ...snapshot, accountIdentity: nextIdentity, accountKind: status.kind, failureCode: null, isRetrying: false });
@@ -235,14 +248,34 @@ export function createCoordinatorConnectionController(
       if (snapshot.transport !== "connected") {
         const promise = queueRetry();
         setSnapshot({ ...snapshot, isRetrying: true });
+        if (source.reconnect != null && reconnectInFlight == null) {
+          const expectedGeneration = generation;
+          const reconnect = Promise.resolve().then(() => {
+            if (isCurrent(expectedGeneration)) return source.reconnect?.();
+          }).then(() => {
+            if (isCurrent(expectedGeneration) && snapshot.transport === "connected" && retryWaiter != null) void runRetry();
+          }, (reason: unknown) => {
+            if (!isCurrent(expectedGeneration)) return;
+            if (reconnectInFlight === reconnect) reconnectInFlight = null;
+            setSnapshot({ ...snapshot, isRetrying: false, failureCode: failureCode(reason) });
+            resolveQueuedRetry(false);
+          }).finally(() => {
+            if (reconnectInFlight === reconnect) reconnectInFlight = null;
+          });
+          reconnectInFlight = reconnect;
+        }
         return promise;
       }
-      return runRetry();
+      const promise = queueRetry();
+      void runRetry();
+      return promise;
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       generation += 1;
+      retryInFlight = null;
+      reconnectInFlight = null;
       stopAccount?.();
       stopTransport?.();
       stopAccount = null;

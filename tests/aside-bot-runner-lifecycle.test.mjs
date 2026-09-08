@@ -63,6 +63,17 @@ test("new bots and hidden nudges never adopt the account's newest chat", async (
   assert.equal(f.readLink().ownerAgentId, agentId);
 });
 
+test("upgrade resume surfaces manual continuation and does not report a mirror as completed work", async (t) => {
+  const f = fixture(t, { browseId: "bound", pendingKind: null });
+  const result = await f.runner.run("resume interrupted task", { hidden: true, upgradeResume: true });
+  assert.equal(result.aborted, true);
+  assert.equal(result.sentMessageCount, 1);
+  assert.equal(result.reacted, false);
+  assert.equal(f.calls.length, 0, "unsupported recovery must not start or inspect a native task");
+  assert.match(f.sent[0].content, /Aside.*브라우저의 작업 상태/);
+  assert.equal(f.readLink().browseId, "bound");
+});
+
 test("legacy deliberate bindings remain stable and mirror only their own session", async (t) => {
   const f = fixture(t, { browseId: "bound", pendingKind: null }, { asideMessages: async (id) => [{ role: "user", timestamp: 10, text: `message from ${id}` }] });
   await f.runner.run("nudge", { hidden: true });

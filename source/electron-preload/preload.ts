@@ -306,7 +306,7 @@ export function installPrimaryPreload(options: {
   const env = options.env ?? process.env;
   const devRestartEnabled = options.devRestartEnabled ?? hasDevRestart(env);
   const initialState = options.initialState ?? readPrimaryPreloadInitialState(options.ipc);
-  const broker = options.coordinatorBroker ?? createCoordinatorPortBroker<any>({ invokeRequest: () => { void options.ipc.invoke("sand:coordinator-port-request"); } });
+  const broker = options.coordinatorBroker ?? createCoordinatorPortBroker<any>({ invokeRequest: () => options.ipc.invoke("sand:coordinator-port-request") });
   const desktop = createDesktopPreloadBridge({ ...options, env, devRestartEnabled, initialState });
   options.contextBridge.exposeInMainWorld("desktop", desktop);
   options.contextBridge.exposeInMainWorld("coordinatorPort", broker.bridge);
@@ -329,7 +329,7 @@ export function installPrimaryPreloadEntrypoint(
 ): ReturnType<typeof installPrimaryPreload> {
   const devRestartEnabled = hasDevRestart(env);
   const initialState = readPrimaryPreloadInitialState(electron.ipcRenderer);
-  const coordinatorBroker = createCoordinatorPortBroker<any>({ invokeRequest: () => { void electron.ipcRenderer.invoke("sand:coordinator-port-request"); } });
+  const coordinatorBroker = createCoordinatorPortBroker<any>({ invokeRequest: () => electron.ipcRenderer.invoke("sand:coordinator-port-request") });
   const transport = createMainEdgeTransport(electron.ipcRenderer);
   const mainEdge = bridgeRpcEdge(MAIN_RPC_CONTRACT_NAME, MAIN_RPC_METHOD_TABLE, transport, true) as MainPreloadEdge;
   return installPrimaryPreload({

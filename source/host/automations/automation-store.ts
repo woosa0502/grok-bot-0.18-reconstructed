@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createDebouncePolicy, realClock } from "../../internal/scheduling.js";
-import { automationAnchor, computeNextRunAt, describeTrigger, normalizeSchedule } from "../../shared/automation-schedule.js";
+import { automationAnchor, computeNextRunAt, describeTrigger, isValidAutomationSchedule, normalizeSchedule } from "../../shared/automation-schedule.js";
 import { cronTrigger, triggerCronSchedules, triggerFromList, triggerList, triggerSchedule, type AutomationTrigger } from "../../shared/automations.js";
 import { isSafeFolderId } from "../storage/folder-id.js";
 import { WatchedDirectory } from "../watched-directory.js";
@@ -15,7 +15,7 @@ export const RUNS_FILENAME = "runs.json";
 export const AUTOMATION_CHANGE_DEBOUNCE_MS = 50;
 
 export type AutomationDefinitionInspectionState = "agent_missing" | "dir_missing" | "valid" | "configs_invalid" | "dir_empty";
-export interface AutomationDefinitionInspection { state: AutomationDefinitionInspectionState; validDefinitionCount: number }
+export interface AutomationDefinitionInspection { state: AutomationDefinitionInspectionState; validDefinitionCount: number; invalidDefinitionIds?: readonly string[] }
 
 export function getAgentAutomationsDir(agentDir: string): string { return join(agentDir, AUTOMATIONS_DIRNAME); }
 export function inspectAgentAutomationDefinitions(agentDir: string): AutomationDefinitionInspection {
@@ -23,20 +23,29 @@ export function inspectAgentAutomationDefinitions(agentDir: string): AutomationD
   const automationsDir = getAgentAutomationsDir(agentDir); let entries;
   try { entries = readdirSync(automationsDir, { withFileTypes: true }); } catch { return { state: "dir_missing", validDefinitionCount: 0 }; }
   let candidateCount = 0, validDefinitionCount = 0;
+  const invalidDefinitionIds: string[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || !isSafeFolderId(entry.name)) continue;
     candidateCount += 1; const configPath = join(automationsDir, entry.name, CONFIG_FILENAME); let raw: string;
-    try { raw = readFileSync(configPath, "utf8"); } catch { continue; }
+    try { raw = readFileSync(configPath, "utf8"); } catch { invalidDefinitionIds.push(entry.name); continue; }
     let fallbackCreatedAt = Date.now(); try { const stats = statSync(configPath); fallbackCreatedAt = Math.floor(stats.birthtimeMs || stats.mtimeMs); } catch {}
     if (parseStoredConfig(raw, fallbackCreatedAt) != null) validDefinitionCount += 1;
+    else invalidDefinitionIds.push(entry.name);
   }
-  if (validDefinitionCount > 0) return { state: "valid", validDefinitionCount };
-  return { state: candidateCount > 0 ? "configs_invalid" : "dir_empty", validDefinitionCount: 0 };
+  const invalid = invalidDefinitionIds.length > 0 ? { invalidDefinitionIds } : {};
+  if (validDefinitionCount > 0) return { state: "valid", validDefinitionCount, ...invalid };
+  return { state: candidateCount > 0 ? "configs_invalid" : "dir_empty", validDefinitionCount: 0, ...invalid };
 }
 export function agentHasAutomations(agentDir: string): boolean { return inspectAgentAutomationDefinitions(agentDir).validDefinitionCount > 0; }
 
 function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value != null && !Array.isArray(value); }
-export function parseStoredConfigTrigger(parsed: Record<string, unknown>): AutomationTrigger | null { if (parsed.trigger != null) { const trigger = parseStoredTrigger(parsed.trigger); if (trigger != null) return trigger; } const schedule = typeof parsed.schedule === "string" ? normalizeSchedule(parsed.schedule) : ""; return schedule ? cronTrigger(schedule) : null; }
+function storedCronSchedulesValid(value: unknown): boolean {
+  if (Array.isArray(value)) return value.every(storedCronSchedulesValid);
+  if (!object(value)) return true;
+  if (value.type === "cron") return typeof value.schedule === "string" && isValidAutomationSchedule(value.schedule);
+  return value.type !== "group" || !Array.isArray(value.listeners) || value.listeners.every(storedCronSchedulesValid);
+}
+export function parseStoredConfigTrigger(parsed: Record<string, unknown>): AutomationTrigger | null { if (parsed.trigger != null) { if (!storedCronSchedulesValid(parsed.trigger)) return null; const trigger = parseStoredTrigger(parsed.trigger); if (trigger != null) return triggerCronSchedules(trigger).every(isValidAutomationSchedule) ? trigger : null; } const schedule = typeof parsed.schedule === "string" ? normalizeSchedule(parsed.schedule) : ""; return isValidAutomationSchedule(schedule) ? cronTrigger(schedule) : null; }
 export function parseRaisedNotices(value: unknown): string[] { if (!Array.isArray(value)) return []; const ids: string[] = []; for (const entry of value) { if (typeof entry !== "string") continue; const id = entry.trim(); if (id && !ids.includes(id) && isRoutineNoticeId(id)) ids.push(id); } return ids; }
 export function parseStoredConfig(raw: string, fallbackCreatedAt: number): AutomationConfig | null {
   let parsed: unknown; try { parsed = JSON.parse(raw); } catch { return null; } if (!object(parsed)) return null;
@@ -66,7 +75,7 @@ export class FileAutomationStore {
   get(id: string): AutomationRecord | null { if (!isSafeFolderId(id)) return null; const config = this.readConfig(id); return config == null ? null : this.toRecord(id, config, true); }
   count(): number { return this.listIds().filter((id) => this.readConfig(id) != null).length; }
   uniqueId(name: string): string { const base = slugifyAutomationName(name), existing = new Set(this.listIds()); if (!existing.has(base)) return base; for (let suffix = 2; suffix < 1_000; suffix += 1) { const candidate = `${base}-${suffix}`; if (!existing.has(candidate)) return candidate; } return `${base}-${Date.now()}`; }
-  normalizeSpecTrigger(trigger: AutomationTrigger): AutomationTrigger | null { const members: ReturnType<typeof triggerList> = []; for (const member of triggerList(trigger)) { if (member.type !== "cron") members.push(member); else { const schedule = normalizeSchedule(member.schedule); if (!schedule) return null; members.push(cronTrigger(schedule)); } } const normalized = triggerFromList(members); return normalized == null || normalized.type === "cron" ? normalized : parseStoredTrigger(serializeStoredTrigger(normalized)); }
+  normalizeSpecTrigger(trigger: AutomationTrigger): AutomationTrigger | null { const members: ReturnType<typeof triggerList> = []; for (const member of triggerList(trigger)) { if (member.type !== "cron") members.push(member); else { const schedule = normalizeSchedule(member.schedule); if (!isValidAutomationSchedule(schedule)) return null; members.push(cronTrigger(schedule)); } } const normalized = triggerFromList(members); return normalized == null || normalized.type === "cron" ? normalized : parseStoredTrigger(serializeStoredTrigger(normalized)); }
   upsert(spec: AutomationSpec, createdAt = Date.now()): AutomationRecord | null { const name = clampAutomationName(spec.name), prompt = normalizeAutomationPrompt(spec.prompt), trigger = this.normalizeSpecTrigger(spec.trigger); if (!name || !prompt || trigger == null || this.count() >= AUTOMATION_MAX_PER_AGENT) return null; const id = this.uniqueId(name), config: AutomationConfig = { name, prompt, trigger, isEnabled: spec.isEnabled ?? true, createdAt, lastRunAt: null, raisedNotices: [] }; this.writeConfig(id, config); return this.toRecord(id, config, true); }
   update(id: string, spec: AutomationSpec): AutomationRecord | null { if (!isSafeFolderId(id)) return null; const current = this.readConfig(id), name = clampAutomationName(spec.name), prompt = normalizeAutomationPrompt(spec.prompt), trigger = this.normalizeSpecTrigger(spec.trigger); if (current == null || !name || !prompt || trigger == null) return null; const config = { ...current, name, prompt, trigger, isEnabled: spec.isEnabled ?? current.isEnabled }; this.writeConfig(id, config); return this.toRecord(id, config, true); }
   markNoticeRaised(id: string, notice: string): AutomationRecord | null { if (!isSafeFolderId(id) || !isRoutineNoticeId(notice)) return null; const current = this.readConfig(id); if (current == null) return null; const config = current.raisedNotices.includes(notice) ? current : { ...current, raisedNotices: [...current.raisedNotices, notice] }; if (config !== current) this.writeConfig(id, config); return this.toRecord(id, config, true); }

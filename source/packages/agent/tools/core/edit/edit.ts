@@ -14,7 +14,8 @@ import { ReadArgs } from "../../../../proto/generated/agent/v1/read_exec_pb.js";
 import { WriteArgs } from "../../../../proto/generated/agent/v1/write_exec_pb.js";
 import { WORKTREE_GUARD_ERROR } from "../../../../utils/path-utils.js";
 import { decoratePostWriteResultForModel } from "./post-write-result-decoration.js";
-import { ToolCallArgParseError, ToolCallRejectedError, ToolCallUnexpectedEnvironmentError, createZodAgentTool } from "../../common.js";
+import { waitForFileMutationLock } from "../file-mutation-lock.js";
+import { ToolCallAbortedError, ToolCallArgParseError, ToolCallRejectedError, ToolCallUnexpectedEnvironmentError, createZodAgentTool } from "../../common.js";
 
 const EDIT_DESCRIPTION = "Edit a file by replacing an exact string with a new string. Provide `path`, the exact `old_string` to find (including surrounding context so it is unique), and the `new_string` to replace it with. By default the match must be unique; set `replace_all` to replace every occurrence. To create a new file, use the write path instead.";
 
@@ -87,6 +88,7 @@ export function createEditTool(
       createEditToolCall(new EditToolCall({ args: editArgs })),
       meta.toolCallId,
       async ctx => {
+        using mutationLock = await waitForFileMutationLock(ctx, resourceAccessor);
         const readResult = await readExecutor.execute(ctx, new ReadArgs({ path: filePath, toolCallId: meta.toolCallId }), { execId: meta.toolCallId });
         if (readResult.result.case !== "success") {
           if (readResult.result.case === "fileNotFound") return new EditResult({ result: { case: "fileNotFound", value: new EditFileNotFound({ path: filePath }) } });
@@ -113,6 +115,7 @@ export function createEditTool(
           if (occurrences > 1 && replaceAll !== true) return new EditResult({ result: { case: "error", value: new EditError({ path: filePath, error: `old_string is not unique (${occurrences} matches); pass replace_all or add more context` }) } });
           after = replaceAll === true ? before.split(oldString).join(newString) : before.replace(oldString, () => newString);
         }
+        if (ctx.signal.aborted) throw new ToolCallAbortedError();
         const writeResult = await writeExecutor.execute(ctx, new WriteArgs({ path: filePath, fileText: after, toolCallId: meta.toolCallId }), { execId: meta.toolCallId });
         if (writeResult.result.case !== "success") {
           switch (writeResult.result.case) {

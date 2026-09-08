@@ -22,7 +22,7 @@ export interface CoordinatorSourceClaimant {
   beginIdentityChange(): void;
   failIdentityChange(): void;
   completeIdentityChange(options: { readonly acceptPort: boolean }): void;
-  activeRoute(): "pending" | "coordinator";
+  activeRoute(): "pending" | "coordinator" | "failed";
   dispose(): void;
 }
 
@@ -34,8 +34,12 @@ export function createCoordinatorSourceClaimant(
   let active: RawPortCoordinatorSession | null = null;
   let identity: IdentityState = { kind: "idle" };
   let disposed = false;
+  let requestId = 0;
+  let requestFailed = false;
 
   const adopt = (port: TransferredCoordinatorPort): void => {
+    requestId += 1;
+    requestFailed = false;
     active?.dispose();
     const session = createRawPortCoordinatorSession({
       post: (frame) => port.postMessage(frame),
@@ -66,13 +70,33 @@ export function createCoordinatorSourceClaimant(
     adopt(port);
   };
 
-  const claim = portBridge.claim({ onPort });
-  claim?.request();
+  const onRequestError = (_message: string, failedRequestId?: number): void => {
+    if (disposed || failedRequestId !== requestId || identity.kind !== "idle" || active !== null) return;
+    requestFailed = true;
+    prePort.settle();
+  };
+  const claim = portBridge.claim({ onPort, onRequestError });
+  const requestPort = (): void => {
+    if (disposed || claim === null) return;
+    requestFailed = false;
+    const nextRequestId = ++requestId;
+    try {
+      claim.request(nextRequestId);
+    } catch (error) {
+      onRequestError(String(error), nextRequestId);
+    }
+  };
+  if (claim === null) {
+    requestFailed = true;
+    prePort.settle();
+  } else requestPort();
 
   return {
     source: stable.source,
     beginIdentityChange() {
       if (disposed) return;
+      requestId += 1;
+      requestFailed = false;
       if (identity.kind === "restoring") identity.port?.close();
       identity = { kind: "restoring", port: null };
       prePort.settle();
@@ -83,6 +107,7 @@ export function createCoordinatorSourceClaimant(
     },
     failIdentityChange() {
       if (disposed || identity.kind !== "restoring") return;
+      requestId += 1;
       identity.port?.close();
       identity = { kind: "failed" };
       prePort.settle();
@@ -92,7 +117,7 @@ export function createCoordinatorSourceClaimant(
       const { port } = identity;
       identity = { kind: "idle" };
       if (port === null) {
-        if (acceptPort) claim?.request();
+        if (acceptPort) requestPort();
         return;
       }
       if (acceptPort) {
@@ -101,10 +126,11 @@ export function createCoordinatorSourceClaimant(
       }
       port.close();
     },
-    activeRoute: () => active === null ? "pending" : "coordinator",
+    activeRoute: () => active !== null ? "coordinator" : requestFailed ? "failed" : "pending",
     dispose() {
       if (disposed) return;
       disposed = true;
+      requestId += 1;
       claim?.release();
       active?.dispose();
       if (identity.kind === "restoring") identity.port?.close();

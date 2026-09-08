@@ -96,6 +96,7 @@ export function useComputerExperience(input: {
   const [asyncTasks, setAsyncTasks] = useState<Record<string, unknown>[]>([]);
   const [cursors, setCursors] = useState<Record<string, ComputerCursor>>({});
   const [isOpen, setOpen] = useState(false);
+  const viewerOpen = useRef(false);
   const [focusMonitorId, setFocusMonitorId] = useState<string | null>(null);
   const [openedAtMs, setOpenedAtMs] = useState<number | undefined>();
   const [openTrigger, setOpenTrigger] = useState<"preview" | "handoff" | undefined>();
@@ -160,6 +161,8 @@ export function useComputerExperience(input: {
     setSubagents([]);
     setAsyncTasks([]);
     setCursors({});
+    viewerOpen.current = false;
+    statusStore?.ingestVncUserPresence({ isPresent: false });
     setOpen(false);
     setFocusMonitorId(null);
     setOpenedAtMs(undefined);
@@ -206,7 +209,7 @@ export function useComputerExperience(input: {
 
   useEffect(() => {
     if (bridge == null || statusStore == null) return;
-    return bridge.foreverBox.onVncUserPresence((isPresent) => statusStore.ingestVncUserPresence({ isPresent }));
+    return bridge.foreverBox.onVncUserPresence((isPresent) => statusStore.ingestVncUserPresence({ isPresent: isPresent && viewerOpen.current }));
   }, [bridge, statusStore]);
 
   useEffect(() => {
@@ -247,15 +250,18 @@ export function useComputerExperience(input: {
     setOpenedAtMs((previous) => isOpen ? previous ?? openedAt : openedAt);
     setOpenTrigger((previous) => isOpen ? previous ?? trigger : trigger);
     setFocusMonitorId(monitorId);
+    viewerOpen.current = true;
     setOpen(true);
     ensure(activeAgentId);
   }, [activeAgentId, bridge, ensure, isOpen, monitors, view.vncUrl]);
 
   const close = useCallback(() => {
+    viewerOpen.current = false;
+    statusStore?.ingestVncUserPresence({ isPresent: false });
     setOpen(false);
     setOpenedAtMs(undefined);
     setOpenTrigger(undefined);
-  }, []);
+  }, [statusStore]);
 
   const handBack = useCallback(async (subagentId: string | null, trigger: "button" | "dismissed" = "button") => {
     const id = subagentId ?? activeAgentId;

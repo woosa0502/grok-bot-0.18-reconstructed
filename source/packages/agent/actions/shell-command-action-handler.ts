@@ -29,11 +29,14 @@ import { UserInfo } from "../prompts/user-info-component.js";
 import { withToolSetMcpSnapshot } from "../utils/mcp-meta-tool.js";
 import { getMcpMetaToolOptionsWithCustomUserTools } from "../utils/mcp-custom-user-tools.js";
 import { FileOperationLockManager } from "../tools/core/file-operation-lock-manager.js";
-import { formatShellResult, formatShellResultDsv3 } from "../tools/core/shell/formatters.js";
+import { formatShellPartialOutputSection, formatShellResult, formatShellResultDsv3 } from "../tools/core/shell/formatters.js";
 
 type Any = any;
 
 const logger = createLogger("@anysphere/agent/actions/shell-command-action-handler");
+// ShellOutput has only an int32 exitCode. This internal non-success sentinel
+// represents an unknown result or an aborted zero-code exit, never an OS exit.
+const SHELL_ACTION_UNCONFIRMED_EXIT_CODE = -1;
 
 export class ShellCommandActionHandler {
   constructor(
@@ -59,7 +62,9 @@ export class ShellCommandActionHandler {
     let stdout = createRedactedString("", DataClassification.CODE, "stdout", action._privacyMode);
     let stderr = createRedactedString("", DataClassification.CODE, "stderr", action._privacyMode);
     let combinedOutput = createRedactedString("", DataClassification.CODE, "combinedOutput", action._privacyMode);
-    let exitCode = 0;
+    let observedExitCode: number | undefined;
+    let aborted = false;
+    let streamFailed = false;
     const shellExec = this.resourceAccessor.get(shellStreamExecutorResource);
     const args = createRedactedShellArgs(action._privacyMode, {
       command,
@@ -68,9 +73,9 @@ export class ShellCommandActionHandler {
       // No classifier call is needed because skipApproval bypasses the permission check.
       skipApproval: true,
     });
-    const result = shellExec.execute(ctx, fromRedactedShellArgs(args, PrivacyCapability.UNSAFE_ALWAYS_ALLOWED, undefined), { execId: action.execId });
     const skipInteractionUpdates = !!action.execId;
     try {
+      const result = shellExec.execute(ctx, fromRedactedShellArgs(args, PrivacyCapability.UNSAFE_ALWAYS_ALLOWED, undefined), { execId: action.execId });
       for await (const unredStream of result) {
         const stream: Any = toRedactedShellStream(unredStream, action._privacyMode);
         switch (stream.event.case) {
@@ -107,7 +112,8 @@ export class ShellCommandActionHandler {
             break;
           }
           case "exit":
-            exitCode = stream.event.value.code | 0;
+            observedExitCode = stream.event.value.code | 0;
+            aborted = stream.event.value.aborted;
             if (!skipInteractionUpdates) {
               await this.interactionListener.sendUpdate(ctx, RedactedUpdates.shellOutputDelta(stream._privacyMode, {
                 case: "exit",
@@ -118,8 +124,12 @@ export class ShellCommandActionHandler {
         }
       }
     } catch (error) {
+      streamFailed = true;
       logger.error(ctx, "Shell command action handler error", error);
     }
+    const exitCode = observedExitCode === undefined || (aborted && observedExitCode === 0)
+      ? SHELL_ACTION_UNCONFIRMED_EXIT_CODE
+      : observedExitCode;
     turn.recordShellOutput(createRedactedShellOutput(action._privacyMode, { stdout, stderr, exitCode }));
     const toolCallId = randomUUID();
     const commandText = command.unwrap(PrivacyCapability.UNSAFE_ALWAYS_ALLOWED);
@@ -128,6 +138,26 @@ export class ShellCommandActionHandler {
     const userMessage = { role: "user", content: [{ type: "text", text }] };
     const toolName = stateHandler.isDsv3() ? "run_terminal_cmd" : "Shell";
     const assistantMessage = { role: "assistant", content: [{ type: "tool-call", toolCallId, toolName, args: { command: commandText } }] };
+    const output = combinedOutput.unwrap(PrivacyCapability.UNSAFE_ALWAYS_ALLOWED);
+    let resultText: string;
+    if (observedExitCode === undefined || aborted || streamFailed) {
+      if (observedExitCode === undefined) {
+        resultText = `Exit status was not observed. The command result is unknown because the shell output stream ${streamFailed ? "failed" : "ended without an exit event"}.`;
+      } else {
+        resultText = aborted
+          ? `Command aborted. Observed exit code: ${observedExitCode}. This does not confirm successful completion.`
+          : `The shell output stream failed after an exit event. Observed exit code: ${observedExitCode}. The stream result is unconfirmed.`;
+      }
+      const partialOutput = formatShellPartialOutputSection(output, {
+        heading: "Output collected before the stream ended",
+        emptyMessage: "No output was collected.",
+      });
+      resultText += `\n\n${partialOutput}`;
+    } else {
+      resultText = stateHandler.isDsv3()
+        ? formatShellResultDsv3({ combinedOutput: output, exitCode, command: commandText }, commandText)
+        : formatShellResult({ combinedOutput: output, exitCode });
+    }
     const toolCallResult = {
       role: "tool",
       id: toolCallId,
@@ -135,9 +165,7 @@ export class ShellCommandActionHandler {
         type: "tool-result",
         toolCallId,
         toolName,
-        result: stateHandler.isDsv3()
-          ? formatShellResultDsv3({ combinedOutput: combinedOutput.unwrap(PrivacyCapability.UNSAFE_ALWAYS_ALLOWED), exitCode, command: commandText }, commandText)
-          : formatShellResult({ combinedOutput: combinedOutput.unwrap(PrivacyCapability.UNSAFE_ALWAYS_ALLOWED), exitCode }),
+        result: resultText,
       }],
     };
     if (rootPromptExecutor.getMessages().length === 0) {

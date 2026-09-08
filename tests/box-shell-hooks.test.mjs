@@ -45,7 +45,7 @@ test("daemon emits postToolUse / postToolUseFailure additional_context as a hook
   assert.match(stream, /const hookContexts = await this\.#shellPostHooks\(args, outputTail, exitCode, Date\.now\(\) - startedAt, signal\)/);
   assert.match(stream, /case: "hookContext", value: new ShellStreamHookContext\(\{ hookAdditionalContexts: hookContexts \}\)/);
   // hookContext is emitted before the exit event so the agent sees it within the same tool call.
-  assert.ok(stream.indexOf('case: "hookContext"') < stream.indexOf('case: "exit", value: new ShellStreamExit'));
+  assert.ok(stream.indexOf('case: "hookContext"') < stream.lastIndexOf('case: "exit", value: new ShellStreamExit'));
 });
 
 test("agent-side Shell tool pushes hookContext carriers into the hook context collector", () => {

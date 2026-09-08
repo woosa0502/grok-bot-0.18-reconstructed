@@ -2,10 +2,11 @@
 // and its binding into the host's ExternalRead / box Read tool options.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { build } from "esbuild";
@@ -22,6 +23,36 @@ async function loadExtractor() {
     logLevel: "silent",
   });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
+}
+
+async function loadRuntime() {
+  const result = await build({
+    stdin: {
+      resolveDir: repoRoot,
+      loader: "ts",
+      contents: `
+        export { BoxExecRuntime } from "./source/box-exec-daemon/server.js";
+        export { ReadArgs } from "./source/packages/proto/generated/agent/v1/read_exec_pb.js";
+      `,
+    },
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    write: false,
+    packages: "external",
+    supported: { using: false },
+    banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
+  });
+  const cache = path.join(repoRoot, "node_modules/.cache/belmont-tests");
+  await mkdir(cache, { recursive: true });
+  const directory = await mkdtemp(path.join(cache, "pdf-read-"));
+  const filename = path.join(directory, "runtime.mjs");
+  try {
+    await writeFile(filename, result.outputFiles[0].text);
+    return await import(pathToFileURL(filename).href);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 // A minimal single-page PDF with one Helvetica text run. poppler reconstructs the
@@ -77,7 +108,42 @@ test("falls back to pdfjs when pdftotext is unavailable, and reports both failur
 test("box daemon hands PDF bytes back as data output instead of refusing them", async () => {
   const source = await readFile(path.join(repoRoot, "source/box-exec-daemon/server.ts"), "utf8");
   assert.doesNotMatch(source, /text extraction is not available in this build/);
-  assert.match(source, /if \(looksLikePdf\) \{\s*return new ReadResult\(\{ result: \{ case: "success", value: new ReadSuccess\(\{\s*path: args\.path,\s*output: \{ case: "data", value: new Uint8Array\(data\) \}/);
+  assert.match(source, /if \(looksLikePdf \|\| looksLikeImage\) \{\s*return new ReadResult\(\{ result: \{ case: "success", value: new ReadSuccess\(\{\s*path: args\.path,\s*output: \{ case: "data", value: new Uint8Array\(data\) \}/);
+});
+
+test("box PDF reads preserve all bytes and ignore text ranges for signature and extension detection", async t => {
+  const { BoxExecRuntime, ReadArgs } = await loadRuntime();
+  const root = await mkdtemp(path.join(tmpdir(), "belmont-pdf-read-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, "workspace");
+  const terminals = path.join(root, "terminals");
+  await mkdir(workspace);
+  await mkdir(terminals);
+  const runtime = new BoxExecRuntime(workspace, terminals, { PATH: process.env.PATH ?? "" });
+  t.after(() => runtime.stop());
+  const fixtures = [
+    ["signature.bin", Buffer.concat([minimalPdf("BOX PDF CONTRACT"), Buffer.from([0, 128, 255, 10])])],
+    ["extension.PDF", Buffer.from([0, 128, 255, 10, 65, 10, 66])],
+  ];
+  for (const [filename, bytes] of fixtures) {
+    await writeFile(path.join(workspace, filename), bytes);
+    const requestPath = `/workspace/${filename}`;
+    const { result } = await runtime.read(new ReadArgs({ path: requestPath, offset: 2, limit: 1 }));
+    assert.equal(result.case, "success", filename);
+    assert.equal(result.value.path, requestPath);
+    assert.equal(result.value.output.case, "data", filename);
+    assert.deepEqual(Buffer.from(result.value.output.value), bytes, filename);
+    assert.equal(result.value.fileSize, BigInt(bytes.byteLength));
+    assert.equal(result.value.totalLines, 0);
+    assert.equal(result.value.truncated, false);
+    assert.equal(result.value.rangeApplied, false);
+  }
+  await writeFile(path.join(workspace, "plain.txt"), "alpha\nbeta\ngamma");
+  const { result } = await runtime.read(new ReadArgs({ path: "/workspace/plain.txt", offset: 2, limit: 1 }));
+  assert.equal(result.case, "success");
+  assert.equal(result.value.output.case, "content", "ordinary text must retain its text output branch");
+  assert.equal(result.value.output.value, "beta");
+  assert.equal(result.value.rangeApplied, true);
 });
 
 test("host binds the local extractor into both Read tools", async () => {

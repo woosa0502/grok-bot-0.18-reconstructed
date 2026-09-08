@@ -1,9 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { packPluginArtifact } from "../../../packages/cursor-plugins/tarball.js";
-import { restoreSkillsFromPluginDir } from "../../../packages/cursor-plugins/skill-plugin-restore.js";
 import { synthesizeSkillPluginDir } from "../../../packages/cursor-plugins/skill-plugin-synthesizer.js";
 import { DashboardService } from "../../../packages/proto/generated/aiserver/v1/dashboard_connect.js";
 import {
@@ -16,7 +15,7 @@ import {
   createSandCursorBackendClient,
   getSandInferenceBackendUrl,
 } from "../../../shared/node/cursor-backend/cursor-inference.js";
-import { LEGACY_WORKFLOW_FILENAME, parseWorkflowFile } from "../../../shared/workflow-model.js";
+import { LEGACY_WORKFLOW_FILENAME, parseWorkflowFile, slugifyWorkflowName } from "../../../shared/workflow-model.js";
 import { SandSkillPublishError } from "../../../shared/workflows.js";
 import { GlobalWorkflowLibrary, getGlobalWorkflowsDir, type GlobalWorkflowRecord } from "../../workflows/workflow-library.js";
 import type { PluginSkillRecord, PluginSkillsCache } from "./plugin-skills-cache.js";
@@ -117,10 +116,39 @@ export class SandSkillPublishService {
   }
 
   async restoreToLibrary(record: PluginSkillRecord): Promise<string | null> {
-    const skillsRoot = getGlobalWorkflowsDir(this.options.sandRootDir), skillDir = dirname(record.filePath), libraryId = basename(skillDir);
-    if (this.library.get(libraryId) != null) return libraryId;
-    const [restored] = await restoreSkillsFromPluginDir({ skillDirs: [skillDir], pluginSkillsRoot: join(record.installPath, "skills"), skillsRoot });
-    return restored != null && dirname(restored) === skillsRoot ? basename(restored) : null;
+    const skillsRoot = getGlobalWorkflowsDir(this.options.sandRootDir), skillDir = dirname(record.filePath);
+    const relativePath = relative(resolve(record.installPath, "skills"), resolve(skillDir));
+    if (!relativePath || isAbsolute(relativePath) || relativePath.split(sep)[0] === "..") {
+      throw new SandSkillPublishError("That skill is not inside the plugin's skills directory, so it could not be restored.");
+    }
+    const expected = parseWorkflowFile(await readFile(record.filePath, "utf8"));
+    if (expected == null || expected.body.length === 0) {
+      throw new SandSkillPublishError("That skill's file could not be read, so it was kept published.");
+    }
+    await mkdir(skillsRoot, { recursive: true });
+    const baseId = slugifyWorkflowName(basename(skillDir));
+    for (let suffix = 1; ; suffix++) {
+      const libraryId = suffix === 1 ? baseId : `${baseId}-${suffix}`;
+      const targetDir = join(skillsRoot, libraryId);
+      try {
+        await mkdir(targetDir);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
+        throw error;
+      }
+      try {
+        for (const entry of await readdir(skillDir)) {
+          await cp(join(skillDir, entry), join(targetDir, entry), { recursive: true, dereference: true, force: false, errorOnExist: true });
+        }
+        if (this.library.get(libraryId)?.body !== expected.body) {
+          throw new SandSkillPublishError("That skill could not be read after restoring it, so it was kept published.");
+        }
+        return libraryId;
+      } catch (error) {
+        await rm(targetDir, { recursive: true, force: true }).catch(() => {});
+        throw error;
+      }
+    }
   }
 
   async upload(args: { skillDir: string; skillRelativePath: string; name: string; description: string; teamId: number; pluginName: string; displayName?: string }): Promise<PublishedSkillResult> {

@@ -96,6 +96,7 @@ export interface TurnSettleScope {
   readonly memoryStore?: TurnMemoryStore;
   readonly episodeProgress?: EpisodeProgress | null;
   readonly isMemorableExchange?: (prompt: string) => boolean;
+  readonly isRunSuperseded?: () => boolean;
 }
 
 export interface TurnSession {
@@ -185,7 +186,8 @@ export function createTurnSettle(
 
   function persistPendingProfileAnnouncement(): void {
     if (
-      profilePromptSnapshot == null
+      scope.isRunSuperseded?.() === true
+      || profilePromptSnapshot == null
       || pendingProfileAnnouncement == null
     ) return;
 
@@ -398,6 +400,7 @@ export function createTurnSettle(
     // model call inside the child's settle, delaying the Task result.
     const shouldRemember =
       !host.isSubagentRunner
+      && scope.isRunSuperseded?.() !== true
       && !host.isRunSuperseded()
       && scope.memoryStore != null
       && !args.hidden

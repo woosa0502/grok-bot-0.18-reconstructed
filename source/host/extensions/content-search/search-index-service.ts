@@ -219,11 +219,11 @@ export class SandSearchIndexService {
     );
   }
 
-  searchMessages(query: string, limit: number) {
+  searchMessages(query: string, limit: number, excludedAgentIds: readonly string[] = []) {
     const db = this.db;
     if (db == null || this.isUnavailable) return null;
     try {
-      return searchMessages(db, query, limit);
+      return searchMessages(db, query, limit, excludedAgentIds);
     } catch (error) {
       this.handleIndexFailure("search-messages", error);
       return null;

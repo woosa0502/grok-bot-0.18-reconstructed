@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { query as queryClaude, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query as queryClaude, type SDKResultMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createOpenAI } from "@ai-sdk/openai";
 import { jsonSchema, streamText, tool, type CoreMessage, type LanguageModelV1, type ToolSet } from "ai";
 
@@ -13,6 +13,7 @@ import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
 import {
   belmontTextFromResponse,
   createRoutedProviderSessionState,
+  imageData,
   parseRoutedProviderSessionState,
 } from "./pi-codex-projection.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
@@ -108,8 +109,75 @@ function providerPrompt(messages: readonly ProviderMessage[], systemPrompt?: str
   return `${GROK_ROUTER_SYSTEM_PROMPT}\n\nContinue this Grok Bot conversation.\n\n${rendered}`;
 }
 
+type ClaudeContent = Exclude<SDKUserMessage["message"]["content"], string>;
+
+function claudeContentParts(value: unknown): ClaudeContent {
+  if (typeof value !== "object" || value == null) return [{ type: "text", text: String(value) }];
+  const part = value as Loose;
+  if (part.type === "text" && typeof part.text === "string") return part.text.length > 0 ? [{ type: "text", text: part.text }] : [];
+  if (part.type === "tool-result") {
+    const { result, content, experimental_content, ...identity } = part;
+    const body = experimental_content ?? result ?? content;
+    return [{ type: "text", text: JSON.stringify(identity) }, ...(Array.isArray(body) ? body.flatMap(claudeContentParts) : claudeContentParts(body))];
+  }
+  if (part.type === "image" || part.type === "file") {
+    const raw = part.type === "image" ? part.image ?? part.data : part.data;
+    const value = raw instanceof URL ? raw.href : raw;
+    const dataUrl = typeof value === "string" ? /^data:([^;,]+);base64,(.*)$/s.exec(value) : null;
+    const mime = String(part.mimeType ?? part.mediaType ?? dataUrl?.[1] ?? (part.type === "image" ? "image/png" : "application/octet-stream")).toLowerCase();
+    const url = typeof value === "string" && /^https?:\/\//i.test(value) ? value : undefined;
+    const data = url == null ? imageData(value) : undefined;
+    if (part.type === "image" || mime.startsWith("image/")) {
+      if (url != null) return [{ type: "image", source: { type: "url", url } }];
+      if (data != null && data.length > 0 && (mime === "image/jpeg" || mime === "image/png" || mime === "image/gif" || mime === "image/webp")) {
+        return [{ type: "image", source: { type: "base64", media_type: mime, data } }];
+      }
+    } else if (mime === "application/pdf") {
+      if (url != null) return [{ type: "document", source: { type: "url", url } }];
+      if (data != null && data.length > 0) return [{ type: "document", source: { type: "base64", media_type: "application/pdf", data } }];
+    } else if (mime.startsWith("text/") && data != null && data.length > 0) {
+      return [{ type: "document", source: { type: "text", media_type: "text/plain", data: Buffer.from(data, "base64").toString("utf8") } }];
+    }
+    return [{ type: "text", text: `[Attached ${mime} content could not be supplied to Claude. Do not claim to have read it.]` }];
+  }
+  if (part.type === "audio" || part.type === "video") {
+    return [{ type: "text", text: `[Attached ${part.type} requires media preprocessing and was not understood. Do not claim to have heard or watched it.]` }];
+  }
+  return [{ type: "text", text: JSON.stringify(part) }];
+}
+
+function claudePrompt(messages: readonly ProviderMessage[], systemPrompt?: string): string | AsyncIterable<SDKUserMessage> {
+  const containsMedia = (value: unknown): boolean => {
+    if (typeof value !== "object" || value == null) return false;
+    const part = value as Loose;
+    if (["image", "file", "audio", "video"].includes(part.type)) return true;
+    if (part.type !== "tool-result") return false;
+    const body = part.experimental_content ?? part.result ?? part.content;
+    return Array.isArray(body) && body.some(containsMedia);
+  };
+  if (!messages.some(message => Array.isArray(message.content) && message.content.some(containsMedia))) return providerPrompt(messages, systemPrompt);
+  // The SDK streaming-input protocol accepts user envelopes. Preserve the
+  // existing transcript role labels in one envelope, with native media blocks
+  // in their original position instead of JSON-encoding binary data as text.
+  return (async function* () {
+    const content: ClaudeContent = [{ type: "text", text: systemPrompt ?? `${GROK_ROUTER_SYSTEM_PROMPT}\n\nContinue this Grok Bot conversation.` }];
+    for (const message of messages) {
+      content.push({ type: "text", text: `${message.role.toUpperCase()}:` });
+      if (typeof message.content === "string") {
+        if (message.content.length > 0) content.push({ type: "text", text: message.content });
+      } else content.push(...message.content.flatMap(claudeContentParts));
+    }
+    yield { type: "user", session_id: "", parent_tool_use_id: null, message: { role: "user", content } };
+  })();
+}
+
 function deferred<T>() {
-  return Promise.withResolvers<T>();
+  const pending = Promise.withResolvers<T>();
+  // Stream-only consumers stop at an abort/error without awaiting response and
+  // usage. Keep those rejections observable to awaiters without reporting them
+  // again as host-level unhandled rejections.
+  pending.promise.catch(() => undefined);
+  return pending;
 }
 
 type DelegatedToolCall = { readonly toolCallId: string; readonly toolName: string; readonly args: unknown };
@@ -222,7 +290,7 @@ function codexExecutor(
   });
 }
 
-function claudeExecutor(messages: readonly ProviderMessage[], invocationId: string, onUsage?: (usage: UsageRecord) => void, mcpServerUrl?: string, systemPrompt?: string) {
+function claudeExecutor(messages: readonly ProviderMessage[], invocationId: string, onUsage?: (usage: UsageRecord) => void, mcpServerUrl?: string, systemPrompt?: string, context?: ProviderExecutorContext) {
   const executable = resolveClaudeCodeCliPath();
   if (executable == null) throw new Error("Claude Code is not installed. Install and sign in to Claude Code, then reopen Grok Bot.");
   const usage = deferred<{ promptTokens: number; completionTokens: number; totalTokens: number }>();
@@ -230,12 +298,21 @@ function claudeExecutor(messages: readonly ProviderMessage[], invocationId: stri
   const resultResponse = deferred<ReturnType<typeof response>>();
   const metadata = deferred<Record<string, unknown>>();
   const fullStream = (async function* () {
+    const abortController = new AbortController();
+    const abortQuery = () => abortController.abort(context?.signal?.reason);
+    if (context?.signal?.aborted) abortQuery();
+    else context?.signal?.addEventListener("abort", abortQuery, { once: true });
     try {
+      abortController.signal.throwIfAborted();
       let final: SDKResultMessage | undefined;
-      const selectedModel = process.env.SAND_CLAUDE_MODEL?.trim();
+      const requestedModel = context?.modelId?.trim();
+      const selectedModel = requestedModel != null && requestedModel.length > 0 && requestedModel !== "claude-code"
+        ? requestedModel
+        : process.env.SAND_CLAUDE_MODEL?.trim();
       for await (const message of queryClaude({
-        prompt: providerPrompt(messages, systemPrompt),
+        prompt: claudePrompt(messages, systemPrompt),
         options: {
+          abortController,
           pathToClaudeCodeExecutable: executable,
           cwd: getSandRootDir(),
           tools: mcpServerUrl == null ? [] : ["mcp__grok_bot_plugins__*"],
@@ -251,6 +328,7 @@ function claudeExecutor(messages: readonly ProviderMessage[], invocationId: stri
       })) {
         if (message.type === "result") final = message;
       }
+      abortController.signal.throwIfAborted();
       if (final == null) throw new Error("Claude Code ended without a result.");
       if (final.subtype !== "success") throw new Error(final.errors.join("\n") || `Claude Code failed (${final.subtype}).`);
       const text = final.result;
@@ -263,13 +341,15 @@ function claudeExecutor(messages: readonly ProviderMessage[], invocationId: stri
       usage.resolve({ promptTokens: input, completionTokens: output, totalTokens: input + output });
       extendedUsage.resolve({ inputTokens: input, outputTokens: output, cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite, maxTokens: 0 });
       metadata.resolve({ anthropic: { sessionId: final.session_id, totalCostUsd: final.total_cost_usd } });
-      resultResponse.resolve(response(text, invocationId, "claude-code"));
+      resultResponse.resolve(response(text, invocationId, selectedModel || "claude-code"));
     } catch (error) {
       usage.reject(error);
       extendedUsage.reject(error);
       metadata.reject(error);
       resultResponse.reject(error);
       throw error;
+    } finally {
+      context?.signal?.removeEventListener("abort", abortQuery);
     }
   })();
   return {
@@ -309,7 +389,9 @@ function openRouterExecutor(
   onUsage?: (usage: UsageRecord) => void,
   systemPrompt?: string,
   requestedModelId?: string,
+  signal?: AbortSignal,
 ) {
+  signal?.throwIfAborted();
   const target = resolveOpenAiCompatibleTarget(requestedModelId);
   const model: LanguageModelV1 = createOpenAI({
     apiKey: target.apiKey(),
@@ -323,6 +405,7 @@ function openRouterExecutor(
     model,
     system: systemPrompt ?? GROK_ROUTER_SYSTEM_PROMPT,
     messages: messages as CoreMessage[],
+    ...(signal == null ? {} : { abortSignal: signal }),
     ...(tools === undefined ? {} : { tools }),
     toolCallStreaming: true,
     maxSteps: tools === undefined ? 1 : 8,
@@ -342,7 +425,8 @@ function openRouterExecutor(
     cacheWriteTokens: 0,
     maxTokens: 0,
   }));
-  if (onUsage != null) void extendedUsage.then(onUsage);
+  extendedUsage.catch(() => undefined);
+  if (onUsage != null) void extendedUsage.then(onUsage).catch(() => undefined);
   return {
     fullStream: result.fullStream,
     response: result.response,
@@ -407,8 +491,8 @@ class ProviderPromptExecutor implements PromptExecutor {
         this.#cacheSessionId,
       );
     }
-    if (this.provider === "claude-code") return claudeExecutor(this.getMessages(), invocationId, this.onUsage);
-    return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, undefined, modelFromContext(ctx) ?? this.modelId);
+    if (this.provider === "claude-code") return claudeExecutor(this.getMessages(), invocationId, this.onUsage, undefined, undefined, providerContext(signalFromContext(ctx), modelFromContext(ctx) ?? this.modelId));
+    return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, undefined, modelFromContext(ctx) ?? this.modelId, signalFromContext(ctx));
   }
 }
 
@@ -422,7 +506,7 @@ export function createProviderPromptSession(
   const modelId = provider === "codex"
     ? requested || configuredCodexModel()
     : provider === "claude-code"
-      ? "claude-code"
+      ? requested || process.env.SAND_CLAUDE_MODEL?.trim() || "claude-code"
       : requested || process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
   return {
     getModelId: () => modelId,
@@ -457,8 +541,8 @@ export async function runRoutedProviderText(provider: RoutedProvider, messages: 
   const result = provider === "codex"
     ? codexExecutor(messages, invocationId, options?.tools, onUsage, providerContext(options?.signal, options?.modelId, options?.reasoning, options?.systemPrompt))
     : provider === "claude-code"
-      ? claudeExecutor(messages, invocationId, onUsage, options?.mcpServerUrl, options?.systemPrompt)
-      : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage, options?.systemPrompt, options?.modelId);
+      ? claudeExecutor(messages, invocationId, onUsage, options?.mcpServerUrl, options?.systemPrompt, providerContext(options?.signal, options?.modelId))
+      : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage, options?.systemPrompt, options?.modelId, options?.signal);
   let text = "";
   for await (const event of result.fullStream) {
     if (event.type === "text-delta" && typeof event.textDelta === "string") {

@@ -457,7 +457,7 @@ export function ConversationSidebar({ agents, sections, pinnedAgentIds = [], act
       <nav aria-label="Agent list" className="sand-agents-list" data-sidebar-collapsed={isCollapsed || undefined} role="region" tabIndex={0}>
         {listStatus ?? <>
           {orderedPinned.length > 0 ? <div aria-label="Pinned agents" className="sand-agents-pinned" role="group">{orderedPinned.map((agent) => renderAgent(agent))}</div> : null}
-          {sections == null ? <div className="sand-agents-list__rows">{unpinned.map((agent) => renderAgent(agent))}</div> : sections.map((section) => isCollapsed ? section.agents.map((agent) => renderAgent(agent, section.id)) : <div
+          {sections == null || sections.length === 0 ? <div className="sand-agents-list__rows">{unpinned.map((agent) => renderAgent(agent))}</div> : sections.map((section) => isCollapsed ? section.agents.map((agent) => renderAgent(agent, section.id)) : <div
             className={dropSectionId === section.id ? "sand-agents-section sand-agents-section__reveal" : "sand-agents-section"}
             data-section-id={section.id}
             key={section.id}

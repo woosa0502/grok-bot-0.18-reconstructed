@@ -83,7 +83,9 @@ export async function startBoxExecDaemonProcess(options: BoxExecDaemonProcessOpt
       SAND_BOX_WORKSPACE_ROOT: options.workspaceRoot,
       SAND_BOX_TERMINALS_DIRECTORY: options.terminalsDirectory,
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    // The IPC channel is an ownership lease: even SIGKILL of this host closes
+    // it, allowing the daemon to release its port and stop its own jobs.
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
   if (child.pid === undefined) throw new Error("box exec-daemon child did not receive a pid");
   const exited = childExit(child);

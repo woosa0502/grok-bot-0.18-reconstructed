@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
@@ -14,7 +14,7 @@ export const LOCAL_DOCKER_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironment
 export const LOCAL_DOCKER_BOX_CONTAINER = "grok-bot-local-vm";
 export const LOCAL_DOCKER_GATEWAY_URL = "http://127.0.0.1:1340";
 export const LOCAL_DOCKER_OWNER_LABEL = "com.grok-bot.local-vm=1";
-export const LOCAL_DOCKER_SCHEMA_VERSION = "6";
+export const LOCAL_DOCKER_SCHEMA_VERSION = "7";
 const READY_TIMEOUT_MS = 180_000;
 const OPTIONAL_CREDENTIAL_TIMEOUT_MS = 3_000;
 
@@ -117,41 +117,108 @@ async function isDirectory(path: string): Promise<boolean> {
   try { return (await stat(path)).isDirectory(); } catch { return false; }
 }
 
-async function stageCurrentHostBundle(settingsPath: string): Promise<LocalHostBundle> {
-  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
-  const readRuntime = async (relative: string): Promise<Buffer> => {
-    const candidates = [resolve(moduleDirectory, `../${relative}`), resolve(moduleDirectory, `../../${relative}`)];
+async function runtimeDependencyDigest(directory: string): Promise<string> {
+  const root = await realpath(directory);
+  const hash = createHash("sha256");
+  const visit = async (path: string): Promise<void> => {
+    const metadata = await lstat(path);
+    const name = relative(directory, path).split(sep).join("/");
+    if (metadata.isSymbolicLink()) {
+      const target = await readlink(path);
+      const resolvedTarget = relative(root, await realpath(path));
+      if (isAbsolute(target) || isAbsolute(resolvedTarget) || resolvedTarget === ".." || resolvedTarget.startsWith(`..${sep}`)) {
+        throw new Error(`Local runtime dependency symlink escapes its portable tree: ${path}`);
+      }
+      hash.update(JSON.stringify([name, "symlink", target]));
+    } else if (metadata.isDirectory()) {
+      hash.update(JSON.stringify([name, "directory", metadata.mode & 0o777]));
+      for (const child of (await readdir(path)).sort()) await visit(join(path, child));
+    } else if (metadata.isFile()) {
+      const digest = createHash("sha256").update(await readFile(path)).digest("hex");
+      hash.update(JSON.stringify([name, "file", metadata.mode & 0o777, digest]));
+    } else {
+      throw new Error(`Unsupported local runtime dependency entry: ${path}`);
+    }
+  };
+  await visit(directory);
+  return hash.digest("hex");
+}
+
+export async function stageCurrentHostBundle(settingsPath: string, moduleDirectory = dirname(fileURLToPath(import.meta.url))): Promise<LocalHostBundle> {
+  const readRuntime = async (runtimeRelativePath: string): Promise<{ path: string; bytes: Buffer }> => {
+    const candidates = [resolve(moduleDirectory, `../${runtimeRelativePath}`), resolve(moduleDirectory, `../../${runtimeRelativePath}`)];
     for (const candidate of candidates) {
-      try { return await readFile(candidate); } catch {}
+      try { return { path: candidate, bytes: await readFile(candidate) }; } catch {}
     }
     throw new Error(`The reconstructed runtime is unavailable at ${candidates.join(" or ")}; refusing to start a stock local VM.`);
   };
-  const hostBytes = await readRuntime("host/host-main.cjs");
-  const boxExecDaemonBytes = await readRuntime("box-exec-daemon/main.cjs");
-  const sha256 = createHash("sha256").update(hostBytes).digest("hex");
+  const host = await readRuntime("host/host-main.cjs");
+  const { bytes: boxExecDaemonBytes } = await readRuntime("box-exec-daemon/main.cjs");
+  // Electron can read files inside ASAR, but Docker needs the actual unpacked tree.
+  const dependencies = join(dirname(host.path), "node_modules").replace(/\.asar([/\\])/g, ".asar.unpacked$1");
+  const requiredPackage = join(dependencies, "@earendil-works", "pi-coding-agent", "package.json");
+  try {
+    const manifest = JSON.parse(await readFile(requiredPackage, "utf8")) as { name?: unknown };
+    if (manifest.name !== "@earendil-works/pi-coding-agent") throw new Error("Unexpected package identity.");
+  } catch (error) {
+    throw new Error(`The reconstructed host dependency closure is unavailable at ${requiredPackage}; refusing to start a stock local VM.`, { cause: error });
+  }
+  const dependencySha256 = await runtimeDependencyDigest(dependencies);
   const boxExecDaemonSha256 = createHash("sha256").update(boxExecDaemonBytes).digest("hex");
+  // Retain the existing ownership label, now identifying all delivered runtime bytes.
+  const sha256 = createHash("sha256").update(host.bytes).update(dependencySha256).update(boxExecDaemonSha256).digest("hex");
   const directory = join(dirname(settingsPath), "local-docker-runtime", `${sha256}-${boxExecDaemonSha256}`);
-  const persistRuntime = async (name: string, bytes: Buffer): Promise<string> => {
-    const target = join(directory, name);
-    await mkdir(dirname(target), { recursive: true });
-    try {
-      const existing = await readFile(target);
-      if (!existing.equals(bytes)) throw new Error(`Content-addressed local runtime ${target} has unexpected bytes.`);
-    } catch (error) {
-      if (error instanceof Error && !Reflect.has(error, "code")) throw error;
-      const temporary = `${target}.${process.pid}.tmp`;
-      await writeFile(temporary, bytes, { mode: 0o600 });
-      await rename(temporary, target);
+  const verifyRuntime = async (target: string): Promise<void> => {
+    const [runtimeDirectory, dependencyDirectory, hostFile, daemonDirectory, daemonFile] = await Promise.all([
+      lstat(target),
+      lstat(join(target, "node_modules")),
+      lstat(join(target, "host-main.cjs")),
+      lstat(join(target, "box-exec-daemon")),
+      lstat(join(target, "box-exec-daemon", "main.cjs")),
+    ]);
+    if (!runtimeDirectory.isDirectory() || !dependencyDirectory.isDirectory() || !hostFile.isFile()
+      || !daemonDirectory.isDirectory() || !daemonFile.isFile()) {
+      throw new Error(`Content-addressed local runtime ${target} has unexpected file layout.`);
     }
-    return target;
+    if (!(await readFile(join(target, "host-main.cjs"))).equals(host.bytes)
+      || !(await readFile(join(target, "box-exec-daemon", "main.cjs"))).equals(boxExecDaemonBytes)
+      || await runtimeDependencyDigest(join(target, "node_modules")) !== dependencySha256) {
+      throw new Error(`Content-addressed local runtime ${target} has unexpected bytes or permissions.`);
+    }
   };
-  await mkdir(directory, { recursive: true });
+  let exists = false;
+  try { await stat(directory); exists = true; } catch (error) {
+    if (!(error instanceof Error) || Reflect.get(error, "code") !== "ENOENT") throw error;
+  }
+  if (!exists) {
+    await mkdir(dirname(directory), { recursive: true });
+    const temporary = await mkdtemp(join(dirname(directory), ".stage-"));
+    try {
+      await chmod(temporary, 0o755);
+      await cp(dependencies, join(temporary, "node_modules"), { recursive: true, verbatimSymlinks: true });
+      await writeFile(join(temporary, "host-main.cjs"), host.bytes, { mode: 0o600 });
+      await mkdir(join(temporary, "box-exec-daemon"));
+      await writeFile(join(temporary, "box-exec-daemon", "main.cjs"), boxExecDaemonBytes, { mode: 0o600 });
+      await verifyRuntime(temporary);
+      try { await rename(temporary, directory); } catch (error) {
+        if (!(error instanceof Error) || !["EEXIST", "ENOTEMPTY"].includes(String(Reflect.get(error, "code")))) throw error;
+      }
+    } finally { await rm(temporary, { recursive: true, force: true }); }
+  }
+  await verifyRuntime(directory);
   return {
-    path: await persistRuntime("host-main.cjs", hostBytes),
+    path: join(directory, "host-main.cjs"),
     sha256,
-    boxExecDaemonPath: await persistRuntime("box-exec-daemon/main.cjs", boxExecDaemonBytes),
+    boxExecDaemonPath: join(directory, "box-exec-daemon", "main.cjs"),
     boxExecDaemonSha256,
   };
+}
+
+export function localDockerRuntimeMountArguments(hostBundle: LocalHostBundle): string[] {
+  return [
+    "--mount", `type=bind,src=${dirname(hostBundle.path)},dst=/home/box/sand-host,readonly`,
+    "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=/home/box/box-exec-daemon,readonly`,
+  ];
 }
 
 async function localAuthMountArguments(): Promise<string[]> {
@@ -194,8 +261,7 @@ async function ensureLocalDockerBox(settingsPath: string, inferenceCredential?: 
       "--publish", "127.0.0.1:1337:1337", "--publish", "127.0.0.1:1339:1339", "--publish", "127.0.0.1:1340:1340",
       "--publish", "127.0.0.1:6080:6080", "--publish", "127.0.0.1:6081:6081", "--publish", "127.0.0.1:8790:8790",
       "--volume", "grok-bot-local-vm-workspace:/workspace", "--volume", "grok-bot-local-vm-data:/home/box/sand-data",
-      "--mount", `type=bind,src=${hostBundle.path},dst=/home/box/sand-host/host-main.cjs,readonly`,
-      "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=/home/box/box-exec-daemon,readonly`,
+      ...localDockerRuntimeMountArguments(hostBundle),
       ...(inferenceFile == null ? [] : ["--mount", `type=bind,src=${dirname(inferenceFile)},dst=/run/grok-bot,readonly`]),
       ...authMounts,
       LOCAL_DOCKER_BOX_IMAGE,

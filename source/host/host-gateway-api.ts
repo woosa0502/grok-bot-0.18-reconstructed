@@ -3,6 +3,10 @@ import {
   parseCoordinatorAgentThreadRequest,
   parseCoordinatorTranscriptWindowRequest,
 } from "../shared/rpc/coordinator.js";
+import { generateBotTemplateDraft } from "./extensions/inference/template-draft.js";
+import { reasoningEffortFromSelection } from "../shared/agents/sand-agent-model.js";
+import { SAND_BOX_AWAIT_SHELL_TOOL_NAME, SAND_BOX_READ_TOOL_NAME, SAND_BOX_SHELL_TOOL_NAME } from "../shared/agents/agent-tool-names.js";
+import { isLocalCodexMode } from "../shared/node/local-codex-account.js";
 
 export const HOST_CAPABILITIES = [
   "orderedReplicasV1",
@@ -74,6 +78,7 @@ export function createHostGatewayApi(
   const sharing = deps.extensions.api("cross-user-sharing");
   const now = deps.now ?? Date.now;
   const createAgentMintsByNonce = new Map<string, Promise<any>>();
+  const pendingAgentMintsByNonce = new Map<string, Promise<any>>();
 
   const markActive = (reason: "user_action" | "app_open") => {
     method(telemetry.analytics, "markActive")(reason);
@@ -289,16 +294,19 @@ export function createHostGatewayApi(
     createAgent: (args: any) => {
       const nonce = args.clientNonce;
       if (nonce == null || nonce.length === 0) return mintAgent(args);
-      const pending = createAgentMintsByNonce.get(nonce);
+      const pending = pendingAgentMintsByNonce.get(nonce) ?? createAgentMintsByNonce.get(nonce);
       if (pending != null) return pending;
 
       const minted = mintAgent(args);
-      createAgentMintsByNonce.set(nonce, minted);
-      void minted.catch(() => createAgentMintsByNonce.delete(nonce));
-      for (const oldest of createAgentMintsByNonce.keys()) {
-        if (createAgentMintsByNonce.size <= CREATE_AGENT_NONCE_LEDGER_CAP) break;
-        createAgentMintsByNonce.delete(oldest);
-      }
+      pendingAgentMintsByNonce.set(nonce, minted);
+      void minted.then(() => {
+        pendingAgentMintsByNonce.delete(nonce);
+        createAgentMintsByNonce.set(nonce, minted);
+        for (const oldest of createAgentMintsByNonce.keys()) {
+          if (createAgentMintsByNonce.size <= CREATE_AGENT_NONCE_LEDGER_CAP) break;
+          createAgentMintsByNonce.delete(oldest);
+        }
+      }, () => pendingAgentMintsByNonce.delete(nonce));
       return minted;
     },
     kickstartAgent: async (args: any) => ({
@@ -661,6 +669,32 @@ export function createHostGatewayApi(
     readAttachmentImage: (args: any) => method(attachments, "readImage")(args),
     readAttachmentText: (args: any) => method(attachments, "readText")(args),
     readAttachmentChunk: (args: any) => method(attachments, "readChunk")(args),
+    generateBotTemplateDraft: async (args: { prompt?: unknown }) => {
+      const state = await method(settings, "getHostSettings")();
+      const tools = await listRoutedMcpTools();
+      const reasoning = reasoningEffortFromSelection(state.agentDefaultModel);
+      return generateBotTemplateDraft(deps.extensions.api("inference").port, args, {
+        modelId: state.agentDefaultModel?.modelId,
+        ...(reasoning ? { reasoning } : {}),
+        language: state.userLanguage,
+        timeZone: state.userTimeZoneOverride ?? state.userTimeZone,
+        runtime: {
+          provider: state.inferenceProvider,
+          platform: process.platform,
+          localCodexMode: isLocalCodexMode(),
+          localComputerUse: process.env.SAND_LOCAL_COMPUTER_USE === "1",
+          hostWorkingDirectory: process.cwd(),
+          localToolPermission: state.localToolPermission,
+          builtInToolContracts: [
+            { name: SAND_BOX_READ_TOOL_NAME, purpose: "Inspect existing local workspace files and repository instructions" },
+            { name: SAND_BOX_SHELL_TOOL_NAME, purpose: "Inspect local paths, search/read/write workspace files, run installed development commands and tests" },
+            { name: SAND_BOX_AWAIT_SHELL_TOOL_NAME, purpose: "Collect ongoing local shell command results" },
+          ],
+          builtInToolActivation: "Production turn-toolset and host-runner-composition bind these separately from MCP when the workspace executor is ready. Check path, permissions and installed commands at execution; an empty MCP list does not remove local tools.",
+        },
+        mcpTools: tools.slice(0, 150).map((tool: any) => ({ name: tool.name, description: String(tool.description ?? "").slice(0, 500) })),
+      });
+    },
     getHostSettings: () => method(settings, "getHostSettings")(),
     setHostSettings: (args: any) => {
       const result = method(settings, "setHostSettings")(args);

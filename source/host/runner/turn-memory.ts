@@ -82,6 +82,7 @@ export async function runTurnMemory(
           `${MEMORY_EPISODE_PREFIX}${narrative}`,
           latestTimestamp,
           "log",
+          "legacy",
         );
       }
     } finally {

@@ -12,6 +12,7 @@ import {
 import { createTurnAgentStreamStart } from "./turn-agent-composition.js";
 import {
   createTurnRunShell,
+  SandTurnInterruptedBeforeDispatchError,
   type PreparedTurn,
   type TurnRunContext,
   type TurnRunOptions,
@@ -47,13 +48,22 @@ function linkTurnRunContext(
   base: Context,
   signal: AbortSignal,
 ): { readonly context: Context; readonly dispose: () => void } {
-  const [context, cancel] = base.withCancel();
+  // Context.withCancel installs an anonymous listener on its parent. Use a
+  // detached signal and own both links here so successful turns release the
+  // long-lived base context's listener as well as the shell's listener.
+  const [context, cancel] = base.withDetached().withCancel();
   const abort = () => cancel(signal.reason);
+  const abortBase = () => cancel(base.signal.reason);
+  if (base.signal.aborted) abortBase();
+  else base.signal.addEventListener("abort", abortBase, { once: true });
   if (signal.aborted) abort();
   else signal.addEventListener("abort", abort, { once: true });
   return {
     context,
-    dispose: () => signal.removeEventListener("abort", abort),
+    dispose: () => {
+      signal.removeEventListener("abort", abort);
+      base.signal.removeEventListener("abort", abortBase);
+    },
   };
 }
 
@@ -234,8 +244,6 @@ export function createProductionTurnRunShellAdapter(
   input: ProductionTurnRunShellAdapterInput,
 ) {
   const prepared = new WeakMap<object, ProductionTurnRunShellPreparedTurn>();
-  let activeOwner: ProductionTurnAgentOwner | undefined;
-  let activePrepared: ProductionTurnRunShellPreparedTurn | undefined;
   const host: TurnRunShellHost = {
     isSubagentRunner: input.isSubagentRunner,
     ...(input.subagentType === undefined ? {} : { subagentType: input.subagentType }),
@@ -267,10 +275,19 @@ export function createProductionTurnRunShellAdapter(
     ): Promise<PreparedTurn> {
       const linked = linkTurnRunContext(input.context(), context.signal);
       const updateRelay: ProductionTurnRunShellPreparedTurn["updateRelay"] = {};
+      let owner: ProductionTurnAgentOwner | undefined;
+      let disposed = false;
+      const ownsRun = (): boolean => !disposed && context.ownsRun?.() !== false;
+      const dispose = (): void => {
+        if (disposed) return;
+        disposed = true;
+        delete updateRelay.callbacks;
+        linked.dispose();
+        owner?.dispose();
+      };
       const emitUpdate = (update: ForwardedUpdate): void => {
-        const callbacks = activePrepared === updateRelay.prepared
-          ? updateRelay.callbacks
-          : undefined;
+        if (!ownsRun()) return;
+        const callbacks = updateRelay.callbacks;
         if (callbacks !== undefined) {
           if (update.type === "text-delta" && typeof update.text === "string") {
             callbacks.collectText(update.text);
@@ -297,19 +314,25 @@ export function createProductionTurnRunShellAdapter(
         }
       };
       try {
-        const owner = await input.createOwner({
+        owner = await input.createOwner({
           requestId: context.requestId,
           runOptions: options,
           context: linked.context,
-          cancelThisRun: input.cancelThisRun,
+          cancelThisRun: context.cancelThisRun ?? input.cancelThisRun,
           emitUpdate,
         });
+        if (context.signal.aborted || !ownsRun()) {
+          throw new SandTurnInterruptedBeforeDispatchError();
+        }
         const productionInput = await input.createRunInput({
           owner,
           runContext: linked.context,
           prompt,
           options: input.promptOptions(prompt, options),
         });
+        if (context.signal.aborted || !ownsRun()) {
+          throw new SandTurnInterruptedBeforeDispatchError();
+        }
         const result: ProductionTurnRunShellPreparedTurn = {
           action: productionInput.action,
           baseState: cloneBaseTurnCheckpoint(productionInput.baseState),
@@ -320,14 +343,13 @@ export function createProductionTurnRunShellAdapter(
           runContext: linked.context,
           disposeRunContext: linked.dispose,
           updateRelay,
+          dispose,
         };
         updateRelay.prepared = result;
-        activeOwner = owner;
-        activePrepared = result;
         prepared.set(result, result);
         return result;
       } catch (error) {
-        linked.dispose();
+        dispose();
         throw error;
       }
     },
@@ -366,19 +388,7 @@ export function createProductionTurnRunShellAdapter(
     ...(input.memoryStore == null ? {} : { memoryStore: input.memoryStore }),
     ...(input.episodeProgress == null ? {} : { episodeProgress: input.episodeProgress }),
     ...(input.isMemorableExchange == null ? {} : { isMemorableExchange: input.isMemorableExchange }),
-    onRunUnwind: () => {
-      const owner = activeOwner;
-      activeOwner = undefined;
-      if (activePrepared !== undefined) {
-        delete activePrepared.updateRelay.callbacks;
-      }
-      // The stream context is linked to the shell controller and must not
-      // retain the outer run's abort listener after owner disposal.
-      activePrepared?.disposeRunContext();
-      activePrepared = undefined;
-      owner?.dispose();
-      input.onRunUnwind?.();
-    },
+    ...(input.onRunUnwind === undefined ? {} : { onRunUnwind: input.onRunUnwind }),
   };
   return createTurnRunShell(host);
 }

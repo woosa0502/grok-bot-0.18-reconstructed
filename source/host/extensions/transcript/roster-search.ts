@@ -17,28 +17,44 @@ export class RosterSearch {
     limit = this.tm.contentSearch.maxResults,
   ): Promise<TranscriptSearchResult[]> {
     const normalized = query.trim().toLowerCase();
-    if (normalized.length === 0) return [];
+    if (normalized.length === 0 || limit <= 0) return [];
     if (this.tm.contentSearch.isSearchReady) {
-      const indexed = await this.tm.contentSearch.searchMessages({
-        query: normalized,
-        limit: limit + this.tm.contentSearch.maxMatchesPerAgent,
-      });
+      const liveAgentId = this.tm.sessions.inMemoryTranscriptAgentId;
+      const liveEntries = liveAgentId == null ? [] : getTranscript();
+      const excludedAgentIds = new Set<string>(liveAgentId == null ? [] : [liveAgentId]);
+      let indexed: TranscriptSearchResult[] | null;
+      // Deletion and index cleanup are asynchronous. Refill only when stale
+      // agent hits consumed the SQL limit, excluding them before the next LIMIT.
+      // This avoids opening every agent DB to build a roster on each search.
+      for (;;) {
+        indexed = await this.tm.contentSearch.searchMessages({
+          query: normalized,
+          limit,
+          excludedAgentIds: [...excludedAgentIds],
+        });
+        if (indexed == null) break;
+        const previousExcludedCount = excludedAgentIds.size;
+        for (const match of indexed) {
+          if (!this.tm.sessionStore.agentExists(match.agentId)) {
+            excludedAgentIds.add(match.agentId);
+          }
+        }
+        if (excludedAgentIds.size === previousExcludedCount) break;
+      }
       if (indexed != null) {
-        const liveAgentId = this.tm.sessions.inMemoryTranscriptAgentId;
         const results: TranscriptSearchResult[] = indexed.filter(
           (match: TranscriptSearchResult) =>
             match.agentId !== liveAgentId &&
             this.tm.sessionStore.agentExists(match.agentId),
         );
         if (liveAgentId != null) {
-          const entries = getTranscript();
           const newestLiveMs =
-            entries.reduce(
+            liveEntries.reduce(
               (newest, entry) => Math.max(newest, entry.timestampMs ?? 0),
               0,
             ) || Date.now();
           for (const match of this.tm.contentSearch.findTranscriptMatches(
-            entries,
+            liveEntries,
             normalized,
           )) {
             results.push({

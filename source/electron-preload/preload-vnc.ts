@@ -150,20 +150,28 @@ export function installVncClipboardBridge(options: {
   const edge = options.edge;
   const document = options.document;
   let lastBoxTextSentToHost = "";
+  let boxClipboardWriteInFlight = false;
   let lastHostTextSentToBox = "";
   let lastGestureAt = 0;
   const visibility = createViewerVisibilityGate();
   const textarea = (): VncTextareaPort | null => getVncClipboardTextarea(document, options.isTextarea);
   function mirrorBoxClipboardToHost(): void {
-    if (!visibility.isVisible()) return;
+    if (!visibility.isVisible() || boxClipboardWriteInFlight) return;
     const element = textarea();
     if (element == null) return;
     const text = element.value;
     if (text.length === 0 || text === lastHostTextSentToBox || text === lastBoxTextSentToHost) return;
-    lastBoxTextSentToHost = text;
-    void edge.writeClipboard({ text }).catch((error: unknown) => {
-      options.warn?.("vnc clipboard write failed", errorMessage(error));
-    });
+    boxClipboardWriteInFlight = true;
+    void (async () => {
+      try {
+        await edge.writeClipboard({ text });
+        lastBoxTextSentToHost = text;
+      } catch (error) {
+        options.warn?.("vnc clipboard write failed", errorMessage(error));
+      } finally {
+        boxClipboardWriteInFlight = false;
+      }
+    })();
   }
   function mirrorHostClipboardToBox(): void {
     if (!visibility.isVisible()) return;
@@ -206,6 +214,7 @@ export function installVncUserPresenceReporter(options: {
   readonly window: VncEventTargetPort | null;
   readonly document: VncDocumentPort | null;
   readonly location: VncLocationPort | null;
+  readonly scheduleRetry?: (callback: () => void, delayMs: number) => () => void;
   readonly warn?: VncWarn;
 }): void {
   if (options.edge == null || options.window == null || options.document == null) return;
@@ -216,18 +225,62 @@ export function installVncUserPresenceReporter(options: {
   }
   const edge = options.edge;
   let lastSent: boolean | null = null;
+  let desiredPresence: boolean | null = null;
+  let reportInFlight = false;
+  let reportRevision = 0;
+  let pageHidden = false;
+  let retryCount = 0;
+  let cancelRetry: (() => void) | null = null;
+  const scheduleRetry = options.scheduleRetry ?? ((callback, delayMs) => {
+    const timer = setTimeout(callback, delayMs);
+    return () => clearTimeout(timer);
+  });
+  function flushPresence(): void {
+    if (reportInFlight || desiredPresence === null || desiredPresence === lastSent) return;
+    const isPresent = desiredPresence;
+    const startedRevision = reportRevision;
+    reportInFlight = true;
+    let failed = false;
+    void (async () => {
+      try {
+        await edge.reportUserPresence({ isPresent });
+        lastSent = isPresent;
+        retryCount = 0;
+      } catch (error) {
+        failed = true;
+        options.warn?.("vnc user presence report failed", errorMessage(error));
+      } finally {
+        reportInFlight = false;
+        // Preserve events received while awaiting IPC without spinning on one rejection.
+        if (desiredPresence !== isPresent || reportRevision > startedRevision) flushPresence();
+        else if (failed && !pageHidden && retryCount < 2) {
+          retryCount += 1;
+          cancelRetry = scheduleRetry(() => {
+            cancelRetry = null;
+            flushPresence();
+          }, 250 * retryCount);
+        }
+      }
+    })();
+  }
   function report(isPresent: boolean): void {
-    if (isPresent === lastSent) return;
-    lastSent = isPresent;
-    void edge.reportUserPresence({ isPresent }).catch((error: unknown) => {
-      options.warn?.("vnc user presence report failed", errorMessage(error));
-    });
+    if (pageHidden && isPresent) return;
+    cancelRetry?.();
+    cancelRetry = null;
+    if (desiredPresence !== isPresent) retryCount = 0;
+    desiredPresence = isPresent;
+    reportRevision += 1;
+    flushPresence();
   }
   options.document.documentElement.addEventListener("mouseenter", () => report(true));
   options.document.documentElement.addEventListener("mouseleave", () => report(false));
   options.document.addEventListener("mousemove", () => report(true), { passive: true });
   options.window.addEventListener("blur", () => report(false));
-  options.window.addEventListener("pagehide", () => report(false), { once: true });
+  options.window.addEventListener("pagehide", () => {
+    pageHidden = true;
+    // Timers cannot guarantee delivery after this webview is destroyed.
+    report(false);
+  }, { once: true });
 }
 
 export function installVncHostKeyForwarder(options: {

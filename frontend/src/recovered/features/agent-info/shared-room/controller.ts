@@ -54,7 +54,7 @@ const EMPTY_SNAPSHOT: SharedRoomSnapshot = {
 function sameContext(left: SharedRoomContext | null, right: SharedRoomContext | null): boolean {
   if (left === right) return true;
   if (left == null || right == null) return false;
-  return left.roomId === right.roomId && left.agentId === right.agentId && left.accountGeneration === right.accountGeneration && left.agents.length === right.agents.length && left.agents.every((agent, index) => agent.id === right.agents[index]?.id && agent.name === right.agents[index]?.name && agent.isGroup === right.agents[index]?.isGroup);
+  return left.roomId === right.roomId && left.agentId === right.agentId && left.accountGeneration === right.accountGeneration && left.agents.length === right.agents.length && left.agents.every((agent, index) => agent.id === right.agents[index]?.id && agent.name === right.agents[index]?.name && agent.isGroup === right.agents[index]?.isGroup && agent.remoteRoom?.roomId === right.agents[index]?.remoteRoom?.roomId && agent.isSharedRoom === right.agents[index]?.isSharedRoom);
 }
 
 function derive(context: SharedRoomContext | null, state: SharedSharingState | null, pending: ReadonlySet<string>, pendingAction: SharedRoomAction | null, invite: SharedInviteResult | null, isLoading: boolean, transport: "connected" | "down" | "unknown", failure: unknown | null): SharedRoomSnapshot {
@@ -233,7 +233,7 @@ export function createSharedRoomProvider(client: ProductionCoordinatorClient): S
       return runStateAction("respond", `request:${requestId}`, () => typedRespondToRoomJoinRequest(client, { requestId, isApproved }));
     },
     addOwnAgent(agent) {
-      if (context == null || !snapshot.isHost || snapshot.selfAgentIds.includes(agent.id) || snapshot.candidates.every((candidate) => candidate.id !== agent.id)) return Promise.resolve(false);
+      if (context == null || snapshot.room == null || snapshot.state?.selfAuthId == null || snapshot.selfAgentIds.includes(agent.id) || snapshot.candidates.every((candidate) => candidate.id !== agent.id)) return Promise.resolve(false);
       return runStateAction("add", `agent:${agent.id}`, () => typedAddOwnAgentToSharedRoom(client, { roomId: context?.roomId ?? "", agentId: agent.id, agentName: agent.name }));
     },
     removeOwnAgent(agentId) {

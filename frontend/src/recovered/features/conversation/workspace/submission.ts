@@ -12,7 +12,7 @@ export interface ComposerSubmission {
   prompt: string;
   /** Serialized Tiptap JSON; absent for an empty/plain compatibility draft. */
   richText?: string;
-  attachments: readonly { path: string; name: string }[];
+  attachments: readonly { path: string; name: string; committed?: boolean }[];
   createdAtMs: number;
   replyToId?: string;
   isFork?: boolean;
@@ -28,6 +28,8 @@ export interface ComposerSubmissionQueue {
   cancelQueued(nonce: string): boolean;
   flush(): void;
   snapshot(): readonly ComposerSubmissionRecord[];
+  /** Cancels this account's work without disposing the reusable queue. */
+  reset(): void;
   dispose(): void;
 }
 
@@ -106,6 +108,13 @@ export function createComposerSubmissionQueue(options: QueueOptions): ComposerSu
     }
   };
 
+  const reset = () => {
+    generation += 1;
+    activeByAgent.clear();
+    for (const record of records.values()) record.resolve("cancelled");
+    records.clear();
+  };
+
   return {
     submit(input) {
       if (disposed) return { nonce: input.nonce, completion: Promise.resolve("cancelled") };
@@ -136,13 +145,11 @@ export function createComposerSubmissionQueue(options: QueueOptions): ComposerSu
     snapshot() {
       return [...records.values()].map((record) => ({ ...record.input, phase: record.phase }));
     },
+    reset,
     dispose() {
       if (disposed) return;
       disposed = true;
-      generation += 1;
-      activeByAgent.clear();
-      for (const record of records.values()) record.resolve("cancelled");
-      records.clear();
+      reset();
     }
   };
 }

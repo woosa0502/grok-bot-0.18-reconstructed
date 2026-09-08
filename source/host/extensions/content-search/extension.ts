@@ -44,7 +44,7 @@ export const contentSearchExtension = defineHostExtension({
       get isSearchReady() { return index.isSearchReady; },
       maxMatchesPerAgent: AGENT_CONTENT_SEARCH_MAX_MATCHES_PER_AGENT,
       maxResults: AGENT_CONTENT_SEARCH_MAX_RESULTS,
-      searchMessages: ({ query, limit }: { query: string; limit: number }) => index.searchMessages(query, limit),
+      searchMessages: ({ query, limit, excludedAgentIds }: { query: string; limit: number; excludedAgentIds?: readonly string[] }) => index.searchMessages(query, limit, excludedAgentIds),
       searchMedia: ({ query, limit }: { query: string; limit: number }) => index.searchMedia(query, limit),
       findTranscriptMatches: findAgentContentMatches
     };

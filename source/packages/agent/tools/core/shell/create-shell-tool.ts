@@ -55,6 +55,11 @@ import { delayDevSmartModeClassifierIfRequested, type OneShotState } from "../..
 import { withToolExecutionTimeoutSuspended } from "../../tool-timeout-suspension.js";
 import type { ConversationStateHandle } from "../../../state.js";
 import { checkModelFacingShellUiAutomation } from "./model-facing-ui-automation-guard.js";
+import {
+  appendInterruptedShellOutputSnapshot,
+  clearInterruptedShellOutputSnapshot,
+  startInterruptedShellOutputSnapshot,
+} from "./interrupted-shell-output.js";
 
 /** The resource boundary owned by the shell executor lane (B1). */
 export type ShellToolResourceAccessor = ResourceAccessor<RemoteExecManager>;
@@ -514,6 +519,7 @@ function makeResultFromStream(command: string, workingDirectory: string, stdout:
 }
 
 async function executeStream(ctx: Context, executor: ShellStreamExecutor, args: ShellArgs, interaction: ShellToolInteractionHandler, meta: ShellToolExecutionMeta, options: ShellToolOptions, policy: SandboxPolicy | undefined): Promise<ShellResult> {
+  startInterruptedShellOutputSnapshot(meta.toolCallId);
   let stdout = "";
   let stderr = "";
   let interleavedOutput = "";
@@ -523,6 +529,10 @@ async function executeStream(ctx: Context, executor: ShellStreamExecutor, args: 
     ...(meta.hookContextCollector === undefined ? {} : { hookContextCollector: meta.hookContextCollector }),
   };
   for await (const event of executor.execute(ctx, args, executorOptions)) {
+    // Record received bytes before an observer can fail or trigger cancellation.
+    if (event.event.case === "stdout" || event.event.case === "stderr") {
+      appendInterruptedShellOutputSnapshot(meta.toolCallId, event.event.value.data);
+    }
     await options.onStreamEvent?.(ctx, event);
     switch (event.event.case) {
       case "stdout": stdout += event.event.value.data; interleavedOutput += event.event.value.data; break;
@@ -688,6 +698,12 @@ export function createShellTool(resourceAccessor: ShellToolResourceAccessor, opt
       finally { lock?.[Symbol.dispose](); }
     }, merged => createShellToolCall(new ShellToolCall({ args, result: merged })), meta.hookContextCollector);
     options.onTelemetry?.(ctx, { type: "finished", toolCallId: meta.toolCallId });
+    // Cancellation can settle the interaction before its stream finishes. Keep
+    // interrupted/error output for next-turn reconstruction; release only after
+    // an uninterrupted result has passed back through the interaction handler.
+    if (!ctx.signal.aborted && !interaction.getAbortSignal(ctx).aborted && !(result.result.case === "failure" && result.result.value.aborted)) {
+      clearInterruptedShellOutputSnapshot(meta.toolCallId);
+    }
     return result;
   };
   const toolName = options.toolName ?? (surface === "isolated_box" ? "run-command" : "run_terminal_cmd");

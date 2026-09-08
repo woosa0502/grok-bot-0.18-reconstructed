@@ -87,20 +87,24 @@ export class FileMemoryStore {
   recall(recentLimit = 20): { profile: MemoryRecord[]; recent: MemoryRecord[] } { const facts = this.facts(); return { profile: facts.filter((fact) => fact.kind === "profile").sort((a, b) => this.byRecent(a, b)).slice(0, MEMORY_PROFILE_PROMPT_LIMIT).map((fact) => this.record(fact)), recent: facts.filter((fact) => fact.kind === "log").sort((a, b) => this.byRecent(a, b)).slice(0, Math.max(0, Math.floor(recentLimit))).map((fact) => this.record(fact)) }; }
   listMemories(limit = 100): MemoryRecord[] { return this.facts().sort((a, b) => Number(b.kind === "profile") - Number(a.kind === "profile") || this.byRecent(a, b)).slice(0, Math.max(0, Math.floor(limit))).map((fact) => this.record(fact)); }
   countMemories(): number { return this.facts().length; }
-  addMemory(content: string, createdAt: number, kind: MemoryKind): MemoryRecord | null {
+  addMemory(content: string, createdAt: number, kind: MemoryKind, origin: "explicit" | "legacy" = this.dreaming?.isEnabled() ? "explicit" : "legacy"): MemoryRecord | null {
     const normalized = normalizeMemoryContent(content); if (!normalized) return null;
     const existing = this.facts().find((fact) => memoryDedupeKey(fact.content) === memoryDedupeKey(normalized));
-    if (existing != null) { if (this.dreaming?.isEnabled()) { this.clearTombstone(existing.content); this.clearOrigins(existing.content); this.markOrigin(existing.content, "explicit"); } return null; }
+    if (existing != null) { if (origin === "explicit") { this.clearTombstone(existing.content); this.clearOrigins(existing.content); this.markOrigin(existing.content, "explicit"); } return null; }
     const path = kind === "profile" ? this.profileFile : this.logFileForDate(createdAt), raw = this.read(path), base = raw || (kind === "profile" ? PROFILE_HEADER : LOG_HEADER);
     this.dir.writeFileAtomic(path, `${base}${base.endsWith("\n") ? "" : "\n"}${serializeFactLine(normalized, createdAt)}\n`);
-    if (this.dreaming?.isEnabled()) { this.clearTombstone(normalized); this.clearOrigins(normalized); this.markOrigin(normalized, "explicit"); }
+    if (origin === "explicit") { this.clearTombstone(normalized); this.clearOrigins(normalized); this.markOrigin(normalized, "explicit"); }
     return { id: memoryIdFor(normalized), content: normalized, createdAt, kind };
   }
-  removeMemoryByContent(content: string): boolean { const normalized = normalizeMemoryContent(content); return normalized ? this.removeMemory(memoryIdFor(normalized)) : false; }
+  removeMemoryByContent(content: string, options: { preserveExplicit?: boolean } = {}): boolean {
+    const normalized = normalizeMemoryContent(content);
+    if (!normalized || options.preserveExplicit && this.memoryOrigin(normalized) === "explicit") return false;
+    return this.removeMemory(memoryIdFor(normalized));
+  }
   removeMemory(id: string): boolean {
     for (const fact of this.facts()) {
       if (fact.id !== id) continue; const raw = this.read(fact.path), lines = raw.split("\n"); lines.splice(fact.line, 1); this.dir.writeFileAtomic(fact.path, lines.join("\n"));
-      if (this.dreaming?.isEnabled()) { this.clearOrigins(fact.content); this.markTombstone(fact.content); }
+      if (this.dreaming?.isEnabled() || fact.origin !== "legacy") { this.clearOrigins(fact.content); this.markTombstone(fact.content); }
       return true;
     }
     return false;
@@ -123,11 +127,13 @@ export class FileMemoryStore {
       changed.add(change.id);
       if (change.action === "update" && !normalizeMemoryContent(change.content)) return "invalid";
     }
-    for (const change of changes) {
-      if (change.action === "create") { const content = normalizeMemoryContent(change.content); if (!this.isTombstoned(content)) this.addSynthesized(content, now, change.kind); continue; }
-      if (change.action === "remove") { this.removeFactById(change.id, false); continue; }
-      const content = normalizeMemoryContent(change.content); this.removeFactById(change.id, false); if (!this.isTombstoned(content)) this.addSynthesized(content, now, change.kind);
-    }
+    // Every target id refers to the original snapshot. Remove those targets
+    // before adding any results, including a result that reuses a target's id.
+    // Otherwise create B/remove A/remove B loses B, and A->B/B->C loses B.
+    for (const change of changes) if (change.action !== "create") this.removeFactById(change.id, false);
+    const additions = changes.filter((change) => change.action !== "remove").map((change) => ({ ...change, content: normalizeMemoryContent(change.content) }));
+    additions.sort((a, b) => a.content.localeCompare(b.content) || a.kind.localeCompare(b.kind));
+    for (const { content, kind } of additions) if (!this.isTombstoned(content)) this.addSynthesized(content, now, kind);
     this.markTemporalReview(now); return "committed";
   }
   /**
@@ -145,7 +151,7 @@ export class FileMemoryStore {
   hasMemories(): boolean { return this.countMemories() > 0; }
   isTemporalReviewDue(now: number): boolean { const next = Number.parseInt(this.read(this.refreshFile).trim(), 10); return !Number.isFinite(next) || next <= now; }
   markTemporalReview(now: number): void { this.dir.writeFileAtomic(this.refreshFile, `${now + MEMORY_SYNTHESIS_REFRESH_INTERVAL_MS}\n`); }
-  clearMemories(): void { const facts = this.facts(); if (!facts.length) return; if (this.dreaming?.isEnabled()) for (const fact of facts) { this.clearOrigins(fact.content); this.markTombstone(fact.content); } rmSync(this.logDir, { recursive: true, force: true }); this.dir.writeFileAtomic(this.profileFile, PROFILE_HEADER); }
+  clearMemories(): void { const facts = this.facts(); if (!facts.length) return; for (const fact of facts) if (this.dreaming?.isEnabled() || fact.origin !== "legacy") { this.clearOrigins(fact.content); this.markTombstone(fact.content); } rmSync(this.logDir, { recursive: true, force: true }); this.dir.writeFileAtomic(this.profileFile, PROFILE_HEADER); }
   private readSynthesisState(): { fingerprint: string; facts: MemoryFact[] } { const files = [{ path: this.profileFile, raw: this.read(this.profileFile), kind: "profile" as const }, ...this.logFiles().map((path) => ({ path, raw: this.read(path), kind: "log" as const }))], hash = createHash("sha256"), facts: MemoryFact[] = []; for (const file of files) { hash.update(file.path).update("\0").update(file.raw).update("\0"); facts.push(...parseFacts(file.raw, file.kind, file.path, facts.length).map((fact) => ({ ...fact, origin: this.memoryOrigin(fact.content) }))); } return { fingerprint: hash.digest("hex"), facts }; }
 }
 
@@ -162,7 +168,25 @@ export class UserMemoryStore {
   constructor(readonly sandRoot: string, readonly ownAgentId: string, readonly resolveAgentName: (id: string) => string, readonly debounce: DebouncePolicy) {}
   getLocation(): string { return getUserMemoryDir(this.sandRoot); }
   getOwnShardLocation(): string { return getUserMemoryShardDir(this.sandRoot, this.ownAgentId); }
-  recall(limits: { profile: number; recent: number } = { profile: 50, recent: 20 }) { const profile: Array<MemoryRecord & { agentId: string; agentName: string }> = [], recent: Array<MemoryRecord & { agentId: string; agentName: string }> = []; let ids: string[] = []; try { ids = readdirSync(getUserMemoryShardsDir(this.sandRoot)); } catch {} for (const id of ids) { const store = new FileMemoryStore(getUserMemoryShardDir(this.sandRoot, id), this.debounce), recalled = store.recall(limits.recent); profile.push(...recalled.profile.map((item) => ({ ...item, agentId: id, agentName: this.resolveAgentName(id) }))); recent.push(...recalled.recent.map((item) => ({ ...item, agentId: id, agentName: this.resolveAgentName(id) }))); } return { profile: profile.slice(0, limits.profile), recent: recent.sort((a, b) => b.createdAt - a.createdAt).slice(0, limits.recent) }; }
+  recall(limits: { profile: number; recent: number } = { profile: 50, recent: 20 }) {
+    type SharedMemory = MemoryRecord & { agentId: string; agentName: string };
+    const profile: SharedMemory[] = [], recent: SharedMemory[] = [];
+    let ids: string[] = []; try { ids = readdirSync(getUserMemoryShardsDir(this.sandRoot)).sort(); } catch {}
+    for (const id of ids) {
+      const store = new FileMemoryStore(getUserMemoryShardDir(this.sandRoot, id), this.debounce);
+      // A per-shard cap can discard unique facts before global deduplication.
+      for (const item of store.listMemories(Infinity)) {
+        (item.kind === "profile" ? profile : recent).push({ ...item, agentId: id, agentName: this.resolveAgentName(id) });
+      }
+    }
+    const merge = (records: SharedMemory[], limit: number): SharedMemory[] => {
+      const seen = new Set<string>();
+      return records.sort((a, b) => b.createdAt - a.createdAt || a.content.localeCompare(b.content) || a.agentId.localeCompare(b.agentId)).filter((record) => {
+        const key = memoryDedupeKey(record.content); if (seen.has(key)) return false; seen.add(key); return true;
+      }).slice(0, Math.max(0, Math.floor(limit)));
+    };
+    return { profile: merge(profile, limits.profile), recent: merge(recent, limits.recent) };
+  }
 }
 export class ProjectMemoryStore {
   constructor(readonly sandRoot: string, readonly ownAgentId: string, readonly membership: AgentProjectMembership, readonly resolveAgentName: (id: string) => string, readonly debounce: DebouncePolicy) {}
@@ -180,7 +204,7 @@ export class MemoryService {
   enableMemorySynthesis(service: { start(): void; dispose(): void; recordTurn?(agentId: string, exchange: unknown): void }): void { this.synthesis?.dispose(); this.synthesis = service; service.start(); }
   list({ agentId }: { agentId: string }): MemoryRecord[] { return this.storeForAgent(agentId).listMemories(); }
   /** Writes one fact for an agent from outside a turn (the phone's autofill / form). Returns null when the content is empty or a duplicate. */
-  add({ agentId, content, kind }: { agentId: string; content: string; kind: MemoryKind }): MemoryRecord | null { const record = this.storeForAgent(agentId).addMemory(content, Date.now(), kind); if (record != null) this.emit(); return record; }
+  add({ agentId, content, kind }: { agentId: string; content: string; kind: MemoryKind }): MemoryRecord | null { const record = this.storeForAgent(agentId).addMemory(content, Date.now(), kind, "explicit"); if (record != null) this.emit(); return record; }
   // Callers name the key both ways (the transcript manager sends memoryId); accept either so a delete from the UI or the phone actually removes the line.
   remove({ agentId, id, memoryId }: { agentId: string; id?: string; memoryId?: string }): boolean { const key = id ?? memoryId; if (key === undefined) return false; const removed = this.storeForAgent(agentId).removeMemory(key); if (removed) this.emit(); return removed; }
   clear({ agentId }: { agentId: string }): void { this.storeForAgent(agentId).clearMemories(); this.emit(); }

@@ -118,6 +118,7 @@ export const SAND_GATEWAY_COMMANDS = {
   readAttachmentImage: (api: GatewayApi, body: string) => api.readAttachmentImage(parseCommandArgs(body)),
   readAttachmentText: (api: GatewayApi, body: string) => api.readAttachmentText(parseCommandArgs(body)),
   readAttachmentChunk: (api: GatewayApi, body: string) => api.readAttachmentChunk(parseCommandArgs(body)),
+  generateBotTemplateDraft: (api: GatewayApi, body: string) => api.generateBotTemplateDraft(parseCommandArgs(body)),
   getHostSettings: (api: GatewayApi) => api.getHostSettings(),
   setHostSettings: (api: GatewayApi, body: string) => api.setHostSettings(parseCommandArgs(body)),
   setBoxSecrets: (api: GatewayApi, body: string) => api.setBoxSecrets(parseCommandArgs(body)),

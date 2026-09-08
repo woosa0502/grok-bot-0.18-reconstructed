@@ -40,6 +40,7 @@ await cp(builtAsar, packagedAsar);
 await cp(builtAsarUnpacked, packagedUnpacked, {
   recursive: true,
   dereference: false,
+  verbatimSymlinks: true,
   preserveTimestamps: true
 });
 

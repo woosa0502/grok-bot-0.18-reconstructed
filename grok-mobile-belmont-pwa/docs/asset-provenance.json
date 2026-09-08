@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "androidReference": {
+    "package": "ai.x.grok.bot",
+    "versionName": "1.5.0",
+    "versionCode": 120,
+    "evidence": "jadx_canonical/resources/AndroidManifest.xml",
+    "evidenceSha256": "5545a9d3f463f4b881679b1547bc9277e8c1313de6d778112e42868faa3904c7"
+  },
+  "scope": "Minimal runtime assets and one surface identifier inventory; full APK, credentials, profiles and sessions are not inputs.",
+  "publicationStatus": "Local reconstruction inputs; manifest records provenance and embedded font notices, not redistribution permission for assets with undetermined licenses.",
+  "assets": [
+    {
+      "path": "public/assets/babygrok-geometry.json",
+      "bytes": 67404,
+      "sha256": "ec08c691645bf48dde173b84ede2de9ec0b03b4db80b3aa37db8ad8cc65d87ac",
+      "origin": "Grok Bot Android 1.5.0 (120)",
+      "sourcePath": "raw_apk_contents/base/assets/babygrok-geometry.json",
+      "license": "LicenseRef-Upstream-Undetermined",
+      "modification": "none"
+    },
+    {
+      "path": "public/assets/fonts/CursorIcons16-Regular.ttf",
+      "bytes": 323020,
+      "sha256": "c4c4f82dadb2ca3f061eef4744eff3f8b9543b63eb8bf696bdba5cb3bfb913cc",
+      "origin": "Grok Bot Android 1.5.0 (120)",
+      "sourcePath": "raw_apk_contents/base/assets/fonts/CursorIcons16-Regular.ttf",
+      "license": "LicenseRef-Upstream-Undetermined",
+      "modification": "none",
+      "copyright": "Copyright 2025 Anysphere Inc. Designed by Minor Adventures."
+    },
+    {
+      "path": "public/assets/app-icon.png",
+      "bytes": 37967,
+      "sha256": "a69d0f8cf602237145062f192a1d012e849c5561ab161d190d5b579a70e4d619",
+      "origin": "Grok Bot Android 1.5.0 (120)",
+      "sourcePath": "ui_render_20260902/assets/extracted/app-icon.png",
+      "license": "LicenseRef-Upstream-Undetermined",
+      "modification": "none"
+    },
+    {
+      "path": "docs/evidence/screen-inventory.md",
+      "bytes": 1805,
+      "sha256": "9a0ce9d8db09aff56acad03684060b12e3fe0f2c869b40eaf500a1dcc7584499",
+      "origin": "Recovered screen identifier inventory",
+      "sourcePath": "ui_render_20260902/screen-inventory.md",
+      "license": "LicenseRef-Reconstruction-Evidence",
+      "modification": "none"
+    },
+    {
+      "path": "public/assets/fonts/PPNeueMontreal-Regular.otf",
+      "bytes": 196112,
+      "sha256": "69bcecee993d4564980d8e082d4f15a461fd1f7e8ebbc36e8533d9e95f0131f8",
+      "origin": "PP Neue Montreal personal v3 installation",
+      "sourcePath": "user-font-installation/pp-neue-montreal-personal-v3/PPNeueMontreal-Regular.otf",
+      "license": "LicenseRef-PP-Neue-Montreal-Personal-Unverified",
+      "modification": "none",
+      "copyright": "Copyright by Pangram Pangram Foundry. All rights reserved.",
+      "licenseEvidence": "Embedded OpenType name ID 13 directs users to Pangram Pangram Foundry for license details."
+    },
+    {
+      "path": "public/assets/fonts/PPNeueMontreal-Semibold.otf",
+      "bytes": 213064,
+      "sha256": "437ad49efdf9812ec50df7440fab56f66f1c8311ce9f276c1473919b63a1050d",
+      "origin": "PP Neue Montreal personal v3 installation",
+      "sourcePath": "user-font-installation/pp-neue-montreal-personal-v3/PPNeueMontreal-Semibold.otf",
+      "license": "LicenseRef-PP-Neue-Montreal-Personal-Unverified",
+      "modification": "none",
+      "copyright": "Copyright by Pangram Pangram Foundry. All rights reserved.",
+      "licenseEvidence": "Embedded OpenType name ID 13 directs users to Pangram Pangram Foundry for license details."
+    },
+    {
+      "path": "public/assets/fonts/PretendardVariable.ttf",
+      "bytes": 6739336,
+      "sha256": "3090ccde0442bb347aa7685d9ba8b17436a60682df6e8f92a9a670de14056e22",
+      "origin": "Pretendard 1.3.9 local installation",
+      "sourcePath": "user-font-installation/pretendard-1.3.9/PretendardVariable.ttf",
+      "license": "OFL-1.1",
+      "modification": "none",
+      "copyright": "Copyright 2023 Kil Hyung-jin",
+      "licenseEvidence": "Embedded OpenType name IDs 13 and 14",
+      "licenseUrl": "https://openfontlicense.org/open-font-license-official-text/"
+    }
+  ]
+}

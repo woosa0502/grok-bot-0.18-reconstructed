@@ -23,6 +23,7 @@ export function buildUpgradeResumePrompt(source: string): string {
 export interface UpgradeResumeMarker {
   agentId: string;
   markedAtMs: number;
+  markerId?: string;
   source?: string;
   automationId?: string;
   automationRunId?: string;
@@ -30,6 +31,7 @@ export interface UpgradeResumeMarker {
 
 export class UpgradeRecreateResume {
   private quiescingForUpgrade = false;
+  private readonly resumeAttempts = new Map<string, Promise<void>>();
 
   constructor(readonly tm: TranscriptManagerLike) {}
 
@@ -106,83 +108,156 @@ export class UpgradeRecreateResume {
     const pending: UpgradeResumeMarker[] =
       this.tm.upgradeResumeStore.listPending();
     if (pending.length === 0) return;
-    this.tm.upgradeResumeStore.clearAll();
     for (const marker of pending) {
-      if (!this.tm.sessions.isAgentGone(marker.agentId))
-        void this.resumeUpgradeAgent(marker);
+      void this.resumeUpgradeAgent(marker);
     }
   }
 
   async resumeUpgradeAgent(marker: UpgradeResumeMarker): Promise<void> {
+    const active = this.resumeAttempts.get(marker.agentId);
+    if (active != null) return active;
     const wasStopped = this.tm.captureAgentStopGuard?.(marker.agentId);
-    if (this.tm.isAgentUserStopped?.(marker.agentId) === true) return;
+    // Publish ownership before session resolution or any other asynchronous work.
+    const attempt = Promise.resolve()
+      .then(() => this.runUpgradeResumeAttempt(marker, wasStopped))
+      .finally(() => this.resumeAttempts.delete(marker.agentId));
+    this.resumeAttempts.set(marker.agentId, attempt);
+    return attempt;
+  }
+
+  private clearTerminalResume(
+    marker: UpgradeResumeMarker,
+    wasStopped?: () => boolean,
+  ): boolean {
+    if (
+      !this.tm.sessions.isAgentGone(marker.agentId) &&
+      this.tm.isAgentUserStopped?.(marker.agentId) !== true &&
+      wasStopped?.() !== true
+    ) return false;
+    this.tm.upgradeResumeStore?.clearIfPending?.(marker);
+    return true;
+  }
+
+  private async runUpgradeResumeAttempt(
+    marker: UpgradeResumeMarker,
+    wasStopped?: () => boolean,
+  ): Promise<void> {
+    if (this.clearTerminalResume(marker, wasStopped)) return;
+    if (!this.tm.execution.canExecute || this.quiescingForUpgrade) return;
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(marker.agentId);
     } catch {
+      this.clearTerminalResume(marker, wasStopped);
       return;
     }
-    if (wasStopped?.() === true || this.tm.groupChat.isGroupSession(session)) return;
-    const runner = this.tm.runnerRegistry.getRunner(session);
-    this.tm.runLifecycle.beginSessionRun(session);
+    if (
+      this.clearTerminalResume(marker, wasStopped) ||
+      this.tm.groupChat.isGroupSession(session) ||
+      !this.tm.execution.canExecute || this.quiescingForUpgrade
+    ) return;
     const resumedSource =
       marker.source === "notification"
         ? "background-revival"
         : (marker.source ?? "handoff-resume");
-    const ackToken =
-      resumedSource === "turn" || resumedSource === "handoff-resume"
+    let ackToken: string | undefined;
+    let beganRun = false;
+    let callbackRun: Promise<void> | undefined;
+    let finalized = false;
+    const finalize = (): void => {
+      if (finalized) return;
+      finalized = true;
+      this.clearTerminalResume(marker, wasStopped);
+      try {
+        this.tm.ackObligations.retireAckRunToken(session.id, ackToken);
+      } finally {
+        if (beganRun) this.tm.runLifecycle.endSessionRun(session);
+      }
+    };
+    const reportError = (error: unknown): void => {
+      this.tm.telemetry.reportAgentError({
+        source: "resume",
+        conversationId: session.id,
+        requestId: this.tm.runLifecycle.lastRequestIdBySession.get(session.id),
+        error: classifyAgentError(error),
+        detail: sandErrorDetail(error),
+      });
+      this.tm.trayErrors.pushError({
+        agentId: session.id,
+        title: "Agent failed to resume after host update",
+        ...describeAgentRunError(error),
+      });
+    };
+    try {
+      ackToken = resumedSource === "turn" || resumedSource === "handoff-resume"
         ? this.tm.ackObligations.mintAckRunToken(session.id)
         : undefined;
-    await this.tm.runLifecycle.enqueueExclusiveRun(
-      session.id,
-      async () => {
-        this.tm.turnRuntime.activeRequestSources.set(session.id, resumedSource);
-        try {
-          const automation =
-            resumedSource === "automation" && marker.automationId != null
-              ? session.automations.get(marker.automationId)
-              : null;
-          await runner.run(buildUpgradeResumePrompt(resumedSource), {
-            hidden: true,
-            ackToken,
-            isSilenceAllowed:
-              resumedSource === "automation" ||
-              resumedSource === "background-revival",
-            ...(automation == null
-              ? {}
-              : {
-                  automationWake: { id: automation.id, name: automation.name },
-                }),
-            requestSource: resumedSource,
-          });
-          await this.tm.roster.emitAgentUpdate(session.id);
-          this.tm.automationRuntime.emitAutomations(session);
-        } catch (error) {
-          this.tm.telemetry.reportAgentError({
-            source: "resume",
-            conversationId: session.id,
-            requestId: this.tm.runLifecycle.lastRequestIdBySession.get(
-              session.id,
-            ),
-            error: classifyAgentError(error),
-            detail: sandErrorDetail(error),
-          });
-          this.tm.trayErrors.pushError({
-            agentId: session.id,
-            title: "Agent failed to resume after host update",
-            ...describeAgentRunError(error),
-          });
-        } finally {
-          this.tm.ackObligations.retireAckRunToken(session.id, ackToken);
-          this.tm.runLifecycle.endSessionRun(session);
-        }
-      },
-      {
-        lane: "background",
-        source: "upgrade-resume",
-        ackToken,
-      },
-    );
+      this.tm.runLifecycle.beginSessionRun(session);
+      beganRun = true;
+      await this.tm.runLifecycle.enqueueExclusiveRun(
+        session.id,
+        () => {
+          callbackRun = (async () => {
+            try {
+              if (this.clearTerminalResume(marker, wasStopped)) return;
+              if (!this.tm.execution.canExecute || this.quiescingForUpgrade) return;
+              const runner = this.tm.runnerRegistry.getRunner(session);
+              this.tm.turnRuntime.activeRequestSources.set(session.id, resumedSource);
+              const automation =
+                resumedSource === "automation" && marker.automationId != null
+                  ? session.automations.get(marker.automationId)
+                  : null;
+              const result = await runner.run(buildUpgradeResumePrompt(resumedSource), {
+                hidden: true,
+                upgradeResume: true,
+                ackToken,
+                isSilenceAllowed:
+                  resumedSource === "automation" ||
+                  resumedSource === "background-revival",
+                ...(automation == null
+                  ? {}
+                  : {
+                      automationWake: { id: automation.id, name: automation.name },
+                    }),
+                requestSource: resumedSource,
+              });
+              // A resolved run can still be interrupted, parked or waiting on work.
+              // Retain that intent for a later explicit resume pass; do not add a
+              // retry timer or spend on extra model runs within this attempt.
+              if (
+                !this.clearTerminalResume(marker, wasStopped) &&
+                result != null && result.aborted === false &&
+                result.quiescedForUpgrade !== true &&
+                result.awaitingUserSelection !== true &&
+                result.handedOff !== true &&
+                result.taskCompletionUnknown !== true &&
+                (result.openTodos == null || result.openTodos.length === 0) &&
+                (result.taskStopReason == null || result.taskStopReason === "done")
+              ) this.tm.upgradeResumeStore?.clearIfPending?.(marker);
+              await this.tm.roster.emitAgentUpdate(session.id);
+              this.tm.automationRuntime.emitAutomations(session);
+            } catch (error) {
+              reportError(error);
+            } finally {
+              finalize();
+            }
+          })();
+          return callbackRun;
+        },
+        {
+          lane: "background",
+          source: "upgrade-resume",
+          ackToken,
+        },
+      );
+    } catch (error) {
+      reportError(error);
+    } finally {
+      // The watchdog may release the scheduler before this callback settles.
+      // Keep resume ownership and accounting tied to the actual callback lifetime.
+      if (callbackRun != null) await callbackRun;
+      else finalize();
+    }
   }
 
   async quiesceForRecreate(): Promise<{
@@ -245,23 +320,28 @@ export class UpgradeRecreateResume {
     for (const runner of this.tm.runnerRegistry.activeGroupMemberRunners.values()) {
       runner.cancelQuiesceForUpgrade();
     }
-    const local = (this.tm.upgradeResumeStore?.listPending() ?? []).map(
+    const store = this.tm.upgradeResumeStore;
+    const local = (store?.listPending() ?? []).map(
       (marker: UpgradeResumeMarker) => marker.agentId,
     );
     const ids = [...new Set([...agentIds, ...local])];
     let resumed = 0;
     for (const agentId of ids) {
-      if (this.tm.sessions.isAgentGone(agentId) ||
-          this.tm.isAgentUserStopped?.(agentId) === true) continue;
-      const marker = this.tm.upgradeResumeStore
+      let marker = store
         ?.listPending()
         .find(
           (candidate: UpgradeResumeMarker) => candidate.agentId === agentId,
         );
-      this.tm.upgradeResumeStore?.clear(agentId);
-      void this.resumeUpgradeAgent(
-        marker ?? { agentId, markedAtMs: Date.now() },
-      );
+      if (this.tm.sessions.isAgentGone(agentId) ||
+          this.tm.isAgentUserStopped?.(agentId) === true) {
+        if (marker != null) store.clearIfPending?.(marker);
+        continue;
+      }
+      // IDs carried by recreate may not have a local marker. Persist them before
+      // asynchronous preparation, and keep them even if this host cannot execute.
+      if (marker == null) marker = store?.markPending({ agentId, markedAtMs: Date.now() });
+      if (marker == null || !this.tm.execution.canExecute || this.resumeAttempts.has(agentId)) continue;
+      void this.resumeUpgradeAgent(marker);
       resumed += 1;
     }
     this.restoreCarriedPendingWakes(carriedPendingWakes);

@@ -1,20 +1,20 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { lstat, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { listPackage, statFile } from "@electron/asar";
+import { extractFile, listPackage, statFile } from "@electron/asar";
 
 import { repoRoot } from "./config.mjs";
 import { run } from "./process.mjs";
 
-const unpackedPrefixes = ["dist/deps/", "dist/native/", "dist/node-deps/"];
+const unpackedPrefixes = ["dist/deps/", "dist/native/", "dist/node-deps/", "dist/host/node_modules/"];
 
 async function walkFiles(root, current = root) {
   const found = [];
   for (const entry of await readdir(current, { withFileTypes: true })) {
     const target = path.join(current, entry.name);
     if (entry.isDirectory()) found.push(...await walkFiles(root, target));
-    else if (entry.isFile()) found.push(path.relative(root, target).split(path.sep).join("/"));
+    else if (entry.isFile() || entry.isSymbolicLink()) found.push(path.relative(root, target).split(path.sep).join("/"));
   }
   return found.sort();
 }
@@ -24,13 +24,19 @@ async function sha256(target) {
 }
 
 function isUnpackedRuntimeFile(relative) {
-  return unpackedPrefixes.some(prefix => relative.startsWith(prefix));
+  return unpackedPrefixes.some(prefix => relative === prefix.slice(0, -1) || relative.startsWith(prefix));
 }
 
 async function snapshotFiles(root) {
   const files = await walkFiles(root);
   return new Map(await Promise.all(files.map(async relative => {
     const target = path.join(root, relative);
+    if ((await lstat(target)).isSymbolicLink()) {
+      const rawLink = await readlink(target);
+      const link = path.relative(root, path.resolve(path.dirname(target), rawLink)).split(path.sep).join("/");
+      if (path.isAbsolute(rawLink) || link === ".." || link.startsWith("../")) throw new Error(`Staged symlink escapes package: ${relative}`);
+      return [relative, { link, rawLink }];
+    }
     return [relative, { bytes: (await stat(target)).size, sha256: await sha256(target) }];
   })));
 }
@@ -40,7 +46,7 @@ function snapshotDiff(before, after) {
   for (const [relative, expected] of before) {
     const actual = after.get(relative);
     if (actual == null) differences.push({ relative, kind: "removed", expected });
-    else if (actual.bytes !== expected.bytes || actual.sha256 !== expected.sha256) differences.push({ relative, kind: "staged-mutation", expected, actual });
+    else if (actual.bytes !== expected.bytes || actual.sha256 !== expected.sha256 || actual.link !== expected.link || actual.rawLink !== expected.rawLink) differences.push({ relative, kind: "staged-mutation", expected, actual });
   }
   for (const [relative, actual] of after) if (!before.has(relative)) differences.push({ relative, kind: "added", actual });
   return differences;
@@ -51,8 +57,8 @@ async function archiveFileEntries(archivePath) {
   for (const raw of listPackage(archivePath)) {
     const relative = raw.replace(/^\//, "");
     try {
-      const entry = statFile(archivePath, relative);
-      if (typeof entry.size === "number") entries.set(relative, entry);
+      const entry = statFile(archivePath, relative, false);
+      if (typeof entry.size === "number" || typeof entry.link === "string") entries.set(relative, entry);
     } catch {
       // listPackage includes directories; statFile is the file boundary.
     }
@@ -70,12 +76,47 @@ export async function verifyStagedPackageIntegrity({ stageRoot, archivePath, unp
       differences.push({ relative, kind: "missing-archive-entry", expected });
       continue;
     }
+    if (isUnpackedRuntimeFile(relative) && entry.unpacked !== true) differences.push({ relative, kind: "missing-unpacked-metadata", expected, actual: entry });
+    if (expected.link !== undefined) {
+      if (entry.link !== expected.link) differences.push({ relative, kind: "archive-link-mutation", expected, actual: entry });
+      if (isUnpackedRuntimeFile(relative)) {
+        try {
+          const unpackedFile = path.join(unpackedRoot, relative);
+          const rawLink = await readlink(unpackedFile);
+          if (rawLink !== expected.rawLink) differences.push({ relative, kind: "unpacked-link-mutation", expected, actual: { rawLink } });
+          const root = await realpath(unpackedRoot);
+          const resolved = await realpath(unpackedFile);
+          if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) differences.push({ relative, kind: "unpacked-link-escape", expected, actual: { resolved } });
+        } catch {
+          differences.push({ relative, kind: "missing-unpacked-link", expected });
+        }
+      }
+      continue;
+    }
     if (entry.size !== expected.bytes || entry.integrity?.hash !== expected.sha256) {
       differences.push({ relative, kind: isUnpackedRuntimeFile(relative) ? "unpacked-archive-metadata" : "archive-mutation", expected, actual: { bytes: entry.size, sha256: entry.integrity?.hash } });
+    }
+    if (!isUnpackedRuntimeFile(relative)) {
+      try {
+        const payload = extractFile(archivePath, relative);
+        const actual = { bytes: payload.byteLength, sha256: createHash("sha256").update(payload).digest("hex") };
+        if (actual.bytes !== expected.bytes || actual.sha256 !== expected.sha256) differences.push({ relative, kind: "packed-payload-mutation", expected, actual });
+      } catch (error) {
+        differences.push({ relative, kind: "packed-payload-read", expected, error: String(error) });
+      }
     }
     if (isUnpackedRuntimeFile(relative)) {
       const unpackedFile = path.join(unpackedRoot, relative);
       try {
+        if (!(await lstat(unpackedFile)).isFile()) {
+          differences.push({ relative, kind: "unpacked-file-layout", expected });
+          continue;
+        }
+        const physicalRelative = path.relative(await realpath(unpackedRoot), await realpath(unpackedFile));
+        if (path.isAbsolute(physicalRelative) || physicalRelative === ".." || physicalRelative.startsWith(`..${path.sep}`)) {
+          differences.push({ relative, kind: "unpacked-file-escape", expected });
+          continue;
+        }
         const actual = { bytes: (await stat(unpackedFile)).size, sha256: await sha256(unpackedFile) };
         if (actual.bytes !== expected.bytes || actual.sha256 !== expected.sha256) differences.push({ relative, kind: "unpacked-mutation", expected, actual });
       } catch {
@@ -116,7 +157,7 @@ export async function packStagedAppWithIntegrity({
   const hadUnpacked = await exists(unpackedRoot);
 
   try {
-    await run(process.execPath, [asarCli, "pack", stageRoot, temporaryArchive, "--unpack-dir", "dist/{deps,native,node-deps}"]);
+    await run(process.execPath, [asarCli, "pack", stageRoot, temporaryArchive, "--unpack-dir", "dist/{deps,native,node-deps,host/node_modules}"]);
     await verifyStagedPackageIntegrity({
       stageRoot,
       archivePath: temporaryArchive,

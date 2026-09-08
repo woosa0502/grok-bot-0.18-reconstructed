@@ -103,10 +103,14 @@ Output: Installs package dependencies
 Input: mkdir foo
 Output: Creates directory 'foo'`);
 
+// These values are serialized into protobuf int32 milliseconds. Validate at the
+// public argument boundary so invalid timing cannot fail later in transport.
+const millisecondsSchema = () => lenientNumber(z.number().finite().int().min(0).max(2_147_483_647));
+
 const baseParametersSchemaDsv31205 = z.object({
   command: z.string().describe("The command to execute"),
   working_directory: z.string().optional().describe("The absolute path to the working directory to execute the command in (defaults to current directory)"),
-  timeout: lenientNumber().optional().describe("Timeout in milliseconds (defaults to 30000ms/30s)"),
+  timeout: millisecondsSchema().optional().describe("Timeout in milliseconds (defaults to 30000ms/30s)"),
   description: descriptionSchema,
   is_background: z.boolean().optional().describe("Whether the command should be run in the background"),
 });
@@ -118,12 +122,12 @@ const baseParametersSchemaDsv31205WithBlockUntilShared = z.object({
 });
 
 function baseParametersSchemaDsv31205WithBlockUntilOptional(defaultBlockUntilMs: number) {
-  return baseParametersSchemaDsv31205WithBlockUntilShared.extend({ block_until_ms: lenientNumber().optional().describe(blockUntilMsDescriptionOptional(defaultBlockUntilMs)) });
+  return baseParametersSchemaDsv31205WithBlockUntilShared.extend({ block_until_ms: millisecondsSchema().optional().describe(blockUntilMsDescriptionOptional(defaultBlockUntilMs)) });
 }
 
-const baseParametersSchemaDsv31205WithBlockUntilRequired = baseParametersSchemaDsv31205WithBlockUntilShared.extend({ block_until_ms: lenientNumber().describe(blockUntilMsDescriptionRequired) });
+const baseParametersSchemaDsv31205WithBlockUntilRequired = baseParametersSchemaDsv31205WithBlockUntilShared.extend({ block_until_ms: millisecondsSchema().describe(blockUntilMsDescriptionRequired) });
 const baseParametersSchemaDsv30226 = baseParametersSchemaDsv31205WithBlockUntilShared.extend({
-  block_until_ms: lenientNumber().optional().describe("How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. Make sure to set `block_until_ms` to higher than the command's expected runtime. Add some buffer since block_until_ms includes shell startup time. E.g. if you sleep for 40s, recommended `block_until_ms` is 45s. Do not specify a 'timeout' parameter; no such param exists."),
+  block_until_ms: millisecondsSchema().optional().describe("How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. Make sure to set `block_until_ms` to higher than the command's expected runtime. Add some buffer since block_until_ms includes shell startup time. E.g. if you sleep for 40s, recommended `block_until_ms` is 45s. Do not specify a 'timeout' parameter; no such param exists."),
 });
 
 export function getDescriptionDsv3(sandboxEnabled: boolean, version: string, options: Dsv3ShellDescriptionOptions = {}): string {

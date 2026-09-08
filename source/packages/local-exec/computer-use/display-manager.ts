@@ -4,9 +4,71 @@
 // framed/positioned. Screenshot/input then target this display via the executor.
 import { spawn, execFile } from "node:child_process";
 import { connect } from "node:net";
+import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
+import { basename } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+/** Linux listeners, read synchronously because display assignment is a synchronous contract. */
+function localTcpListeners(): Map<number, Set<string>> {
+  const listeners = new Map<number, Set<string>>();
+  for (const file of ["/proc/net/tcp", "/proc/net/tcp6"]) {
+    try {
+      for (const line of readFileSync(file, "utf8").trim().split("\n").slice(1)) {
+        const fields = line.trim().split(/\s+/);
+        if (fields[3] !== "0A") continue;
+        const port = Number.parseInt(fields[1]?.split(":").at(-1) ?? "", 16);
+        const inode = fields[9];
+        if (!Number.isInteger(port) || inode === undefined) continue;
+        const inodes = listeners.get(port) ?? new Set<string>();
+        inodes.add(inode);
+        listeners.set(port, inodes);
+      }
+    } catch {}
+  }
+  return listeners;
+}
+
+export function localDisplayListeningPorts(): ReadonlySet<number> {
+  return new Set(localTcpListeners().keys());
+}
+
+// A bound port alone does not identify the desktop it serves. A stale registry can
+// overlap another service (for example Aside's :6090), so adopt only the expected
+// Linux process that actually owns every listening socket on the mapped port.
+const verifiedListeners = new Map<string, { signature: string; pid: string }>();
+
+function ownsExpectedListener(port: number, command: string, expectedArgs: readonly string[]): boolean {
+  const remaining = new Set(localTcpListeners().get(port) ?? []);
+  if (remaining.size === 0) return false;
+  const key = JSON.stringify([port, command, expectedArgs]);
+  const signature = [...remaining].sort().join(",");
+  const verified = verifiedListeners.get(key);
+  if (verified?.signature === signature && existsSync(`/proc/${verified.pid}`)) return true;
+  try {
+    for (const pid of readdirSync("/proc")) {
+      if (!/^\d+$/.test(pid)) continue;
+      try {
+        const argv = readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean);
+        if (!argv.some((arg) => basename(arg) === command)) continue;
+        if (!expectedArgs.every((arg, index) => argv.some((value, at) => value === arg
+          && (index === 0 || argv[at - 1] === expectedArgs[index - 1])))) continue;
+        for (const fd of readdirSync(`/proc/${pid}/fd`)) {
+          try {
+            const match = /^socket:\[(\d+)\]$/.exec(readlinkSync(`/proc/${pid}/fd/${fd}`));
+            if (match?.[1] !== undefined) remaining.delete(match[1]);
+          } catch {}
+        }
+        if (remaining.size === 0) {
+          verifiedListeners.set(key, { signature, pid });
+          return true;
+        }
+      } catch {}
+    }
+  } catch {}
+  return false;
+}
 
 export interface LocalDisplay {
   readonly display: string; // e.g. ":99"
@@ -136,11 +198,23 @@ export class LocalDisplayManager {
       this.log("[local-computer] x11vnc/websockify not installed; VNC viewer disabled");
       return;
     }
+    if (await this.isListening(this.rfbPort)
+      && !ownsExpectedListener(this.rfbPort, "x11vnc", ["-display", this.display])) {
+      throw new Error(`Refusing unrelated RFB listener on ${this.rfbPort} for ${this.display}`);
+    }
+    if (await this.isListening(this.novncPort)
+      && !ownsExpectedListener(this.novncPort, "websockify", [`127.0.0.1:${this.novncPort}`, `localhost:${this.rfbPort}`])) {
+      throw new Error(`Refusing unrelated noVNC listener on ${this.novncPort} for ${this.display}`);
+    }
     // A previous host instance may have left its (detached) x11vnc/websockify serving
     // this display; a second x11vnc on the same rfb port would just exit. Adopt what is
     // listening and let the watchdog below take over once it goes away.
-    if (await this.isListening(this.rfbPort)) this.log(`[local-computer] adopting x11vnc already listening on ${this.rfbPort}`);
-    else { this.spawnX11vnc(); await delay(800); }
+    if (await this.isListening(this.rfbPort)) {
+      this.log(`[local-computer] adopting x11vnc already listening on ${this.rfbPort}`);
+      // Older detached servers may retain a stale framebuffer after idle. Apply
+      // the same periodic X refresh as new servers when adopting across a restart.
+      await execFileAsync("x11vnc", ["-display", this.display, "-R", "fixscreen:X=3"], { env: this.vncEnv(), timeout: 5_000 });
+    } else { this.spawnX11vnc(); await delay(800); }
     if (await this.isListening(this.novncPort)) this.log(`[local-computer] adopting websockify already listening on ${this.novncPort}`);
     else this.spawnWebsockify();
     // Publish the URL only after the noVNC port actually accepts connections;
@@ -177,10 +251,12 @@ export class LocalDisplayManager {
     // user's sessions. The app's own viewer connects via 127.0.0.1 only.
     // -xdamage plus 5 ms defer/wait roughly halves screen-update latency versus
     // the 20 ms defaults (measured 88 ms → 33 ms through the phone viewer);
-    // -nap backs off while the desktop is idle.
+    // -nap backs off while the desktop is idle. Periodically reread X as well:
+    // an idle Xvfb can otherwise leave x11vnc serving an old blank framebuffer
+    // even while direct screenshots contain live windows (PWA closure repro).
     const child = spawn(
       "x11vnc",
-      ["-display", this.display, "-nopw", "-forever", "-shared", "-localhost", "-rfbport", String(this.rfbPort), "-quiet", "-xdamage", "-defer", "5", "-wait", "5", "-nap"],
+      ["-display", this.display, "-nopw", "-forever", "-shared", "-localhost", "-rfbport", String(this.rfbPort), "-quiet", "-xdamage", "-defer", "5", "-wait", "5", "-nap", "-fixscreen", "X=3"],
       { env: this.vncEnv(), detached: true, stdio: "ignore" },
     );
     child.unref();
@@ -221,6 +297,18 @@ export class LocalDisplayManager {
     this.vncHealing = true;
     try {
       if (!(await this.isDisplayReady())) return; // nothing to serve; Xvfb itself is not ours to revive here
+      if (await this.isListening(this.rfbPort)
+        && !ownsExpectedListener(this.rfbPort, "x11vnc", ["-display", this.display])) {
+        this.vncUrlValue = undefined;
+        this.log(`[local-computer] refusing unrelated RFB listener on ${this.rfbPort}`);
+        return;
+      }
+      if (await this.isListening(this.novncPort)
+        && !ownsExpectedListener(this.novncPort, "websockify", [`127.0.0.1:${this.novncPort}`, `localhost:${this.rfbPort}`])) {
+        this.vncUrlValue = undefined;
+        this.log(`[local-computer] refusing unrelated noVNC listener on ${this.novncPort}`);
+        return;
+      }
       if (!(await this.isListening(this.rfbPort))) {
         this.log(`[local-computer] x11vnc is not listening on ${this.rfbPort}; restarting`);
         this.spawnX11vnc();

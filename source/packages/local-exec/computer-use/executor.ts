@@ -4,12 +4,13 @@
 //
 // The model works in a normalized API coordinate space (see scaling.ts / display.ts);
 // this executor scales those coordinates to real display pixels before issuing xdotool.
-import { readFile, unlink } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { CoordinateScaler } from "./scaling.js";
-import { buildResolutionConfig, detectDisplay } from "./display.js";
-import { exec } from "./shell.js";
+import { buildResolutionConfig, parseXrandrOutput } from "./display.js";
+import { exec, executionSignal, throwIfExecutionAborted } from "./shell.js";
 import type {
   ComputerUseArgs,
   ComputerUseResult,
@@ -41,14 +42,14 @@ export interface LocalComputerExecutorOptions {
    */
   readonly displaySize?: { readonly width: number; readonly height: number };
   /** Override capture method; defaults to ffmpeg x11grab (reliable on Xvfb). */
-  readonly capture?: (display: string, size: { width: number; height: number }, outPath: string) => Promise<void>;
+  readonly capture?: (display: string, size: { width: number; height: number }, outPath: string, signal?: AbortSignal) => Promise<void>;
 }
 
 export class LocalComputerUseExecutor {
   private readonly display: string;
   private readonly displaySize: { readonly width: number; readonly height: number } | undefined;
   private scaler: CoordinateScaler | undefined;
-  private readonly captureFn: (display: string, size: { width: number; height: number }, outPath: string) => Promise<void>;
+  private readonly captureFn: NonNullable<LocalComputerExecutorOptions["capture"]>;
 
   constructor(options: LocalComputerExecutorOptions) {
     this.display = options.display;
@@ -60,84 +61,97 @@ export class LocalComputerUseExecutor {
     return { DISPLAY: this.display };
   }
 
-  private async ensureScaler(): Promise<CoordinateScaler> {
+  private async ensureScaler(signal?: AbortSignal): Promise<CoordinateScaler> {
+    throwIfExecutionAborted(signal);
     if (this.scaler === undefined) {
-      const resolution = this.displaySize !== undefined
-        ? buildResolutionConfig(this.displaySize.width, this.displaySize.height)
-        : (await detectDisplay(this.display)).resolution;
+      const size = this.displaySize ?? parseXrandrOutput(await exec(
+        "xrandr", ["--display", this.display], { timeoutMs: 5_000, signal },
+      ));
+      throwIfExecutionAborted(signal);
+      const resolution = buildResolutionConfig(size.width, size.height);
       this.scaler = new CoordinateScaler(resolution);
     }
     return this.scaler;
   }
 
-  private async toDisplay(coordinate: Coordinate | undefined): Promise<{ x: number; y: number } | undefined> {
+  private async toDisplay(coordinate: Coordinate | undefined, signal?: AbortSignal): Promise<{ x: number; y: number } | undefined> {
     if (coordinate === undefined) return undefined;
-    const scaler = await this.ensureScaler();
+    const scaler = await this.ensureScaler(signal);
     return scaler.apiToDisplay(coordinate.x, coordinate.y);
   }
 
-  private async xdotool(args: (string | number)[]): Promise<string> {
-    return exec("xdotool", args, { env: this.env(), timeoutMs: 15_000 });
+  private async xdotool(args: (string | number)[], signal?: AbortSignal): Promise<string> {
+    return exec("xdotool", args, { env: this.env(), timeoutMs: 15_000, signal });
   }
 
-  private async runAction(action: ComputerUseAction): Promise<void> {
+  private async runAction(action: ComputerUseAction, pressedButtons: Set<number>, signal?: AbortSignal): Promise<void> {
+    throwIfExecutionAborted(signal);
     const a = action.action;
     switch (a.case) {
       case "mouseMove": {
-        const p = await this.toDisplay(a.value.coordinate);
-        if (p) await this.xdotool(["mousemove", p.x, p.y]);
+        const p = await this.toDisplay(a.value.coordinate, signal);
+        if (p) await this.xdotool(["mousemove", p.x, p.y], signal);
         break;
       }
       case "click": {
-        const p = await this.toDisplay(a.value.coordinate);
+        const p = await this.toDisplay(a.value.coordinate, signal);
         const btn = MOUSE_BUTTON_TO_X[a.value.button as MouseButton] ?? 1;
         const count = Math.max(1, a.value.count || 1);
-        if (p) await this.xdotool(["mousemove", p.x, p.y]);
-        await this.xdotool(["click", "--repeat", count, btn]);
+        if (p) await this.xdotool(["mousemove", p.x, p.y], signal);
+        await this.xdotool(["click", "--repeat", count, btn], signal);
         break;
       }
       case "mouseDown": {
-        await this.xdotool(["mousedown", MOUSE_BUTTON_TO_X[a.value.button as MouseButton] ?? 1]);
+        const button = MOUSE_BUTTON_TO_X[a.value.button as MouseButton] ?? 1;
+        await this.xdotool(["mousedown", button], signal);
+        pressedButtons.add(button);
         break;
       }
       case "mouseUp": {
-        await this.xdotool(["mouseup", MOUSE_BUTTON_TO_X[a.value.button as MouseButton] ?? 1]);
+        const button = MOUSE_BUTTON_TO_X[a.value.button as MouseButton] ?? 1;
+        await this.xdotool(["mouseup", button], signal);
+        pressedButtons.delete(button);
         break;
       }
       case "drag": {
         const btn = MOUSE_BUTTON_TO_X[a.value.button as MouseButton] ?? 1;
         const path = a.value.path ?? [];
         if (path.length > 0) {
-          const first = await this.toDisplay(path[0]);
-          if (first) await this.xdotool(["mousemove", first.x, first.y]);
-          await this.xdotool(["mousedown", btn]);
-          for (let i = 1; i < path.length; i++) {
-            const p = await this.toDisplay(path[i]);
-            if (p) await this.xdotool(["mousemove", p.x, p.y]);
+          const first = await this.toDisplay(path[0], signal);
+          if (first) await this.xdotool(["mousemove", first.x, first.y], signal);
+          await this.xdotool(["mousedown", btn], signal);
+          try {
+            for (let i = 1; i < path.length; i++) {
+              const p = await this.toDisplay(path[i], signal);
+              if (p) await this.xdotool(["mousemove", p.x, p.y], signal);
+            }
+          } finally {
+            // Release only the button this drag successfully pressed, even if
+            // cancellation prevents any further requested input actions.
+            await this.xdotool(["mouseup", btn]);
           }
-          await this.xdotool(["mouseup", btn]);
         }
         break;
       }
       case "scroll": {
-        const p = await this.toDisplay(a.value.coordinate);
-        if (p) await this.xdotool(["mousemove", p.x, p.y]);
+        const p = await this.toDisplay(a.value.coordinate, signal);
+        if (p) await this.xdotool(["mousemove", p.x, p.y], signal);
         const btn = SCROLL_DIRECTION_TO_X[a.value.direction as ScrollDirection] ?? 5;
         const amount = Math.max(1, a.value.amount || 1);
-        await this.xdotool(["click", "--repeat", amount, btn]);
+        await this.xdotool(["click", "--repeat", amount, btn], signal);
         break;
       }
       case "type": {
-        await this.xdotool(["type", "--clearmodifiers", "--", a.value.text ?? ""]);
+        await this.xdotool(["type", "--clearmodifiers", "--", a.value.text ?? ""], signal);
         break;
       }
       case "key": {
         // xdotool key accepts "+"-joined chords like "ctrl+a"; pass through.
-        await this.xdotool(["key", "--clearmodifiers", a.value.key ?? ""]);
+        await this.xdotool(["key", "--clearmodifiers", a.value.key ?? ""], signal);
         break;
       }
       case "wait": {
-        await delay(Math.min(10_000, Math.max(0, a.value.durationMs || 0)));
+        await delay(Math.min(10_000, Math.max(0, a.value.durationMs || 0)), undefined, { signal });
         break;
       }
       case "screenshot":
@@ -148,15 +162,19 @@ export class LocalComputerUseExecutor {
   }
 
   // Matches Executor<ComputerUseArgs, ComputerUseResult>.execute(ctx, args, options?).
-  async execute(_ctx: unknown, args: ComputerUseArgs, _options?: unknown): Promise<ComputerUseResult> {
+  async execute(ctx: unknown, args: ComputerUseArgs, _options?: unknown): Promise<ComputerUseResult> {
+    const signal = executionSignal(ctx);
     const start = Date.now();
     const actions = args.actions ?? [];
+    const pressedButtons = new Set<number>();
     try {
+      throwIfExecutionAborted(signal);
       for (const action of actions) {
-        await this.runAction(action);
+        await this.runAction(action, pressedButtons, signal);
       }
-      await delay(SCREENSHOT_SETTLE_MS);
-      const screenshot = await this.captureBase64();
+      await delay(SCREENSHOT_SETTLE_MS, undefined, { signal });
+      const screenshot = await this.captureBase64(signal);
+      throwIfExecutionAborted(signal);
       return new ComputerUseResultMsg({
         result: {
           case: "success",
@@ -164,11 +182,19 @@ export class LocalComputerUseExecutor {
         },
       });
     } catch (error) {
+      const errors = [signal?.aborted ? "Computer use execution canceled" : error instanceof Error ? error.message : String(error)];
+      for (const button of pressedButtons) {
+        try {
+          await this.xdotool(["mouseup", button]);
+        } catch (releaseError) {
+          errors.push(`Failed to release mouse button ${button}: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}`);
+        }
+      }
       return new ComputerUseResultMsg({
         result: {
           case: "error",
           value: new ComputerUseError({
-            error: error instanceof Error ? error.message : String(error),
+            error: errors.join("; "),
             actionCount: actions.length,
             durationMs: Date.now() - start,
           }),
@@ -177,30 +203,29 @@ export class LocalComputerUseExecutor {
     }
   }
 
-  private async captureBase64(): Promise<string> {
-    const scaler = await this.ensureScaler();
+  private async captureBase64(signal?: AbortSignal): Promise<string> {
+    const scaler = await this.ensureScaler(signal);
     const size = { width: scaler.displayWidth, height: scaler.displayHeight };
-    const outPath = join(tmpdir(), `sand-cu-${process.pid}-${Date.now()}.png`);
+    const captureDir = await mkdtemp(join(tmpdir(), "sand-cu-"));
+    const outPath = join(captureDir, "screenshot.png");
     try {
-      await this.captureFn(this.display, size, outPath);
-      const bytes = await readFile(outPath);
+      throwIfExecutionAborted(signal);
+      await this.captureFn(this.display, size, outPath, signal);
+      throwIfExecutionAborted(signal);
+      const bytes = await readFile(outPath, { signal });
       return bytes.toString("base64");
     } finally {
-      await unlink(outPath).catch(() => {});
+      await rm(captureDir, { recursive: true, force: true });
     }
   }
 }
 
 // ffmpeg x11grab reliably captures a full-color frame of the X root on Xvfb,
 // where ImageMagick `import -window root` can degrade to a 1-bit/blank image.
-async function defaultCapture(display: string, size: { width: number; height: number }, outPath: string): Promise<void> {
+async function defaultCapture(display: string, size: { width: number; height: number }, outPath: string, signal?: AbortSignal): Promise<void> {
   await exec(
     "ffmpeg",
     ["-y", "-loglevel", "error", "-f", "x11grab", "-video_size", `${size.width}x${size.height}`, "-i", display, "-frames:v", "1", outPath],
-    { env: { DISPLAY: display }, timeoutMs: 15_000 },
+    { env: { DISPLAY: display }, timeoutMs: 15_000, signal },
   );
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

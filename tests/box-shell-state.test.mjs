@@ -80,8 +80,8 @@ test("daemon shell routes start from the saved cwd, wrap the command, and report
   assert.doesNotMatch(shell, /#withShellState|#startingCwd|#savedCwdLogical|#resetShellState/);
   const stream = server.slice(server.indexOf("  async *shellStream("), server.indexOf("  async *shellStream(") + 14_000);
   // State is namespaced by the calling conversation (wave 6, strict-review P1-07).
-  assert.match(stream, /const cwd = await this\.#startingCwd\(args\.workingDirectory, stateOwner\)/);
-  assert.match(stream, /this\.spawnShell\(this\.#withShellState\(args\.command, stateOwner\), cwd\)/);
+  assert.match(stream, /cwd = await this\.#startingCwd\(args\.workingDirectory, stateOwner\)/);
+  assert.match(stream, /this\.spawnShell\(this\.#withShellState\(args\.command, stateOwner, stateOutputDir\), cwd\)/);
   assert.match(stream, /cwd: signal\.aborted \? args\.workingDirectory : \(await this\.#savedCwdLogical\(stateOwner\)\) \?\? args\.workingDirectory/);
   const shellTool = await readFile(path.join(repoRoot, "source/packages/agent/tools/core/shell/create-shell-tool.ts"), "utf8");
   assert.match(shellTool, /workingDirectory: value\.cwd\.length > 0 \? value\.cwd : workingDirectory/);

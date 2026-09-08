@@ -23,6 +23,8 @@ export interface DraftAttachment {
   name: string;
   size?: number;
   mimeType?: string;
+  /** Uploaded host path; it must not be submitted to the staging bridge again. */
+  committed?: boolean;
 }
 
 export interface ComposerDraft {
@@ -81,7 +83,7 @@ export function parseComposerDraft(value: unknown): ComposerDraft | null {
     const attachment = valueAttachment as Record<string, unknown>;
     if (typeof attachment.path !== "string" || typeof attachment.name !== "string") return null;
     const size = typeof attachment.size === "number" && Number.isFinite(attachment.size) ? attachment.size : undefined;
-    attachments.push({ path: attachment.path, name: attachment.name, ...(size === undefined ? {} : { size }) });
+    attachments.push({ path: attachment.path, name: attachment.name, ...(size === undefined ? {} : { size }), ...(typeof attachment.mimeType === "string" ? { mimeType: attachment.mimeType } : {}), ...(attachment.committed === true ? { committed: true } : {}) });
   }
 
   return {

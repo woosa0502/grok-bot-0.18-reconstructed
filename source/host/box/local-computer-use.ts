@@ -10,7 +10,7 @@
 import { CombinedResourceAccessor, resourceEntry, type ResourceAccessor } from "../../packages/agent-exec/resource-provider.js";
 import { computerUseExecutorResource } from "../../packages/agent-exec/computer-use.js";
 import { LocalComputerUseExecutor } from "../../packages/local-exec/computer-use/executor.js";
-import { LocalDisplayManager } from "../../packages/local-exec/computer-use/display-manager.js";
+import { LocalDisplayManager, localDisplayListeningPorts } from "../../packages/local-exec/computer-use/display-manager.js";
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { delimiter, join as joinPath, resolve as resolvePath } from "node:path";
@@ -108,7 +108,15 @@ export function localDisplayNumberFor(agentId: string): number {
   const known = current.displays[agentId];
   if (known !== undefined) return known;
   const taken = Object.values(current.displays);
-  const next = Math.max(FIRST_AGENT_DISPLAY - 1, ...taken) + 1;
+  let next = Math.max(FIRST_AGENT_DISPLAY - 1, ...taken) + 1;
+  const listening = localDisplayListeningPorts();
+  while (next <= 59_554) {
+    const ports = localDisplayPorts(next);
+    if (!existsSync(`/tmp/.X11-unix/X${next}`) && !existsSync(`/tmp/.X${next}-lock`)
+      && !listening.has(ports.rfbPort) && !listening.has(ports.novncPort)) break;
+    next += 1;
+  }
+  if (next > 59_554) throw new Error("No free local desktop display and VNC port pair");
   current.displays[agentId] = next;
   saveRegistry();
   return next;

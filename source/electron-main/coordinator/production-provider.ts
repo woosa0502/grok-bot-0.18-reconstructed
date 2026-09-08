@@ -565,6 +565,8 @@ export interface CoordinatorRendererWebContents {
   readonly mainFrame: unknown;
   isDestroyed(): boolean;
   postMessage(channel: string, message: unknown, transfer: readonly CoordinatorMessagePort[]): void;
+  once(event: "destroyed", listener: () => void): unknown;
+  removeListener(event: "destroyed", listener: () => void): unknown;
 }
 
 export interface CoordinatorRendererPortIpcEvent<
@@ -621,6 +623,8 @@ export function createCoordinatorRendererPortIpcRegistrar<
         throw new Error("Coordinator renderer-port IPC was registered more than once.");
       }
       registered = true;
+      let disposed = false;
+      let activeRequest: { cancel(error: unknown): void; dispose(): void } | undefined;
       const handoff = createCoordinatorHandoffTelemetry(ports.reportHandoff);
       ports.ipcMain.handle(COORDINATOR_PORT_REQUEST_CHANNEL, (event) => {
         const trustedContents = ports.getTrustedContents();
@@ -630,26 +634,75 @@ export function createCoordinatorRendererPortIpcRegistrar<
           trustedContents,
           trustedMainFrame: trustedContents?.mainFrame as TFrame | null | undefined,
         } satisfies CoordinatorPortRequesterContext<TContents, TFrame>);
+        if (disposed) return { status: "disposed" };
         handoff.requested();
         const requester = event.sender;
-        ports.requestRendererPort((port) => {
-          if (requester.isDestroyed()) return;
-          try {
-            requester.postMessage(COORDINATOR_PORT_CHANNEL, null, [port]);
-          } catch (error) {
-            handoff.invokeFailed("renderer_port");
-            ports.reportFailure("coordinator", "renderer-port", error);
-            throw error;
-          }
-          handoff.adopted("renderer_port");
-        });
-        return null;
+        const { promise, resolve, reject } = Promise.withResolvers<null | { status: "disposed" }>();
+        let active = true;
+        let settled = false;
+        const deactivate = (): boolean => {
+          if (!active) return false;
+          active = false;
+          requester.removeListener("destroyed", onDestroyed);
+          if (activeRequest === request) activeRequest = undefined;
+          if (settled) return false;
+          settled = true;
+          return true;
+        };
+        const request = {
+          cancel(error: unknown): void {
+            if (deactivate()) reject(error);
+          },
+          dispose(): void {
+            // A pending acquisition during ordinary app shutdown is expected.
+            // Return its terminal state without an Electron handler exception.
+            if (deactivate()) resolve({ status: "disposed" });
+          },
+        };
+        const onDestroyed = (): void => {
+          request.cancel(new Error("Coordinator renderer-port requester was destroyed."));
+        };
+        activeRequest?.cancel(new Error("Coordinator renderer-port request was superseded."));
+        activeRequest = request;
+        requester.once("destroyed", onDestroyed);
+        if (requester.isDestroyed()) {
+          onDestroyed();
+          return promise;
+        }
+        try {
+          ports.requestRendererPort((port) => {
+            if (active && requester.isDestroyed()) onDestroyed();
+            if (!active) {
+              port.close();
+              return;
+            }
+            try {
+              requester.postMessage(COORDINATOR_PORT_CHANNEL, null, [port]);
+            } catch (error) {
+              // The runtime catches sink errors, and account activation can
+              // call this sink later. Settle IPC here before either boundary.
+              request.cancel(error);
+              handoff.invokeFailed("renderer_port");
+              ports.reportFailure("coordinator", "renderer-port", error);
+              throw error;
+            }
+            if (!settled) {
+              settled = true;
+              resolve(null);
+            }
+            // Keep the successful sink live for coordinator replacement ports.
+            handoff.adopted("renderer_port");
+          });
+        } catch (error) {
+          request.cancel(error);
+        }
+        return promise;
       });
-      let disposed = false;
       return {
         dispose() {
           if (disposed) return;
           disposed = true;
+          activeRequest?.dispose();
           ports.ipcMain.removeHandler(COORDINATOR_PORT_REQUEST_CHANNEL);
           registered = false;
         },

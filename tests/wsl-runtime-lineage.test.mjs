@@ -76,7 +76,7 @@ test("WSL lineage keeps non-CDP product starts valid", async () => {
     await writeFile(path.join(appRoot, "dist", "electron-main", "main.cjs"), "main");
     await writeFile(path.join(appRoot, "dist", "host", "host-main.cjs"), "host");
     await writeFile(path.join(appRoot, "dist", "renderer", "index.html"), "renderer");
-    await writeFile(path.join(appRoot, "dist", "renderer-artifact-provenance.json"), JSON.stringify({}));
+    await writeFile(path.join(appRoot, "dist", "renderer-artifact-provenance.json"), JSON.stringify({ mode: "checksum-pinned-artifact-runtime" }));
     const sourceIdentity = { schemaVersion: 1, head: "d".repeat(40), treeClean: true, statusSha256: "e".repeat(64), trackedDiffSha256: "f".repeat(64), untrackedSha256: "0".repeat(64), untrackedPaths: [], combinedSha256: "2".repeat(64) };
     const buildLineage = { schemaVersion: 1, builtAt: "2026-08-25T00:00:00.000Z", sourceIdentity };
     await writeFile(path.join(appRoot, "dist", "wsl-build-lineage.json"), JSON.stringify(buildLineage));
@@ -91,6 +91,49 @@ test("WSL lineage keeps non-CDP product starts valid", async () => {
       sourceIdentity,
     });
     assert.equal(lineage.debugEndpoint, null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("editable WSL lineage selects source provenance and cannot fall back to leftover pinned metadata", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "belmont-editable-lineage-"));
+  const appRoot = path.join(root, "runtime");
+  const sourceProvenancePath = path.join(appRoot, "dist", "renderer", "renderer-source-provenance.json");
+  const sourceIdentity = { head: "d".repeat(40), treeClean: true, statusSha256: "e".repeat(64), combinedSha256: "f".repeat(64) };
+  const buildLineage = { schemaVersion: 1, builtAt: "2026-09-08T00:00:00.000Z", sourceIdentity };
+  const options = {
+    repoRoot: root, appRoot, profileDir: path.join(root, "profile"), debugPort: null,
+    rendererMode: "editable", processes: {}, sourceIdentity, buildLineage,
+  };
+  try {
+    for (const [relative, contents] of [
+      ["dist/electron-main/main.cjs", "main"],
+      ["dist/host/host-main.cjs", "host"],
+      ["dist/renderer/index.html", "source renderer"],
+      ["dist/wsl-build-lineage.json", JSON.stringify(buildLineage)],
+      ["dist/renderer/renderer-source-provenance.json", JSON.stringify({ mode: "clean-source", entrypoint: "frontend/src/main.tsx" })],
+    ]) {
+      await mkdir(path.dirname(path.join(appRoot, relative)), { recursive: true });
+      await writeFile(path.join(appRoot, relative), contents);
+    }
+    const sourceOnly = await collectWslRuntimeLineage(options);
+    assert.equal(sourceOnly.rendererMode, "editable");
+    assert.equal(sourceOnly.build.rendererProvenance.mode, "clean-source");
+    assert.equal(sourceOnly.build.rendererProvenance.entrypoint, "frontend/src/main.tsx");
+    assert.equal(sourceOnly.build.rendererProvenance.path, path.relative(root, sourceProvenancePath));
+    await writeFile(path.join(appRoot, "dist", "renderer-artifact-provenance.json"), JSON.stringify({
+      mode: "checksum-pinned-artifact-runtime", inventorySha256: "a".repeat(64),
+    }));
+    const withLeftover = await collectWslRuntimeLineage(options);
+    assert.deepEqual(withLeftover.build.rendererProvenance, sourceOnly.build.rendererProvenance);
+    await rm(sourceProvenancePath);
+    await assert.rejects(collectWslRuntimeLineage(options), { code: "ENOENT" });
+    await writeFile(sourceProvenancePath, JSON.stringify({ mode: "checksum-pinned-artifact-runtime" }));
+    await assert.rejects(collectWslRuntimeLineage(options), /incompatible renderer provenance/u);
+    await writeFile(sourceProvenancePath, JSON.stringify({ mode: "clean-source", entrypoint: "some-other-renderer.ts" }));
+    await assert.rejects(collectWslRuntimeLineage(options), /incompatible renderer provenance/u);
+    await assert.rejects(collectWslRuntimeLineage({ ...options, rendererMode: "unknown" }), /invalid renderer mode/u);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -29,7 +29,8 @@ function InviteLink({ result }: { result: { readonly shareUrl: string } }): Reac
   const [status, setStatus] = useState<"ready" | "copied" | "error">("ready");
   const copy = async (): Promise<void> => {
     try {
-      await globalThis.navigator?.clipboard?.writeText(result.shareUrl);
+      if (globalThis.navigator?.clipboard?.writeText == null) throw new Error("Clipboard unavailable");
+      await globalThis.navigator.clipboard.writeText(result.shareUrl);
       setStatus("copied");
     } catch {
       setStatus("error");
@@ -38,6 +39,7 @@ function InviteLink({ result }: { result: { readonly shareUrl: string } }): Reac
   return <div>
     <input aria-label="Room link" onFocus={(event) => event.currentTarget.select()} readOnly spellCheck={false} value={result.shareUrl} />
     <button onClick={() => { void copy(); }} type="button">{status === "copied" ? "Copied" : status === "error" ? "Try again" : "Copy link"}</button>
+    {status === "error" ? <p role="alert">Could not copy the link. Select and copy it from the field above.</p> : null}
   </div>;
 }
 
@@ -75,10 +77,14 @@ export function SharedRoomDialog({ provider, roomId, agentId, accountGeneration,
   const selfAuthId = snapshot.state?.selfAuthId;
   return <div aria-label={room.name} aria-modal="true" className="sand-shared-room-dialog" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} ref={dialogRef} role="dialog" tabIndex={-1}>
     <header><h2>{room.name}</h2></header>
+    {snapshot.failure != null && (snapshot.invite?.status !== "error" || snapshot.failure !== snapshot.invite.message) ? <p role="alert">{snapshot.failure instanceof Error ? snapshot.failure.message : typeof snapshot.failure === "string" ? snapshot.failure : "Could not update the shared room. Try again."}</p> : null}
     {snapshot.isHost ? <section>
       <p>Invite people</p>
-      {snapshot.invite?.status === "ok" ? <InviteLink result={snapshot.invite} /> : snapshot.invite?.status === "error" ? <p role="alert">{snapshot.invite.message}</p> : <button disabled={snapshot.pendingAction === "invite"} onClick={() => { void provider.createRoomInvite(); }} type="button">Copy link</button>}
-      <p>They paste this link into Grok Bot via Cmd-K, then "Join shared room". Each request waits for your approval.</p>
+      {snapshot.invite?.status === "ok" ? <InviteLink key={snapshot.invite.shareUrl} result={snapshot.invite} /> : <>
+        {snapshot.invite?.status === "error" ? <p role="alert">{snapshot.invite.message}</p> : null}
+        <button disabled={snapshot.pendingAction === "invite"} onClick={() => { void provider.createRoomInvite(); }} type="button">Generate invite link</button>
+      </>}
+      <p>Joining from an invite link is not available in this app yet. Recipients need a client that supports shared-room invites. Each request needs your approval.</p>
     </section> : null}
     {snapshot.requests.length > 0 ? <section>
       <h3>Pending requests</h3>
@@ -97,9 +103,10 @@ export function SharedRoomDialog({ provider, roomId, agentId, accountGeneration,
     </section>
     <section>
       <h3>Your agents</h3>
-      {snapshot.context?.agents.filter((agent) => !agent.isGroup && agent.remoteRoom == null && agent.isSharedRoom !== true).map((agent) => {
+      {selfAuthId == null ? <p>Waiting for your account identity before managing agents.</p> : null}
+      {snapshot.candidates.map((agent) => {
         const isSelf = snapshot.selfAgentIds.includes(agent.id);
-        return <div key={agent.id}><span>{agent.name}</span><button aria-label={`${isSelf ? "Remove" : "Add"} ${agent.name}`} disabled={snapshot.pending.has(`agent:${agent.id}`)} onClick={() => { void (isSelf ? provider.removeOwnAgent(agent.id) : provider.addOwnAgent(agent)); }} type="button">{isSelf ? "Remove" : "Add"}</button></div>;
+        return <div key={agent.id}><span>{agent.name}</span><button aria-label={`${isSelf ? "Remove" : "Add"} ${agent.name}`} disabled={selfAuthId == null || snapshot.pending.has(`agent:${agent.id}`)} onClick={() => { void (isSelf ? provider.removeOwnAgent(agent.id) : provider.addOwnAgent(agent)); }} type="button">{isSelf ? "Remove" : "Add"}</button></div>;
       })}
     </section>
     <footer><button onClick={onClose} type="button">Done</button></footer>

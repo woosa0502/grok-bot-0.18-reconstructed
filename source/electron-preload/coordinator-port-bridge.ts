@@ -14,36 +14,54 @@ export interface CoordinatorTranscriptPortContract {
 
 export interface CoordinatorPortConsumer<TPort> {
   onPort(port: TPort): void;
+  onRequestError?(message: string, requestId?: number): void;
 }
 
 export interface CoordinatorPortClaim {
-  request(): void;
+  request(requestId?: number): void;
   release(): void;
 }
 
-export function createCoordinatorPortBroker<TPort>(options: { readonly invokeRequest: () => void }): {
+export function createCoordinatorPortBroker<TPort>(options: { readonly invokeRequest: () => void | Promise<unknown> }): {
   readonly bridge: { claim(consumer: CoordinatorPortConsumer<TPort>): CoordinatorPortClaim | null };
   readonly deliver: (port: TPort) => void;
 } {
   let owner: CoordinatorPortConsumer<TPort> | null = null;
+  let ownerEpoch = 0;
+  let requestEpoch = 0;
   return {
     bridge: {
       claim(consumer) {
         if (owner != null) return null;
         owner = consumer;
+        const claimedEpoch = ++ownerEpoch;
         return {
-          request: () => {
-            if (owner !== consumer) return;
-            options.invokeRequest();
+          request: (requestId) => {
+            if (owner !== consumer || ownerEpoch !== claimedEpoch) return;
+            const requestedEpoch = ++requestEpoch;
+            const reportError = (error: unknown): void => {
+              if (owner !== consumer || ownerEpoch !== claimedEpoch || requestEpoch !== requestedEpoch) return;
+              consumer.onRequestError?.(error instanceof Error ? error.message : String(error), requestId);
+            };
+            try {
+              void Promise.resolve(options.invokeRequest()).then((result) => {
+                if (result != null && typeof result === "object" && "status" in result && result.status === "disposed") {
+                  reportError(new Error("Coordinator renderer-port IPC has been disposed."));
+                }
+              }).catch(reportError);
+            } catch (error) {
+              reportError(error);
+            }
           },
           release: () => {
-            if (owner !== consumer) return;
+            if (owner !== consumer || ownerEpoch !== claimedEpoch) return;
             owner = null;
           },
         };
       },
     },
     deliver(port) {
+      requestEpoch += 1;
       owner?.onPort(port);
     },
   };

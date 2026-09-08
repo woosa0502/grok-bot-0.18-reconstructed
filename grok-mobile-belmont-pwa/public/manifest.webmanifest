@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "Linear",
+  "short_name": "Linear",
+  "description": "Linear에서 Belmont와 데스크톱 Bot을 휴대폰으로 관리합니다.",
+  "lang": "ko-KR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fafafa",
+  "theme_color": "#fafafa",
+  "icons": [
+    {
+      "src": "/linear-app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

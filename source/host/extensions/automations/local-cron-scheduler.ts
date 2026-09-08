@@ -28,7 +28,7 @@ export interface LocalSchedulableAutomation {
 export interface LocalCronSchedulerDeps<Automation extends LocalSchedulableAutomation = LocalSchedulableAutomation> {
   readonly polling: PollingPolicy;
   listAutomations(): Promise<readonly { agentId: string; automation: Automation }[]>;
-  fire(agentId: string, automation: Automation, dueAt: number): Promise<unknown>;
+  fire(agentId: string, automation: Automation, dueAt: number): Promise<"ok" | "error" | "interrupted" | undefined>;
   isReady(): boolean | Promise<boolean>;
   shouldScheduleLocally(args: { agentId: string; automation: Automation }): boolean;
   getTimeZone(): string | undefined;
@@ -140,13 +140,24 @@ export class LocalCronScheduler<Automation extends LocalSchedulableAutomation = 
       this.#inFlight.add(key);
       void Promise.resolve()
         .then(() => this.#deps.fire(agentId, automation, decision.dueAt))
-        .then(() => { this.#fireFailures.delete(key); this.#retryHoldUntil.delete(key); })
+        .then((outcome) => {
+          // The run path returns undefined when dispatch is declined before a
+          // run is accepted (for example while a session is being restored).
+          // Keep that slot pending. A finished/error run or an explicitly
+          // interrupted run consumes its slot under the run-path contract.
+          if (outcome === undefined) throw new Error("automation dispatch was not accepted");
+          this.#fireFailures.delete(key);
+          this.#retryHoldUntil.delete(key);
+        })
         .catch((error: unknown) => {
           const failures = (this.#fireFailures.get(key) ?? 0) + 1;
           this.#fireFailures.set(key, failures);
           // Put the slot back so it retries, held off by a growing backoff. Once
           // the slot ages past staleAfterMs the stale branch re-anchors it.
-          this.#localAnchors.set(key, decision.dueAt - 1);
+          // Restore the anchor that produced this slot. dueAt - 1 works for
+          // calendar cron, but @every adds its interval to the anchor and would
+          // move the retry almost a full interval into the future.
+          this.#localAnchors.set(key, anchorMs);
           this.#retryHoldUntil.set(key, (this.#deps.now?.() ?? Date.now()) + Math.min(failures, 10) * 60_000);
           this.#deps.log?.(`[local-cron] ${key}: fire failed (attempt ${failures}, will retry): ${error instanceof Error ? error.message : String(error)}`);
         })

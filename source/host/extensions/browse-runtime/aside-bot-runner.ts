@@ -189,6 +189,12 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         return result("", 1);
       }
     }
+    if (options?.hidden === true && options.upgradeResume === true) {
+      // Generic hidden nudges only mirror native messages. They cannot prove
+      // that an interrupted native task resumed, so keep the durable intent.
+      send({ type: "text", content: "업데이트 전 Aside 작업을 자동으로 다시 시작하지 못했습니다. 브라우저의 작업 상태를 확인한 뒤 이 대화에 이어서 할 일을 알려 주세요." });
+      return { text: "", sentMessageCount: 1, reacted: false, aborted: true };
+    }
     const wakeInfo = options?.hidden === true ? (options as { automationWake?: { id?: string; name?: string } }).automationWake : undefined;
     const routineTask = wakeInfo === undefined ? null : parseAutomationWake(prompt);
     const inbound = options?.hidden === true && routineTask === null ? parseInboundAgentWake(prompt) : null;

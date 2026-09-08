@@ -163,8 +163,11 @@ test("the idle reaper closes the box browser by host policy, not model memory", 
   const { fileURLToPath } = await import("node:url");
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const source = readFileSync(path.join(repoRoot, "source/host/box/local-browser-use.ts"), "utf8");
-  // every driver op refreshes the idle clock
-  assert.match(source, /async execute\(_context, args\) \{\s*\/\/[^]*?noteLocalBrowserUse\(\);/);
+  // Every active driver op refreshes the idle clock before audit/execution.
+  // A canceled call returns first and does not keep an unused browser alive.
+  const executor = source.slice(source.indexOf("export function localBrowserShellExecutor("), source.indexOf("\ntype LocalBrowserApprovalGate"));
+  assert.match(executor, /async execute\(context, args\) \{/);
+  assert.match(executor, /if \(signal\?\.aborted\) return canceledResult\(\);\s*\/\/[^]*?noteLocalBrowserUse\(\);\s*audit\?\.\(args\.command\);/);
   // the kill is scoped to OUR chrome profile only
   assert.match(source, /execFile\("pkill", \["-TERM", "-f", profileDir\]/);
   // a leftover from a previous run is armed at boot

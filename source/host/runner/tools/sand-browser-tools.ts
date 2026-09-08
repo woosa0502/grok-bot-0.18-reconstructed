@@ -541,6 +541,7 @@ export function toBrowserReviewAction(
 
 export interface BrowserToolSchema {
   readonly required?: readonly string[];
+  readonly allowEmpty?: readonly string[];
   readonly enum?: Readonly<Record<string, readonly string[]>>;
 }
 
@@ -581,7 +582,7 @@ const BROWSER_TOOL_SPECS: readonly BrowserToolSpec[] = [
   { id: "BROWSER_CLICK", name: "browser_click", op: "click", description: "Click an element by ref from browser_snapshot. Scrolls the element into view first. Payment/money and login/signup submissions are blocked until the user explicitly approves; retry with confirmed: true only after that approval.", schema: { required: ["ref"] }, canNavigate: true },
   { id: "BROWSER_MOUSE_CLICK_XY", name: "browser_mouse_click_xy", op: "mouse_click_xy", description: "Click at viewport coordinates. Prefer browser_click with refs when possible.", schema: { required: ["x", "y"] }, canNavigate: true },
   { id: "BROWSER_TYPE", name: "browser_type", op: "type", description: "Type text into an input, textarea, or contenteditable element by ref. Password/credential fields are always refused — the user enters secrets directly in the browser window.", schema: { required: ["ref", "text"] }, canNavigate: true },
-  { id: "BROWSER_FILL", name: "browser_fill", op: "fill", description: "Set the value of an input, textarea, or contenteditable element by ref.", schema: { required: ["ref", "value"] } },
+  { id: "BROWSER_FILL", name: "browser_fill", op: "fill", description: "Set the value of an input, textarea, or contenteditable element by ref.", schema: { required: ["ref", "value"], allowEmpty: ["value"] } },
   { id: "BROWSER_SELECT_OPTION", name: "browser_select_option", op: "select_option", description: "Select one or more options in a select element by ref.", schema: { required: ["ref", "values"] } },
   { id: "BROWSER_PRESS_KEY", name: "browser_press_key", op: "press_key", description: "Press a key in the browser page, for example Enter, Escape, Tab, ArrowDown, or a single character.", schema: { required: ["key"] }, canNavigate: true },
   { id: "BROWSER_SCROLL", name: "browser_scroll", op: "scroll", description: "Scroll the page or scroll an element into view (pass its ref)." },
@@ -602,7 +603,7 @@ function validateArguments(
   args: Record<string, unknown>,
 ): void {
   for (const key of schema.required ?? []) {
-    if (args[key] == null || args[key] === "") {
+    if (args[key] == null || (args[key] === "" && !schema.allowEmpty?.includes(key))) {
       throw new SandBrowserDriverError(`${key} is required`);
     }
   }

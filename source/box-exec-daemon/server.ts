@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { appendFile, lstat, mkdir, open, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -229,6 +230,15 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function parseHookOutput(text: string, preserveText = false): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return preserveText && text.length > 0 ? { additional_context: text } : {};
+  }
+}
+
 function globToIgnoreRegExp(glob: string): RegExp {
   // Match the original ls ignore semantics: patterns not starting with "**/" (or "/") are
   // prepended with "**/" so they match anywhere in the tree.
@@ -334,12 +344,16 @@ export class BoxExecRuntime {
   readonly #environment: NodeJS.ProcessEnv;
   readonly #foreground = new Set<ChildProcessWithoutNullStreams>();
   readonly #background = new Map<number, BackgroundProcess>();
+  readonly #terminations = new Map<ChildProcessWithoutNullStreams, { done: Promise<void>; force: () => void }>();
+  #stopped = false;
   readonly #mcpServers = new Map<string, { client: McpStdioClient; configKey: string }>();
   // Seeded from the clock so ids never repeat across daemon restarts (a reused
   // id could route Await/stdin to the wrong terminal file).
   #nextShellId = Math.floor(Date.now() / 1000) % 1_000_000_000;
 
   readonly #shellStateDir: string;
+  readonly #shellStateVersions = new Map<string, symbol>();
+  readonly #shellStateWrites = new Map<string, Promise<void>>();
 
   constructor(readonly workspaceRoot: string, readonly terminalsDirectory: string, environment: NodeJS.ProcessEnv) {
     this.#environment = { ...environment };
@@ -577,34 +591,44 @@ export class BoxExecRuntime {
   // exit code 2 = block). Enforces a wall-clock timeout, honors the request abort
   // signal, and caps captured stdout to avoid an unbounded hook stalling/flooding.
   #runHookCommand(command: string, inputJson: string, timeoutMs: number, signal?: AbortSignal): Promise<{ stdout: string; exitCode: number; timedOut: boolean }> {
+    if (this.#stopped || signal?.aborted) return Promise.resolve({ stdout: "", exitCode: 130, timedOut: false });
     return new Promise(resolve => {
       let child: ChildProcessWithoutNullStreams;
-      try { child = spawn("sh", ["-c", command], { cwd: this.resolvePath("/workspace"), env: this.#environment }); }
+      try { child = spawn("sh", ["-c", command], { cwd: this.resolvePath("/workspace"), env: this.#environment, detached: process.platform !== "win32" }); }
       catch { resolve({ stdout: "", exitCode: 1, timedOut: false }); return; }
+      this.#foreground.add(child);
       let out = "", done = false, timedOut = false;
+      let cancelledExitCode: number | undefined;
       const MAX_OUTPUT = 1_000_000; // 1 MB cap on captured stdout
       const finish = (result: { stdout: string; exitCode: number; timedOut: boolean }): void => {
         if (done) return;
         done = true;
         clearTimeout(timer);
         if (signal !== undefined) signal.removeEventListener("abort", onAbort);
+        this.#foreground.delete(child);
         resolve(result);
       };
-      const kill = (): void => { try { child.kill("SIGKILL"); } catch { /* already gone */ } };
-      const onAbort = (): void => { kill(); finish({ stdout: out, exitCode: 130, timedOut: false }); };
-      const timer = setTimeout(() => { timedOut = true; kill(); finish({ stdout: out, exitCode: 124, timedOut: true }); }, timeoutMs);
-      if (signal !== undefined) {
-        if (signal.aborted) { kill(); resolve({ stdout: "", exitCode: 130, timedOut: false }); clearTimeout(timer); return; }
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-      child.stdout.on("data", d => { if (out.length < MAX_OUTPUT) out += d.toString(); });
+      const kill = (): void => {
+        try {
+          if (process.platform !== "win32" && child.pid != null) process.kill(-child.pid, "SIGKILL");
+          else child.kill("SIGKILL");
+        } catch { /* already gone */ }
+      };
+      // Resolve only once close/error confirms the owned process has stopped.
+      const onAbort = (): void => { cancelledExitCode = 130; kill(); };
+      const timer = setTimeout(() => { timedOut = true; cancelledExitCode = 124; kill(); }, timeoutMs);
+      child.stdout.on("data", d => { if (out.length < MAX_OUTPUT) out += d.toString().slice(0, MAX_OUTPUT - out.length); });
       child.stderr.on("data", () => {});
-      child.on("error", () => finish({ stdout: "", exitCode: 1, timedOut: false }));
-      child.on("close", code => finish({ stdout: out, exitCode: code ?? 0, timedOut }));
+      child.on("error", () => finish({ stdout: out, exitCode: cancelledExitCode ?? 1, timedOut }));
+      child.on("close", code => finish({ stdout: out, exitCode: cancelledExitCode ?? code ?? 1, timedOut }));
       // EPIPE surfaces as an async 'error' EVENT (not a synchronous throw) when
       // a hook script exits without reading stdin — unhandled it becomes an
       // uncaughtException (observed as a flaky full-suite test failure).
       child.stdin.on("error", () => { /* hook exited without reading stdin */ });
+      if (signal !== undefined) {
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) { onAbort(); return; }
+      }
       try { child.stdin.write(inputJson); child.stdin.end(); } catch { /* stdin closed early */ }
     });
   }
@@ -672,9 +696,7 @@ export class BoxExecRuntime {
         : DEFAULT_HOOK_TIMEOUT_MS;
       const r = await this.#runHookCommand(entry.command!, inputJson, timeoutMs, signal);
       const out = r.stdout.trim();
-      let parsed: Record<string, unknown> = {};
-      try { parsed = out ? JSON.parse(out) as Record<string, unknown> : {}; }
-      catch { parsed = out ? { additional_context: out } : {}; }
+      const parsed = parseHookOutput(out, true);
       const hookOut = parsed.hookSpecificOutput as Record<string, unknown> | undefined;
       const ac = pickFrom(parsed, "additional_context", "additionalContext", "system_message", "systemMessage")
         ?? (typeof hookOut?.additionalContext === "string" ? hookOut.additionalContext : undefined);
@@ -788,8 +810,7 @@ export class BoxExecRuntime {
     for (const entry of commands) {
       const timeoutMs = typeof entry.timeout === "number" && entry.timeout > 0 ? Math.min(entry.timeout * 1000, 3_600_000) : DEFAULT_HOOK_TIMEOUT_MS;
       const r = await this.#runHookCommand(entry.command!, inputJson, timeoutMs, signal);
-      let parsed: Record<string, unknown> = {};
-      try { parsed = r.stdout.trim() ? JSON.parse(r.stdout.trim()) as Record<string, unknown> : {}; } catch { /* non-JSON */ }
+      const parsed = parseHookOutput(r.stdout.trim());
       const rawPermission = typeof parsed.permission === "string" ? parsed.permission : typeof parsed.decision === "string" ? parsed.decision : undefined;
       const denies = r.exitCode === 2 || (entry.failClosed === true && r.exitCode !== 0) || rawPermission === "block" || rawPermission === "deny";
       if (denies) {
@@ -825,8 +846,7 @@ export class BoxExecRuntime {
     for (const entry of commands) {
       const timeoutMs = typeof entry.timeout === "number" && entry.timeout > 0 ? Math.min(entry.timeout * 1000, 3_600_000) : DEFAULT_HOOK_TIMEOUT_MS;
       const r = await this.#runHookCommand(entry.command!, inputJson, timeoutMs, signal);
-      let parsed: Record<string, unknown> = {};
-      try { parsed = r.stdout.trim() ? JSON.parse(r.stdout.trim()) as Record<string, unknown> : {}; } catch { /* non-JSON */ }
+      const parsed = parseHookOutput(r.stdout.trim());
       const rawPermission = typeof parsed.permission === "string" ? parsed.permission : typeof parsed.decision === "string" ? parsed.decision : undefined;
       const userMessage = typeof parsed.user_message === "string" && parsed.user_message.length > 0 ? parsed.user_message
         : typeof parsed.userMessage === "string" && parsed.userMessage.length > 0 ? parsed.userMessage
@@ -857,8 +877,7 @@ export class BoxExecRuntime {
     for (const entry of commands) {
       const timeoutMs = typeof entry.timeout === "number" && entry.timeout > 0 ? Math.min(entry.timeout * 1000, 3_600_000) : DEFAULT_HOOK_TIMEOUT_MS;
       const r = await this.#runHookCommand(entry.command!, inputJson, timeoutMs, signal);
-      let parsed: Record<string, unknown> = {};
-      try { parsed = r.stdout.trim() ? JSON.parse(r.stdout.trim()) as Record<string, unknown> : {}; } catch { /* non-JSON */ }
+      const parsed = parseHookOutput(r.stdout.trim());
       const rawPermission = typeof parsed.permission === "string" ? parsed.permission : typeof parsed.decision === "string" ? parsed.decision : undefined;
       const userMessage = typeof parsed.user_message === "string" && parsed.user_message.length > 0 ? parsed.user_message
         : typeof parsed.userMessage === "string" && parsed.userMessage.length > 0 ? parsed.userMessage
@@ -995,7 +1014,11 @@ export class BoxExecRuntime {
       // A binary PDF is handed back as bytes: the agent-side Read tool runs the host's
       // text extractor (pdftotext -> pdfjs) on `data` output, so the model sees text.
       const looksLikePdf = (data.length >= 4 && data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46) || /\.pdf$/i.test(args.path);
-      if (looksLikePdf) {
+      const looksLikeImage = (data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
+        || (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff)
+        || (data.length >= 6 && /^GIF8[79]a$/.test(data.subarray(0, 6).toString("ascii")))
+        || (data.length >= 12 && data.subarray(0, 4).toString("ascii") === "RIFF" && data.subarray(8, 12).toString("ascii") === "WEBP");
+      if (looksLikePdf || looksLikeImage) {
         return new ReadResult({ result: { case: "success", value: new ReadSuccess({
           path: args.path,
           output: { case: "data", value: new Uint8Array(data) },
@@ -1007,16 +1030,21 @@ export class BoxExecRuntime {
       }
       const text = data.toString(args.encodingHint === "latin1" ? "latin1" : "utf8");
       const lines = text.split("\n");
-      const offset = Math.max(0, args.offset ?? 0);
-      const limit = args.limit == null ? lines.length : Math.max(0, args.limit);
-      const content = lines.slice(offset, offset + limit).join("\n");
+      const offset = args.offset ?? 1;
+      const start = offset < 0 ? Math.max(0, lines.length + offset) : Math.max(0, offset - 1);
+      const limit = args.limit ?? (offset < 0 ? Math.abs(offset) : lines.length);
+      // Match the public Read tool: numbering is 1-based; negative offsets read
+      // from the tail. Leave empty/beyond-EOF responses unsliced so its normal
+      // empty-file and invalid-offset handling still runs.
+      const rangeApplied = (args.offset != null || args.limit != null) && text.length > 0 && start < lines.length;
+      const content = rangeApplied ? lines.slice(start, start + Math.max(0, limit)).join("\n") : text;
       return new ReadResult({ result: { case: "success", value: new ReadSuccess({
         path: args.path,
         output: { case: "content", value: content },
         totalLines: lines.length,
         fileSize: BigInt(data.byteLength),
-        truncated: offset > 0 || offset + limit < lines.length,
-        rangeApplied: args.offset != null || args.limit != null,
+        truncated: false,
+        rangeApplied,
       }) } });
     } catch (error) {
       if (error instanceof PathRejectedError) return new ReadResult({ result: { case: "rejected", value: new ReadRejected({ path: args.path, reason: error.message }) } });
@@ -1227,12 +1255,26 @@ export class BoxExecRuntime {
       // Atomic write: a crash mid-write must never leave a truncated file. Write a sibling temp
       // file, then rename it over the target (rename is atomic within a filesystem). Clean up the
       // temp on failure so a failed write leaves no debris.
-      const tempTarget = `${target}.tmp-${process.pid}-${Date.now()}`;
+      const existingMode = await stat(target).then(info => info.mode & 0o7777).catch(error => {
+        if (error?.code === "ENOENT") return undefined;
+        throw error;
+      });
+      const tempTarget = `${target}.tmp-${randomUUID()}`;
+      let created = false;
       try {
-        await writeFile(tempTarget, data);
+        const handle = await open(tempTarget, "wx", existingMode ?? 0o666);
+        created = true;
+        try {
+          await handle.writeFile(data);
+          // Creation is subject to umask; restore the existing file's mode
+          // explicitly after writing, including its executable bits.
+          if (existingMode !== undefined) await handle.chmod(existingMode);
+        } finally {
+          await handle.close();
+        }
         await rename(tempTarget, target);
       } catch (writeError) {
-        await rm(tempTarget, { force: true }).catch(() => {});
+        if (created) await rm(tempTarget, { force: true }).catch(() => {});
         throw writeError;
       }
       const linesCreated = args.fileText === undefined ? 0 : args.fileText.length === 0 ? 0 : args.fileText.split("\n").length;
@@ -1258,7 +1300,12 @@ export class BoxExecRuntime {
     } catch (error) {
       return new ShellResult({ result: { case: "spawnError", value: new ShellSpawnError({ command: args.command, workingDirectory: args.workingDirectory, error: errorText(error) }) } });
     }
-    const outcome = await this.run(args.command, cwd, args.timeout > 0 ? args.timeout : undefined, signal);
+    let outcome: ProcessOutcome;
+    try {
+      outcome = await this.run(args.command, cwd, args.timeout > 0 ? args.timeout : undefined, signal);
+    } catch (error) {
+      return new ShellResult({ result: { case: "spawnError", value: new ShellSpawnError({ command: args.command, workingDirectory: args.workingDirectory, error: errorText(error) }) } });
+    }
     if (outcome.timedOut) return new ShellResult({ result: { case: "timeout", value: new ShellTimeout({ command: args.command, workingDirectory: args.workingDirectory, timeoutMs: args.timeout }) } });
     const common = {
       command: args.command,
@@ -1278,7 +1325,12 @@ export class BoxExecRuntime {
 
   async *shellStream(request: ExecServerMessage, args: ShellArgs, signal: AbortSignal): AsyncGenerator<ExecStreamElement> {
     const stateOwner = args.conversationId;
-    const cwd = await this.#startingCwd(args.workingDirectory, stateOwner);
+    const abortedResult = () => client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "exit", value: new ShellStreamExit({ code: 1, cwd: args.workingDirectory, aborted: true, localExecutionTimeMs: 0 }) } }) });
+    const spawnErrorResults = (error: unknown) => [
+      client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "stderr", value: new ShellStreamStderr({ data: `Failed to spawn shell: ${errorText(error)}` }) } }) }),
+      client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "exit", value: new ShellStreamExit({ code: 1, cwd: args.workingDirectory, localExecutionTimeMs: 0 }) } }) }),
+    ];
+    if (signal.aborted) { yield abortedResult(); return; }
     // Hook gates (.cursor/hooks.json): preToolUse (matcher "Shell"/"*") and
     // beforeShellExecution run before anything is spawned; a deny surfaces to the
     // agent as a permissionDenied result ("Permission denied: <user_message>").
@@ -1288,8 +1340,31 @@ export class BoxExecRuntime {
       yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "permissionDenied", value: new ShellPermissionDenied({ command: args.command, workingDirectory: args.workingDirectory, error: hookDeny }) } }) });
       return;
     }
+    if (signal.aborted) { yield abortedResult(); return; }
+    const stateDir = this.#shellStateDirFor(stateOwner);
+    await this.#shellStateWrites.get(stateDir);
+    const stateVersion = Symbol();
+    this.#shellStateVersions.set(stateDir, stateVersion);
+    const stateOutputDir = `${stateDir}.run-${randomUUID()}`;
+    let cwd: string;
+    try {
+      cwd = await this.#startingCwd(args.workingDirectory, stateOwner);
+    } catch (error) {
+      yield* spawnErrorResults(error);
+      return;
+    }
+    if (signal.aborted) { yield abortedResult(); return; }
     yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "start", value: new ShellStreamStart() } }) });
-    const child = this.spawnShell(this.#withShellState(args.command, stateOwner), cwd);
+    // The consumer can cancel while observing start, before requesting the next
+    // stream item. Do not launch the command after that cancellation either.
+    if (signal.aborted) { yield abortedResult(); return; }
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      child = this.spawnShell(this.#withShellState(args.command, stateOwner, stateOutputDir), cwd);
+    } catch (error) {
+      yield* spawnErrorResults(error);
+      return;
+    }
     this.#foreground.add(child);
     const startedAt = Date.now();
     const events: Array<{ case: "stdout" | "stderr"; data: string }> = [];
@@ -1299,6 +1374,8 @@ export class BoxExecRuntime {
     let exitSignal = "";
     let backgroundRequested = false;
     let backgrounded = false;
+    let spawnError: Error | undefined;
+    let stateFinished = Promise.resolve();
     // Tail of the combined output handed to postToolUse hooks as tool_output.
     let outputTail = "";
     const appendTail = (data: string) => { outputTail = (outputTail + data).slice(-SHELL_HOOK_OUTPUT_TAIL_CHARS); };
@@ -1307,9 +1384,18 @@ export class BoxExecRuntime {
     const onStderr = (data: unknown) => { events.push({ case: "stderr", data: String(data) }); appendTail(String(data)); notify(); };
     child.stdout.on("data", onStdout);
     child.stderr.on("data", onStderr);
-    child.once("close", (code, childSignal) => { exitCode = code ?? 1; exitSignal = childSignal ?? ""; done = true; notify(); });
+    child.once("error", error => { spawnError = error; done = true; notify(); });
+    child.once("close", (code, childSignal) => {
+      exitCode = code ?? 1;
+      exitSignal = childSignal ?? "";
+      if (hardTimer != null) clearTimeout(hardTimer);
+      stateFinished = this.#finishShellState(stateDir, stateVersion, stateOutputDir, signal.aborted && !backgrounded);
+      done = true;
+      notify();
+    });
     const abort = () => this.kill(child);
     signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
     // is_background / block_until_ms: when the tool asks for background behaviour
     // (timeoutBehavior BACKGROUND) we hand a still-running shell back to the agent
     // as a background handle (shellId/pid/output file) instead of killing it.
@@ -1319,6 +1405,11 @@ export class BoxExecRuntime {
       ? args.timeout
       : (args.isBackground || backgroundOnTimeout || (args.hardTimeout != null && args.hardTimeout > 0) ? 0 : -1);
     let timer: NodeJS.Timeout | undefined;
+    // A hard deadline belongs to the child, not to the lifetime of this RPC.
+    // Keep it armed after a soft timeout transfers the child to the background.
+    const hardTimer = args.hardTimeout != null && args.hardTimeout > 0
+      ? setTimeout(() => this.kill(child), args.hardTimeout)
+      : undefined;
     if (backgroundOnTimeout && backgroundAfterMs >= 0) {
       timer = setTimeout(() => { backgroundRequested = true; notify(); }, backgroundAfterMs);
     } else if (args.timeout > 0) {
@@ -1337,11 +1428,12 @@ export class BoxExecRuntime {
         }
         if (!done && !backgroundRequested) await new Promise<void>(resolve => { wake = resolve; });
       }
+      if (spawnError !== undefined) { yield* spawnErrorResults(spawnError); return; }
+      if (backgroundRequested && !done) await mkdir(this.terminalsDirectory, { recursive: true });
       if (backgroundRequested && !done) {
         backgrounded = true;
         child.stdout.off("data", onStdout);
         child.stderr.off("data", onStderr);
-        await mkdir(this.terminalsDirectory, { recursive: true });
         const shellId = this.#nextShellId++;
         const terminalPath = path.join(this.terminalsDirectory, `${shellId}.txt`);
         const backgroundProcess: BackgroundProcess = {
@@ -1370,11 +1462,10 @@ export class BoxExecRuntime {
         }) } }) });
         return;
       }
+      await stateFinished;
       if (!signal.aborted) {
         const hookContexts = await this.#shellPostHooks(args, outputTail, exitCode, Date.now() - startedAt, signal);
         if (hookContexts.length > 0) yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "hookContext", value: new ShellStreamHookContext({ hookAdditionalContexts: hookContexts }) } }) });
-      } else {
-        await this.#resetShellState(stateOwner);
       }
       yield client(request.id, request.execId, { case: "shellStream", value: new ShellStream({ event: { case: "exit", value: new ShellStreamExit({
         code: exitCode,
@@ -1387,6 +1478,7 @@ export class BoxExecRuntime {
       if (timer != null) clearTimeout(timer);
       signal.removeEventListener("abort", abort);
       if (!backgrounded) {
+        if (hardTimer != null) clearTimeout(hardTimer);
         this.#foreground.delete(child);
         if (!done) this.kill(child);
       }
@@ -1434,9 +1526,17 @@ export class BoxExecRuntime {
   }
 
   async stop(): Promise<void> {
+    this.#stopped = true;
     this.stopMcpServers();
     for (const child of this.#foreground) this.kill(child);
     for (const process of this.#background.values()) this.kill(process.child);
+    // Cancellation can remove a shell from the active sets before its detached
+    // descendants exit. Await those already-owned terminations as well. The
+    // shorter shutdown grace fits inside the host's five-second stop budget.
+    const pending = [...this.#terminations.values()];
+    const deadline = setTimeout(() => { for (const item of pending) item.force(); }, 1_000);
+    try { await Promise.all(pending.map(item => item.done)); }
+    finally { clearTimeout(deadline); }
     this.#foreground.clear();
     this.#background.clear();
   }
@@ -1463,8 +1563,40 @@ export class BoxExecRuntime {
     return this.resolvePath(requested);
   }
 
-  #withShellState(command: string, owner?: string): string {
-    return buildShellStateWrappedCommand(this.#shellStateDirFor(owner), command);
+  #withShellState(command: string, owner?: string, saveDir?: string): string {
+    return buildShellStateWrappedCommand(this.#shellStateDirFor(owner), command, saveDir);
+  }
+
+  #finishShellState(stateDir: string, version: symbol, outputDir: string, aborted: boolean): Promise<void> {
+    // Each shell snapshots privately. Only the latest started call may publish
+    // its snapshot; a late background exit cannot replace newer cwd/env/options.
+    const pending = (this.#shellStateWrites.get(stateDir) ?? Promise.resolve()).then(async () => {
+      try {
+        if (this.#shellStateVersions.get(stateDir) !== version) return;
+        if (aborted) {
+          await rm(stateDir, { recursive: true, force: true });
+          return;
+        }
+        if (!(await stat(path.join(outputDir, SHELL_STATE_CWD_FILE)).catch(() => undefined))?.isFile()) return;
+        const previousDir = `${outputDir}.previous`;
+        let movedPrevious = false;
+        try {
+          await rename(stateDir, previousDir).then(() => { movedPrevious = true; }).catch(error => {
+            if (error?.code !== "ENOENT") throw error;
+          });
+          await rename(outputDir, stateDir);
+        } catch (error) {
+          if (movedPrevious) await rename(previousDir, stateDir);
+          throw error;
+        } finally {
+          await rm(previousDir, { recursive: true, force: true });
+        }
+      } finally {
+        await rm(outputDir, { recursive: true, force: true });
+      }
+    }).catch(error => { console.error(`[box-shell] failed to save shell state: ${errorText(error)}`); });
+    this.#shellStateWrites.set(stateDir, pending);
+    return pending;
   }
 
   async #savedCwdLogical(owner?: string): Promise<string | undefined> {
@@ -1474,34 +1606,52 @@ export class BoxExecRuntime {
     } catch { return undefined; }
   }
 
-  async #resetShellState(owner?: string): Promise<void> {
-    await rm(this.#shellStateDirFor(owner), { recursive: true, force: true }).catch(() => undefined);
-  }
-
   private spawnShell(command: string, cwd: string): ChildProcessWithoutNullStreams {
+    if (this.#stopped) throw new Error("Box exec daemon is stopping");
     return spawn("/bin/sh", ["-lc", command], { cwd, env: this.#environment, detached: process.platform !== "win32", stdio: "pipe" });
   }
 
   private kill(child: ChildProcessWithoutNullStreams): void {
-    if (child.exitCode != null || child.signalCode != null) return;
-    try {
-      if (process.platform !== "win32" && child.pid != null) process.kill(-child.pid, "SIGTERM");
-      else child.kill("SIGTERM");
-    } catch {}
-    // Escalate: a process that ignores SIGTERM must not linger (strict-review
-    // P1-07 tail — no SIGKILL escalation existed).
-    const escalate = setTimeout(() => {
-      if (child.exitCode != null || child.signalCode != null) return;
+    if (this.#terminations.has(child)) return;
+    const groupPid = process.platform !== "win32" ? child.pid : undefined;
+    if (groupPid === undefined && (child.exitCode != null || child.signalCode != null)) return;
+    const exists = () => {
+      if (groupPid === undefined) return child.exitCode == null && child.signalCode == null;
+      try { process.kill(-groupPid, 0); return true; } catch { return false; }
+    };
+    if (!exists()) return;
+    let resolveDone!: () => void;
+    let finished = false;
+    const done = new Promise<void>(resolve => { resolveDone = resolve; });
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(escalate);
+      clearInterval(observe);
+      this.#terminations.delete(child);
+      resolveDone();
+    };
+    const force = () => {
+      if (finished) return;
       try {
-        if (process.platform !== "win32" && child.pid != null) process.kill(-child.pid, "SIGKILL");
+        if (groupPid !== undefined) process.kill(-groupPid, "SIGKILL");
         else child.kill("SIGKILL");
       } catch {}
-    }, 5_000);
-    escalate.unref?.();
-    child.once("exit", () => clearTimeout(escalate));
+      finish();
+    };
+    // Keep the lease referenced until escalation. A descendant may close its
+    // stdio and survive its shell, leaving no other Node handle to keep us alive.
+    const escalate = setTimeout(force, 5_000);
+    const observe = setInterval(() => { if (!exists()) finish(); }, 50);
+    this.#terminations.set(child, { done, force });
+    try {
+      if (groupPid !== undefined) process.kill(-groupPid, "SIGTERM");
+      else child.kill("SIGTERM");
+    } catch { finish(); }
   }
 
   private async run(command: string, cwd: string, timeoutMs: number | undefined, signal: AbortSignal): Promise<ProcessOutcome> {
+    if (signal.aborted) return { code: 1, signal: "", stdout: "", stderr: "", elapsedMs: 0, timedOut: false, aborted: true };
     const child = this.spawnShell(command, cwd);
     this.#foreground.add(child);
     const startedAt = Date.now();
@@ -1528,7 +1678,12 @@ export class BoxExecRuntime {
 }
 
 function closeServer(server: Server): Promise<void> {
-  return new Promise((resolve, reject) => server.close(error => error == null ? resolve() : reject(error)));
+  return new Promise((resolve, reject) => {
+    server.close(error => error == null ? resolve() : reject(error));
+    // An ownerless daemon cannot wait indefinitely for a half-written request
+    // or a client that keeps an active streaming connection open.
+    server.closeAllConnections();
+  });
 }
 
 export async function startBoxExecDaemon(options: BoxExecDaemonOptions): Promise<BoxExecDaemonHandle> {
@@ -1587,8 +1742,7 @@ export async function startBoxExecDaemon(options: BoxExecDaemonOptions): Promise
       if (stopped) return;
       stopped = true;
       readyState = false;
-      await runtime.stop();
-      await closeServer(server);
+      await Promise.all([runtime.stop(), closeServer(server)]);
     },
   };
 }

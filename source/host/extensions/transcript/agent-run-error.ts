@@ -16,7 +16,7 @@ export interface BackendDetail {
   additionalInfo?: { rateLimitReason?: string; nextResetAt?: string };
 }
 export interface BackendConnectError extends Error {
-  findDetails(type?: unknown): Array<{ details?: BackendDetail }>;
+  findDetails(type: typeof ErrorDetails): Array<{ details?: BackendDetail }>;
   code?: number;
 }
 function isConnectError(value: unknown): value is BackendConnectError {
@@ -34,7 +34,7 @@ export function walkForBackendConnectError(
     return null;
   seen.add(error);
   if (isConnectError(error)) {
-    if (error.findDetails().length > 0) return error;
+    if (error.findDetails(ErrorDetails).length > 0) return error;
     first.value ??= error;
   }
   const cause = (error as { cause?: unknown }).cause,
@@ -57,7 +57,7 @@ export function findBackendConnectError(
   return detailed ?? (requireDetails ? null : first.value);
 }
 export function getBackendErrorDetailMessage(error: unknown): string | null {
-  const detail = findBackendConnectError(error)?.findDetails()[0]?.details,
+  const detail = findBackendConnectError(error)?.findDetails(ErrorDetails)[0]?.details,
     title = detail?.title?.trim(),
     message = detail?.detail?.trim();
   return !title
@@ -178,7 +178,7 @@ export function mapErrorDetailButtons(
 export function describeAgentRunError(error: unknown): Record<string, unknown> {
   const formatted =
       error instanceof Error ? formatAgentRunError(error) : String(error),
-    detail = findBackendConnectError(error)?.findDetails()[0]?.details,
+    detail = findBackendConnectError(error)?.findDetails(ErrorDetails)[0]?.details,
     title = detail?.title?.trim() ?? "",
     actions = mapErrorDetailButtons(detail?.buttons);
   let shown = title ? (detail?.detail?.trim() ?? "") : formatted;
@@ -194,3 +194,4 @@ export function describeAgentRunError(error: unknown): Record<string, unknown> {
     ...(actions.length ? { actions } : {}),
   };
 }
+import { ErrorDetails } from "../../../packages/proto/generated/aiserver/v1/utils_pb.js";

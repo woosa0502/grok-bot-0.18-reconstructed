@@ -10,6 +10,7 @@ import { ToolCall } from "../../../../proto/generated/agent/v1/agent_pb.js";
 import { DeleteArgs, DeleteError, DeleteResult } from "../../../../proto/generated/agent/v1/delete_exec_pb.js";
 import { DeleteToolCall } from "../../../../proto/generated/agent/v1/delete_tool_pb.js";
 import { ToolCallArgParseError, ToolCallRejectedError, ToolCallUnexpectedEnvironmentError, createZodAgentTool } from "../../common.js";
+import { waitForFileMutationLock } from "../file-mutation-lock.js";
 
 const DELETE_DESCRIPTION = "Delete a file at the given path. Use this when a file is no longer needed. Fails gracefully if the file does not exist, the path is a directory, or the deletion is not permitted.";
 
@@ -65,6 +66,7 @@ export function createDeleteTool(
       createDeleteToolCall(new DeleteToolCall({ args: deleteArgs })),
       meta.toolCallId,
       async ctx => {
+        using mutationLock = await waitForFileMutationLock(ctx, resourceAccessor);
         const result = await deleteExecutor.execute(ctx, deleteArgs, { execId: meta.toolCallId });
         if (result.result.case === "rejected") throw new ToolCallRejectedError(result.result.value.reason || "Delete rejected");
         if (result.result.case === "error") throw new ToolCallUnexpectedEnvironmentError(result.result.value.error);

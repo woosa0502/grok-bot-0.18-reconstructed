@@ -21,7 +21,7 @@ export const MEMORY_NOTE_PREFIX = "Note: ";
 export const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const immediateDebounce = { name: "sand-agent-state-memory-shard", wrap: <T extends (...args: never[]) => unknown>(fn: T) => Object.assign(fn, { dispose() {} }) };
 
-interface MemoryPort { addMemory(content: string, at: number, kind: MemoryKind): { content: string } | null; removeMemoryByContent(content: string): boolean }
+interface MemoryPort { addMemory(content: string, at: number, kind: MemoryKind, origin?: "explicit" | "legacy"): { content: string } | null; removeMemoryByContent(content: string): boolean }
 interface AutomationPort { upsert(spec: unknown, now?: number): { id: string; name: string; isEnabled?: boolean; trigger: AutomationTrigger } | null; update(id: string, spec: unknown): { id: string; name: string; isEnabled?: boolean; trigger: AutomationTrigger } | null; setEnabled(id: string, enabled: boolean): { id: string; name: string } | null; get(id: string): { name: string } | null; remove(id: string): boolean }
 interface WorkflowPort { create(spec: unknown): { id: string; name: string } | null; update(id: string, spec: unknown): { id: string; name: string } | null; remove(id: string): boolean }
 interface MembershipPort { read(): ReadonlySet<string>; join(slug: string): boolean; leave(slug: string): boolean }
@@ -41,7 +41,7 @@ function shardFor(deps: AgentStateDeps, scope: "agent" | "user" | "project", pro
   if (!deps.membership.read().has(slug)) return fail(`you haven't joined project "${slug}" yet. Join it first (target "project", action "join").`);
   return { store: new FileMemoryStore(getProjectMemoryShardDir(deps.sandRoot, slug, deps.agentId), immediateDebounce), label: `project "${slug}" memory` };
 }
-function remember(store: MemoryPort, content: string, tier: "profile" | "note" | "log", at: number, label: string): StateWriteResult { const record = store.addMemory(tier === "note" ? `${MEMORY_NOTE_PREFIX}${content.trim()}` : content, at, tier === "profile" ? "profile" : "log"); return record == null ? fail(`nothing was saved to ${label} — the fact was empty or already recorded. Grep the memory folder to see what is already there.`) : ok(`Remembered in ${label} (${tier}): ${record.content}`); }
+function remember(store: MemoryPort, content: string, tier: "profile" | "note" | "log", at: number, label: string): StateWriteResult { const record = store.addMemory(tier === "note" ? `${MEMORY_NOTE_PREFIX}${content.trim()}` : content, at, tier === "profile" ? "profile" : "log", "explicit"); return record == null ? fail(`nothing was saved to ${label} — the fact was empty or already recorded. Grep the memory folder to see what is already there.`) : ok(`Remembered in ${label} (${tier}): ${record.content}`); }
 function describeAutomation(value: ReturnType<AutomationPort["upsert"]>, verb: string): StateWriteResult { return value == null ? fail("the routine could not be saved — check that the name and instruction are non-empty and the trigger is valid.") : ok(`${verb} routine "${value.name}" (folder ${value.id}) — ${describeTrigger(value.trigger)}${value.isEnabled ? "" : ", paused"}.`); }
 const avatarExtension = (mime: string): string | null => ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "image/svg+xml": "svg" })[mime] ?? null;
 

@@ -159,6 +159,7 @@ try {
       },
       buildLineage,
       sourceIdentity,
+      rendererMode: selection.mode,
     });
     await writeWslRuntimeLineage(path.join(dataRoot, "runtime-lineage.json"), lineage);
   } catch (error) {

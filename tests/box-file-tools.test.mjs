@@ -72,8 +72,8 @@ test("Read: round trip, range flags, and the full error taxonomy", async () => {
     assert.equal(full.result.value.truncated, false);
 
     const ranged = await runtime.read(new ReadArgs({ path: "/workspace/notes.txt", offset: 1, limit: 2 }));
-    assert.equal(ranged.result.value.output.value, "L2\nL3");
-    assert.equal(ranged.result.value.truncated, true, "a partial range must be flagged");
+    assert.equal(ranged.result.value.output.value, "L1\nL2");
+    assert.equal(ranged.result.value.truncated, false, "a requested range is not size truncation");
     assert.equal(ranged.result.value.rangeApplied, true);
 
     const missing = await runtime.read(new ReadArgs({ path: "/workspace/absent.txt" }));

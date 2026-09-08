@@ -159,7 +159,7 @@ export interface TurnAgentRunContext<ContextValue> {
  * shell-watch state/blob/box wiring all happen once per turn; disposal is
  * idempotent and releases an uncommitted reminder episode.
  */
-// Context compaction on the local (non-Cursor) path used to fall through to the turn model
+// Context compaction on the Codex path used to fall through to the turn model
 // (gpt-5.5/high): ~130 summaries a day over ~45k tokens each. Summaries need no tools, so the
 // cheap model does them; override with SAND_CODEX_SUMMARY_MODEL / SAND_CODEX_SUMMARY_EFFORT.
 const LOCAL_SUMMARY_MODEL = process.env.SAND_CODEX_SUMMARY_MODEL?.trim() || "gpt-5.6-luna";
@@ -234,7 +234,7 @@ export async function createTurnAgentRunContext<ContextValue>(
     },
   ) : createProviderPromptSession(
     turnProvider,
-    routedHost === undefined ? LOCAL_SUMMARY_MODEL : resolvedModelId, // a routed bot summarizes on its own (free) host
+    turnProvider === "codex" ? LOCAL_SUMMARY_MODEL : resolvedModelId,
     LOCAL_SUMMARY_REASONING,
     `${input.conversationId}:summary`,
   ) as unknown as SummarizationPromptSession;
@@ -398,6 +398,8 @@ export const RESUME_TURN_ACTION = new ConversationAction({
 
 export interface TurnRunOptions {
   readonly requestSource?: string;
+  /** Distinguishes recovery work from optional hidden delivery nudges. */
+  readonly upgradeResume?: boolean;
   readonly automationWake?: { readonly id: string };
   readonly selectedImages?: readonly unknown[];
   readonly attachedFilePaths?: readonly string[];
@@ -437,6 +439,9 @@ export interface TurnRunContext {
   readonly inferenceSession?: TurnSession;
   readonly boxConnection?: unknown;
   readonly mcpTools?: readonly unknown[];
+  /** Invocation identity, independent of persistent conversation generations. */
+  readonly ownsRun?: () => boolean;
+  readonly cancelThisRun?: (cancellation: TurnCancellation) => void;
 }
 
 export interface PreparedTurn {
@@ -444,6 +449,8 @@ export interface PreparedTurn {
   readonly baseState: TurnCheckpoint;
   readonly transcriptPersistenceEnabled: boolean;
   readonly session: TurnSession;
+  /** Release this invocation, including a predecessor escaped by the scheduler. */
+  readonly dispose?: () => void;
 }
 
 export interface TurnStreamCallbacks {
@@ -548,6 +555,10 @@ interface ActiveRun {
 export function createTurnRunShell(host: TurnRunShellHost) {
   let quiescingForUpgrade = false;
   let activeRun: ActiveRun | null = null;
+  // A checkpoint already inside an asynchronous store/mirror cannot be revoked.
+  // Preserve write order across escaped runs; later callbacks check ownership
+  // when their slot is reached, before they can enter persistence.
+  let persistenceTail: Promise<void> = Promise.resolve();
 
   function cancelRun(run: ActiveRun, cancellation: TurnCancellation): void {
     if (!run.controller.signal.aborted) {
@@ -667,7 +678,18 @@ export function createTurnRunShell(host: TurnRunShellHost) {
       awaitingUserSelection: false,
       quiescedForUpgrade: false,
     };
+    if (activeRun != null) {
+      cancelRun(activeRun, { intentional: true, reason: "Superseded by a newer turn." });
+    }
     activeRun = runState;
+    const ownsRun = (): boolean => activeRun === runState && host.runGeneration() === generation;
+    const persistWhileOwned = (operation: () => Promise<void>): Promise<void> => {
+      const pending = persistenceTail.then(async () => {
+        if (ownsRun()) await operation();
+      });
+      persistenceTail = pending.catch(() => {});
+      return pending;
+    };
     host.setActiveRunInterrupted(false);
     host.setAwaitingUserSelection(false);
 
@@ -697,6 +719,7 @@ export function createTurnRunShell(host: TurnRunShellHost) {
       {
         conversationId: host.getConversationId(),
         profilePromptSnapshots: host.profilePromptSnapshots(),
+        isRunSuperseded: () => !ownsRun(),
         ...(memoryStore == null ? {} : { memoryStore }),
         ...(episodeProgress === undefined
           ? {}
@@ -710,12 +733,15 @@ export function createTurnRunShell(host: TurnRunShellHost) {
     let prepared: PreparedTurn | undefined;
     let finalState: TurnCheckpoint | undefined;
     let aborted = false;
+    let awaitingUserSelection = false;
     const turnStartedAtMs = Date.now();
 
     let context: TurnRunContext = {
       signal: controller.signal,
       requestId,
       generation,
+      ownsRun,
+      cancelThisRun: cancellation => cancelRun(runState, cancellation),
     };
 
     try {
@@ -824,11 +850,17 @@ export function createTurnRunShell(host: TurnRunShellHost) {
       }
 
       const callbacks: TurnStreamCallbacks = {
-        ...settle.collectors,
+        collectText: delta => { if (ownsRun()) settle.collectors.collectText(delta); },
+        collectSendMessage: () => { if (ownsRun()) settle.collectors.collectSendMessage(); },
+        collectReaction: () => { if (ownsRun()) settle.collectors.collectReaction(); },
+        collectAgentMessage: message => { if (ownsRun()) settle.collectors.collectAgentMessage(message); },
         async persistCheckpoint(checkpoint): Promise<void> {
-          if (host.runGeneration() !== generation) return;
-          settle.prepareCheckpointForPersistence(checkpoint);
-          await settle.persistStepCheckpoint(context, checkpoint);
+          if (!ownsRun()) return;
+          await persistWhileOwned(async () => {
+            settle.prepareCheckpointForPersistence(checkpoint);
+            await settle.persistStepCheckpoint(context, checkpoint);
+          });
+          if (!ownsRun()) return;
           if (runState.awaitingUserSelection) {
             cancelRun(runState, {
               intentional: true,
@@ -850,6 +882,9 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         },
       };
 
+      if (controller.signal.aborted || !ownsRun()) {
+        throw new SandTurnInterruptedBeforeDispatchError();
+      }
       finalState = await host.runPreparedTurn(
         prepared,
         context,
@@ -857,12 +892,12 @@ export function createTurnRunShell(host: TurnRunShellHost) {
       );
       runState.dispatched = true;
       aborted =
-        controller.signal.aborted
+        (controller.signal.aborted || !ownsRun())
         && !runState.awaitingUserSelection
         && !runState.quiescedForUpgrade;
       endLifecycle();
 
-      if (!aborted && !runState.quiescedForUpgrade) {
+      if (ownsRun() && !aborted && !runState.quiescedForUpgrade) {
         await settle.settleCompletedTurn({
           finalState,
           turnStartedAtMs,
@@ -882,23 +917,30 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         !runState.awaitingUserSelection
         && !runState.quiescedForUpgrade;
     } finally {
-      const ownsRunner = activeRun === runState;
-      if (ownsRunner) {
-        activeRun = null;
-        host.setActiveRunInterrupted(false);
-        host.setActiveTurnAutomationId?.(undefined);
-        host.onRunUnwind?.();
+      try {
+        if (
+          ownsRun()
+          && finalState != null
+          && (host.ownsFinalState?.(generation) ?? true)
+        ) {
+          const checkpoint = finalState;
+          await persistWhileOwned(() => settle.persistFinalState(context, checkpoint));
+        }
+      } finally {
+        awaitingUserSelection = runState.awaitingUserSelection
+          || (ownsRun() && host.isAwaitingUserSelection());
+        try {
+          prepared?.dispose?.();
+        } finally {
+          if (activeRun === runState) {
+            activeRun = null;
+            host.setActiveRunInterrupted(false);
+            host.setActiveTurnAutomationId?.(undefined);
+            host.onRunUnwind?.();
+          }
+          endLifecycle();
+        }
       }
-
-      if (
-        ownsRunner
-        && finalState != null
-        && host.runGeneration() === generation
-        && (host.ownsFinalState?.(generation) ?? true)
-      ) {
-        await settle.persistFinalState(context, finalState);
-      }
-      endLifecycle();
     }
 
     return settle.buildResult({
@@ -906,8 +948,7 @@ export function createTurnRunShell(host: TurnRunShellHost) {
       ...(runState.quiescedForUpgrade
         ? { quiescedForUpgrade: true }
         : {}),
-      ...(runState.awaitingUserSelection
-        || host.isAwaitingUserSelection()
+      ...(awaitingUserSelection
         ? { awaitingUserSelection: true }
         : {}),
     });

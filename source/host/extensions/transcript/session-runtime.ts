@@ -2,6 +2,7 @@ import { dirname } from "node:path";
 
 import { isSandAgentLimitError } from "../../../shared/agents/agents.js";
 import { errorLogTag } from "../../../shared/errors.js";
+import { SandSendNotPersistedError } from "./send-not-persisted-error.js";
 import type {
   TranscriptEntry,
   TranscriptManagerLike,
@@ -81,6 +82,20 @@ export class SessionRuntime {
       this.pendingActivationAgentId = null;
   }
 
+  beginActivation(agentId: string): {
+    owner: AbortController;
+    isSuperseded: () => boolean;
+  } {
+    this.invalidateDeferredActivation();
+    const owner = new AbortController();
+    this.windowedActivationAbort = owner;
+    this.pendingActivationAgentId = agentId;
+    return {
+      owner,
+      isSuperseded: () => owner.signal.aborted || this.tm.disposed === true,
+    };
+  }
+
   getActiveAgentDir(): string | undefined {
     return this.activeSession == null
       ? undefined
@@ -93,6 +108,7 @@ export class SessionRuntime {
       const entries = (await this.tm.sessionStore.getTranscriptEntries(
         session,
       )) as TranscriptEntry[];
+      if (this.activeSession !== session) return this.ensureLoaded();
       this.setActiveTranscript(session.id, entries);
       this.loaded = true;
       this.tm.roster.emit({
@@ -113,16 +129,18 @@ export class SessionRuntime {
     entry: TranscriptEntry,
     options?: AppendEntryOptions,
   ): TranscriptEntry {
-    appendTranscriptEntry(entry);
     if (options?.persistBeforeEmit === true) {
       const isDurable =
         this.activeSession?.db.appendTranscriptEntry(entry) ?? false;
       try {
         options.onPersistOutcome?.(Boolean(isDurable));
       } catch {}
+      if (!isDurable) throw new SandSendNotPersistedError();
+      appendTranscriptEntry(entry);
       if (options.deferEmit !== true)
         this.tm.roster.emit({ type: "appended", entry });
     } else {
+      appendTranscriptEntry(entry);
       this.tm.roster.emit({ type: "appended", entry });
       this.activeSession?.db.appendTranscriptEntry(entry);
     }
@@ -200,16 +218,21 @@ export class SessionRuntime {
       this.invalidateDeferredActivation();
       return getTranscript();
     }
-    this.invalidateDeferredActivation();
-    const activated = await this.activateSession(agentId, current);
-    if (activated == null) return getTranscript();
-    this.tm.roster.emit({
-      type: "snapshot",
-      activeAgentId: activated.session.id,
-      entries: activated.entries,
-    });
-    await this.announceActivation(activated.session, current);
-    return activated.entries;
+    const { owner, isSuperseded } = this.beginActivation(agentId);
+    try {
+      const activated = await this.activateSession(agentId, current, isSuperseded);
+      if (activated == null) return getTranscript();
+      this.clearPendingActivationClaim(owner);
+      this.tm.roster.emit({
+        type: "snapshot",
+        activeAgentId: activated.session.id,
+        entries: activated.entries,
+      });
+      await this.announceActivation(activated.session, current);
+      return activated.entries;
+    } finally {
+      this.clearPendingActivationClaim(owner);
+    }
   }
 
   async activateSession(
@@ -224,12 +247,14 @@ export class SessionRuntime {
     if (isSuperseded?.() === true) return undefined;
     const now = Date.now();
     await this.markSessionLeftBehind(current, now);
+    if (isSuperseded?.() === true) return undefined;
     await this.tm.sessionStore.markSessionViewed(nextSession, now);
     const entries = nextSession.db.getTranscriptEntries() as TranscriptEntry[];
     if (isSuperseded?.() === true) return undefined;
     this.setActiveTranscript(nextSession.id, entries);
     this.loaded = true;
     await this.replaceSession(nextSession);
+    if (isSuperseded?.() === true) return undefined;
     return { session: nextSession, entries };
   }
 
@@ -285,12 +310,17 @@ export class SessionRuntime {
       return readLive(live.db);
     }
     if (live != null) {
-      this.invalidateDeferredActivation();
+      const { owner, isSuperseded } = this.beginActivation(agentId);
       const current = this.activeSession;
-      const activated = await this.activateSession(agentId, current);
-      if (activated == null) return readLive(live.db);
-      await this.announceActivation(activated.session, current);
-      return readLive(activated.session.db);
+      try {
+        const activated = await this.activateSession(agentId, current, isSuperseded);
+        if (activated == null) return readLive(live.db);
+        this.clearPendingActivationClaim(owner);
+        await this.announceActivation(activated.session, current);
+        return readLive(activated.session.db);
+      } finally {
+        this.clearPendingActivationClaim(owner);
+      }
     }
     const reply = readCold();
     this.tm.sessionStore.markAgentViewed(agentId);
@@ -300,12 +330,7 @@ export class SessionRuntime {
   }
 
   scheduleWindowedActivation(agentId: string, shippedThroughId?: string): void {
-    this.invalidateDeferredActivation();
-    const abort = new AbortController();
-    this.windowedActivationAbort = abort;
-    this.pendingActivationAgentId = agentId;
-    const isSuperseded = () =>
-      abort.signal.aborted || this.tm.disposed === true;
+    const { owner: abort, isSuperseded } = this.beginActivation(agentId);
     this.windowedActivationTail = this.windowedActivationTail
       .then(async () => {
         await this.tm.taskBoundary.settled();
@@ -426,6 +451,7 @@ export class SessionRuntime {
     }>;
     const recordIds =
       (await this.tm.sessionStore.listAgentRecordIds()) as string[];
+    if (this.activeSession != null) return this.activeSession;
     const persistedId = this.tm.sessionStore.readActiveAgentId() as
       string | null;
     // Optional manager default (Belmont B-1): when SAND_DEFAULT_AGENT_ID names an
@@ -458,13 +484,16 @@ export class SessionRuntime {
         );
       }
     }
+    if (this.activeSession != null) return this.activeSession;
     const resolvedSession =
       session ??
       ((await this.tm.sessionStore.createFallbackSession((id: string) =>
         this.openSessionOnce(id),
       )) as LiveTranscriptSession);
+    if (this.activeSession != null) return this.activeSession;
     this.setActiveSession(resolvedSession);
     await this.tm.sessionStore.markSessionViewed(resolvedSession);
+    if (this.activeSession !== resolvedSession) return this.activeSession ?? resolvedSession;
     this.tm.runLifecycle.watchActiveSession(resolvedSession);
     return resolvedSession;
   }

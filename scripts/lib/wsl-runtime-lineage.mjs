@@ -31,16 +31,25 @@ export async function collectWslRuntimeLineage({
   processes,
   buildLineage,
   sourceIdentity,
+  rendererMode = "pinned",
   now = () => new Date(),
   executeGit = execFileAsync,
   runtimeGenerationId = randomUUID(),
 }) {
   if (debugPort != null && !Number.isInteger(debugPort)) throw new Error("Belmont runtime lineage received an invalid CDP debug port.");
+  if (rendererMode !== "pinned" && rendererMode !== "editable") throw new Error("Belmont runtime lineage received an invalid renderer mode.");
   const electronMainPath = path.join(appRoot, "dist", "electron-main", "main.cjs");
   const hostPath = path.join(appRoot, "dist", "host", "host-main.cjs");
   const rendererIndexPath = path.join(appRoot, "dist", "renderer", "index.html");
-  const rendererProvenancePath = path.join(appRoot, "dist", "renderer-artifact-provenance.json");
+  const rendererProvenancePath = path.join(appRoot, "dist", ...(rendererMode === "editable"
+    ? ["renderer", "renderer-source-provenance.json"]
+    : ["renderer-artifact-provenance.json"]));
   const rendererProvenance = JSON.parse(await readFile(rendererProvenancePath, "utf8"));
+  const expectedRendererMode = rendererMode === "editable" ? "clean-source" : "checksum-pinned-artifact-runtime";
+  if (rendererProvenance?.mode !== expectedRendererMode
+    || (rendererMode === "editable" && rendererProvenance.entrypoint !== "frontend/src/main.tsx")) {
+    throw new Error(`Belmont ${rendererMode} runtime has incompatible renderer provenance.`);
+  }
   const treeStatus = sourceIdentity == null ? await gitOutput(repoRoot, ["status", "--porcelain=v1", "--untracked-files=all"], executeGit) : null;
   const head = sourceIdentity?.head ?? await gitOutput(repoRoot, ["rev-parse", "HEAD"], executeGit);
   if (!/^[0-9a-f]{40}$/u.test(head)) throw new Error("Could not capture a full Belmont Git HEAD for runtime lineage.");
@@ -55,6 +64,7 @@ export async function collectWslRuntimeLineage({
     appRoot: path.resolve(appRoot),
     profileDir: path.resolve(profileDir),
     debugEndpoint: debugPort == null ? null : `http://127.0.0.1:${debugPort}`,
+    rendererMode,
     git: {
       head,
       treeClean: resolvedTreeClean,
@@ -77,6 +87,7 @@ export async function collectWslRuntimeLineage({
         mode: rendererProvenance.mode ?? null,
         inventorySha256: rendererProvenance.inventorySha256 ?? null,
         sourceArtifactSha256: rendererProvenance.sourceArtifactSha256 ?? null,
+        entrypoint: rendererProvenance.entrypoint ?? null,
       },
     },
   };

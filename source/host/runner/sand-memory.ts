@@ -200,7 +200,7 @@ export async function extractMemories(first: string | { executor: TextExecutor; 
   return parseExtractedMemories(await collectExecutorText(first.executor, first.ctx), first.existingMemories);
 }
 
-export interface MemoryStore { removeMemoryByContent(content: string): boolean; addMemory(content: string, now: number, kind: "profile" | "log"): MemoryRecord | null }
+export interface MemoryStore { removeMemoryByContent(content: string, options?: { preserveExplicit?: boolean }): boolean; addMemory(content: string, now: number, kind: "profile" | "log", origin?: "explicit" | "legacy"): MemoryRecord | null }
 export function applyExtractedMemories(store: MemoryStore, extraction: MemoryExtraction, now: number, knownMemories: readonly string[]): { added: MemoryRecord[]; removed: string[] };
 export function applyExtractedMemories(existing: readonly MemoryRecord[], extraction: MemoryExtraction, now?: number): MemoryRecord[];
 export function applyExtractedMemories(first: MemoryStore | readonly MemoryRecord[], extraction: MemoryExtraction, now = Date.now(), knownMemories: readonly string[] = []): MemoryRecord[] | { added: MemoryRecord[]; removed: string[] } {
@@ -216,8 +216,8 @@ export function applyExtractedMemories(first: MemoryStore | readonly MemoryRecor
   const store = first as MemoryStore;
   const known = new Set(knownMemories.map(memoryDedupeKey));
   const removed: string[] = [], added: MemoryRecord[] = [];
-  for (const removal of extraction.removals) if (known.has(memoryDedupeKey(removal)) && store.removeMemoryByContent(removal)) removed.push(removal);
-  for (const addition of extraction.additions) { const record = store.addMemory(addition.content, now, addition.kind); if (record != null) added.push(record); }
+  for (const removal of extraction.removals) if (known.has(memoryDedupeKey(removal)) && store.removeMemoryByContent(removal, { preserveExplicit: true })) removed.push(removal);
+  for (const addition of extraction.additions) { const record = store.addMemory(addition.content, now, addition.kind, "legacy"); if (record != null) added.push(record); }
   return { added, removed };
 }
 

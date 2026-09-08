@@ -25,7 +25,7 @@ interface AutomationTranscript {
   listAgents(): Promise<readonly { id: string }[]>;
   listAllAutomationDefinitions(): Promise<readonly { agentId: string; automation: ScheduledCloudAutomation & { createdAt: number; lastRunAt?: number | null; runs?: readonly { id: string; status: string; detail?: string; coalescedRunIds?: readonly string[] }[] } }[]>;
   runAutomationForEvent(agentId: string, automation: ScheduledCloudAutomation, event: Record<string, unknown>): Promise<unknown>;
-  runServerScheduledAutomation(args: { agentId: string; automation: ScheduledCloudAutomation; runUuid: string; scheduledForMs?: number }): Promise<string | undefined>;
+  runServerScheduledAutomation(args: { agentId: string; automation: ScheduledCloudAutomation; runUuid: string; scheduledForMs?: number }): Promise<"ok" | "error" | "interrupted" | undefined>;
   runServerAutomationForEvent(args: { agentId: string; automation: ScheduledCloudAutomation; event: Record<string, unknown>; runUuid: string }): Promise<string | undefined>;
   getAgentChannels(agentId: string): Promise<readonly { platform: string; [key: string]: unknown }[]>;
   resumeAfterListenerConnect(agentId: string, platform: string): Promise<void>;

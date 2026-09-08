@@ -355,7 +355,7 @@ export class SandAutomationCloudSync {
     readonly listAgentIds: () => Promise<readonly string[]>;
     readonly listAutomations: () => Promise<readonly { agentId: string; automation: ScheduledCloudAutomation }[]>;
     readonly getTimeZone?: () => string | undefined;
-    readonly inspectLocalDefinitions?: (agentId: string) => { state?: string; validDefinitionCount?: number } | undefined;
+    readonly inspectLocalDefinitions?: (agentId: string) => { state?: string; validDefinitionCount?: number; invalidDefinitionIds?: readonly string[] } | undefined;
     readonly reportShadowPrune?: (report: Record<string, unknown>) => void;
     readonly onFailure: (failure: { agentId?: string; operation: string; error: unknown }) => void;
     readonly onRecovery: (agentId: string) => void;
@@ -473,8 +473,22 @@ export class SandAutomationCloudSync {
     }
     let mutationFailed = false;
     const localInspection = this.deps.inspectLocalDefinitions?.(agentId);
+    // A failed/partial local read is not an authoritative deletion list. Keep
+    // remote schedules until local definitions can be read again; an empty
+    // existing directory still represents an intentional deletion.
+    const localDefinitionsUnavailable = this.deps.inspectLocalDefinitions != null && (
+      localInspection == null
+      || (localInspection.state !== "valid" && localInspection.state !== "dir_empty")
+      || (localInspection.invalidDefinitionIds?.length ?? 0) > 0
+    );
     for (const [automationId, remote] of remoteByAutomationId) {
       if (desiredByAutomationId.has(automationId)) continue;
+      if (localDefinitionsUnavailable) {
+        mutationFailed = true;
+        this.recordFailure({ agentId, operation: "inspect-local", error: new Error("Remote routine deletion deferred while local definitions are unreadable") });
+        this.deps.reportShadowPrune?.({ conversationId: agentId, automationId, outcome: "deferred", localDefinitionState: localInspection?.state ?? "unknown", localDefinitionCount: localInspection?.validDefinitionCount ?? 0, invalidDefinitionCount: localInspection?.invalidDefinitionIds?.length ?? 0, desiredCount: desiredByAutomationId.size, remoteShadowCount: remoteByAutomationId.size });
+        continue;
+      }
       const succeeded = await this.runMutation(agentId, "delete", () => this.deps.client.deleteSandAutomation(new DeleteAutomationRequest({ automationId: remote.automationId })));
       mutationFailed ||= !succeeded;
       this.deps.reportShadowPrune?.({ conversationId: agentId, automationId, outcome: succeeded ? "deleted" : "failed", localDefinitionState: localInspection?.state ?? "unknown", localDefinitionCount: localInspection?.validDefinitionCount ?? desiredByAutomationId.size, desiredCount: desiredByAutomationId.size, remoteShadowCount: remoteByAutomationId.size });

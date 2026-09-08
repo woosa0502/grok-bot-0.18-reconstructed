@@ -6,10 +6,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { SAND_UPGRADE_RESUME_FILE_NAME } from "../../durable-file-policy.js";
 export interface UpgradeResumeMarker {
   agentId: string;
   markedAtMs: number;
+  markerId?: string;
   source?: string;
   automationId?: string;
   automationRunId?: string;
@@ -26,6 +28,7 @@ export function coerceUpgradeResumeMarker(
       typeof e.markedAtMs === "number" && Number.isFinite(e.markedAtMs)
         ? e.markedAtMs
         : 0,
+    ...(typeof e.markerId === "string" ? { markerId: e.markerId } : {}),
     ...(typeof e.source === "string" ? { source: e.source } : {}),
     ...(typeof e.automationId === "string"
       ? { automationId: e.automationId }
@@ -68,10 +71,15 @@ export class SandUpgradeResumeStore {
   constructor(rootDir: string) {
     this.filePath = join(rootDir, SAND_UPGRADE_RESUME_FILE_NAME);
   }
-  markPending(marker: UpgradeResumeMarker): void {
+  markPending(marker: UpgradeResumeMarker): UpgradeResumeMarker | null {
     try {
-      this.write(upsertResumeMarker(this.readPending(), marker));
-    } catch {}
+      // Every arm owns a distinct generation, even within the same millisecond.
+      const pending = { ...marker, markerId: randomUUID() };
+      this.write(upsertResumeMarker(this.readPending(), pending));
+      return pending;
+    } catch {
+      return null;
+    }
   }
   listPending(): UpgradeResumeMarker[] {
     return this.readPending();
@@ -83,6 +91,27 @@ export class SandUpgradeResumeStore {
       );
       remaining.length === 0 ? this.deleteFile() : this.write(remaining);
     } catch {}
+  }
+  clearIfPending(marker: UpgradeResumeMarker): boolean {
+    try {
+      const pending = this.readPending();
+      const matches = (entry: UpgradeResumeMarker): boolean =>
+        entry.agentId === marker.agentId &&
+        (entry.markerId != null || marker.markerId != null
+          ? entry.markerId === marker.markerId
+          : entry.markedAtMs === marker.markedAtMs &&
+            entry.source === marker.source &&
+            entry.automationId === marker.automationId &&
+            entry.automationRunId === marker.automationRunId);
+      if (!pending.some(matches)) return false;
+      const remaining = pending.filter((entry) => !matches(entry));
+      remaining.length === 0
+        ? rmSync(this.filePath, { force: true })
+        : this.write(remaining);
+      return true;
+    } catch {
+      return false;
+    }
   }
   clearAll(): void {
     this.deleteFile();

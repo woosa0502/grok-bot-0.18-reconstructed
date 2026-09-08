@@ -37,14 +37,53 @@ export class SandXuserSharingService {
   findAgentShareRoomId(agentId: string): string | null { if (this.selfAuthId == null) return null; for (const room of this.rooms) if (room.hostAuthId === this.selfAuthId && !this.isRoomAbandoned(room.roomId)) { const agents = room.members.filter((member) => member.kind === "agent"); if (agents.length === 1 && agents[0]?.authId === this.selfAuthId && agents[0]?.agentId === agentId) return room.roomId; } return null; }
   createRoomInvite(roomId: string): Promise<Record<string, unknown>> { return this.deps.isEnabled() ? this.relay.createRoomInvite(roomId) : Promise.resolve({ status: "error", message: "Sharing isn't enabled." }); }
   async joinRoom(link: string): Promise<Record<string, unknown>> { if (!this.deps.isEnabled()) return { status: "error", message: "Sharing isn't enabled." }; const result = await this.relay.joinRoom(link); if (result.status === "already-member") await this.reconcileShareState(); return result; }
-  async respondToJoinRequest(args: { requestId: string; [key: string]: unknown }): Promise<unknown> { if (!this.deps.isEnabled()) return this.getState(); try { const result = await this.relay.respondToJoinRequest<Record<string, unknown>>(args); this.pendingJoinRequests = this.pendingJoinRequests.filter((request) => request.requestId !== args.requestId); if (result.status === "approved" && result.room != null) await this.installRoom(result.room as XuserRoom); else this.emit(); } catch {} return this.getState(); }
+  async respondToJoinRequest(args: { requestId: string; [key: string]: unknown }): Promise<unknown> {
+    if (!this.deps.isEnabled()) throw new Error("Sharing isn't enabled.");
+    const result = await this.relay.respondToJoinRequest<Record<string, unknown>>(args);
+    throwIfSharingMutationFailed(result);
+    this.pendingJoinRequests = this.pendingJoinRequests.filter((request) => request.requestId !== args.requestId);
+    if (result.status === "approved" && result.room != null) await this.installRoom(result.room as XuserRoom);
+    else this.emit();
+    return this.getState();
+  }
   async createSharedRoom(args: { agents: Array<Record<string, unknown>>; [key: string]: unknown }): Promise<Record<string, unknown>> { if (!this.deps.isEnabled()) return { status: "error", message: "Sharing isn't enabled." }; if (this.selfAuthId == null) return { status: "error", message: "Sign in to create shared groups." }; try { const agents = await Promise.all(args.agents.map(async (agent) => { const avatar = typeof agent.agentId === "string" ? await this.agentAvatarPayload(agent.agentId) : undefined; return { ...agent, ...(avatar == null ? {} : { avatarDataUrl: avatar }) }; })), result = await this.relay.createRoom<Record<string, unknown>>({ ...args, agents }); if (result.status !== "created" || result.room == null) return { status: "error", message: "The room couldn't be created." }; const room = result.room as XuserRoom; await this.installRoom(room); return { status: "ok", roomId: room.roomId, localRoomAgentId: await this.reconcile.mintLocalRoomAgent(room) }; } catch { return { status: "error", message: "The room couldn't be created. Try again." }; } }
-  async addOwnAgent(args: { agentId: string; [key: string]: unknown }): Promise<unknown> { if (!this.deps.isEnabled()) return this.getState(); try { const avatar = await this.agentAvatarPayload(args.agentId), result = await this.relay.addOwnAgent<Record<string, unknown>>({ ...args, ...(avatar == null ? {} : { avatarDataUrl: avatar }) }); if (result.room != null) await this.installRoom(result.room as XuserRoom); } catch {} return this.getState(); }
-  async removeOwnAgent(roomId: string, agentId: string): Promise<unknown> { if (!this.deps.isEnabled()) return this.getState(); try { const result = await this.relay.removeOwnAgent<Record<string, unknown>>({ roomId, agentId }); if (result.room != null) await this.installRoom(result.room as XuserRoom); } catch {} return this.getState(); }
-  async leaveSharedRoom(roomId: string, targetAuthId?: string): Promise<unknown> { if (!this.deps.isEnabled()) return this.getState(); try { await this.relay.leaveRoom(roomId, targetAuthId); if (targetAuthId == null || targetAuthId === this.selfAuthId) { await this.deps.manager.markMirrorRoomRevoked(roomId); this.departures.abandonRoomLocally(roomId); } await this.reconcileShareState(); } catch {} return this.getState(); }
+  async addOwnAgent(args: { agentId: string; [key: string]: unknown }): Promise<unknown> {
+    if (!this.deps.isEnabled()) throw new Error("Sharing isn't enabled.");
+    const avatar = await this.agentAvatarPayload(args.agentId);
+    const result = await this.relay.addOwnAgent<Record<string, unknown>>({ ...args, ...(avatar == null ? {} : { avatarDataUrl: avatar }) });
+    throwIfSharingMutationFailed(result);
+    if (result.room != null) await this.installRoom(result.room as XuserRoom);
+    return this.getState();
+  }
+  async removeOwnAgent(roomId: string, agentId: string): Promise<unknown> {
+    if (!this.deps.isEnabled()) throw new Error("Sharing isn't enabled.");
+    const result = await this.relay.removeOwnAgent<Record<string, unknown>>({ roomId, agentId });
+    throwIfSharingMutationFailed(result);
+    if (result.room != null) await this.installRoom(result.room as XuserRoom);
+    return this.getState();
+  }
+  async leaveSharedRoom(roomId: string, targetAuthId?: string): Promise<unknown> {
+    if (!this.deps.isEnabled()) throw new Error("Sharing isn't enabled.");
+    const result = await this.relay.leaveRoom<unknown>(roomId, targetAuthId);
+    throwIfSharingMutationFailed(result);
+    if (targetAuthId == null || targetAuthId === this.selfAuthId) {
+      await this.deps.manager.markMirrorRoomRevoked(roomId);
+      this.departures.abandonRoomLocally(roomId);
+    }
+    await this.reconcileShareState();
+    return this.getState();
+  }
   async noteAgentDeleted(id: string): Promise<void> { await this.departures.noteAgentDeleted(id); }
   async readSelfAuthId(operation: string): Promise<string | null> { return this.deps.getSelfAuthId().catch(() => { console.warn(`[sand:sharing] self-identity read failed (${operation})`); return null; }); }
   async setRoomTyping(roomId: string, isTyping: boolean): Promise<void> { if (this.deps.isEnabled()) await this.relay.send({ kind: "room-typing", roomId, isTyping }); }
   prepareForUpgrade(): void { this.stop(); }
   buildManagerDelegate(): { isEnabled(): boolean; publishRoomEntry(roomId: string, entry: PublishableEntry): void } { return { isEnabled: () => this.deps.isEnabled(), publishRoomEntry: (roomId, entry) => this.publisher.enqueuePublish(roomId, entry) }; }
+}
+
+function throwIfSharingMutationFailed(result: unknown): void {
+  if (typeof result !== "object" || result === null) return;
+  const response = result as Record<string, unknown>;
+  if (response.status === "error") {
+    throw new Error(typeof response.message === "string" && response.message.trim() ? response.message : "The sharing request failed. Try again.");
+  }
 }

@@ -187,11 +187,24 @@ test("a failed cron fire restores the slot and retries after a backoff", async (
 
 test("shell state is namespaced by the calling conversation", () => {
   const server = read("source/box-exec-daemon/server.ts");
+  const stream = server.match(/  async \*shellStream\([\s\S]*?(?=\n  async spawnBackground\()/)?.[0] ?? "";
+  const finishState = server.match(/  #finishShellState\([\s\S]*?(?=\n  async #savedCwdLogical\()/)?.[0] ?? "";
   assert.match(server, /#shellStateDirFor\(owner: string \| undefined\): string/);
-  assert.match(server, /const stateOwner = args\.conversationId;/);
-  assert.match(server, /this\.#withShellState\(args\.command, stateOwner\)/);
-  assert.match(server, /this\.#savedCwdLogical\(stateOwner\)/);
-  assert.match(server, /this\.#resetShellState\(stateOwner\)/);
+  assert.match(stream, /const stateOwner = args\.conversationId;/);
+  assert.match(stream, /const stateDir = this\.#shellStateDirFor\(stateOwner\);/);
+  assert.match(stream, /await this\.#shellStateWrites\.get\(stateDir\);/);
+  assert.match(stream, /this\.#startingCwd\(args\.workingDirectory, stateOwner\)/);
+  assert.match(stream, /this\.#shellStateVersions\.set\(stateDir, stateVersion\);/);
+  assert.match(stream, /const stateOutputDir = `\$\{stateDir\}\.run-\$\{randomUUID\(\)\}`;/);
+  assert.match(stream, /this\.#withShellState\(args\.command, stateOwner, stateOutputDir\)/);
+  assert.match(stream, /this\.#savedCwdLogical\(stateOwner\)/);
+  // Reset now happens in the versioned publisher using the same conversation
+  // directory; the current-version check must precede deletion.
+  assert.match(stream, /this\.#finishShellState\(stateDir, stateVersion, stateOutputDir, signal\.aborted && !backgrounded\)/);
+  assert.match(finishState, /const pending = \(this\.#shellStateWrites\.get\(stateDir\) \?\? Promise\.resolve\(\)\)\.then\(async \(\) => \{/);
+  assert.match(finishState, /if \(this\.#shellStateVersions\.get\(stateDir\) !== version\) return;\s*if \(aborted\) \{\s*await rm\(stateDir, \{ recursive: true, force: true \}\);\s*return;/);
+  assert.match(finishState, /this\.#shellStateWrites\.set\(stateDir, pending\);/);
+  assert.match(server, /return buildShellStateWrappedCommand\(this\.#shellStateDirFor\(owner\), command, saveDir\);/);
   const tool = read("source/packages/agent/tools/core/shell/create-shell-tool.ts");
   assert.match(tool, /skipApproval = false, conversationId\?: string\)/);
   assert.match(tool, /getConversationId\(ctx\)\);/);
@@ -245,9 +258,18 @@ test("wrapped shell-state command still round-trips through /bin/sh", async () =
     const stateB = path.join(root, "state", "agent-b");
     await execFileAsync("/bin/sh", ["-lc", buildShellStateWrappedCommand(stateA, "export ONLY_A=1; true")], { cwd: root });
     await execFileAsync("/bin/sh", ["-lc", buildShellStateWrappedCommand(stateB, "true")], { cwd: root });
-    const bEnv = await readFile(path.join(stateB, "env.sh"), "utf8").catch(() => "");
+    const bEnv = await readFile(path.join(stateB, "env.sh"), "utf8");
     assert.doesNotMatch(bEnv, /ONLY_A/, "one namespace's exports never leak into another's");
     assert.equal((await readFile(path.join(stateA, SHELL_STATE_CWD_FILE), "utf8")).trim(), root);
+
+    const aEnv = await readFile(path.join(stateA, "env.sh"), "utf8");
+    const stagedA = `${stateA}.run-fixture`;
+    const staged = await execFileAsync("/bin/sh", ["-lc", buildShellStateWrappedCommand(stateA, 'printf "%s\\n" "$ONLY_A"; export ONLY_A=2', stagedA)], { cwd: root });
+    assert.equal(staged.stdout, "1\n", "a staged call restores its conversation's prior exports");
+    assert.match(await readFile(path.join(stagedA, "env.sh"), "utf8"), /^export ONLY_A=['"]?2['"]?$/m);
+    assert.equal((await readFile(path.join(stagedA, SHELL_STATE_CWD_FILE), "utf8")).trim(), root);
+    assert.equal(await readFile(path.join(stateA, "env.sh"), "utf8"), aEnv, "a staged snapshot leaves its published state unchanged");
+    assert.equal(await readFile(path.join(stateB, "env.sh"), "utf8"), bEnv, "a staged snapshot leaves other conversations unchanged");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

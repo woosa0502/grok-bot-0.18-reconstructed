@@ -88,10 +88,15 @@ export async function commitComposerAttachments(
   attachments: readonly DraftAttachment[]
 ): Promise<DraftAttachment[]> {
   if (attachments.length === 0) return [];
+  const staged = attachments.filter((attachment) => attachment.committed !== true);
+  if (staged.length === 0) return attachments.map((attachment) => ({ ...attachment }));
   const committed = await bridge.commitStagedAttachments(
-    attachments.map((attachment) => attachment.path),
-    attachments.map((attachment) => attachment.name)
+    staged.map((attachment) => attachment.path),
+    staged.map((attachment) => attachment.name)
   );
-  if (committed == null || committed.length !== attachments.length) throw new Error("The desktop bridge could not commit the staged attachments.");
-  return attachments.map((attachment, index) => ({ ...attachment, path: committed[index] ?? attachment.path }));
+  if (committed == null || committed.length !== staged.length || committed.some((path) => typeof path !== "string" || path.length === 0)) throw new Error("The desktop bridge could not commit the staged attachments.");
+  let index = 0;
+  return attachments.map((attachment) => attachment.committed === true
+    ? { ...attachment }
+    : { ...attachment, path: committed[index++]!, committed: true });
 }

@@ -23,9 +23,11 @@ import {
 import { SAND_BROWSER_DRIVER_BOX_DIR } from "../runner/tools/sand-browser-driver-source.js";
 import { shellExecutorResource } from "../../packages/agent-exec/shell.js";
 import {
+  ShellFailure,
   ShellResult,
   ShellSuccess,
 } from "../../packages/proto/generated/agent/v1/shell_exec_pb.js";
+import { execResult, executionSignal } from "../../packages/local-exec/computer-use/shell.js";
 import { localComputerDisplayNumber, LOCAL_COMPUTER_USE_ENABLED } from "./local-computer-use.js";
 import { getSandRootDir } from "../host-paths.js";
 
@@ -201,7 +203,22 @@ export function localBrowserShellExecutor(
   audit?: (command: string) => void,
 ): HostShellExecutor {
   return {
-    async execute(_context, args) {
+    async execute(context, args) {
+      const signal = executionSignal(context);
+      const canceledResult = (stdout = "", stderr = "") => new ShellResult({
+        result: {
+          case: "failure",
+          value: new ShellFailure({
+            command: args.command,
+            workingDirectory: SAND_BROWSER_DRIVER_BOX_DIR,
+            exitCode: 130,
+            aborted: true,
+            stdout,
+            stderr: [stderr, "Browser driver execution canceled"].filter(Boolean).join("\n"),
+          }),
+        },
+      });
+      if (signal?.aborted) return canceledResult();
       // Every browser-tool op flows through this executor: the freshest call
       // timestamp is what keeps the idle reaper from closing a browser in use.
       noteLocalBrowserUse();
@@ -209,35 +226,29 @@ export function localBrowserShellExecutor(
       if (args.command.trim().length === 0) {
         throw new TypeError("browser driver shell command is empty");
       }
+      if (signal?.aborted) return canceledResult();
       // The driver and the auto-review probe both emit compound shell commands
       // (&&, subshells, redirects); naive tokenization broke them, so run
       // through a real shell.
-      return await new Promise<ShellResult>((resolve) => {
-        execFile("/bin/sh", ["-c", args.command], {
+      try {
+        const result = await execResult("/bin/sh", ["-c", args.command], {
           cwd: SAND_BROWSER_DRIVER_BOX_DIR,
           env: { ...process.env, DISPLAY: `:${localComputerDisplayNumber()}` },
-          timeout: LOCAL_BROWSER_DRIVER_TIMEOUT_MS,
+          timeoutMs: LOCAL_BROWSER_DRIVER_TIMEOUT_MS,
           maxBuffer: LOCAL_BROWSER_DRIVER_MAX_OUTPUT_BYTES,
-        }, (error, stdout, stderr) => {
-          const exitCode = error === null
-            ? 0
-            : typeof (error as { code?: unknown }).code === "number"
-              ? (error as { code: number }).code
-              : 127;
-          resolve(new ShellResult({
-            result: {
-              case: "success",
-              value: new ShellSuccess({
-                exitCode,
-                stdout: String(stdout ?? ""),
-                stderr: error === null || String(stderr ?? "").length > 0
-                  ? String(stderr ?? "")
-                  : (error instanceof Error ? error.message : String(error)),
-              }),
-            },
-          }));
+          signal,
         });
-      });
+        if (signal?.aborted) return canceledResult(result.stdout, result.stderr);
+        return new ShellResult({ result: { case: "success", value: new ShellSuccess(result) } });
+      } catch (error) {
+        if (signal?.aborted) return canceledResult();
+        return new ShellResult({
+          result: {
+            case: "success",
+            value: new ShellSuccess({ exitCode: 127, stderr: error instanceof Error ? error.message : String(error) }),
+          },
+        });
+      }
     },
   };
 }

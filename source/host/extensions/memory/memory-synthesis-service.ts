@@ -279,6 +279,9 @@ export class MemorySynthesisService {
         return this.options.deadline?.run(signal => invoke(AbortSignal.any([signal, this.lifetime.signal]))) ?? invoke(this.lifetime.signal);
       };
       const proposal = await (this.options.retry?.runWithRetry(perform, this.lifetime.signal) ?? perform());
+      // A successful request can settle just before dispose() aborts its
+      // lifetime. Recheck at the commit boundary, including temporal writes.
+      if (this.disposed || this.lifetime.signal.aborted) return "no-work";
       if (proposal.length === 0) { if (temporal) target.markTemporalReview(started); this.finish(agentId, evidence, temporal); this.report("no-work", agentId, evidence.length, snapshot.memories.length, 0, started); return "no-work"; }
       const result = target.applySynthesis(snapshot, proposal, started), outcome: SynthesisOutcome = result === "committed" ? "committed" : result === "stale" ? "stale" : "invalid-output";
       if (result === "stale") this.needsAnotherPass = true; else { if (result === "invalid" && temporal) target.markTemporalReview(started); this.finish(agentId, evidence, temporal); }

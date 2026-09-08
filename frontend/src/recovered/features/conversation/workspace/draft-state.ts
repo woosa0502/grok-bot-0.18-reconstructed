@@ -1,5 +1,5 @@
 import type { AgentDesktopBridge } from "../../../contracts/desktop-bridge";
-import { areComposerDraftsEqual, parseComposerDraft, type ComposerDraft } from "./model";
+import { areComposerDraftsEqual, parseComposerDraft, type ComposerDraft, type DraftAttachment } from "./model";
 
 // Immutable root: ef4e9831b65d39633f09c9ad0c083b98b7ebf52e3bb558182aee5bde31f876fa
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=4769359 (composer-drafts slice metadata)
@@ -42,6 +42,7 @@ export interface ComposerDraftStateStore {
   clearDraft(agentKey: string): void;
   recoverDraft(agentKey: string, draft: ComposerDraft): void;
   clearRecovery(agentKey: string): void;
+  commitAttachments(agentKey: string, staged: readonly DraftAttachment[], committed: readonly DraftAttachment[]): void;
   restore(accountSlot: string | null): Promise<void>;
   reset(): void;
   dispose(): void;
@@ -67,7 +68,7 @@ function cloneDraft(draft: ComposerDraft | null): ComposerDraft | null {
   if (draft == null) return null;
   return {
     prompt: draft.prompt,
-    attachments: draft.attachments.map(({ path, name, size }) => ({ path, name, ...(size === undefined ? {} : { size }) })),
+    attachments: draft.attachments.map((attachment) => ({ ...attachment })),
     ...(draft.richText === undefined ? {} : { richText: draft.richText }),
     ...(draft.replyToId === undefined ? {} : { replyToId: draft.replyToId }),
     ...(draft.isFork === undefined ? {} : { isFork: draft.isFork })
@@ -233,6 +234,25 @@ export function createComposerDraftStateStore(persistence: ComposerDraftPersiste
       if (disposed || agentKey.length === 0) return;
       const current = currentRecord(agentKey);
       if (current.recovery != null) replace(agentKey, { draft: current.draft, draftId: current.draftId, recovery: null });
+    },
+    commitAttachments(agentKey, staged, committed) {
+      if (disposed || staged.length !== committed.length) return;
+      const current = currentRecord(agentKey);
+      let changed = false;
+      const update = (draft: ComposerDraft | null): ComposerDraft | null => draft == null ? null : {
+        ...draft,
+        attachments: draft.attachments.map((attachment) => {
+          const index = staged.findIndex((item) => item.path === attachment.path && item.name === attachment.name);
+          const uploaded = committed[index];
+          if (uploaded == null || attachment.path === uploaded.path && attachment.committed === uploaded.committed) return attachment;
+          changed = true;
+          return { ...attachment, ...uploaded };
+        }),
+      };
+      const draft = update(current.draft);
+      const recovery = update(current.recovery);
+      // Upload changes storage location, not the identity of the composed draft.
+      if (changed) replace(agentKey, { draft, draftId: current.draftId, recovery });
     },
     async restore(nextAccountSlot) {
       generation += 1;

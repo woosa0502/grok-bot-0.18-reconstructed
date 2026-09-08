@@ -997,13 +997,18 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
 
   const sendComposerPrompt = async (submission: ComposerSubmission): Promise<void> => {
     if (client == null) throw new Error("coordinator is unavailable for sendPrompt");
-    const draftAttachments = submission.attachments.map((attachment) => ({ path: attachment.path, name: attachment.name }));
+    const accountScopeGeneration = accountScopeGenerationRef.current;
+    if (accountRef.current?.kind !== "logged-in") throw new Error("The account changed before the message could be sent.");
+    const draftAttachments = submission.attachments.map((attachment) => ({ ...attachment }));
     const attachments = bridge == null ? draftAttachments : await commitComposerAttachments(bridge, draftAttachments);
+    if (accountScopeGenerationRef.current !== accountScopeGeneration || accountRef.current?.kind !== "logged-in") throw new Error("The account changed before the message could be sent.");
+    submission.attachments = attachments;
+    composerDraftStore.commitAttachments(submission.agentId, draftAttachments, attachments);
     for (const attachment of draftAttachments) stagedPaths.current.delete(attachment.path);
     setEntriesByAgent((current) => ({
       ...current,
       [submission.agentId]: (current[submission.agentId] ?? []).map((entry) => entry.kind === "message" && entry.clientNonce === submission.nonce
-        ? { ...entry, attachments, text: submission.prompt }
+        ? { ...entry, attachments, text: submission.prompt, ...(submission.richText == null ? {} : { richText: submission.richText }) }
         : entry)
     }));
     await client.call("sendPrompt", {
@@ -1106,6 +1111,8 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
   useEffect(() => {
     if (client == null) return;
     return client.subscribeTransport((state) => {
+      // Transport listeners run before React commits setTransport below.
+      transportRef.current = state;
       if (state === "connected") composerSubmissionQueue.flush();
     });
   }, [client, composerSubmissionQueue]);
@@ -2757,6 +2764,9 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       const identityChanged = accountIdentityRef.current != null && accountIdentityRef.current !== identity;
       if (accountIdentityRef.current !== identity) {
         accountScopeGenerationRef.current += 1;
+        composerSubmissionQueue.reset();
+        sendJournalApprovalLifecycle.reset();
+        setBusy(false);
         localToolPermissionScopeGate.reset();
         groupMembersRoot.reset();
         sharedRoomProvider?.reset();
@@ -2842,7 +2852,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     applyRootShellTheme(bridge.theme.initial.resolved);
     void bridge.deepLinksReady().catch((error: unknown) => setNotice(error instanceof Error ? error.message : String(error)));
     return () => { active = false; stopAccount(); stopTheme(); themeInstaller?.dispose(); stopWindow(); stopFocus(); stopDeepLink(); stopOnboarding(); stopSkip(); stopFeedback(); stopAbout(); };
-  }, [bridge, client, groupMembersRoot, localToolPermissionScopeGate, openAgent, resolveOnboarding, selectionStore, sharedRoomProvider]);
+  }, [bridge, client, composerSubmissionQueue, groupMembersRoot, localToolPermissionScopeGate, openAgent, resolveOnboarding, selectionStore, sendJournalApprovalLifecycle, sharedRoomProvider]);
 
   // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#L537
   useEffect(() => {
@@ -3010,7 +3020,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     const clientNonce = makeClientNonce();
     const enteredAt = Date.now();
     const prompt = liveDraft.prompt.trim();
-    const attachments = liveDraft.attachments.map(({ path, name }) => ({ path, name }));
+    const attachments = liveDraft.attachments.map((attachment) => ({ ...attachment }));
     if (prompt.length === 0 && attachments.length === 0) return;
     const projectedSubmission = replyThreadController.projectSubmission({
       nonce: clientNonce,
@@ -3040,20 +3050,21 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     });
     setEntriesByAgent((current) => ({ ...current, [activeAgent.id]: [...(current[activeAgent.id] ?? []), {
       kind: "message", id: `pending-${clientNonce}`, role: "user", author: "You", text: prompt, timestampMs: enteredAt, attachments, delivery: "pending", clientNonce,
+      ...(submission.richText == null ? {} : { richText: submission.richText }),
       ...(submission.replyToId == null ? {} : { replyToId: submission.replyToId }),
       ...(submission.isFork === true ? { branched: true } : {}),
     }] }));
     const queuedSubmission = composerSubmissionQueue.submit(submission);
     void queuedSubmission.completion.then((phase) => {
       if (phase !== "sent") return;
-      if (activeAgentIdRef.current !== submission.agentId || acknowledgementScopeRef.current.accountSlot !== submissionAccountSlot) return;
+      if (acknowledgementScopeRef.current.accountSlot !== submissionAccountSlot) return;
       const cleared = draftIdentity == null
         ? composerDraftStore.clearDraftIfMatches({ agentId: submission.agentId, draft: liveBaseDraft })
         : composerDraftStore.clearDraftIfCurrent(draftIdentity)
           || composerDraftStore.clearDraftIfMatches({ agentId: submission.agentId, draft: liveBaseDraft });
       if (!cleared) return;
       composerDraftStore.clearRecovery(submission.agentId);
-      setComposerClearGeneration((current) => current + 1);
+      if (activeAgentIdRef.current === submission.agentId) setComposerClearGeneration((current) => current + 1);
     });
     setNotice(null);
   };
@@ -3071,11 +3082,12 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
   const resendFailedSend = useCallback(async (entry: TranscriptMessage) => {
     const agentId = activeAgentIdRef.current;
     if (client == null || !agentId) return;
+    setNotice(null);
     const clientNonce = makeClientNonce();
     const pendingId = `pending-${clientNonce}`;
     const enteredAt = Date.now();
     composerSubmissionQueue.discard(entry.clientNonce ?? "");
-    const retryAttachments = (entry.attachments ?? []).map(({ path, name }) => ({ path, name }));
+    const retryAttachments = (entry.attachments ?? []).map((attachment) => ({ ...attachment }));
     const retried = entry.clientNonce != null && acknowledgementController.retryFailed({
       accountSlot: acknowledgementScopeRef.current.accountSlot,
       agentId,
@@ -3102,15 +3114,22 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       prompt: entry.text.trim(),
       attachments: retryAttachments,
       createdAtMs: enteredAt,
+      ...(entry.richText == null ? {} : { richText: entry.richText }),
       ...(entry.replyToId == null ? {} : { replyToId: entry.replyToId }),
       ...(entry.branched === true ? { isFork: true } : {}),
     };
     const retryAccountSlot = acknowledgementScopeRef.current.accountSlot;
+    const retryDraft: ComposerDraft = { ...retrySubmission, attachments: [...retrySubmission.attachments] };
+    const retryDraftIdentity = composerDraftStore.identifyDraft({ agentId, draft: retryDraft });
     const journaledRetry = sendJournalApprovalLifecycle.resendFailed({ submission: retrySubmission, onJournaled: () => {} });
     void journaledRetry.then((phase) => {
       if (phase !== "sent") return;
-      if (activeAgentIdRef.current !== retrySubmission.agentId || acknowledgementScopeRef.current.accountSlot !== retryAccountSlot) return;
+      if (acknowledgementScopeRef.current.accountSlot !== retryAccountSlot) return;
+      const cleared = retryDraftIdentity == null
+        ? composerDraftStore.clearDraftIfMatches({ agentId, draft: retryDraft })
+        : composerDraftStore.clearDraftIfCurrent(retryDraftIdentity);
       composerDraftStore.clearRecovery(retrySubmission.agentId);
+      if (cleared && activeAgentIdRef.current === agentId) setComposerClearGeneration((current) => current + 1);
     });
   }, [client, composerDraftStore, composerSubmissionQueue, sendJournalApprovalLifecycle]);
 
@@ -3120,7 +3139,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       acknowledgementController.removeOptimistic({ accountSlot: acknowledgementScopeRef.current.accountSlot, nonce: entry.clientNonce });
       if (agentId.length > 0) composerDraftStore.recoverDraft(agentId, {
         prompt: entry.text.trim(),
-        attachments: (entry.attachments ?? []).map(({ path, name }) => ({ path, name })),
+        attachments: (entry.attachments ?? []).map((attachment) => ({ ...attachment })),
         ...(entry.richText == null ? {} : { richText: entry.richText }),
         ...(entry.replyToId == null ? {} : { replyToId: entry.replyToId }),
         ...(entry.branched === true ? { isFork: true } : {}),
@@ -3507,7 +3526,8 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
 
   // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#L132101-L132102
   return (
-    <div className="sand-shell" data-empty={activeAgent == null ? true : undefined} data-loading={showRootLoading || undefined} data-runtime={bridge == null ? "browser" : "electron"} data-theme={RUNTIME_THEME_CLASS[resolvedTheme]} style={{ height: "100%", position: "relative", width: "100%" }}>
+    <div className="sand-shell" data-empty={activeAgent == null ? true : undefined} data-loading={showRootLoading || undefined} data-runtime={bridge == null ? "browser" : "electron"} data-theme={RUNTIME_THEME_CLASS[resolvedTheme]} style={{ height: "100%", paddingTop: windowFullscreen ? 0 : "var(--sand-window-controls-block, 52px)", position: "relative", width: "100%" }}>
+      <div className="sand-shell__workspace" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <WorkspaceIndicator isFullscreen={windowFullscreen} label={workspaceRoute == null ? activeAgent?.name ?? null : null} />
       {bridge == null ? null : <WindowStatusBadge isFullscreen={windowFullscreen} transport={transport} />}
       <RootShellNotificationHost bridge={bridge} client={client} />
@@ -3526,7 +3546,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       {account?.kind === "logged-in" && !computerInfoOpen && !computer.isOpen && computerRebuildBannerInput.kind !== "reconnecting" ? <ComputerRebuildProgressBanner input={computerRebuildBannerInput} onRestore={restoreComputerProgress} /> : null}
       {bridge == null ? null : <WindowChrome bridge={bridge} isFullscreen={windowFullscreen} isMaximized={windowMaximized} />}
       <RootShellLoading isVisible={showRootLoading} />
-      <div style={{ display: "grid", gridTemplateColumns: `${renderedSidebarLayout.isCollapsed ? SIDEBAR_LAYOUT_BOUNDS.collapsedWidth : renderedSidebarLayout.expandedWidth}px minmax(0, 1fr)`, height: "100%", minHeight: 0, width: "100%" }}>
+      <div className="sand-shell__content" style={{ display: "grid", flex: "1 1 0", gridTemplateColumns: `${renderedSidebarLayout.isCollapsed ? SIDEBAR_LAYOUT_BOUNDS.collapsedWidth : renderedSidebarLayout.expandedWidth}px minmax(0, 1fr)`, minHeight: 0, width: "100%" }}>
         <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto auto auto", minHeight: 0 }}>
           <div style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", minHeight: 0 }}>
             {connectionController == null ? null : <CoordinatorConnectionHost controller={connectionController} />}
@@ -3579,7 +3599,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
             onToggleSettings={activeAgent.isGroup
               ? groupInfoPaneRoute == null ? undefined : () => { setAgentSettingsOpen(false); setRoutinesInfoPaneOpen(false); setChannelsInfoPaneOpen(false); setComputerInfoOpen(false); setManageSharedRoomId(null); setGroupInfoPaneOpen((open) => !open); }
               : bridge == null ? undefined : () => { setGroupInfoPaneOpen(false); setRoutinesInfoPaneOpen(false); setChannelsInfoPaneOpen(false); setComputerInfoOpen(false); setManageSharedRoomId(null); setAgentSettingsOpen(true); }}
-            trailing={activeAgent.isGroup || bridge == null || agentChannelsController == null ? null : <SandButton aria-controls="sand-conversation-details" aria-expanded={channelsInfoPaneOpen} aria-label="Channels" data-info-row="channels" onClick={() => { setGroupInfoPaneOpen(false); setAgentSettingsOpen(false); setRoutinesInfoPaneOpen(false); setComputerInfoOpen(false); setManageSharedRoomId(null); setChannelsInfoPaneOpen((open) => !open); }} size="sm" variant="secondary"><SandIcon name="chat-bubbles" size="sm" />Channels</SandButton>}
+            trailing={activeAgent.isGroup || bridge == null || agentChannelsController == null ? null : <SandButton aria-controls="sand-conversation-details" aria-expanded={channelsInfoPaneOpen} aria-label="Channels" data-info-row="channels" leadingIcon="chat-bubbles" onClick={() => { setGroupInfoPaneOpen(false); setAgentSettingsOpen(false); setRoutinesInfoPaneOpen(false); setComputerInfoOpen(false); setManageSharedRoomId(null); setChannelsInfoPaneOpen((open) => !open); }} size="sm" variant="secondary">Channels</SandButton>}
           />
           {findInChatOpen ? <FindInChatBar controller={findInChatController} focusNonce={findInChatFocusNonce} onClose={closeFindInChat} transcriptContainer={findTranscriptContainer} transcriptHandleRef={transcriptHandleRef} /> : null}
           {showTranscriptLoadError
@@ -3623,6 +3643,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
             <ConversationComposer acceptedSendGeneration={composerClearGeneration} disabled={busy || client == null} draft={draft} editorProviders={editorProviders} notice={notice} onChange={(value) => composerDraftStore.setDraft(activeAgent.id, value)} onClearReplyTarget={clearReplyTarget} onRemoveAttachment={removeAttachment} onStageFiles={stageFiles} onSubmit={submit} placeholder={`Message ${activeAgent.name}`} replyTarget={replyTarget} scopeKey={`${transcriptAccountSlot ?? "signed-out"}:${activeAgent.id}`} transcribeAudio={transcribeAudio} />
           </div>
         </div>}
+      </div>
       </div>
 
       {conversationOutlineAgent == null ? null : <ConversationOutlinePanel

@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { classifyAttachment } from "../../../shared/media/attachment-summary.js";
 import { audioMimeFromPath, imageMimeFromPath, videoMimeFromPath } from "../../../shared/media/image-mime.js";
 import { DB_BUSY_TIMEOUT_MS } from "../../storage/store-db.js";
+import { INDEXED_BODY_MAX_CHARS } from "./content-search-query.js";
 import { writeReconcileDone, type AttachmentKind } from "./search-index-db.js";
 
 export const STORE_FILENAME = "store.db";
@@ -12,7 +14,12 @@ export interface IndexEntry { readonly id: string; readonly kind: string; readon
 export type SearchIndexJob = { readonly kind: "upsert-entries"; readonly agentId: string; readonly entries: readonly IndexEntry[] } | { readonly kind: "delete-entry"; readonly agentId: string; readonly entryId: string } | { readonly kind: "clear-agent"; readonly agentId: string } | { readonly kind: "reindex-agents"; readonly agentIds: readonly string[] } | { readonly kind: "reconcile" };
 interface Statements { readonly upsertMessage: StatementSync; readonly deleteMessage: StatementSync; readonly deleteAgentMessages: StatementSync; readonly upsertMedia: StatementSync; readonly deleteMedia: StatementSync; readonly deleteAgentMedia: StatementSync; readonly upsertFingerprint: StatementSync; readonly deleteFingerprint: StatementSync; readonly readFingerprint: StatementSync; readonly listIndexedAgentIds: StatementSync }
 function prepareStatements(db: DatabaseSync): Statements { return { upsertMessage: db.prepare("INSERT INTO messages (agent_id, entry_id, role, timestamp_ms, body) VALUES (?, ?, ?, ?, ?) ON CONFLICT(agent_id, entry_id) DO UPDATE SET role=excluded.role,timestamp_ms=excluded.timestamp_ms,body=excluded.body"), deleteMessage: db.prepare("DELETE FROM messages WHERE agent_id = ? AND entry_id = ?"), deleteAgentMessages: db.prepare("DELETE FROM messages WHERE agent_id = ?"), upsertMedia: db.prepare("INSERT INTO media (agent_id,entry_id,file_name,ext,mime,kind,timestamp_ms,width,height) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(agent_id,entry_id) DO UPDATE SET file_name=excluded.file_name,ext=excluded.ext,mime=excluded.mime,kind=excluded.kind,timestamp_ms=excluded.timestamp_ms,width=excluded.width,height=excluded.height"), deleteMedia: db.prepare("DELETE FROM media WHERE agent_id = ? AND entry_id = ?"), deleteAgentMedia: db.prepare("DELETE FROM media WHERE agent_id = ?"), upsertFingerprint: db.prepare("INSERT INTO agents (agent_id,fingerprint) VALUES (?,?) ON CONFLICT(agent_id) DO UPDATE SET fingerprint=excluded.fingerprint"), deleteFingerprint: db.prepare("DELETE FROM agents WHERE agent_id = ?"), readFingerprint: db.prepare("SELECT fingerprint FROM agents WHERE agent_id = ?"), listIndexedAgentIds: db.prepare("SELECT agent_id AS agentId FROM agents UNION SELECT DISTINCT agent_id FROM messages UNION SELECT DISTINCT agent_id FROM media") }; }
-const INDEXED_BODY_MAX_CHARS = 20_000;
+interface TranscriptRow { readonly seq?: unknown; readonly entry?: unknown }
+function fingerprintRows(rows: readonly TranscriptRow[]): string {
+  const hash = createHash("sha256");
+  for (const row of rows) hash.update(JSON.stringify([row.seq, row.entry])).update("\n");
+  return `sha256:${hash.digest("hex")}`;
+}
 function wholeMs(value: unknown): number { return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0; }
 function wholeDimension(value: unknown): number | null { return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : null; }
 function entryText(entry: IndexEntry): string { if (entry.kind === "message") return entry.content ?? ""; if (entry.kind === "send-message" && entry.message?.type === "text") return entry.message.content ?? ""; if (entry.kind === "notice") return entry.text ?? ""; return ""; }
@@ -27,13 +34,75 @@ export class SandSearchIndexWriter {
   private storeDbPath(id: string): string { return join(this.agentsRootDir, id, STORE_FILENAME); }
   private evict(id: string): void { const db = this.storeConnections.get(id); this.storeConnections.delete(id); try { db?.close(); } catch {} }
   private store(id: string): DatabaseSync | null { const cached = this.storeConnections.get(id); if (cached != null) return cached; const path = this.storeDbPath(id); if (!existsSync(path)) return null; try { const db = new DatabaseSync(path, { readOnly: true }); db.exec(`PRAGMA busy_timeout = ${DB_BUSY_TIMEOUT_MS}`); this.storeConnections.set(id, db); return db; } catch { return null; } }
-  private fingerprint(id: string): string | null { const db = this.store(id); if (db == null) return null; try { const row = db.prepare("SELECT COUNT(*) AS count, COALESCE(MAX(seq), 0) AS maxSeq FROM transcript_entries").get() as { count?: unknown; maxSeq?: unknown } | undefined; return typeof row?.count === "number" && typeof row.maxSeq === "number" ? `${row.count}:${row.maxSeq}` : null; } catch { this.evict(id); return null; } }
+  private readRows(id: string): TranscriptRow[] | null {
+    const db = this.store(id);
+    if (db == null) return null;
+    try {
+      return db.prepare("SELECT seq, entry FROM transcript_entries ORDER BY seq").all() as TranscriptRow[];
+    } catch {
+      this.evict(id);
+      return null;
+    }
+  }
   private transaction(run: () => void): void { this.db.exec("BEGIN IMMEDIATE"); try { run(); this.db.exec("COMMIT"); } catch (error) { try { this.db.exec("ROLLBACK"); } catch {} throw error; } }
   private apply(agentId: string, entry: IndexEntry): void { const message = messageOf(entry), media = mediaOf(entry); if (message == null) this.statements.deleteMessage.run(agentId, entry.id); else this.statements.upsertMessage.run(agentId, message.entryId, message.role, message.timestampMs, message.body); if (media == null) this.statements.deleteMedia.run(agentId, entry.id); else this.statements.upsertMedia.run(agentId, media.entryId, media.fileName, media.ext, media.mime, media.kind, media.timestampMs, media.width, media.height); }
-  private refresh(id: string): void { const value = this.fingerprint(id); value == null ? this.statements.deleteFingerprint.run(id) : this.statements.upsertFingerprint.run(id, value); }
-  upsertEntries(id: string, entries: readonly IndexEntry[]): void { if (entries.length === 0) return; this.transaction(() => { for (const entry of entries) this.apply(id, entry); this.refresh(id); }); }
-  deleteEntry(id: string, entryId: string): void { this.transaction(() => { this.statements.deleteMessage.run(id, entryId); this.statements.deleteMedia.run(id, entryId); this.refresh(id); }); }
+  upsertEntries(id: string, entries: readonly IndexEntry[]): void {
+    if (entries.length === 0) return;
+    this.transaction(() => {
+      for (const entry of entries) this.apply(id, entry);
+      // This job cannot certify other persisted mutations whose jobs may be lost.
+      this.statements.deleteFingerprint.run(id);
+    });
+  }
+  deleteEntry(id: string, entryId: string): void {
+    this.transaction(() => {
+      this.statements.deleteMessage.run(id, entryId);
+      this.statements.deleteMedia.run(id, entryId);
+      this.statements.deleteFingerprint.run(id);
+    });
+  }
   clearAgent(id: string): void { this.evict(id); this.transaction(() => { this.statements.deleteAgentMessages.run(id); this.statements.deleteAgentMedia.run(id); this.statements.deleteFingerprint.run(id); }); this.db.exec(`PRAGMA incremental_vacuum(${INCREMENTAL_VACUUM_PAGES})`); }
-  reindexAgent(id: string): void { this.evict(id); if (!existsSync(this.storeDbPath(id))) { this.clearAgent(id); return; } const db = this.store(id); if (db == null) return; let rows: { seq?: unknown; entry?: unknown }[]; try { rows = db.prepare("SELECT seq, entry FROM transcript_entries ORDER BY seq").all() as { seq?: unknown; entry?: unknown }[]; } catch { this.evict(id); return; } let maxSeq = 0; const entries: IndexEntry[] = []; for (const row of rows) { if (typeof row.seq === "number") maxSeq = Math.max(maxSeq, row.seq); if (typeof row.entry !== "string") continue; try { const value = JSON.parse(row.entry) as Partial<IndexEntry>; if (typeof value.id === "string" && typeof value.kind === "string") entries.push(value as IndexEntry); } catch {} } this.transaction(() => { this.statements.deleteAgentMessages.run(id); this.statements.deleteAgentMedia.run(id); for (const entry of entries) this.apply(id, entry); this.statements.upsertFingerprint.run(id, `${rows.length}:${maxSeq}`); }); this.db.exec(`PRAGMA incremental_vacuum(${INCREMENTAL_VACUUM_PAGES})`); }
-  reconcile(): void { let ids: string[]; try { ids = readdirSync(this.agentsRootDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name); } catch { ids = []; } const onDisk = new Set(ids); for (const row of this.statements.listIndexedAgentIds.all() as { agentId?: unknown }[]) if (typeof row.agentId === "string" && !onDisk.has(row.agentId)) this.clearAgent(row.agentId); for (const id of ids) { if (!existsSync(this.storeDbPath(id))) continue; const current = this.fingerprint(id), indexed = this.statements.readFingerprint.get(id) as { fingerprint?: unknown } | undefined; if (current != null && indexed?.fingerprint !== current) this.reindexAgent(id); } writeReconcileDone(this.db); }
+  private indexRows(id: string, rows: readonly TranscriptRow[], fingerprint: string): void {
+    const entries: IndexEntry[] = [];
+    for (const row of rows) {
+      if (typeof row.entry !== "string") continue;
+      try {
+        const value = JSON.parse(row.entry) as Partial<IndexEntry>;
+        if (typeof value.id === "string" && typeof value.kind === "string") entries.push(value as IndexEntry);
+      } catch {}
+    }
+    this.transaction(() => {
+      this.statements.deleteAgentMessages.run(id);
+      this.statements.deleteAgentMedia.run(id);
+      for (const entry of entries) this.apply(id, entry);
+      // The fingerprint describes exactly the source snapshot applied above.
+      this.statements.upsertFingerprint.run(id, fingerprint);
+    });
+    this.db.exec(`PRAGMA incremental_vacuum(${INCREMENTAL_VACUUM_PAGES})`);
+  }
+  reindexAgent(id: string): void {
+    this.evict(id);
+    if (!existsSync(this.storeDbPath(id))) { this.clearAgent(id); return; }
+    const rows = this.readRows(id);
+    if (rows != null) this.indexRows(id, rows, fingerprintRows(rows));
+  }
+  reconcile(): void {
+    let ids: string[];
+    try {
+      ids = readdirSync(this.agentsRootDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    } catch { ids = []; }
+    const onDisk = new Set(ids);
+    for (const row of this.statements.listIndexedAgentIds.all() as { agentId?: unknown }[]) {
+      if (typeof row.agentId === "string" && !onDisk.has(row.agentId)) this.clearAgent(row.agentId);
+    }
+    for (const id of ids) {
+      if (!existsSync(this.storeDbPath(id))) continue;
+      const rows = this.readRows(id);
+      if (rows == null) continue;
+      const current = fingerprintRows(rows);
+      const indexed = this.statements.readFingerprint.get(id) as { fingerprint?: unknown } | undefined;
+      if (indexed?.fingerprint !== current) this.indexRows(id, rows, current);
+    }
+    writeReconcileDone(this.db);
+  }
 }

@@ -10,7 +10,9 @@ export function startInterruptedShellOutputSnapshot(toolCallId: string): void { 
 export function appendInterruptedShellOutputSnapshot(toolCallId: string, output: string): void {
   if (output.length === 0) return;
   const existing = shellOutputSnapshots.get(toolCallId);
-  if (existing === undefined) { ensureSnapshotCapacity(toolCallId); shellOutputSnapshots.set(toolCallId, output.slice(-MAX_SHELL_SNAPSHOT_CHARS)); return; }
+  // An interrupted stream may outlive reconstruction. Do not recreate a
+  // snapshot that has already been consumed or evicted.
+  if (existing === undefined) return;
   shellOutputSnapshots.set(toolCallId, `${existing}${output}`.slice(-MAX_SHELL_SNAPSHOT_CHARS));
 }
 export function getInterruptedShellOutputSnapshot(toolCallId: string): string | undefined { return shellOutputSnapshots.get(toolCallId); }

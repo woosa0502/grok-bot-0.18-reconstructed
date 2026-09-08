@@ -256,8 +256,11 @@ export interface TransferredCoordinatorPort {
 }
 
 export interface CoordinatorPortBridge {
-  claim(consumer: { onPort(port: TransferredCoordinatorPort): void }): {
-    request(): void;
+  claim(consumer: {
+    onPort(port: TransferredCoordinatorPort): void;
+    onRequestError?(message: string, requestId?: number): void;
+  }): {
+    request(requestId?: number): void;
     release(): void;
   } | null;
 }

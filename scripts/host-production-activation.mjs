@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 
 import { repoRoot, sourceAppDir } from "./lib/config.mjs";
+import { materializeHostRuntimePackages } from "./lib/host-runtime-packages.mjs";
 
 export const hostBindingProvenancePath = "dist/host-production-bindings.json";
 
@@ -603,7 +604,7 @@ export async function buildProductionHostIfSupplied({ outputRoot, manifestPath =
   await mkdir(path.dirname(outfile), { recursive: true });
   // The Pi Codex packages load their OAuth-provider and config modules through computed dynamic
   // imports (import(specifier)) that esbuild cannot statically bundle, so they must resolve from
-  // node_modules at runtime; the host runs with cwd=repoRoot which has them. Keep them external
+  // host-relative node_modules at runtime. Their locked closure is staged after bundling. Keep them external
   // (and their optional transitive native/JS-fallback deps ws->bufferutil/utf-8-validate,
   // debug/chalk->supports-color), and declare them alongside the manifest bindings. (Pi integration)
   const piRuntimeExternals = [
@@ -655,6 +656,7 @@ export async function buildProductionHostIfSupplied({ outputRoot, manifestPath =
   const allowedExternal = new Set([...external, ...builtinSet]);
   const unexpectedExternal = externalImports.filter(specifier => !allowedExternal.has(specifier));
   if (unexpectedExternal.length > 0) throw new Error(`Clean production host has undeclared external imports: ${unexpectedExternal.join(", ")}`);
+  const runtimePackages = await materializeHostRuntimePackages({ outputRoot });
 
   const outputBytes = await readFile(outfile);
   const forbiddenOutput = outputBytes.toString("utf8").match(/(?:src\/app\/|recovered\/source-capsules\/|dist\/host\/host-main\.cjs)/g) ?? [];
@@ -672,12 +674,13 @@ export async function buildProductionHostIfSupplied({ outputRoot, manifestPath =
     activationEvidence: validated.activationEvidence,
     bindings: validated.bindings.map(({ resolvedModule: _resolvedModule, ...binding }) => binding),
     executableGraph: { inputs, externalImports, forbiddenInputs, forbiddenOutputReferences: [] },
+    runtimePackages: runtimePackages.packages,
     output: { path: "dist/host/host-main.cjs", bytes: outputBytes.byteLength, sha256: sha256(outputBytes) },
   };
   const provenancePath = path.join(outputRoot, hostBindingProvenancePath);
   await mkdir(path.dirname(provenancePath), { recursive: true });
   await writeFile(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`);
-  return { status: "validated-clean-source", clean: true, requiredBindings: requiredHostProductionBindings, boundBindings: validated.boundBindings, unboundBindings: validated.unboundBindings, inventory: validated.inventory, provenance, provenancePath, outputPath: outfile };
+  return { status: "validated-clean-source", clean: true, requiredBindings: requiredHostProductionBindings, boundBindings: validated.boundBindings, unboundBindings: validated.unboundBindings, inventory: validated.inventory, provenance, provenancePath, outputPath: outfile, runtimePackageFiles: runtimePackages.files, runtimePackageRoots: runtimePackages.roots };
 }
 
 if (process.argv[1] != null && path.resolve(process.argv[1]) === scriptPath) {

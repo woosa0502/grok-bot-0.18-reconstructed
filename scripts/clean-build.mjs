@@ -48,6 +48,8 @@ export function compositionWithProductionActivations(hostActivation, electronMai
   return composition.map(runtime => {
     if (runtime.runtime === "host") return hostActivation.clean ? {
       runtime: "host", path: "dist/host/host-main.cjs", mode: "clean-source", source: "source/host/main.ts", bindingManifest: hostBindingProvenancePath,
+      runtimePackageFiles: hostActivation.runtimePackageFiles,
+      runtimePackageRoots: hostActivation.runtimePackageRoots,
     } : { ...runtime, reason: hostActivation.blocker };
     if (runtime.runtime === "electron-main") return electronMainActivation.clean ? {
       runtime: "electron-main", path: "dist/electron-main/main.cjs", mode: "clean-source", source: "source/electron-main/main.ts", bindingManifest: electronMainBindingProvenancePath,
@@ -89,10 +91,11 @@ async function prepareProductionActivations(clean, hostBindingManifest, electron
     for (const relative of replacements) outputs.push(await outputRecord(clean.outputRoot, relative));
     outputs.sort((left, right) => left.path.localeCompare(right.path));
   }
-  if (electronMainActivation.clean) {
-    for (const relative of electronMainActivation.runtimePackageFiles ?? []) outputs.push(await outputRecord(clean.outputRoot, relative));
-    outputs.sort((left, right) => left.path.localeCompare(right.path));
+  for (const activation of [hostActivation, electronMainActivation]) {
+    if (!activation.clean) continue;
+    for (const relative of activation.runtimePackageFiles ?? []) outputs.push(await outputRecord(clean.outputRoot, relative));
   }
+  outputs.sort((left, right) => left.path.localeCompare(right.path));
   return {
     ...clean,
     hostActivation,
@@ -138,6 +141,7 @@ async function attachCompositionAudit(clean) {
       "scripts/audit-runtime-composition.mjs",
       "scripts/build-box-exec-daemon.mjs",
       "scripts/host-production-activation.mjs",
+      "scripts/lib/host-runtime-packages.mjs",
       "scripts/electron-main-production-activation.mjs",
       "package.json",
       "package-lock.json",
@@ -150,6 +154,8 @@ async function attachCompositionAudit(clean) {
       bindingManifest: hostBindingProvenancePath,
       manifestSha256: clean.hostActivation.provenance.manifestSha256,
       outputSha256: clean.hostActivation.provenance.output.sha256,
+      runtimePackageFiles: clean.hostActivation.runtimePackageFiles ?? [],
+      runtimePackageRoots: clean.hostActivation.runtimePackageRoots ?? [],
     } : {
       status: clean.hostActivation.status,
       blocker: clean.hostActivation.blocker,
@@ -203,6 +209,17 @@ export async function overlayAuditMetadata(clean, { stageRoot = stagedAppDir } =
     await cp(path.join(clean.outputRoot, relative), destination, {
       recursive: true,
       dereference: false,
+      preserveTimestamps: true,
+    });
+  }
+  for (const relative of clean.hostActivation.runtimePackageRoots ?? []) {
+    const destination = path.join(stageRoot, relative);
+    await rm(destination, { recursive: true, force: true });
+    await mkdir(path.dirname(destination), { recursive: true });
+    await cp(path.join(clean.outputRoot, relative), destination, {
+      recursive: true,
+      dereference: false,
+      verbatimSymlinks: true,
       preserveTimestamps: true,
     });
   }
