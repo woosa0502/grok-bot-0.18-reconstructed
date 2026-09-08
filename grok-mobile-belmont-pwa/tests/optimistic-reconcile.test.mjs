@@ -37,3 +37,26 @@ test("the server projection carries the desktop's clientNonce on user text entri
   const [without] = projectTranscriptEntries([{ id: "t2a", role: "assistant", content: "yo", timestampMs: 6 }], "bot");
   assert.equal("clientNonce" in without, false);
 });
+
+test("an active run is described as post-response only after this screen observes its reply", async () => {
+  const { nextRunObservation, runPresentation } = await loadEntries();
+  const user = { id: "u1", type: "text", role: "user", content: "너는?", timestampMs: 1 };
+  const answer = { id: "a1", type: "text", role: "assistant", content: "난 벨몬트예요.", timestampMs: 2 };
+  const activity = { id: "x1", type: "agent-activity", role: "assistant", agentId: "bot", agentName: "Bot", direction: "outgoing", content: "도구 실행", jobId: "j1", isError: false, timestampMs: 3 };
+
+  const mountedDuringRun = nextRunObservation(null, [user, answer], "bot", "run-1", true);
+  assert.equal(runPresentation([user, answer], true, false, mountedDuringRun.latestAssistantId !== mountedDuringRun.baselineAssistantId), "working", "old history cannot classify an unseen run");
+  const beforeRun = nextRunObservation(null, [user], "bot", "run-0", false);
+  const started = nextRunObservation(beforeRun, [user], "bot", "run-1", true);
+  const replied = nextRunObservation(started, [user, answer], "bot", "run-1", true);
+  assert.equal(runPresentation([user, answer], true, false, replied.latestAssistantId !== replied.baselineAssistantId), "post-response");
+  assert.equal(runPresentation([user, { ...answer, isStreaming: true }], true, false, true), "working");
+  assert.equal(runPresentation([user, answer, activity], true, false, true), "working");
+  assert.equal(runPresentation([user, answer, { ...user, id: "u2", timestampMs: 4 }], true, false, true), "working");
+  assert.equal(runPresentation([user, answer], true, true, true), "composing");
+  assert.equal(runPresentation([user, answer], false, false, true), "idle");
+
+  const idle = nextRunObservation(replied, [user, answer], "bot", "run-1", false);
+  const backgroundRun = nextRunObservation(idle, [user, answer], "bot", "run-2", true);
+  assert.equal(runPresentation([user, answer], true, false, backgroundRun.latestAssistantId !== backgroundRun.baselineAssistantId), "working", "a later background run cannot inherit the prior response");
+});

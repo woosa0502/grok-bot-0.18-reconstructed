@@ -6,6 +6,7 @@ import { BabyGrokAvatar } from "../components/BabyGrokAvatar";
 import { AgentActivityGroup, MessageEntry } from "../components/MessageEntry";
 import { EmptyState, ScreenError, ScreenSkeleton } from "../components/ScreenState";
 import { Icon } from "../components/Icon";
+import { nextRunObservation, runPresentation, type RunObservation } from "../entries";
 import type { AppRoute, SurfaceId } from "../navigation";
 import type { AgentActivityMessage, Bot, MobileMessage } from "../types";
 
@@ -104,6 +105,7 @@ export function ChatScreen({ bot, eventRevision, members = [], onBack, onCompute
   const mountGeneration = useRef(0);
   const lastSubmittedNonce = useRef<string | undefined>(undefined);
   const activeScope = useRef(bot.id);
+  const runObservation = useRef<RunObservation | null>(null);
   activeScope.current = bot.id;
   useEffect(() => { ++mountGeneration.current; activeScope.current = bot.id; return () => { ++mountGeneration.current; activeScope.current = ""; }; }, [bot.id]);
 
@@ -279,12 +281,19 @@ export function ChatScreen({ bot, eventRevision, members = [], onBack, onCompute
 
   const canSend = useMemo(() => Boolean(draft.trim() || attachments.length > 0) && intentReady && !sending && !stopping, [attachments.length, draft, intentReady, sending, stopping]);
   const rows = useMemo(() => transcriptRows(entries), [entries]);
+  const runKey = bot.stopGuard ?? `revision:${bot.userIntentRevision ?? 0}`;
+  runObservation.current = nextRunObservation(runObservation.current, entries, bot.id, runKey, bot.isRunning);
+  const responseObservedInRun = runObservation.current.running
+    && runObservation.current.latestAssistantId != null
+    && runObservation.current.latestAssistantId !== runObservation.current.baselineAssistantId;
+  const activityPresentation = runPresentation(entries, bot.isRunning, bot.isComposing, responseObservedInRun);
+  const activityLabel = activityPresentation === "composing" ? "답장 작성 중" : activityPresentation === "post-response" ? "응답 후 처리 중" : "작업 중";
 
   return (
     <main className="chat-screen">
       <header className="chat-toolbar">
         <button aria-label="홈으로" className="circle-button" onClick={onBack} type="button"><Icon name="back" size={22} /></button>
-        <button aria-label={`${bot.name}, ${bot.isRunning ? "작업 중" : bot.awaitingUserResponse ? "응답을 기다리는 중" : "대기 중"}`} className="chat-identity" onClick={() => onOpen("AgentProfileScreen", { botId: bot.id })} type="button"><BabyGrokAvatar color={bot.avatar.color} shape={bot.avatar.shape} size={38} state={bot.isRunning ? "working" : bot.awaitingUserResponse ? "listening" : "idle"} /><strong>{bot.name}</strong></button>
+        <button aria-label={`${bot.name}, ${activityPresentation !== "idle" ? activityLabel : bot.awaitingUserResponse ? "응답을 기다리는 중" : "대기 중"}`} className="chat-identity" onClick={() => onOpen("AgentProfileScreen", { botId: bot.id })} type="button"><BabyGrokAvatar color={bot.avatar.color} shape={bot.avatar.shape} size={38} state={bot.isRunning ? "working" : bot.awaitingUserResponse ? "listening" : "idle"} /><strong>{bot.name}</strong></button>
         <div className="chat-actions">
           <button aria-label="컴퓨터 보기" className="circle-button" onClick={onComputer} type="button"><Icon name="display" size={20} /></button>
           <button aria-expanded={menuOpen} aria-haspopup="menu" aria-label="대화 메뉴" className="circle-button" onClick={() => setMenuOpen((value) => !value)} type="button"><Icon name="more" size={20} /></button>
@@ -320,10 +329,10 @@ export function ChatScreen({ bot, eventRevision, members = [], onBack, onCompute
               : row.kind === "agent-activity"
                 ? <AgentActivityGroup entries={row.entries} key={row.id} />
                 : <MessageEntry bot={bot} entry={row.entry} key={row.id} onOpen={onOpen} onResolved={() => void load()} replyCount={row.replyCount} threadRootId={row.threadRootId} />)}
-            {bot.isRunning || bot.isComposing ? (
-              <div aria-label={bot.isComposing ? `${bot.name} 답장 작성 중` : `${bot.name} 작업 중`} className="message-line assistant working-row" role="status">
+            {activityPresentation !== "idle" ? (
+              <div aria-label={`${bot.name} ${activityLabel}`} className="message-line assistant working-row" role="status">
                 <BabyGrokAvatar color={bot.avatar.color} shape={bot.avatar.shape} size={40} state={bot.isComposing ? "excited" : "working"} />
-                {bot.isComposing ? <div className="typing"><i /><i /><i /></div> : <span className="working-label">작업 중</span>}
+                {activityPresentation === "composing" ? <div className="typing"><i /><i /><i /></div> : <span className="working-label">{activityLabel}</span>}
               </div>
             ) : null}
             <div aria-hidden="true" className="transcript-end" />
