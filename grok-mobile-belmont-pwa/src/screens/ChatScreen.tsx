@@ -294,7 +294,7 @@ export function ChatScreen({ bot, eventRevision, members = [], onBack, onCompute
     <main className="chat-screen">
       <header className="chat-toolbar">
         <button aria-label="홈으로" className="circle-button" onClick={onBack} type="button"><Icon name="back" size={22} /></button>
-        <button aria-label={`${bot.name}, ${activityPresentation !== "idle" ? activityLabel : bot.awaitingUserResponse ? "응답을 기다리는 중" : "대기 중"}`} className="chat-identity" onClick={() => onOpen("AgentProfileScreen", { botId: bot.id })} type="button"><BabyGrokAvatar color={bot.avatar.color} shape={bot.avatar.shape} size={38} state={bot.isRunning ? "working" : bot.awaitingUserResponse ? "listening" : "idle"} /><strong>{bot.name}</strong></button>
+        <button aria-label={`${bot.name}, ${activityPresentation !== "idle" ? activityLabel : bot.awaitingUserResponse ? "응답을 기다리는 중" : "대기 중"}`} className="chat-identity" onClick={() => onOpen("AgentProfileScreen", { botId: bot.id })} type="button"><BabyGrokAvatar color={bot.avatar.color} shape={bot.avatar.shape} size={38} state={bot.characterState ?? (bot.isRunning ? "working" : bot.awaitingUserResponse ? "listening" : "idle")} /><strong>{bot.name}</strong></button>
         <div className="chat-actions">
           <button aria-label="컴퓨터 보기" className="circle-button" onClick={onComputer} type="button"><Icon name="display" size={20} /></button>
           <button aria-expanded={menuOpen} aria-haspopup="menu" aria-label="대화 메뉴" className="circle-button" onClick={() => setMenuOpen((value) => !value)} type="button"><Icon name="more" size={20} /></button>
@@ -332,7 +332,7 @@ export function ChatScreen({ bot, eventRevision, members = [], onBack, onCompute
                 : <MessageEntry bot={bot} entry={row.entry} key={row.id} onOpen={onOpen} onResolved={() => void load()} replyCount={row.replyCount} threadRootId={row.threadRootId} />)}
             {activityPresentation !== "idle" ? (
               <div aria-label={`${bot.name} ${activityLabel}`} className="message-line assistant working-row" role="status">
-                <BabyGrokAvatar color={bot.avatar.color} shape={bot.avatar.shape} size={40} state={bot.isComposing ? "excited" : "working"} />
+                <BabyGrokAvatar color={bot.avatar.color} shape={bot.avatar.shape} size={40} state={bot.characterState ?? (bot.isComposing ? "excited" : "working")} />
                 {activityPresentation === "composing" ? <div className="typing"><i /><i /><i /></div> : <span className="working-label">{activityLabel}</span>}
               </div>
             ) : null}

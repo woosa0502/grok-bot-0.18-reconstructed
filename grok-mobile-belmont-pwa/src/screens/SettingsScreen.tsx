@@ -61,7 +61,7 @@ export function SettingsScreen({ manager, onBack, onLogout, onOpen }: { manager:
     <main className="app-screen settings-screen">
       <header className="sheet-toolbar"><button aria-label="홈으로" className="circle-button" onClick={onBack} type="button"><Icon name="back" size={22} /></button><h1>설정</h1><span /></header>
       <button className="settings-profile" onClick={() => onOpen("AccountSheet")} type="button">
-        {manager ? <BabyGrokAvatar color={manager.avatar.color} label={manager.name} shape={manager.avatar.shape} size={94} state={manager.isRunning ? "working" : "idle"} /> : <span className="empty-avatar"><Icon name="person" size={30} /></span>}
+        {manager ? <BabyGrokAvatar color={manager.avatar.color} label={manager.name} shape={manager.avatar.shape} size={94} state={manager.characterState ?? (manager.isRunning ? "working" : "idle")} /> : <span className="empty-avatar"><Icon name="person" size={30} /></span>}
         <strong>{manager?.name ?? "Belmont"}</strong><small>데스크톱에 연결됨</small>
       </button>
       {loading ? <ScreenSkeleton rows={5} /> : null}

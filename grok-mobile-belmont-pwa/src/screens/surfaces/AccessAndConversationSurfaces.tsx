@@ -89,7 +89,7 @@ export function NewChatScreen({ back, bots, open, openChat }: SurfaceScreenProps
         <button onClick={() => open("NewAgentScreen")} type="button"><Icon name="bot" size={20} /><span><strong>새 Bot</strong><small>새 역할 만들기</small></span></button>
       </div>
       <Section title="Bot">
-        {visible.map((item) => <button className="agent-pick-row" key={item.id} onClick={() => openChat(item.id)} type="button"><BabyGrokAvatar color={item.avatar.color} shape={item.avatar.shape} size={46} state={item.isRunning ? "working" : "idle"} /><span><strong>{item.name}</strong><small>{item.description || item.title}</small></span><Icon name="chevronRight" size={14} /></button>)}
+        {visible.map((item) => <button className="agent-pick-row" key={item.id} onClick={() => openChat(item.id)} type="button"><BabyGrokAvatar color={item.avatar.color} shape={item.avatar.shape} size={46} state={item.characterState ?? (item.isRunning ? "working" : "idle")} /><span><strong>{item.name}</strong><small>{item.description || item.title}</small></span><Icon name="chevronRight" size={14} /></button>)}
       </Section>
     </SurfacePage>
   );

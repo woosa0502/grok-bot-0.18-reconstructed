@@ -42,7 +42,7 @@ export function HomeScreen({ bots, loading, error, onRetry, onOpenChat, onOpenSe
     <main className="app-screen home-screen">
       <header className="home-toolbar">
         <button aria-label="설정 열기" className="profile-button" onClick={onOpenSettings} type="button">
-          {manager ? <BabyGrokAvatar color={manager.avatar.color} shape={manager.avatar.shape} size={50} state={manager.isRunning ? "working" : manager.awaitingUserResponse ? "listening" : "idle"} /> : <Icon name="person" size={24} />}
+          {manager ? <BabyGrokAvatar color={manager.avatar.color} shape={manager.avatar.shape} size={50} state={manager.characterState ?? (manager.isRunning ? "working" : manager.awaitingUserResponse ? "listening" : "idle")} /> : <Icon name="person" size={24} />}
         </button>
         <div className="toolbar-actions">
           <button aria-label="Windows 화면 열기" className="circle-button windows-stream-button" onClick={onOpenWindows} title="Windows 화면" type="button"><Icon name="display" size={21} /></button>
@@ -59,7 +59,7 @@ export function HomeScreen({ bots, loading, error, onRetry, onOpenChat, onOpenSe
               {pinned.map((bot) => (
                 <button className="pinned-agent" key={bot.id} onClick={() => onOpenChat(bot)} type="button">
                   <span className="avatar-state-wrap">
-                    <BabyGrokAvatar color={bot.avatar.color} label={bot.name} shape={bot.avatar.shape} size={104} state={bot.isRunning ? "working" : bot.awaitingUserResponse ? "listening" : "idle"} />
+                    <BabyGrokAvatar color={bot.avatar.color} label={bot.name} shape={bot.avatar.shape} size={104} state={bot.characterState ?? (bot.isRunning ? "working" : bot.awaitingUserResponse ? "listening" : "idle")} />
                     {bot.isRunning ? <i className="semantic-status running" title="작업 중" /> : bot.awaitingUserResponse ? <i className="semantic-status waiting" title="응답 대기" /> : null}
                   </span>
                   <span>{bot.name}</span>
@@ -70,7 +70,7 @@ export function HomeScreen({ bots, loading, error, onRetry, onOpenChat, onOpenSe
           <section aria-label="Bot 대화" className="roster-list">
             {visible.map((bot) => (
               <button className="roster-row" key={bot.id} onClick={() => onOpenChat(bot)} type="button">
-                <span className="avatar-state-wrap compact"><BabyGrokAvatar color={bot.avatar.color} label={bot.name} shape={bot.avatar.shape} size={54} state={bot.isRunning ? "working" : bot.awaitingUserResponse ? "listening" : "idle"} />{bot.isRunning ? <i className="semantic-status running" /> : null}</span>
+                <span className="avatar-state-wrap compact"><BabyGrokAvatar color={bot.avatar.color} label={bot.name} shape={bot.avatar.shape} size={54} state={bot.characterState ?? (bot.isRunning ? "working" : bot.awaitingUserResponse ? "listening" : "idle")} />{bot.isRunning ? <i className="semantic-status running" /> : null}</span>
                 <span className="roster-copy"><strong>{bot.name}</strong><small>{bot.isComposing ? "메시지 작성 중" : bot.lastMessagePreview || bot.description || "아직 대화가 없습니다."}</small></span>
                 <span className="roster-meta"><time>{relativeTime(bot.lastActivityAt)}</time>{bot.unreadCount > 0 ? <b aria-label={`읽지 않은 메시지 ${bot.unreadCount}개`}>{Math.min(99, bot.unreadCount)}</b> : null}</span>
               </button>

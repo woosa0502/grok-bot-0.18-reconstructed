@@ -1,4 +1,4 @@
-const CACHE = "belmont-grok-mobile-v3";
+const CACHE = "belmont-grok-mobile-v6";
 const PUSH_RECEIPTS = "belmont-mobile-push-receipts-v1";
 let pushDelivery = Promise.resolve();
 const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
@@ -8,11 +8,14 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE && key !== PUSH_RECEIPTS).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key !== CACHE && key !== PUSH_RECEIPTS).map((key) => caches.delete(key)));
+    await self.clients.claim();
+    // A new version just took over: reload open windows so they run the fresh bundle rather than the one held in memory.
+    const windows = await self.clients.matchAll({ type: "window" });
+    for (const client of windows) { try { await client.navigate(client.url); } catch { /* ignore */ } }
+  })());
 });
 
 self.addEventListener("push", (event) => {

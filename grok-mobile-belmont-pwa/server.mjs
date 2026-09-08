@@ -292,11 +292,81 @@ function stableIndex(seed, length, salt = "") {
   return digest.readUInt32BE(0) % length;
 }
 
-function avatarFor(agent, index = 0) {
-  const seed = text(agent.id, `${text(agent.name, "bot")}:${index}`);
-  const shape = MOBILE_SHAPES.includes(agent.avatarShape) ? agent.avatarShape : MOBILE_SHAPES[stableIndex(seed, MOBILE_SHAPES.length, "shape")];
-  const color = MOBILE_COLORS.includes(agent.avatarColor) ? agent.avatarColor : MOBILE_COLORS[stableIndex(seed, MOBILE_COLORS.length, "color")];
-  return { shape, color };
+// The desktop's exact persona hash (character.tsx). Using it here means the phone resolves the same shape/colour
+// for every agent id as the desktop does, so an agent with no stored avatar looks identical on both.
+const SHIPPED_SHAPES = ["blob", "pebble", "squircle", "tablet", "wedge", "hex", "cloud", "teardrop"];
+const SHIPPED_COLORS = ["brown", "red", "orange", "yellow", "green", "cyan", "blue", "violet", "magenta", "gray"];
+const VALID_COLORS = new Set(["black", ...SHIPPED_COLORS]);
+function shippedRandom(seed) {
+  let value = seed >>> 0;
+  return () => {
+    value = value + 1831565813 | 0;
+    let next = Math.imul(value ^ value >>> 15, 1 | value);
+    next = next + Math.imul(next ^ next >>> 7, 61 | next) ^ next;
+    return ((next ^ next >>> 14) >>> 0) / 4294967296;
+  };
+}
+function shippedHash(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
+  return hash >>> 0;
+}
+function shippedColorIndex(value) {
+  const seed = (shippedHash(value) ^ Math.imul(1, 2654435769)) >>> 0;
+  return Math.floor(shippedRandom((seed ^ 2654435769) >>> 0)() * 10);
+}
+function shippedShapeHash(value) {
+  let hash = shippedHash(value);
+  hash = Math.imul(hash ^ hash >>> 16, 73244475);
+  hash = Math.imul(hash ^ hash >>> 13, 3266489909);
+  return (hash ^ hash >>> 16) >>> 0;
+}
+function resolvePersonaColor(agentId, color) {
+  if (color != null && VALID_COLORS.has(color)) return color;
+  return SHIPPED_COLORS[shippedColorIndex(agentId)] ?? "gray";
+}
+function resolvePersonaShape(agentId, shape) {
+  if (shape != null && SHIPPED_SHAPES.includes(shape)) return shape;
+  return SHIPPED_SHAPES[shippedShapeHash(agentId) % SHIPPED_SHAPES.length] ?? "blob";
+}
+function avatarFor(agent) {
+  const id = text(agent.id, text(agent.name, "bot"));
+  return { shape: resolvePersonaShape(id, agent.avatarShape), color: resolvePersonaColor(id, agent.avatarColor) };
+}
+
+// Ports the desktop's agent-avatar `activityState`/`personaStateFromAgent` gate
+// (frontend/src/recovered/features/conversation/workspace/agent-avatar.tsx) onto the mobile
+// mascot's states so the character animates for the situation instead of a generic "working".
+// This mirrors the desktop agent-avatar activityState/personaStateFromAgent gate exactly, emitting the
+// same state vocabulary (thinking/searching/working/loading/orbit/sending/idle) the mascot renders.
+const ACTIVITY_VERB_TO_STATE = {
+  thinking: "thinking", searching: "searching", browsing: "searching", reading: "searching", connecting: "searching",
+  writing: "working", coding: "working", generating: "loading", "running-commands": "working",
+  "on-its-computer": "working", "on-your-computer": "working", working: "working",
+  messaging: "orbit", waiting: "orbit", sending: "sending",
+};
+function activityCharacterState(activity) {
+  if (!isRecord(activity)) return null;
+  if (activity.kind === "thinking") return "thinking";
+  if (activity.kind === "tool" && activity.tool === "SendToAgent") return "sending";
+  if (typeof activity.verb === "string" && ACTIVITY_VERB_TO_STATE[activity.verb] != null) return ACTIVITY_VERB_TO_STATE[activity.verb];
+  if (typeof activity.tool === "string") {
+    const tool = activity.tool;
+    if (tool === "WebSearch") return "searching";
+    if (tool === "WebFetch" || tool.startsWith("browser_")) return "searching";
+    if (tool === "GenerateImage") return "loading";
+    if (tool === "SendToAgent" || tool === "UpdateAgent") return "sending";
+    if (tool === "Task" || tool === "Await" || tool === "CheckSubagent") return "orbit";
+    return "working";
+  }
+  return null;
+}
+export function characterStateFor(agent) {
+  if (agent.awaitingUserResponse != null && agent.awaitingUserResponse !== false) return "idle";
+  const activity = activityCharacterState(agent.currentActivity);
+  if (activity != null) return activity;
+  if (agent.isComposingMessage === true) return "thinking";
+  return agent.isRunning === true || agent.isRunningTurn === true ? "working" : "idle";
 }
 
 export function projectAgent(agent, { managerId = null, pinnedIds = [], index = 0 } = {}) {
@@ -314,6 +384,7 @@ export function projectAgent(agent, { managerId = null, pinnedIds = [], index = 
     stopGuard: typeof agent.stopGuard === "string" ? agent.stopGuard : null,
     userIntentRevision: Number.isSafeInteger(agent.userIntentRevision) ? agent.userIntentRevision : null,
     isComposing: agent.isComposingMessage === true,
+    characterState: characterStateFor(agent),
     isHidden: agent.isHiddenFromSidebar === true,
     hasUnread: agent.hasUnread === true,
     unreadCount: integer(agent.unreadCount),
@@ -1054,7 +1125,8 @@ export function createMobileServer({
       const stat = await fs.stat(target);
       if (stat.isDirectory()) target = join(target, "index.html");
       const body = await fs.readFile(target);
-      response.writeHead(200, { "content-type": STATIC_TYPES[extname(target)] || "application/octet-stream", "cache-control": target.endsWith("index.html") ? "no-cache" : "public, max-age=3600" });
+      const revalidate = target.endsWith("index.html") || target.endsWith("sw.js") || target.endsWith(".webmanifest");
+      response.writeHead(200, { "content-type": STATIC_TYPES[extname(target)] || "application/octet-stream", "cache-control": revalidate ? "no-cache" : "public, max-age=3600" });
       response.end(body);
     } catch {
       try {

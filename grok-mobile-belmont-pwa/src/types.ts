@@ -1,5 +1,11 @@
 export type BabyGrokShape = "blob" | "pebble" | "bean" | "egg" | "squircle" | "tablet" | "capsule" | "cylinder" | "hex" | "gem" | "crystal" | "wedge" | "shield" | "dome" | "arch" | "cloud" | "teardrop" | "leaf";
 export type BabyGrokColor = "black" | "brown" | "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "violet" | "magenta" | "gray";
+export type BabyGrokState =
+  | "sleeping" | "waking" | "idle" | "listening" | "thinking" | "searching" | "working" | "loading"
+  | "excited" | "surprised" | "suspicious" | "angry" | "drowsy" | "happy" | "curious" | "confused"
+  | "bored" | "proud" | "shy" | "sad" | "laughing" | "scared" | "playful" | "celebrate"
+  | "orbit" | "radar" | "progress" | "spawning" | "humming" | "dictating" | "writing" | "sending"
+  | "receiving" | "uploading" | "notifying" | "alerting" | "dragging" | "bouncing" | "powering-down";
 
 export interface Bot {
   id: string;
@@ -11,6 +17,8 @@ export interface Bot {
   isPinned: boolean;
   isRunning: boolean;
   isComposing: boolean;
+  /** Server-computed mascot state (ports the desktop agent-avatar activity gate); undefined on older gateways. */
+  characterState?: BabyGrokState;
   /** Identity of the currently observed user run; changes when a new prompt is accepted. */
   stopGuard?: string | null;
   userIntentRevision?: number;

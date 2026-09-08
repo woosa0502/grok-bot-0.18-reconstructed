@@ -9,7 +9,7 @@ import type { Bot } from "../../types";
 import type { SurfaceScreenProps } from "./types";
 
 function AgentRows({ bots, selected, toggle }: { bots: Bot[]; selected: Set<string>; toggle: (id: string) => void }) {
-  return <div className="selectable-agents">{bots.map((item) => <button aria-pressed={selected.has(item.id)} className="agent-pick-row" key={item.id} onClick={() => toggle(item.id)} type="button"><BabyGrokAvatar color={item.avatar.color} shape={item.avatar.shape} size={44} state={item.isRunning ? "working" : "idle"} /><span><strong>{item.name}</strong><small>{item.description || item.title}</small></span><span className={`selection-check ${selected.has(item.id) ? "selected" : ""}`}>{selected.has(item.id) ? <Icon name="check" size={13} /> : null}</span></button>)}</div>;
+  return <div className="selectable-agents">{bots.map((item) => <button aria-pressed={selected.has(item.id)} className="agent-pick-row" key={item.id} onClick={() => toggle(item.id)} type="button"><BabyGrokAvatar color={item.avatar.color} shape={item.avatar.shape} size={44} state={item.characterState ?? (item.isRunning ? "working" : "idle")} /><span><strong>{item.name}</strong><small>{item.description || item.title}</small></span><span className={`selection-check ${selected.has(item.id) ? "selected" : ""}`}>{selected.has(item.id) ? <Icon name="check" size={13} /> : null}</span></button>)}</div>;
 }
 
 export function AgentProfileScreen({ back, bot, open, refreshBots }: SurfaceScreenProps) {

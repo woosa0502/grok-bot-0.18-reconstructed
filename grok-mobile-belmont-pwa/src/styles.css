@@ -30,6 +30,7 @@
   --font-latin: "PP Neue Montreal", Arial, sans-serif;
   --font-ui: "PP Neue Montreal", "Pretendard Variable", Pretendard, sans-serif;
   --bg: #f7f7f5;
+  --sand-bg-base: var(--bg);
   --surface: #ffffff;
   --surface-soft: #efefec;
   --surface-strong: #171717;
@@ -88,21 +89,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   flex: none;
   overflow: visible;
 }
-.grok-avatar-rig, .grok-avatar-eyes { transform-box: fill-box; transform-origin: center; }
-.grok-avatar-eyes {
-  transform: translate(calc(var(--gaze-x) * 3px), calc(var(--gaze-y) * 2px));
-  transition: transform .24s cubic-bezier(.2,.75,.2,1);
-}
-.grok-state-idle .grok-avatar-rig { animation: grok-idle 4.8s ease-in-out infinite; }
-.grok-state-listening .grok-avatar-rig { animation: grok-listen 2.4s ease-in-out infinite; }
-.grok-state-working .grok-avatar-rig { animation: grok-work .86s ease-in-out infinite; }
-.grok-state-searching .grok-avatar-rig { animation: grok-search 2.1s ease-in-out infinite; }
-.grok-state-happy .grok-avatar-rig, .grok-state-proud .grok-avatar-rig { animation: grok-happy 2.2s cubic-bezier(.2,.75,.2,1) infinite; }
-.grok-state-curious .grok-avatar-rig { animation: grok-curious 3s ease-in-out infinite; }
-.grok-state-excited .grok-avatar-rig { animation: grok-excited .72s cubic-bezier(.2,.75,.2,1) infinite; }
-.grok-state-playful .grok-avatar-rig, .grok-state-laughing .grok-avatar-rig { animation: grok-playful 1.3s ease-in-out infinite; }
-.grok-state-spawning .grok-avatar-rig { animation: grok-spawn .7s cubic-bezier(.18,.89,.32,1.28) both; }
-.grok-avatar-eyes { animation: grok-blink 5.2s infinite; }
+.grok-avatar-rig, .grok-avatar-eyes, .grok-avatar-spinner { transform-box: fill-box; transform-origin: center; }
+.grok-avatar-spinner { opacity: .9; }
+/* The rig bob/tilt, per-state eye scale and blink are driven per-frame in BabyGrokAvatar.tsx via
+   requestAnimationFrame (mirroring the desktop OnboardingCharacter). No CSS animation is applied to
+   .grok-avatar-rig / .grok-avatar-eyes, so the inline transforms set by the loop take effect; the
+   component sets a static transform when prefers-reduced-motion is on. */
+.grok-avatar-mouth { pointer-events: none; }
 @keyframes grok-idle { 0%,100% { transform: translateY(0) rotate(-.6deg) scale(1); } 50% { transform: translateY(-2.5px) rotate(.7deg) scale(1.012,.99); } }
 @keyframes grok-listen { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-3px) rotate(2.5deg); } }
 @keyframes grok-work { 0%,100% { transform: translateY(1px) rotate(-3deg) scale(1.01,.985); } 50% { transform: translateY(-3px) rotate(3deg) scale(.99,1.015); } }

@@ -1,17 +1,25 @@
-import { useId, type PointerEvent } from "react";
-import geometrySource from "../../public/assets/babygrok-geometry.json";
-import type { BabyGrokColor, BabyGrokShape } from "../types";
+import { useEffect, useRef } from "react";
+import type { BabyGrokColor, BabyGrokShape, BabyGrokState } from "../types";
 
-interface Geometry {
-  viewBox: { minX: number; minY: number; width: number; height: number };
-  headCenter: number;
-  shapes: Record<BabyGrokShape, { path: string; scale: number }>;
-  gradients: Record<BabyGrokColor, { light: { from: string; to?: string }; dark?: { from: string; to?: string } }>;
+export type { BabyGrokState };
+
+// The desktop's own character renderer, extracted verbatim from the production bundle (GrokMark). Mounting it here makes
+// the mobile avatar pixel-identical to the desktop — same shapes, colours, motion and the busy "sweep" — instead of the
+// hand-rolled reimplementation we had before. This mirrors how belmont-mobile-pwa hydrates its avatars from grok-engine.js.
+let enginePromise: Promise<GrokEngineModule | null> | null = null;
+interface GrokRoot { render(node: unknown): void; unmount?(): void }
+interface GrokEngineModule {
+  mountGrokMark(element: Element, props: unknown): GrokRoot;
+  GrokMark: unknown;
+  EngineReact: { createElement(type: unknown, props: unknown): unknown };
 }
-
-const geometry = geometrySource as Geometry;
-
-export type BabyGrokState = "idle" | "searching" | "happy" | "working" | "curious" | "excited" | "listening" | "playful" | "proud" | "laughing" | "spawning";
+function loadEngine(): Promise<GrokEngineModule | null> {
+  if (enginePromise == null) {
+    // @ts-ignore - grok-engine.js is the desktop's minified engine bundle and ships no type declarations.
+    enginePromise = import("../grok-engine.js").then((module) => (module.default ?? module) as GrokEngineModule).catch(() => null);
+  }
+  return enginePromise;
+}
 
 export function BabyGrokAvatar({
   shape,
@@ -20,6 +28,7 @@ export function BabyGrokAvatar({
   size = 48,
   label,
   className = "",
+  paused = false,
 }: {
   shape: BabyGrokShape;
   color: BabyGrokColor;
@@ -27,52 +36,38 @@ export function BabyGrokAvatar({
   size?: number;
   label?: string;
   className?: string;
+  paused?: boolean;
 }) {
-  const spec = geometry.shapes[shape] ?? geometry.shapes.blob;
-  const gradient = geometry.gradients[color]?.light ?? geometry.gradients.violet.light;
-  const gradientId = `grok-${useId().replace(/:/gu, "")}`;
-  const { minX, minY, width, height } = geometry.viewBox;
-  const [bodyPath, ...eyePaths] = spec.path.split(/(?=\sM)/u);
-  const transform = `translate(${geometry.headCenter} ${geometry.headCenter}) scale(${spec.scale}) translate(${-geometry.headCenter} ${-geometry.headCenter})`;
+  const hostRef = useRef<HTMLSpanElement>(null);
+  const rootRef = useRef<GrokRoot | null>(null);
 
-  function moveGaze(event: PointerEvent<SVGSVGElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const x = Math.max(-1, Math.min(1, (event.clientX - bounds.left) / bounds.width * 2 - 1));
-    const y = Math.max(-1, Math.min(1, (event.clientY - bounds.top) / bounds.height * 2 - 1));
-    event.currentTarget.style.setProperty("--gaze-x", x.toFixed(3));
-    event.currentTarget.style.setProperty("--gaze-y", y.toFixed(3));
-  }
+  useEffect(() => {
+    let alive = true;
+    void loadEngine().then((engine) => {
+      if (!alive || engine == null || hostRef.current == null) return;
+      const props = { color, shape, state, sizePx: size, isFollowingPointer: false, isStatic: paused, paused, surfaceTheme: "light" };
+      try {
+        if (rootRef.current == null) rootRef.current = engine.mountGrokMark(hostRef.current, props);
+        else rootRef.current.render(engine.EngineReact.createElement(engine.GrokMark, props));
+      } catch { /* ignore */ }
+    });
+    return () => { alive = false; };
+  }, [shape, color, state, size, paused]);
+
+  useEffect(() => () => {
+    try { rootRef.current?.unmount?.(); } catch { /* ignore */ }
+    rootRef.current = null;
+  }, []);
 
   return (
-    <svg
+    <span
+      ref={hostRef}
       aria-hidden={label ? undefined : true}
       aria-label={label}
       className={`baby-grok-avatar grok-state-${state} ${className}`}
       data-state={state}
-      height={size}
-      onPointerLeave={(event) => {
-        event.currentTarget.style.setProperty("--gaze-x", "0");
-        event.currentTarget.style.setProperty("--gaze-y", "0");
-      }}
-      onPointerMove={moveGaze}
       role={label ? "img" : undefined}
-      viewBox={`${minX} ${minY} ${width} ${height}`}
-      width={size}
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="100%" x2="0%" y1="0%" y2="100%">
-          <stop offset="0%" stopColor={gradient.from} />
-          <stop offset="100%" stopColor={gradient.to ?? gradient.from} />
-        </linearGradient>
-      </defs>
-      <g transform={transform}>
-        <g className="grok-avatar-rig">
-          <path className="grok-avatar-body" d={bodyPath} fill={`url(#${gradientId})`} />
-          <g className="grok-avatar-eyes">
-            {eyePaths.map((path, index) => <path d={path} fill="var(--avatar-eye, var(--bg))" key={index} />)}
-          </g>
-        </g>
-      </g>
-    </svg>
+      style={{ display: "inline-flex", flex: "none", width: size, height: size }}
+    />
   );
 }
