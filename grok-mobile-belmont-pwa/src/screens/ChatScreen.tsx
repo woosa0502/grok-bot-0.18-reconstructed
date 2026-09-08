@@ -25,27 +25,27 @@ type TranscriptRow =
   | { kind: "agent-activity"; id: string; entries: AgentActivityMessage[] }
   | { kind: "message"; id: string; entry: Exclude<MobileMessage, AgentActivityMessage>; replyCount?: number; threadRootId?: string };
 
-/** Thread replies fold under their root message; the desktop links them with replyToId and marks them `branched`. */
+/** replyToId also links ordinary answers; only explicit branches fold under a loaded main root. */
 function threadIndex(entries: MobileMessage[]): { counts: Map<string, number>; folded: Set<string> } {
   const byId = new Map(entries.map((entry) => [entry.id, entry] as const));
   const counts = new Map<string, number>();
   const folded = new Set<string>();
   for (const entry of entries) {
-    if (!entry.replyToId) continue;
+    if (entry.branched !== true || !entry.replyToId) continue;
     let root: MobileMessage = entry;
     const seen = new Set<string>();
-    while (root.replyToId && byId.has(root.replyToId) && !seen.has(root.id)) {
+    while (root.branched === true && root.replyToId && byId.has(root.replyToId) && !seen.has(root.id)) {
       seen.add(root.id);
       root = byId.get(root.replyToId) ?? root;
     }
-    if (root.id === entry.id) continue; // parent not loaded (older page): keep the reply inline with a link to its thread
+    if (root.branched === true) continue; // Missing root or cycle: preserve all reachable content inline.
     folded.add(entry.id);
     counts.set(root.id, (counts.get(root.id) ?? 0) + 1);
   }
   return { counts, folded };
 }
 
-function transcriptRows(entries: MobileMessage[]): TranscriptRow[] {
+export function transcriptRows(entries: MobileMessage[]): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   const threads = threadIndex(entries);
   let dayKey = "";
@@ -63,7 +63,7 @@ function transcriptRows(entries: MobileMessage[]): TranscriptRow[] {
       continue;
     }
     const replyCount = threads.counts.get(entry.id);
-    rows.push({ kind: "message", id: entry.id, entry, ...(replyCount ? { replyCount } : {}), ...(!replyCount && entry.replyToId ? { threadRootId: entry.replyToId } : {}) });
+    rows.push({ kind: "message", id: entry.id, entry, ...(replyCount ? { replyCount } : {}), ...(!replyCount && entry.branched === true && entry.replyToId ? { threadRootId: entry.replyToId } : {}) });
   }
   return rows;
 }
@@ -281,12 +281,13 @@ export function ChatScreen({ bot, eventRevision, members = [], onBack, onCompute
 
   const canSend = useMemo(() => Boolean(draft.trim() || attachments.length > 0) && intentReady && !sending && !stopping, [attachments.length, draft, intentReady, sending, stopping]);
   const rows = useMemo(() => transcriptRows(entries), [entries]);
+  const visibleEntries = useMemo(() => rows.flatMap<MobileMessage>((row) => row.kind === "message" ? [row.entry] : row.kind === "agent-activity" ? row.entries : []), [rows]);
   const runKey = bot.stopGuard ?? `revision:${bot.userIntentRevision ?? 0}`;
-  runObservation.current = nextRunObservation(runObservation.current, entries, bot.id, runKey, bot.isRunning);
+  runObservation.current = nextRunObservation(runObservation.current, visibleEntries, bot.id, runKey, bot.isRunning);
   const responseObservedInRun = runObservation.current.running
     && runObservation.current.latestAssistantId != null
     && runObservation.current.latestAssistantId !== runObservation.current.baselineAssistantId;
-  const activityPresentation = runPresentation(entries, bot.isRunning, bot.isComposing, responseObservedInRun);
+  const activityPresentation = runPresentation(visibleEntries, bot.isRunning, bot.isComposing, responseObservedInRun);
   const activityLabel = activityPresentation === "composing" ? "답장 작성 중" : activityPresentation === "post-response" ? "응답 후 처리 중" : "작업 중";
 
   return (
