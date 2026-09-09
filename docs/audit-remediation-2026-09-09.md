@@ -184,3 +184,9 @@ source 포인터가 하나라도 없는 row: 0개. 상세: `data/artifacts/aside
 - **빌드·계보**: chrome 재링크, 체크포인트 재생성은 새 도구 `belmont-browse/tools/regenerate-source-checkpoint.py`(원 생성 방식 그대로; 변경 3파일만 차이, 깨끗한 base에 apply --check OK), build-identity 재기록(chrome sha 37528b8c…), verify OK, identity 테스트 5/5. 포크 index에 3파일 stage.
 - **사용자 primary 재기동(오늘 3번째)**: 18:29 KST, daemon 861840 / Chrome 861892, 새 런처 health `ready:true, browser:{pid, alive:true}`. 로그 `logs/primary-relaunch-20260909T0929Z-*.log`.
 - **미점검**: PW 팝업(원본 ExtensionPopup 경로라 close handler 있음, 실동작 미확인), 주소창 표시, 미니 팝업 단축키 실제 키 입력.
+
+### 런처: 종료 후 남는 프로세스 (2026-09-09 18:29 발견, 수정)
+
+- 18:29 재기동 때 이전 데몬 840655가 `[serve] shutdown finished (exitCode=0)`까지 찍고 포트를 모두 놓은 뒤에도 프로세스로 남아 SIGTERM 두 번에도 안 끝났다(SIGKILL로 정리). 이벤트 루프를 잡는 핸들이 남은 것.
+- serve.mjs: shutdown 완료 후 unref 타이머(기본 5초, `BELMONT_BROWSE_EXIT_GRACE_MS`)로 루프가 아직 살아 있으면 남은 자원 이름(`process.getActiveResourcesInfo`)을 기록하고 `process.exit(exitCode)`. 자연 종료가 되는 경우엔 타이머가 발화하지 않는다(기존 signal-drain 테스트 그대로 통과). 남는 핸들 재현 테스트 추가(`tests/aside-process-signal-drain.test.mjs`, 9/9).
+- 지금 primary(861840)는 이 수정 전에 떴다. 다음 기동부터 반영.

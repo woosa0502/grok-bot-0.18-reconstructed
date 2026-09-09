@@ -17,7 +17,7 @@ const start = bundle.indexOf("require_signals=__commonJSMin(");
 const end = bundle.indexOf(",require_mtime_precision=", start);
 const primitive = bundle.slice(start, end);
 
-async function exercise({ adapter, signal, startup = false, oldOnce = false }) {
+async function exercise({ adapter, signal, startup = false, oldOnce = false, linger = false }) {
   assert.ok(start >= 0 && end > start, "907 signal-exit anchor must match");
   const dir = mkdtempSync(path.join(os.tmpdir(), "aside-signal-drain-"));
   const complete = path.join(dir, "cleanup-finished");
@@ -39,7 +39,7 @@ export async function createBrowseEngine() {
     model: {}, version: "fixture", account: { id: 0 }, chrome: {},
     A: { settings: () => ({ get: () => ({}) }) }, stats: () => ({ ready: true }),
     startSession: () => handle,
-    stop: () => stopped ??= (async () => { console.error("fixture-draining"); await delay(160); writeFileSync(${JSON.stringify(complete)}, "complete"); })(),
+    stop: () => stopped ??= (async () => { console.error("fixture-draining"); await delay(160); writeFileSync(${JSON.stringify(complete)}, "complete"); ${linger ? "setInterval(() => {}, 1000);" : ""} })(),
   };
 }
 `);
@@ -50,7 +50,7 @@ export async function createBrowseEngine() {
   const entry = path.join(dir, `${adapter}.mjs`);
   writeFileSync(entry, source);
   const args = adapter === "serve" ? ["--port", "0", "--state-dir", dir] : ["--task", "fixture", "--no-keep-chrome"];
-  const child = spawn(process.execPath, [entry, ...args], { env: { ...process.env, BELMONT_BROWSE_STATE_DIR: dir, BELMONT_BROWSE_STATE_FILE: path.join(dir, "absent.json") }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, [entry, ...args], { env: { ...process.env, BELMONT_BROWSE_STATE_DIR: dir, BELMONT_BROWSE_STATE_FILE: path.join(dir, "absent.json"), ...(linger ? { BELMONT_BROWSE_EXIT_GRACE_MS: "300" } : {}) }, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   child.stdout.on("data", (chunk) => { output += chunk; });
   child.stderr.on("data", (chunk) => { output += chunk; });
@@ -80,6 +80,10 @@ export async function createBrowseEngine() {
       assert.equal(readFileSync(complete, "utf8"), "complete");
       assert.equal(output.split("fixture-draining").length - 1, 1);
       if (adapter === "serve") assert.equal(existsSync(path.join(dir, "serve.json")), false);
+      // A handle that outlives a finished shutdown (2026-09-09: a daemon idled after "shutdown finished" until
+      // SIGKILL) is named and the process still leaves with the shutdown's exit code.
+      if (linger) assert.match(output, /forcing exit \(open: .*Timeout/, output);
+      else assert.doesNotMatch(output, /forcing exit/, output);
     }
   } finally {
     if (!exited) { child.kill("SIGKILL"); await exit; }
@@ -94,3 +98,4 @@ for (const adapter of ["serve", "run"]) {
   test(`${adapter}: startup signal remains owned until cleanup finishes`, { skip: !available }, () => exercise({ adapter, signal: "SIGTERM", startup: true }));
   test(`${adapter}: original once listener is a failing control`, { skip: !available }, () => exercise({ adapter, signal: "SIGTERM", oldOnce: true }));
 }
+test("serve: a handle that outlives the finished shutdown does not keep the process alive", { skip: !available }, () => exercise({ adapter: "serve", signal: "SIGTERM", linger: true }));

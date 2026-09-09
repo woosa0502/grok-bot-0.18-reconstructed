@@ -134,5 +134,15 @@ function shutdown() {
     for (const failure of failures) log(`[serve] shutdown failed: ${failure.reason.message}`);
     process.exitCode = failures.length ? 1 : 0;
     log(`[serve] shutdown finished (exitCode=${process.exitCode})`);
+    // The normal exit is the event loop draining on its own. Something can keep it alive after a finished
+    // shutdown (2026-09-09 18:29: daemon 840655 logged this line, released every port, then sat idle until
+    // SIGKILL): name what is still open and leave, so a run-fork.sh restart never inherits a ghost process.
+    const graceMs = Number(process.env.BELMONT_BROWSE_EXIT_GRACE_MS || 5000);
+    const forced = setTimeout(() => {
+      const open = process.getActiveResourcesInfo?.() ?? (process._getActiveHandles?.() ?? []).map((handle) => handle?.constructor?.name ?? typeof handle);
+      log(`[serve] event loop still alive ${graceMs}ms after shutdown; forcing exit (open: ${open.join(", ") || "none listed"})`);
+      process.exit(process.exitCode ?? 0);
+    }, graceMs);
+    forced.unref();
   })();
 }
