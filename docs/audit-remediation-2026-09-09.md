@@ -153,3 +153,22 @@ source 포인터가 하나라도 없는 row: 0개. 상세: `data/artifacts/aside
 | 확인 대상 | 코드 경로가 계약대로 반응하는가 | 실제 환경에서 결과가 맞는가 |
 | 오늘 수행 | E05/E06/E18(스텁), E07~E12(계약), E13~E15(단위) | primary 재기동 + guard curl, Moss 실검색, 반복 루틴 실제 실행, 호스트 재시작 |
 | 미수행 | E02/E16(사용자 보류), E04/E17(환경상 불가) | 실제 provider 턴 오류 복구, 실제 브라우저 crash 복구, 사용자 흐름 91-row missingGate |
+
+## 미니 팝업 크래시 (2026-09-09 16:51 KST, 사용자 테스트 중 발견 → 수정·검증·재기동)
+
+- **증상**: 사용자의 Aside Chrome(777327)이 16:50:59에 SIGABRT로 죽었다. `Check failed: !is_null()` (base/functional/callback.h:146) ← `ExtensionHost::Close` ← `ExtensionHost::CloseContents` ← `WebContentsImpl::Close` ← `ClosePageIgnoringUnloadEvents`. 데몬(777293)은 살아 있었고 `/health`는 `ready:true, chromePid:null`이었다(런처가 브라우저 사망을 반영하지 않음). 로그 `logs/primary-relaunch-20260909T1530Z-chrome.log` 204행.
+- **원인**: 복원한 `chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc`가 `ExtensionViewHostFactory::CreatePopupHost`로 만든 호스트에 `SetCloseHandler`를 걸지 않았다. 원본 Chromium의 `ExtensionPopup`(extension_popup.cc:301)·`ExtensionSidePanelCoordinator`·`ProcessManager`·`OffscreenDocumentManager`는 모두 건다. 처리기가 없으면 페이지의 `window.close()`나 호스트까지 내려온 Escape(`ExtensionViewHost::HandleKeyboardEvent` → `Close`)가 브라우저 전체를 죽인다. 포크가 자체 생성하는 ExtensionViewHost는 미니 팝업 하나뿐임을 전수 확인(탭 검색 버블은 일반 `views::WebView`, PW 팝업은 원본 `ExtensionPopup`).
+- **수정**: 같은 패턴으로 close handler 등록 → 호출 스택이 풀린 뒤 창 해제(`HandleCloseExtensionHost` → PostTask → `CloseWindow`; `Shutdown`도 이를 사용). 원본 Chromium 코드 패턴 재사용, 새 구조 없음. 포크 index에 두 파일 stage.
+- **재현·검증(격리 인스턴스)**: 별도 network namespace(`unshare -Urn`, 사용자 데몬 21420 도달 불가) + Xvfb + 스크래치 프로필에서 CDP로 서비스 워커에 `chrome.asideMiniPopup.setState('expanded')` → `minipopup.html` 타깃에서 `window.close()`. 도구 `belmont-browse/tools/repro-minipopup-close.mjs`.
+  - 수정 전 바이너리(sha de6261ca…): SIGABRT, 같은 FATAL(`logs/minipopup-repro-before-20260909T0824Z-chrome.log`).
+  - 수정 후(sha b2d5b6d7…): 살아 있음, 팝업 타깃 사라짐, 다시 열기 OK, 두 번째 닫기 OK, `Browser.close` 정상 종료(`logs/minipopup-repro-after-20260909T0831Z-chrome.log`, FATAL 0).
+- **빌드·계보**: `ninja -C out/aside -j2 chrome`(obj 2개 + 링크, 약 5분). 체크포인트 `chromium.patch`/`manifest.json`을 원 생성 방식 그대로 재생성(`git diff --binary --full-index <base>` + 미추적 소스 9파일 부록; 이전 패치와의 차이는 미니 팝업 두 파일뿐, 깨끗한 base worktree에 `git apply --check` OK). `build-identity.json` 재기록, `verify` OK, identity·native-component 테스트 21/21.
+- **사용자 primary 재기동**: 크래시 직후 17:14에 옛 바이너리로 한 번(브라우저 복구), 수정 빌드 검증 후 17:37에 다시(daemon 840655 / Chrome 840698, `/proc/<pid>/exe` = out/aside/chrome). 로그 `logs/primary-relaunch-20260909T0814Z-*.log`, `logs/primary-relaunch-20260909T0836Z-*.log`.
+- **런처**: `/health`의 `ready`가 이제 브라우저 생존까지 포함하고 `browser:{pid,alive}`를 낸다, 브라우저 종료 시 로그. 다음 기동부터 반영(지금 primary는 이전 core.mjs로 떠 있음). 자동 재기동은 넣지 않았다(원본에도 없음).
+- **남은 것**: native 테스트 캠페인의 `sourceFingerprint`(b5051935…)는 수정 전 소스 기준이고 unit/browser_tests는 재빌드하지 않았다(변경 범위 1파일). Escape 경로는 실제 키 입력으로는 미검증(같은 `ExtensionHost::Close` 경로).
+
+### "cyber" API 오류 (사용자 보고, 미확인)
+
+- 호스트 로그, Belmont 대화 기록, Aside 데몬/serve 로그, Aside `state.db`, Chrome 프로필 어디에도 'cyber' 문구가 없다. 유일한 히트는 9/3 Belmont 봇의 Gmail 요약 "OpenAI: Secure your Trusted Access for Cyber account by Oct 1, 2026".
+- 16:43–16:51 테스트 구간의 데몬 기록: `sessions.shareStatus` UNAUTHORIZED(클라우드 공유 상태 조회, 로그인 없음), `passwordManager.vault.getSnapshot` "Password vault is locked", 그리고 크래시. 모델 호출 오류 기록은 없다.
+- 정확한 문구·화면을 받아야 원인을 확정할 수 있다.

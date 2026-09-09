@@ -1,4 +1,5 @@
 // belmont-browse: reusable engine + session handles for the serve/MCP adapters (our code).
+import { browserAlive } from "./browser-lifecycle.mjs";
 import path from "node:path";
 import { createPrivateKey } from "node:crypto";
 import { writeFileSync } from "node:fs";
@@ -56,6 +57,7 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
     ? await startPipedChrome({ profileDir, display, port: relayPort, log, nativeComponentVersion, asideHome })
     : await ensureChrome({ port: cdpPort, display, profileDir, log, nativeComponentVersion, asideHome });
   cleanup.add("browser transport", () => keepChromeOnStop ? chrome.detach?.() : chrome.stop?.());
+  chrome.child?.once("exit", (code, signal) => log(`[chrome] browser process exited (code ${code}, signal ${signal}); the Aside UI is down until run-fork.sh is started again`));
   const cdpUrl = transport === "pipe" ? chrome.wsUrl : `http://127.0.0.1:${cdpPort}`;
   const home = prepareAsideHome({ asideHome, cdpUrl, model });
   log(`[creds] ${syncCodexCredential(home.credentialsPath)}`);
@@ -177,7 +179,9 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
   return {
     A, account, ext, cdp, home, chrome, engine, transport, lifecycle, hooks, model: selectedModel, version: ENGINES[engine].version,
     ...controller,
-    stats: () => ({ ...controller.stats(), ready: engineReady, memory: memory.capabilities(), bridge: ext.stats.commands, transport, ...(chrome.relay ? { relayClients: chrome.relay.clientCount(), cdpMessages: chrome.relay.stats.sent } : {}) }),
+    // ready is the daemon *and* the owned browser: after the fork crashed (2026-09-09 16:51) health kept saying
+    // ready while chromePid was gone, and Belmont's aside-browse bot would have queued work against a dead UI.
+    stats: () => ({ ...controller.stats(), ready: engineReady && browserAlive(chrome.child ?? null) !== false, browser: { pid: chrome.child?.pid ?? null, alive: browserAlive(chrome.child ?? null) }, memory: memory.capabilities(), bridge: ext.stats.commands, transport, ...(chrome.relay ? { relayClients: chrome.relay.clientCount(), cdpMessages: chrome.relay.stats.sent } : {}) }),
     stop,
   };
   } catch (error) {

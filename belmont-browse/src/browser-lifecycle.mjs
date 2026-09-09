@@ -11,6 +11,12 @@ export class BrowserShutdownTimeoutError extends Error {
 }
 
 /** Observe immediately after spawn so asynchronous spawn errors are always handled. */
+/** Whether an owned browser process is still running; null when the browser is not owned (CDP reuse). */
+export function browserAlive(child) {
+  if (child == null) return null;
+  return child.exitCode === null && child.signalCode == null;
+}
+
 export function observeChild(child) {
   let exited = child.exitCode !== null || child.signalCode != null;
   let error = null;

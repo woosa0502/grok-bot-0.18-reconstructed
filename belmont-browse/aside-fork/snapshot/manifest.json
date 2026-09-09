@@ -1,13 +1,13 @@
 {
   "status": "SOURCE_CHECKPOINT_NOT_PARITY_APPROVAL",
-  "capturedAt": "2026-09-09T00:10:34.111697+00:00",
+  "capturedAt": "2026-09-09T08:35:23.058664+00:00",
   "upstream": "https://chromium.googlesource.com/chromium/src.git",
   "baseCommit": "cc5584af0df9786f00efdb71f666c6664f836c2d",
   "localHead": "1d00f53b564d073e80d6c90be81fb1ac0f90327f",
   "patch": {
     "path": "chromium.patch",
-    "bytes": 5367512,
-    "sha256": "24add2b11d261fb9a2144fb849966bd0633238c27dafb474fb42414c765c4db3"
+    "bytes": 5368985,
+    "sha256": "f740946a1faf65e363f8e474ca5dff48f5082d3c844cf7a6043560c45c47257e"
   },
   "buildArgs": {
     "path": "args.gn",
@@ -906,15 +906,15 @@
     },
     {
       "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc",
-      "bytes": 13399,
-      "sha256": "4d1059674133a89a8a171408995749140981d7b5de4a16f4211d6322eb3adc48",
+      "bytes": 14566,
+      "sha256": "8c8be9c70b08e764876cb1f0d872229758826f9a025a10796d00e25600571a22",
       "mode": "100644",
       "untrackedAtCapture": false
     },
     {
       "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h",
-      "bytes": 3831,
-      "sha256": "e4ec04ae5e027aa2bc812f459d9520919eb4fdd0fc7caba982b32d974aa805c3",
+      "bytes": 4107,
+      "sha256": "9f06f843195981a4ab998a8da94e80d560b63a092db0acfedfad2818ee742877",
       "mode": "100644",
       "untrackedAtCapture": false
     },

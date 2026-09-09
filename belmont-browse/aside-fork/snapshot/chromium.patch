@@ -15015,10 +15015,10 @@ index 0000000000000000000000000000000000000000..a3ec07f7d9e3d4557c13d202fbba8daa
 +#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_ASIDE_MINI_POPUP_API_H_
 diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc
 new file mode 100644
-index 0000000000000000000000000000000000000000..81a4166eac7b0f994e615e03233a9c43fa0a10a1
+index 0000000000000000000000000000000000000000..90fd6276b773632417cc2b6dc6d375a5433c093e
 --- /dev/null
 +++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc
-@@ -0,0 +1,394 @@
+@@ -0,0 +1,418 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -15027,6 +15027,7 @@ index 0000000000000000000000000000000000000000..81a4166eac7b0f994e615e03233a9c43
 +
 +#include <utility>
 +
++#include "base/check_op.h"
 +#include "base/functional/bind.h"
 +#include "base/functional/function_ref.h"
 +#include "base/logging.h"
@@ -15180,6 +15181,14 @@ index 0000000000000000000000000000000000000000..81a4166eac7b0f994e615e03233a9c43
 +  if (!host) {
 +    return false;
 +  }
++  // The page closing itself (window.close()) and Escape reaching the popup
++  // host both end in ExtensionHost::Close(), which runs the close handler
++  // unconditionally: without one the CHECK there took the whole browser down
++  // (2026-09-09). Same wiring as ExtensionPopup and
++  // ExtensionSidePanelCoordinator; the service owns the host through
++  // delegate_ -> MiniPopupView, so the handler cannot outlive it.
++  host->SetCloseHandler(base::BindOnce(
++      &MiniPopupService::HandleCloseExtensionHost, weak_factory_.GetWeakPtr()));
 +
 +  auto view = std::make_unique<MiniPopupView>(profile_, std::move(host));
 +  view_ = view.get();
@@ -15405,20 +15414,35 @@ index 0000000000000000000000000000000000000000..81a4166eac7b0f994e615e03233a9c43
 +  }
 +}
 +
-+void MiniPopupService::Shutdown() {
++void MiniPopupService::HandleCloseExtensionHost(ExtensionHost* host) {
++  DCHECK(view_);
++  DCHECK_EQ(host, static_cast<ExtensionHost*>(view_->host()));
++  // Runs inside the host's own call stack (WebContentsImpl::Close or
++  // ExtensionViewHost::HandleKeyboardEvent): tear down once it unwinds, the
++  // way CloseContents() does for the options window.
++  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE, base::BindOnce(&MiniPopupService::CloseWindow,
++                                weak_factory_.GetWeakPtr()));
++}
++
++void MiniPopupService::CloseWindow() {
 +  CloseOptionsWindow();
 +  view_ = nullptr;
 +  widget_.reset();
 +  delegate_.reset();
 +}
 +
++void MiniPopupService::Shutdown() {
++  CloseWindow();
++}
++
 +}  // namespace extensions
 diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..ae42a8d2042837debe000ad2cb896a136f6fb319
+index 0000000000000000000000000000000000000000..1efc8d2c00339b13cbf8df363a5746ff8be5e587
 --- /dev/null
 +++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,110 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -15452,6 +15476,7 @@ index 0000000000000000000000000000000000000000..ae42a8d2042837debe000ad2cb896a13
 +namespace extensions {
 +
 +class Extension;
++class ExtensionHost;
 +class MiniPopupView;
 +
 +// Per-profile owner of the Aside mini popup window (replica of the original
@@ -15506,6 +15531,11 @@ index 0000000000000000000000000000000000000000..ae42a8d2042837debe000ad2cb896a13
 +                         const blink::mojom::WindowFeatures& window_features);
 +  void CloseOptionsWindow();
 +  void CloseOptionsWindowAndRestoreFocus();
++  // Close handler of the popup's ExtensionViewHost (window.close() from the
++  // page, or Escape reaching the host); tears the window down after the
++  // caller's stack unwinds.
++  void HandleCloseExtensionHost(ExtensionHost* host);
++  void CloseWindow();
 +  const Extension* AsideExtension() const;
 +
 +  raw_ptr<Profile> profile_;

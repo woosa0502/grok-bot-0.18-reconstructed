@@ -1,4 +1,4 @@
-# 다음 세션 시작점 — Aside/Belmont (세션2 갱신 2026-09-09 16:20 KST)
+# 다음 세션 시작점 — Aside/Belmont (세션2 갱신 2026-09-09 17:50 KST)
 
 **작업 완료 판정이 아니다.** 세션2가 인계 문서의 다음 순서를 실행했고, 아래는 그 결과와 현재 살아 있는 상태다.
 
@@ -19,7 +19,8 @@ GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 �
 ## 살아 있는 프로세스 (16:12 KST 재시작 후)
 
 - Belmont 호스트: tmux 세션 `belmont-bot`, runner 795498 / host 795526 / electron 795611, 게이트웨이 127.0.0.1:45026, 새 번들(settings 격리·provider promise 정착 포함). 로그 `data/artifacts/aside-remaining-closure-20260908/logs/host-restart-20260909T0712Z.log`. 죽어 있으면 `tmux new-session -d -s belmont-bot -c <repo> 'SAND_ASIDE_BROWSE=1 npm run wsl:start'`(Node 26.5, `tmux kill-server` 하지 말 것).
-- Aside primary: daemon 777293 / Chrome 777327 (`BELMONT_BROWSE_DISPLAY=:0 bash belmont-browse/run-fork.sh`, setsid). health의 memory.semantic available.
+- Aside primary: daemon 840655 / Chrome 840698 (17:37 KST, `BELMONT_BROWSE_DISPLAY=:0 bash belmont-browse/run-fork.sh`, setsid), **미니 팝업 크래시 수정 빌드(chrome sha b2d5b6d7…)**. health의 memory.semantic available. 16:51 크래시·원인·검증은 `docs/audit-remediation-2026-09-09.md` 맨 아래.
+- 사용자가 본 "cyber" API 오류 문구는 어떤 로그에도 없다. 문구를 받으면 그때 추적.
 - 골든 E2E는 스텁·계약 수준이다. 실동작 미수행 항목은 `docs/audit-remediation-2026-09-09.md` 맨 아래 표 참조.
 
 ## 새 세션이 먼저 할 일
