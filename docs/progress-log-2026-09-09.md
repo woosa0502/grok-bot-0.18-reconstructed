@@ -22,6 +22,7 @@
 | 19:5x | 데몬 로그 error 47줄 원인 확인 | BAD_REQUEST 39줄(sessions.list 33 + routines 6)은 전부 15:06~15:13 KST, 이전 데몬 768546, 오류 문구 "accountId expected number, received undefined" = 반복 루틴 검증 도구 v1이 입력을 잘못 감싸 보낸 것(v2로 고친 뒤 15:15 실제 실행 성공). 사용자 흐름 아님, 현재 데몬엔 없음. 나머지 8줄은 클라우드 공유 미인증 4 + 존재하지 않는 세션 mark-read 시험 2 + 기타 | 조치 없음 | daemon-2026-09-09.log |
 | 20:1x | 실사용 검증 계획서 작성(다른 모델에게 맡길 지시서): 원칙·환경·판정·알려진 상태·시나리오 S0~S8·91-row 대응표·보고 형식 | `docs/real-use-test-plan-2026-09-09.md` | — |
 | 21:3x | 후속 모델(Opus)의 실사용 검증 보고서 검토(`data/artifacts/real-use-test-20260909/REPORT.md`) | 계획 68항목 중 12항목 실행, 실 인스턴스 PASS는 CDP 페이지 입력 기반(실제 키 아님). 환경 벽: WSLg :0 창에 xdotool 키가 안 닿음, 데몬 포트 고정으로 두 번째 전체 스택 불가. S7 Belmont·S8 장시간·S1~S5 손 조작·루틴·금고·도구별·Guard 실제 승인 미실행. 사용자 primary는 21:15 재기동됨(daemon 931697, 종료 보강 포함) | 다음 한 수: 점검 창에서 전체 스택을 Xvfb로 띄워 실제 키로 수행, 또는 사용자 손+모델 관찰 | REPORT.md |
+| 22:3x | 전수 실사용 체크리스트 작성(테스터=사용자 페르소나, 실제 키가 되는 점검 창 절차, S1~S14 전수 표) + 부록 컨트롤 목록(확장 문구 2,109 + 네이티브 137 + 단축키·명령) | `docs/full-user-test-checklist-2026-09-09.md`, `docs/full-user-test-inventory-2026-09-09.md` | — |
 
 ## 지금 상태 (19:40)
 

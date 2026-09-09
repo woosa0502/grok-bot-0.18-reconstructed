@@ -25,7 +25,7 @@ GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 �
 
 ## 실사용 검증을 맡길 때
 
-`docs/real-use-test-plan-2026-09-09.md`를 그대로 지시서로 준다. 데몬이 필요한 시나리오는 사용자 primary에서 승인 아래 수행한다.
+**전수판** `docs/full-user-test-checklist-2026-09-09.md`(+부록 `docs/full-user-test-inventory-2026-09-09.md`)를 지시서로 준다. 시나리오 골격은 `docs/real-use-test-plan-2026-09-09.md`. 데몬이 필요한 시나리오는 사용자 primary에서 승인 아래 수행한다.
 
 ## 새 세션이 먼저 할 일
 
