@@ -35,13 +35,19 @@ test("new client is isolated from the legacy PWA implementation", async () => {
   }
 });
 
-test("recovered APK assets are direct build inputs", async () => {
-  const [avatar, icon, styles] = await Promise.all([
+test("recovered original assets are direct build inputs", async () => {
+  const [avatar, engine, icon, styles] = await Promise.all([
     fs.readFile(resolve(root, "src/components/BabyGrokAvatar.tsx"), "utf8"),
+    fs.readFile(resolve(root, "src/grok-engine.js"), "utf8"),
     fs.readFile(resolve(root, "src/components/Icon.tsx"), "utf8"),
     fs.readFile(resolve(root, "src/styles.css"), "utf8"),
   ]);
-  assert.match(avatar, /babygrok-geometry\.json/u);
+  // The avatar mounts the desktop's own character renderer (GrokMark, carried verbatim in src/grok-engine.js)
+  // rather than a hand-rolled reimplementation or the earlier APK geometry sheet.
+  assert.match(avatar, /import\("\.\.\/grok-engine\.js"\)/u);
+  assert.match(avatar, /mountGrokMark/u);
+  assert.match(engine, /mountGrokMark/u);
+  assert.match(engine, /GrokMark/u);
   assert.match(icon, /codepoints/u);
   assert.match(styles, /CursorIcons16-Regular\.ttf/u);
 });

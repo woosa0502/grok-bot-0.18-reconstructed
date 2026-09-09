@@ -80,6 +80,19 @@
       "copyright": "Copyright 2023 Kil Hyung-jin",
       "licenseEvidence": "Embedded OpenType name IDs 13 and 14",
       "licenseUrl": "https://openfontlicense.org/open-font-license-official-text/"
+    },
+    {
+      "path": "src/grok-engine.js",
+      "bytes": 299646,
+      "sha256": "84399e04474b99105a5f922344cd545eb28a04df3f5eacb7879ea897f1bb1092",
+      "origin": "Grok Bot desktop 0.18.0 production renderer bundle (GrokMark character engine)",
+      "sourcePath": "renderer/assets/index-UbX-y3il.js",
+      "license": "LicenseRef-Upstream-Undetermined",
+      "modification": "none",
+      "consumers": [
+        "src/components/BabyGrokAvatar.tsx"
+      ],
+      "supersedes": "public/assets/babygrok-geometry.json as the avatar's build input (the geometry sheet is retained for provenance only)"
     }
   ]
 }

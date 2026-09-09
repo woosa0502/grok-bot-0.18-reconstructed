@@ -23,15 +23,20 @@ test("all 54 high-confidence APK surfaces have a reachable implementation", asyn
 });
 
 test("recovered character states and mobile interaction affordances stay present", async () => {
-  const [app, avatar, chat, messageEntry, messageContent, styles] = await Promise.all([
+  const [app, types, engine, chat, messageEntry, messageContent, styles] = await Promise.all([
     fs.readFile(resolve(root, "src/App.tsx"), "utf8"),
-    fs.readFile(resolve(root, "src/components/BabyGrokAvatar.tsx"), "utf8"),
+    fs.readFile(resolve(root, "src/types.ts"), "utf8"),
+    fs.readFile(resolve(root, "src/grok-engine.js"), "utf8"),
     fs.readFile(resolve(root, "src/screens/ChatScreen.tsx"), "utf8"),
     fs.readFile(resolve(root, "src/components/MessageEntry.tsx"), "utf8"),
     fs.readFile(resolve(root, "src/components/MessageContent.tsx"), "utf8"),
     fs.readFile(resolve(root, "src/styles.css"), "utf8"),
   ]);
-  for (const state of ["searching", "happy", "working", "curious", "excited", "listening", "playful", "proud", "laughing"]) assert.match(avatar, new RegExp(`\\b${state}\\b`, "u"));
+  // Character states are typed once (BabyGrokState) and rendered by the desktop engine the avatar mounts.
+  for (const state of ["searching", "happy", "working", "curious", "excited", "listening", "playful", "proud", "laughing"]) {
+    assert.match(types, new RegExp(`"${state}"`, "u"));
+    assert.match(engine, new RegExp(`\\b${state}\\b`, "u"));
+  }
   assert.match(chat, /linear-chat-draft/u);
   assert.match(chat, /SpeechRecognition/u);
   assert.match(messageEntry, /MessageActionsSheet/u);
