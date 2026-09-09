@@ -209,23 +209,38 @@ export async function initializeLocalLifecycle(A, { accountId, startBackground =
     state.initializingAccounts.set(accountId, Promise.resolve().then(async () => {
       const recovered = [];
       const rows = A.SessionStore.listFull?.(accountId, { statuses: ["running", "suspended"], parent: "all", ephemeral: "include" }) ?? [];
+      // The original startup recovery (recoverSuspensionsOnStartup -> recoverSession) re-enters a suspended
+      // tool call whose answer or error is already stored, resets a suspended session without suspension
+      // data to idle, and leaves unanswered questions in place. That is the original's own code path, so
+      // it is called as-is when the bundle exports it; only sessions it does not cover (running ones, or
+      // any suspended session on a bundle without the export) are marked for explicit continuation.
+      const originalRecovery = typeof A.recoverSuspensionsOnStartup === "function";
+      let handedToOriginal = 0;
       for (const record of rows) {
         if (record.status !== "running" && record.status !== "suspended") continue;
         const loaded = A.GlobalAgentSessionServer.getLoadedAgent(accountId, record.id);
         if (loaded?.agent?.state?.isStreaming) continue;
-        // Unanswered questions remain actionable through native, explicit-answer transcript reentry.
-        if (record.status === "suspended" && record.suspension && !record.suspension.response && !record.suspension.error) {
+        const answered = record.status === "suspended" && record.suspension != null && (record.suspension.response !== undefined || record.suspension.error !== undefined);
+        if (record.status === "suspended" && record.suspension && !answered) {
+          // Unanswered questions remain actionable through native, explicit-answer transcript reentry.
           recovered.push({ id: record.id, previousStatus: record.status, mode: "awaiting-answer-reentry", resumed: false });
+        } else if (record.status === "suspended" && originalRecovery) {
+          handedToOriginal += 1;
+          recovered.push({ id: record.id, previousStatus: record.status, mode: answered ? "original-reentry-scheduled" : "original-reset-idle", resumed: answered });
         } else {
           A.SessionStore.update(accountId, record.id, { status: "interrupted" });
           recovered.push({ id: record.id, previousStatus: record.status, mode: "explicit-continuation-required", resumed: false });
         }
       }
+      if (handedToOriginal > 0) {
+        try { await A.recoverSuspensionsOnStartup(accountId); }
+        catch (error) { state.errors.recoverSuspensionsOnStartup = error.message; log(`[lifecycle] original suspension recovery failed: ${error.message}`); }
+      }
       await A.RecentSessionsStore?.loadCache?.(accountId);
       if (state.closed) return;
       A.registerStartupTabReconciliation?.();
       state.accounts.set(accountId, recovered);
-      log(`[lifecycle] reconciled ${recovered.length} persisted executions; none replayed automatically`);
+      log(`[lifecycle] reconciled ${recovered.length} persisted executions; ${handedToOriginal} handed to the original suspension recovery`);
     }));
   }
   try {
@@ -266,6 +281,24 @@ export async function initializeLocalLifecycle(A, { accountId, startBackground =
       };
       await start("startSessionMaintenance");
       await start("startRoutineScheduler");
+      // Original bootstrap parity: the memory history backfill also runs at startup (it otherwise only runs
+      // from the per-session memory hook), catching sessions that ended while the daemon was down. The
+      // original start/stop pair is used unchanged; the promise is the backfill's own lifetime.
+      if (typeof A.startSessionRunMemoryBackfill === "function") {
+        const name = "startSessionRunMemoryBackfill";
+        if (state.closed) state.background[name] = "stopped-before-start";
+        else {
+          state.background[name] = "starting";
+          try {
+            const running = Promise.resolve(A.startSessionRunMemoryBackfill(accountId));
+            running.catch((error) => { state.errors[name] = error.message; log(`[lifecycle] memory backfill stopped unexpectedly: ${error.message}`); });
+            if (typeof A.stopSessionRunMemoryBackfill === "function") state.cleanups.set(name, () => A.stopSessionRunMemoryBackfill(accountId));
+            if (!["stopped", "stop-failed"].includes(state.background[name])) state.background[name] = state.cleanups.has(name) ? "started" : "started-unmanaged";
+          } catch (error) {
+            state.background[name] = "failed"; state.errors[name] = error.message; failures.push(error);
+          }
+        }
+      } else state.background.startSessionRunMemoryBackfill = "unsupported";
       if (state.closed) {
         if (failures.length) throw new AggregateError(failures, "Aside local background startup failed");
         return;

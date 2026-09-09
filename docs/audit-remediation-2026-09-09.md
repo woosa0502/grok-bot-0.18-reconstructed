@@ -46,3 +46,15 @@ npm ci && npm run bootstrap && npm run bootstrap:aside
 npm run check          # root 997 tests + 모바일 151 tests
 npm run test:browser   # belmont-browse 140 + 20 (로컬 자산 필요)
 ```
+
+## 원본 기능 반영 (2026-09-09 오후, 원본 코드 재사용 원칙)
+
+사용자 지시: 새로 만들지 말고 원본 daemon 코드를 그대로 쓸 것. 두 비교 문서(Aside 직접 분석, Belmont↔Aside 코드 비교)에서 "우리가 반영 안 한 것" 중 기능 관점에서 가치 있는 것만 원본 함수 호출로 연결했다.
+
+| 항목 | 확인 결과 | 조치 |
+|---|---|---|
+| 의미 검색(Moss) | 이전 세션 probe 기록에서 **동작 확인**(의미 일치 질의가 단어 검색 0건일 때 정답 파일 1순위, 첫 질의 3.2s, 이후 7ms). 현재 "native-pending"은 이번 실행에서 아직 호출이 없었다는 뜻이지 실패가 아님. moss-core 바이너리에 `service.usemoss.dev`(토큰·인덱스·질의)와 `models.moss.link`(모델 내려받기) 주소가 있고, daemon 상수는 로컬 MiniLM 캐시(`moss-minilm-provenance-v1`)와 로컬 인덱스 네임스페이스를 쓴다. 외부 통신 범위(임베딩이 로컬인지, 문서가 서비스로 올라가는지)는 패킷 캡처 전까지 미확정 | 코드 변경 없음. 외부 통신 범위 확인은 남은 과제 |
+| 메모리 backfill·dreaming | 원본 MemoryHook(세션 종료 시)이 우리 쪽에서도 그대로 돌아 `.history.jsonl`(147KB, 오프셋 완료)·`.dream-state.json`(마지막 dreaming 기록, 세션 4회 누적)이 이미 있음. 빠진 것은 **부팅 시점 backfill 호출**뿐 | `startSessionRunMemoryBackfill`/`stopSessionRunMemoryBackfill`을 번들 export에 추가(`--refresh-exports`, 본문 무변경)하고 `initializeLocalLifecycle`이 원본 부트스트랩과 같이 시작·정리 시 stop 호출 |
+| 저장된 답이 있는 중단 세션 자동 재개 (C02) | 원본 `recoverSuspensionsOnStartup`이 이미 export돼 있었음 | `initializeLocalLifecycle`이 답/오류가 저장된 suspended 세션을 원본 복구 함수에 그대로 넘김(원본 reentry 예약). 답 없는 질문은 그대로 대기, running 세션은 기존처럼 명시 이어가기. export 없는 번들은 이전 동작 유지 |
+
+테스트: `tests/aside-session-restoration.test.mjs`에 5건 추가. patched 907 번들 pin(`research-archives/aside`)과 native build identity 갱신. **켜져 있는 primary는 다음 실행부터 반영**된다(번들은 기동 시 로드).

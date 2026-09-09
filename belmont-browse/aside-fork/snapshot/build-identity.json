@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-09-09T03:41:00.092Z",
+  "recordedAt": "2026-09-09T05:10:42.432Z",
   "note": "Identity of the native Aside browser build the launcher may run. run-fork.sh verifies the binary and the snapshot inputs against this record before starting; re-record after every native build.",
   "chromium": {
     "baseCommit": "cc5584af0df9786f00efdb71f666c6664f836c2d",
@@ -22,6 +22,6 @@
   "engine": "907",
   "daemonBundle": {
     "target": "belmont-browse/vendor/aside-907/apps/daemon/build/daemon.mjs",
-    "pinnedSha256": "8b8507340c71b4310f09c1eb04e3f94705c8bc530e402bcf0e32b7c84ade77fa"
+    "pinnedSha256": "078f6097db3dbfb4bfa5d37d758d552019fdf22b629bf8efbd174e54d36bbf0e"
   }
 }

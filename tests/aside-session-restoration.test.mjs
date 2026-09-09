@@ -487,3 +487,75 @@ test("web-search abort callbacks can reenter hook cleanup without duplicate reso
   await Promise.all([closing, searching]);
   assert.equal(memoryCloses, 1);
 });
+
+// ---- Original startup recovery and memory backfill are called as-is (no reimplementation) ----
+
+const suspendedRows = () => [
+  { id: "answered", status: "suspended", suspension: { toolCallId: "t1", kind: "approval", response: { allow: true } } },
+  { id: "errored", status: "suspended", suspension: { toolCallId: "t2", kind: "approval", error: "denied upstream" } },
+  { id: "open", status: "suspended", suspension: { toolCallId: "t3", kind: "ask-user-question" } },
+  { id: "running", status: "running", suspension: null },
+  { id: "nodata", status: "suspended", suspension: null },
+];
+
+test("answered suspensions are handed to the original startup recovery; running work stays explicit", async () => {
+  const { A, calls } = lifecycleFixture(false);
+  A.SessionStore = { listFull: () => suspendedRows(), update: (accountId, id, patch) => calls.push(`update:${id}:${patch.status}`) };
+  A.recoverSuspensionsOnStartup = async (accountId) => { assert.equal(accountId, 7); calls.push("original:recoverSuspensionsOnStartup"); };
+  const lifecycle = await initializeLocalLifecycle(A, { accountId: 7 });
+  assert.deepEqual(lifecycle.recovered.map((row) => [row.id, row.mode, row.resumed]), [
+    ["answered", "original-reentry-scheduled", true],
+    ["errored", "original-reentry-scheduled", true],
+    ["open", "awaiting-answer-reentry", false],
+    ["running", "explicit-continuation-required", false],
+    ["nodata", "original-reset-idle", false],
+  ]);
+  assert.deepEqual(calls.filter((call) => call.startsWith("update:")), ["update:running:interrupted"]);
+  assert.equal(calls.filter((call) => call === "original:recoverSuspensionsOnStartup").length, 1);
+  await lifecycle.close();
+});
+
+test("a bundle without the original recovery export keeps every non-open suspension explicit", async () => {
+  const { A, calls } = lifecycleFixture(false);
+  A.SessionStore = { listFull: () => suspendedRows(), update: (accountId, id, patch) => calls.push(`update:${id}:${patch.status}`) };
+  const lifecycle = await initializeLocalLifecycle(A, { accountId: 7 });
+  assert.deepEqual(calls.filter((call) => call.startsWith("update:")), ["update:answered:interrupted", "update:errored:interrupted", "update:running:interrupted", "update:nodata:interrupted"]);
+  assert.ok(lifecycle.recovered.every((row) => row.resumed === false));
+  await lifecycle.close();
+});
+
+test("a failing original recovery is recorded and does not block account initialization", async () => {
+  const { A } = lifecycleFixture(false);
+  A.SessionStore = { listFull: () => suspendedRows().slice(0, 1), update: () => {} };
+  A.recoverSuspensionsOnStartup = async () => { throw new Error("reentry unavailable"); };
+  const lifecycle = await initializeLocalLifecycle(A, { accountId: 7 });
+  assert.equal(lifecycle.errors.recoverSuspensionsOnStartup, "reentry unavailable");
+  assert.equal(lifecycle.recovered[0].mode, "original-reentry-scheduled");
+  await lifecycle.close();
+});
+
+test("startup memory backfill uses the original start/stop pair and is stopped on cleanup", async () => {
+  const { A, calls } = lifecycleFixture(false);
+  let release;
+  A.startSessionRunMemoryBackfill = async (accountId) => { assert.equal(accountId, 7); calls.push("backfill:start"); await new Promise((resolve) => { release = resolve; }); calls.push("backfill:done"); };
+  A.stopSessionRunMemoryBackfill = async (accountId) => { assert.equal(accountId, 7); calls.push("backfill:stop"); release(); };
+  const lifecycle = await initializeLocalLifecycle(A, { accountId: 7, startBackground: true });
+  assert.equal(lifecycle.background.startSessionRunMemoryBackfill, "started");
+  await lifecycle.close();
+  assert.equal(lifecycle.background.startSessionRunMemoryBackfill, "stopped");
+  assert.deepEqual(calls.filter((call) => call.startsWith("backfill")), ["backfill:start", "backfill:stop", "backfill:done"]);
+});
+
+test("a bundle without the backfill export reports it unsupported; a failing backfill is recorded, not fatal", async () => {
+  const first = lifecycleFixture(false);
+  const lifecycle = await initializeLocalLifecycle(first.A, { accountId: 7, startBackground: true });
+  assert.equal(lifecycle.background.startSessionRunMemoryBackfill, "unsupported");
+  await lifecycle.close();
+  const second = lifecycleFixture(false);
+  second.A.startSessionRunMemoryBackfill = async () => { throw new Error("projection cursor missing"); };
+  const failing = await initializeLocalLifecycle(second.A, { accountId: 7, startBackground: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(failing.background.startSessionRunMemoryBackfill, "started-unmanaged");
+  assert.equal(failing.errors.startSessionRunMemoryBackfill, "projection cursor missing");
+  await failing.close().catch(() => {});
+});
