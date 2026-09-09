@@ -37,7 +37,7 @@ const evalIn = async (sessionId, expression) => (await Promise.race([send("Runti
 // Act only on the committed extension document: in the initial about:blank document of a fresh host, a
 // window.open() trips an upstream content CHECK (rfs_document_data_from_creator); no extension code can run
 // there, so that is a harness hazard, not a user path.
-const waitCommitted = async (sessionId, page, ms = 10_000) => { for (const deadline = Date.now() + ms; Date.now() < deadline;) { const s = await evalIn(sessionId, "location.href.split('/').pop().split('?')[0] + ' ' + document.readyState"); if (s === `${page} complete`) return true; await delay(100); } return false; };
+const waitCommitted = async (sessionId, page, ms = 10_000) => { for (const deadline = Date.now() + ms; Date.now() < deadline;) { const s = await evalIn(sessionId, "location.href.split('/').pop().split(/[?#]/)[0] + ' ' + document.readyState"); if (s === `${page} complete`) return true; await delay(100); } return false; };
 const xdo = (...args) => { try { return execFileSync("xdotool", args, { env: { ...process.env, DISPLAY: display }, encoding: "utf8", timeout: 10_000 }).trim(); } catch (e) { return `xdotool-error:${(e.stdout || e.message || "").toString().split("\n")[0]}`; } };
 
 // 1. mini popup + its options window

@@ -190,3 +190,13 @@ source 포인터가 하나라도 없는 row: 0개. 상세: `data/artifacts/aside
 - 18:29 재기동 때 이전 데몬 840655가 `[serve] shutdown finished (exitCode=0)`까지 찍고 포트를 모두 놓은 뒤에도 프로세스로 남아 SIGTERM 두 번에도 안 끝났다(SIGKILL로 정리). 이벤트 루프를 잡는 핸들이 남은 것.
 - serve.mjs: shutdown 완료 후 unref 타이머(기본 5초, `BELMONT_BROWSE_EXIT_GRACE_MS`)로 루프가 아직 살아 있으면 남은 자원 이름(`process.getActiveResourcesInfo`)을 기록하고 `process.exit(exitCode)`. 자연 종료가 되는 경우엔 타이머가 발화하지 않는다(기존 signal-drain 테스트 그대로 통과). 남는 핸들 재현 테스트 추가(`tests/aside-process-signal-drain.test.mjs`, 9/9).
 - 지금 primary(861840)는 이 수정 전에 떴다. 다음 기동부터 반영.
+
+## 포크 UI 실동작 점검 2차: 비밀번호 관리자 팝업·미니 팝업 단축키 (2026-09-09 19시, 격리 인스턴스)
+
+도구 `belmont-browse/tools/check-fork-ui-popups.mjs`(같은 격리 방식, X 화면 캡처는 `data/artifacts/aside-remaining-closure-20260908/shots-20260909/`).
+
+- **비밀번호 관리자 툴바 팝업**(원본 ExtensionPopup 경로): 확장 자신의 `chrome.action.openPopup()`으로 열림, 600x432, 아이콘 아래 오른쪽 정렬로 브라우저 창 안에 그려짐(별도 X 창 아님, `Browser.getWindowForTarget` 없음). `window.close()` → 닫힘, Escape → 닫힘, 브라우저 생존. 격리 환경이라 내용은 "Password manager is reconnecting". 흰 페이지 위에서는 테두리·그림자가 안 보여 처음엔 화면을 덮는 것으로 오해했다. 원본과의 크기·위치 비교는 원본 바이너리가 없어 불가(인계의 "PW popup resize"는 여전히 미확정).
+- **미니 팝업 전역 단축키**: 프로필에 저장된 단축키 `Alt+Space`. 실제 키 입력으로 420x220 별도 창이 (430,290)에 뜨고, 다시 누르면 숨음. 페이지는 "Reconnecting to Aside…"를 렌더링(반투명 배경이라 창 단위 캡처는 흰색으로 나옴; DOM으로 확인).
+- **주소창·세로 스트립**: 캡처 `01-pw-popup.png`에서 북마크·Chats·Tabs 스트립, 평평한 주소창, 우측 액션 아이콘 확인. 원본과의 픽셀 비교는 불가.
+- **도구 메모**: 툴바 팝업에서는 첫 `Runtime.evaluate`가 늦게 응답해 `committed:false`로 찍히지만 이후 평가는 정상(`where` 필드). 모든 CDP 호출에 15초 제한을 두어 도구가 멈추지 않게 했다.
+- **세션 메모**: 같은 점검을 하던 이전 시도는 도구 설명 단계에서 Claude Code 안전장치에 다시 걸려 사용자가 undo했다. 이번 시도는 같은 항목을 끝까지 수행했다.

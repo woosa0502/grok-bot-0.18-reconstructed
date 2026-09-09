@@ -39,7 +39,7 @@ const evalIn = async (sessionId, expression) => (await send("Runtime.evaluate", 
 // Act only on the committed extension document: in the initial about:blank document of a fresh host, a
 // window.open() trips an upstream content CHECK (rfs_document_data_from_creator); no extension code can run
 // there, so that is a harness hazard, not a user path.
-const waitCommitted = async (sessionId, page, ms = 10_000) => { for (const deadline = Date.now() + ms; Date.now() < deadline;) { const s = (await evalIn(sessionId, "location.href.split('/').pop().split('?')[0] + ' ' + document.readyState")).result?.value; if (s === `${page} complete`) return true; await delay(100); } return false; };
+const waitCommitted = async (sessionId, page, ms = 10_000) => { for (const deadline = Date.now() + ms; Date.now() < deadline;) { const s = (await evalIn(sessionId, "location.href.split('/').pop().split(/[?#]/)[0] + ' ' + document.readyState")).result?.value; if (s === `${page} complete`) return true; await delay(100); } return false; };
 // 1. find an extension context that can call chrome.asideMiniPopup (service worker, else open sidepanel.html in a tab)
 let ctx = null;
 for (let i = 0; i < 40 && !ctx; i++) {
