@@ -53,7 +53,7 @@ npm run test:browser   # belmont-browse 140 + 20 (로컬 자산 필요)
 
 | 항목 | 확인 결과 | 조치 |
 |---|---|---|
-| 의미 검색(Moss) | 이전 세션 probe 기록에서 **동작 확인**(의미 일치 질의가 단어 검색 0건일 때 정답 파일 1순위, 첫 질의 3.2s, 이후 7ms). 현재 "native-pending"은 이번 실행에서 아직 호출이 없었다는 뜻이지 실패가 아님. moss-core 바이너리에 `service.usemoss.dev`(토큰·인덱스·질의)와 `models.moss.link`(모델 내려받기) 주소가 있고, daemon 상수는 로컬 MiniLM 캐시(`moss-minilm-provenance-v1`)와 로컬 인덱스 네임스페이스를 쓴다. 외부 통신 범위(임베딩이 로컬인지, 문서가 서비스로 올라가는지)는 패킷 캡처 전까지 미확정 | 코드 변경 없음. 외부 통신 범위 확인은 남은 과제 |
+| 의미 검색(Moss) | 이전 세션 probe 기록에서 **동작 확인**(의미 일치 질의가 단어 검색 0건일 때 정답 파일 1순위, 첫 질의 3.2s, 이후 7ms). 현재 "native-pending"은 이번 실행에서 아직 호출이 없었다는 뜻이지 실패가 아님. moss-core 바이너리에 `service.usemoss.dev`(토큰·인덱스·질의)와 `models.moss.link`(모델 내려받기) 주소가 있고, daemon 상수는 로컬 MiniLM 캐시(`moss-minilm-provenance-v1`)와 로컬 인덱스 네임스페이스를 쓴다. 외부 통신 범위(임베딩이 로컬인지, 문서가 서비스로 올라가는지)는 패킷 캡처 전까지 미확정 | 런타임에 이미 있던 `warm()`을 서비스 기동 시 호출(core.mjs)해 첫 사용을 미리 수행. 재기동 후 primary health가 `native`, `[memory] semantic search ready` 기록. 차단 실험: Moss 서비스 통신을 막아도 색인·질의 정상(로컬), Aside 익명 토큰까지 막으면 10초 후 단어 검색으로 대체 |
 | 메모리 backfill·dreaming | 원본 MemoryHook(세션 종료 시)이 우리 쪽에서도 그대로 돌아 `.history.jsonl`(147KB, 오프셋 완료)·`.dream-state.json`(마지막 dreaming 기록, 세션 4회 누적)이 이미 있음. 빠진 것은 **부팅 시점 backfill 호출**뿐 | `startSessionRunMemoryBackfill`/`stopSessionRunMemoryBackfill`을 번들 export에 추가(`--refresh-exports`, 본문 무변경)하고 `initializeLocalLifecycle`이 원본 부트스트랩과 같이 시작·정리 시 stop 호출 |
 | 저장된 답이 있는 중단 세션 자동 재개 (C02) | 원본 `recoverSuspensionsOnStartup`이 이미 export돼 있었음 | `initializeLocalLifecycle`이 답/오류가 저장된 suspended 세션을 원본 복구 함수에 그대로 넘김(원본 reentry 예약). 답 없는 질문은 그대로 대기, running 세션은 기존처럼 명시 이어가기. export 없는 번들은 이전 동작 유지 |
 

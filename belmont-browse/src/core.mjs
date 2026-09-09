@@ -117,6 +117,15 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
   cleanup.add("extension binding", () => ext.detach?.());
   const profileId = ext.profileId ?? PROFILE_ID;
   await initializeLocalLifecycle(A, { accountId: account.id, startBackground: true, log });
+  // Aside's semantic memory (Moss) loads its model and builds the account index on first use. The runtime's own
+  // warm() performs that first use now, in the background, so readiness is observed at startup and the bot's
+  // first memory_search is not the slow one. A failed warm-up only logs; every later search retries the original.
+  if (process.env.BELMONT_BROWSE_MEMORY_WARMUP !== "0") {
+    void memory.warm().then((capability) => {
+      const failure = capability.semantic?.failure?.kind;
+      log(`[memory] semantic search ${capability.mode === "native" ? "ready" : `not ready (${capability.mode}${failure ? `: ${failure}` : ""})`}`);
+    }).catch((error) => log(`[memory] semantic warm-up failed: ${error.message}`));
+  }
   log(`[engine] Aside ${ENGINES[engine].version} ready; account ${account.id}; window ${ext.windowId}; profile ${profileId}${ext.real ? " (real extension)" : ""}`);
   const controller = createSessionController({ A, account, profileId, ext, model: selectedModel, maxConcurrent,
     cwd: path.join(stateDir, "work"), log,
