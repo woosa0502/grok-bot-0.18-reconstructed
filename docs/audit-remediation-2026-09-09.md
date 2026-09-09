@@ -12,7 +12,7 @@
 | F04 Aside stop 실패 무시 | **해결** | `f53156b` | 중단 의도를 먼저 durable 저장, 서비스 확인 전엔 성공 선언 안 함, 실패 시 사용자 알림·재시도·새 작업 차단. 테스트 4건 |
 | F05 timestamp cursor로 인한 메시지 유실 | **해결** | `f53156b` | 메시지 identity 기반 dedup + 되돌아보기 창, 메시지마다 atomic 저장, 손상 link는 격리·명시 복구. 테스트 6건 |
 | F06 host 종료 시 정리 생략·exit 0 | **해결** | `f53156b` | `runCleanupSteps`로 모든 단계 시도, 단계별 timeout, 실패 시 exit 1. 시작 실패 경로도 같은 방식으로 되감기. 테스트 5건 |
-| F03 Claude 경로 tool 미전달·비스트리밍 | **부분 해결** | `a4b7acf` | 부분 메시지 스트리밍 구현, tool 미지원을 명시(경고·capability·strict 모드), Claude/OpenRouter 전용 계정 readiness. **host tool loop를 Claude CLI에 넘기는 bridge는 미구현** |
+| F03 Claude 경로 tool 미전달·비스트리밍 | **부분 해결 → 종결(사용자 미사용)** | `a4b7acf` | 부분 메시지 스트리밍 구현, tool 미지원을 명시(경고·capability·strict 모드), Claude/OpenRouter 전용 계정 readiness. **host tool loop를 Claude CLI에 넘기는 bridge는 미구현** |
 | F07 Docker image mutable 태그 | **해결** | `82fdc99`, `99adb66` | manifest digest `sha256:6295e3ac…`로 고정, 컨테이너 라벨·상태에 digest, 옛 태그 컨테이너는 schema bump처럼 교체 |
 | F01 native binary ↔ snapshot 계보 미확인 | **해결(launcher 범위)** | `82fdc99` | `native-build-identity.mjs`가 binary sha/mtime·snapshot 입력 hash·pinned daemon을 기록·검증, `run-fork.sh`가 실행 전 검증. 부정 대조 테스트 3건 |
 
@@ -25,7 +25,7 @@
 | WP1 CI 정상화 | 완료 | ffmpeg·poppler 설치, belmont-browse `npm ci`, `bootstrap:aside`(LFS 원본 2 + patched 2, sha 검증), 원본 경로 helper. browser 하위 suite는 **advisory 단계**(aside-ext·비교 자산 미보관) |
 | WP2 중단·정리 확인 계약 | 완료 | F04, F06 |
 | WP3 durable Aside inbox | 완료 | F05 |
-| WP4 provider 동등화 | 부분 | 스트리밍·capability·readiness 완료, tool bridge 미완 (아래 설계 메모) |
+| WP4 provider 동등화 | 종결 | 스트리밍·capability·readiness 완료. tool bridge는 사용자가 Claude를 쓰지 않기로 해 보류 |
 | WP5 immutable runtime lineage | 완료(범위 내) | F01 launcher preflight, F07 digest pin. Chromium 재빌드 재현(E02)은 별도 머신 검증 없음 |
 | WP6 golden E2E 18개 | 미착수 | 이번에 추가한 단위·계약 테스트는 E07·E08·E14·E03·E16의 일부 조건만 덮음 |
 | WP7 원본 parity 종결 | 미착수 | 91-row ledger 그대로 |
@@ -33,7 +33,7 @@
 
 ## 남은 것 (사용자 결정 필요)
 
-1. **Claude tool bridge** — 설계 메모: host runner는 stream에서 `tool-call`을 받아 직접 실행하고 결과를 append 후 다시 stream()을 부르는 구조다. Claude Agent SDK는 자체 loop 안에서 tool을 실행하므로, in-process MCP server(`createSdkMcpServer`)의 handler가 `tool-call` 이벤트를 방출하고 다음 stream() 호출에서 append된 tool-result로 handler를 풀어 주는 "차단형 bridge"가 필요하다. JSON schema→Zod 변환, abort·오류 전파, executor 수명 관리가 걸린다. 하루 이상 걸리는 설계 작업이라 이번엔 capability 표시로 대신했다.
+1. **Claude tool bridge** — **보류 (사용자 결정 2026-09-09: Claude provider를 쓰지 않음).** 코드는 원본 parity 범위라 유지하며, 현재 상태(스트리밍 + 미지원 capability 표시)가 최종이다. 설계 메모(나중에 필요해질 때용): host runner는 stream에서 `tool-call`을 받아 직접 실행하고 결과를 append 후 다시 stream()을 부르는 구조다. Claude Agent SDK는 자체 loop 안에서 tool을 실행하므로, in-process MCP server(`createSdkMcpServer`)의 handler가 `tool-call` 이벤트를 방출하고 다음 stream() 호출에서 append된 tool-result로 handler를 풀어 주는 "차단형 bridge"가 필요하다. JSON schema→Zod 변환, abort·오류 전파, executor 수명 관리가 걸린다. 하루 이상 걸리는 설계 작업이라 이번엔 capability 표시로 대신했다.
 2. **browser suite를 게이트에 넣기** — `vendor/aside-ext`(36MB)·extension-comparison 원본 자산을 LFS로 보관해야 advisory를 필수로 바꿀 수 있다.
 3. **WP6/WP7** — golden E2E lane과 91-row ledger. 범위가 커서 별도 결정.
 4. **906 patched 번들 recipe** — 907은 patch chain + CDP shutdown 패치로 거의 재현(잔여 1개 minified line, 현재 정확 순서 탐색 중). 906은 vendor 파일이 현재 chain보다 오래된 상태라 재현 불가; hash로만 고정.

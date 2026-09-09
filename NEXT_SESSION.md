@@ -14,7 +14,7 @@
 
 ## 감사 보고서 조치 (같은 날 오후)
 
-GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 조치했다. 상세는 `docs/audit-remediation-2026-09-09.md`. 요약: F02·F04·F05·F06·F07 해결, F01은 launcher 범위 해결, F03은 스트리밍·capability만(부분). clean-checkout CI가 브랜치 HEAD에서 성공(run 34308536647). 남은 큰 것은 Claude tool bridge, browser suite 자산 보관, golden E2E(WP6), 91-row ledger(WP7).
+GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 조치했다. 상세는 `docs/audit-remediation-2026-09-09.md`. 요약: F02·F04·F05·F06·F07 해결, F01은 launcher 범위 해결, F03은 스트리밍·capability만(부분). clean-checkout CI가 브랜치 HEAD에서 성공(run 34308536647). 남은 큰 것은 browser suite 자산 보관, golden E2E(WP6), 91-row ledger(WP7). Claude tool bridge는 사용자가 Claude provider를 쓰지 않기로 해 보류.
 
 ## 새 세션이 먼저 할 일
 
