@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -515,4 +515,149 @@ test("HTTP error codes and status are preserved without contacting any service",
   globalThis.fetch = async (_url, options) => { requestBody = JSON.parse(options.body); return new Response(JSON.stringify(view())); };
   await client.answer("bound", { verdict: "allow", always: false }, "displayed-call-id");
   assert.deepEqual(requestBody, { response: { verdict: "allow", always: false }, expectedToolCallId: "displayed-call-id" });
+});
+
+// ---- Confirmed cancellation (audit F04): a stop is only "done" when the service says so. ----
+
+test("a confirmed stop clears the durable cancel intent without a user notice", async (t) => {
+  const f = fixture(t, { browseId: "bound", pendingKind: null });
+  f.runner.interrupt("user stopped");
+  await tick(); await tick();
+  assert.deepEqual(f.named("stop").map((call) => call.args), [["bound"]]);
+  assert.equal(f.readLink().cancelRequested, undefined);
+  assert.equal(f.sent.length, 0);
+});
+
+test("a failed remote stop keeps a durable cancel intent, tells the user, retries on every contact and blocks new work until confirmed", async (t) => {
+  let stopOk = false;
+  const f = fixture(t, { browseId: "bound", pendingKind: "approval" }, {
+    stop: async (id) => { if (!stopOk) throw new BrowseServiceError("browse service POST /sessions/bound/stop -> 500: engine stop failed", 500, "STOP_FAILED"); return view(id, "stopped"); },
+    get: async (id) => view(id, stopOk ? "done" : "running"),
+  });
+  f.runner.interrupt("user stopped");
+  await tick(); await tick(); await tick();
+  assert.equal(f.named("stop").length, 1);
+  assert.equal(f.readLink().pendingKind, null);
+  assert.equal(f.readLink().cancelRequested.attempts, 1);
+  assert.match(f.readLink().cancelRequested.lastError, /engine stop failed/);
+  assert.equal(f.sent.length, 1);
+  assert.match(f.sent[0].content, /중단 요청이 브라우저에 전달되지 않았습니다/);
+
+  // Hidden contact retries quietly.
+  await f.runner.run("nudge", { hidden: true });
+  assert.equal(f.named("stop").length, 2);
+  assert.equal(f.sent.length, 1);
+
+  // A new user task retries first and starts nothing while the stop is still unconfirmed.
+  const blocked = await f.runner.run("next task");
+  assert.equal(blocked.awaitingUserSelection, true);
+  assert.equal(f.named("stop").length, 3);
+  assert.equal(f.named("steer").length + f.named("continue").length + f.named("create").length, 0);
+  assert.equal(f.readLink().cancelRequested.attempts, 3);
+  assert.match(f.sent.at(-1).content, /새 작업을 시작하지 않았습니다/);
+
+  // Once the service acknowledges, the intent clears and the follow-up proceeds in the same session.
+  stopOk = true;
+  const proceeded = await f.runner.run("next task");
+  assert.equal(f.named("stop").length, 4);
+  assert.equal(f.readLink().cancelRequested, undefined);
+  assert.equal(proceeded.awaitingUserSelection, undefined);
+  assert.equal(f.named("continue").length, 1);
+  assert.equal(f.named("create").length, 0);
+});
+
+test("a session that is already terminal confirms the stop without a retry loop", async (t) => {
+  const f = fixture(t, { browseId: "bound", pendingKind: null }, {
+    stop: async () => { throw new BrowseServiceError("browse service POST /sessions/bound/stop -> 409: not running", 409, "SESSION_NOT_RUNNING"); },
+    get: async (id) => view(id, "done"),
+  });
+  f.runner.interrupt("user stopped");
+  await tick(); await tick(); await tick();
+  assert.equal(f.readLink().cancelRequested, undefined);
+  assert.equal(f.sent.length, 0);
+});
+
+test("a dead browse service cannot make interrupt throw and leaves the cancel intent for retry", async (t) => {
+  const f = fixture(t, { browseId: "bound", pendingKind: null });
+  const dead = wrapRunnerForAsideBot({ run: async () => assert.fail("unexpected delegation") }, agentId, { client: () => { throw new Error("belmont-browse service is not running"); }, emitUpdate: (event) => f.sent.push(event.message), log: () => {} });
+  assert.doesNotThrow(() => dead.interrupt("user stopped"));
+  await tick(); await tick();
+  assert.match(f.readLink().cancelRequested.lastError, /not running/);
+  assert.equal(f.sent.length, 1);
+});
+
+// ---- Identity-based mirroring (audit F05): timestamps are a hint, message identity is the dedup key. ----
+
+const seededLink = { browseId: "bound", pendingKind: null, lastSeenTs: 0, mirrorFloorTs: 0, seenMessageKeys: [] };
+
+test("same-timestamp Aside messages are each mirrored exactly once across repeated polls", async (t) => {
+  const messages = [{ role: "user", timestamp: 100, text: "first", id: "m1" }, { role: "user", timestamp: 100, text: "second", id: "m2" }];
+  const f = fixture(t, seededLink, { asideMessages: async () => messages });
+  await f.runner.run("nudge", { hidden: true });
+  await f.runner.run("nudge", { hidden: true });
+  assert.deepEqual(f.sent.map((m) => m.content), ["[Aside에서 입력] first", "[Aside에서 입력] second"]);
+  assert.deepEqual(f.readLink().seenMessageKeys, ["id:m1", "id:m2"]);
+  assert.equal(f.readLink().lastSeenTs, 100);
+});
+
+test("a late lower-timestamp message is still mirrored once, and identity-less messages dedupe by content", async (t) => {
+  let poll = 0;
+  const late = { role: "user", timestamp: 150, text: "earlier", id: null };
+  const f = fixture(t, seededLink, { asideMessages: async () => ++poll === 1
+    ? [{ role: "assistant", timestamp: 200, text: "later", id: "m2" }]
+    : [late, { role: "assistant", timestamp: 200, text: "later", id: "m2" }, { ...late }] });
+  await f.runner.run("nudge", { hidden: true });
+  await f.runner.run("nudge", { hidden: true });
+  await f.runner.run("nudge", { hidden: true });
+  assert.deepEqual(f.sent.map((m) => m.content), ["later", "[Aside에서 입력] earlier"]);
+  // The second poll looked back behind the newest seen timestamp instead of asking only for newer messages.
+  assert.ok(f.named("asideMessages")[1].args[1] < 200);
+});
+
+test("legacy timestamp-only links freeze their cursor as a floor instead of replaying history", async (t) => {
+  const f = fixture(t, { browseId: "bound", pendingKind: null, lastSeenTs: 100 }, { asideMessages: async () => [
+    { role: "user", timestamp: 50, text: "old", id: "a" }, { role: "user", timestamp: 100, text: "at cursor", id: "b" }, { role: "user", timestamp: 150, text: "new", id: "c" },
+  ] });
+  await f.runner.run("nudge", { hidden: true });
+  await f.runner.run("nudge", { hidden: true });
+  assert.deepEqual(f.sent.map((m) => m.content), ["[Aside에서 입력] new"]);
+  assert.equal(f.readLink().mirrorFloorTs, 100);
+  assert.deepEqual(f.readLink().seenMessageKeys, ["id:c"]);
+});
+
+test("the bot's own exchange is absorbed by identity so a later poll does not echo it", async (t) => {
+  const own = [{ role: "user", timestamp: 300, text: "task", id: "p1" }, { role: "assistant", timestamp: 301, text: "finished", id: "a1" }];
+  let submitted = false;
+  const f = fixture(t, seededLink, { asideMessages: async () => submitted ? own : [], continue: async (id) => { submitted = true; return view(id, "running"); } });
+  await f.runner.run("task");
+  await f.runner.run("nudge", { hidden: true });
+  assert.deepEqual(f.sent.map((m) => m.content), ["finished"]);
+  assert.deepEqual(f.readLink().seenMessageKeys, ["id:p1", "id:a1"]);
+});
+
+test("an unreadable link is quarantined and reported instead of silently starting a new session", async (t) => {
+  const f = fixture(t);
+  const agentDir = path.join(process.env.SAND_DATA_ROOT, "agents", agentId);
+  const linkFile = path.join(agentDir, "browse-runtime.json");
+  writeFileSync(linkFile, "{\"browseId\": \"bound\", truncated");
+  const outcome = await f.runner.run("task");
+  assert.equal(f.named("create").length, 0);
+  assert.equal(outcome.awaitingUserSelection, true);
+  assert.match(f.sent[0].content, /읽을 수 없어/);
+  assert.equal(existsSync(linkFile), false);
+  assert.ok(readdirSync(agentDir).some((name) => name.startsWith("browse-runtime.json.corrupt-")));
+  // Explicit recovery: the user chooses; unlink then a new task starts fresh work.
+  await f.runner.run("/aside unlink");
+  await f.runner.run("task");
+  assert.equal(f.named("create").length, 1);
+  assert.ok(!readdirSync(agentDir).some((name) => name.includes(".tmp-")), "atomic writes leave no temporary file");
+});
+
+test("interrupt on an unreadable link quarantines it without throwing", async (t) => {
+  const f = fixture(t);
+  const agentDir = path.join(process.env.SAND_DATA_ROOT, "agents", agentId);
+  writeFileSync(path.join(agentDir, "browse-runtime.json"), "not json");
+  assert.doesNotThrow(() => f.runner.interrupt("user stopped"));
+  assert.equal(f.named("stop").length, 0);
+  assert.ok(readdirSync(agentDir).some((name) => name.startsWith("browse-runtime.json.corrupt-")));
 });

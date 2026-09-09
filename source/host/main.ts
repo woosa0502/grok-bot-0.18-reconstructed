@@ -16,6 +16,7 @@ import {
   startBoxExecDaemonProcess,
   type OwnedBoxExecDaemon,
 } from "./box/exec-daemon-process.js";
+import { perStepTimeout, runCleanupSteps, type CleanupStep } from "./shutdown-cleanup.js";
 
 export const BOX_COPY_IN_ARG = "--box-copy-in";
 export const BOX_COPY_IN_EXIT_FAILED = 1;
@@ -218,9 +219,13 @@ export async function main(
     host.reportHostDiagnostic(diagnostic);
   });
 
+  let hostStarted = false;
+  let startedGateway: StartedGateway | undefined;
+  let discoveryWritten = false;
   try {
     boxExecDaemon = await deps.startBoxExecDaemon?.();
     await host.start();
+    hostStarted = true;
     const gatewayConfig = deps.resolveGatewayServerConfig();
     const scheme = deps.gatewayScheme(gatewayConfig);
     const gateway = await deps.startGatewayServer({
@@ -243,6 +248,7 @@ export async function main(
       onCommandComplete: report => host.reportGatewayCommandSuccess(report)
     });
 
+    startedGateway = gateway;
     await deps.writeGatewayDiscovery({
       port: gateway.port,
       pid: processControl.pid,
@@ -253,6 +259,7 @@ export async function main(
         ? {}
         : { token: gatewayConfig.authToken })
     });
+    discoveryWritten = true;
 
     log.log(
       `[sand-host] gateway listening on ${scheme}://${gatewayConfig.host}:${gateway.port}` +
@@ -272,8 +279,17 @@ export async function main(
     void host.reportBoxReady();
   } catch (error) {
     host.reportProcessCrash(error, "fatal_startup");
+    // Roll back everything that already started, in reverse order, without letting one failure skip the rest.
+    const rollback: CleanupStep[] = [];
+    if (discoveryWritten) rollback.push({ name: "gateway_discovery_clear", run: () => deps.clearGatewayDiscovery() });
+    if (startedGateway !== undefined) { const gateway = startedGateway; rollback.push({ name: "gateway_close", run: () => gateway.close() }); }
+    if (hostStarted) rollback.push({ name: "host_dispose", run: () => host.dispose() });
+    if (boxExecDaemon !== undefined) { const daemon = boxExecDaemon; rollback.push({ name: "box_exec_daemon_close", run: () => daemon.close() }); }
+    await runCleanupSteps(rollback, {
+      stepTimeoutMs: perStepTimeout(SHUTDOWN_WATCHDOG_MS, rollback.length),
+      onFailure: outcome => host.reportProcessCrash(outcome.error, `startup_cleanup_error:${outcome.name}`),
+    });
     await host.flushTelemetryForFatalExit();
-    await boxExecDaemon?.close().catch(closeError => host.reportProcessCrash(closeError, "box_exec_daemon_startup_cleanup"));
     hostLock.release();
     processControl.exit(1);
   }
@@ -325,18 +341,33 @@ export function installShutdownHandlers(
     watchdog.unref();
 
     void (async () => {
+      // Every owned resource is released even when an earlier step rejects or hangs; the exit code
+      // reports a partial cleanup instead of masking it as a clean exit.
+      const steps: CleanupStep[] = [
+        { name: "gateway_close", run: () => gateway.close() },
+        { name: "host_dispose", run: () => host.dispose() },
+        { name: "box_exec_daemon_close", run: () => boxExecDaemon?.close() },
+        { name: "gateway_discovery_clear", run: () => clearGatewayDiscovery() },
+      ];
+      let exitCode = 0;
       try {
-        await gateway.close();
-        await host.dispose();
-        await boxExecDaemon?.close();
-        await clearGatewayDiscovery();
+        const report = await runCleanupSteps(steps, {
+          stepTimeoutMs: perStepTimeout(watchdogMs, steps.length),
+          onFailure: outcome => host.reportProcessCrash(outcome.error, `shutdown_error:${outcome.name}`),
+        });
+        if (report.failed.length > 0) {
+          exitCode = 1;
+          log.log(`[sand-host] shutdown finished with ${report.failed.length} failed cleanup step(s): ${report.failed.map(outcome => `${outcome.name}${outcome.timedOut === true ? " (timed out)" : ""}`).join(", ")}`);
+          await host.flushTelemetryForFatalExit();
+        }
       } catch (error) {
+        exitCode = 1;
         host.reportProcessCrash(error, "shutdown_error");
-        await host.flushTelemetryForFatalExit();
+        await host.flushTelemetryForFatalExit().catch(() => undefined);
       } finally {
         clearTimeout(watchdog);
         hostLock.release();
-        processControl.exit(0);
+        processControl.exit(exitCode);
       }
     })();
   };

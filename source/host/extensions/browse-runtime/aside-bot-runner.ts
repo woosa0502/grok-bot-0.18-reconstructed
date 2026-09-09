@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RunnerUpdate, SandAgentRunnerResult } from "../../runner/sand-agent-runner.js";
 import { getSandAgentsRootDir } from "../../storage/agent-paths.js";
@@ -8,6 +9,11 @@ import { decodeAsideSuspensionAnswer, encodeAsideSuspensionAnswer, parseSuspensi
 export const ASIDE_BOT_RUNTIME = "aside-browse";
 const LINK_FILENAME = "browse-runtime.json";
 const POLL_MS = 1_000;
+// Aside filters messages with `timestamp > since`, so equal-timestamp and late-arriving messages need a
+// look-back window plus identity-based dedup (seenMessageKeys) instead of a timestamp-only cursor.
+const MIRROR_LOOKBACK_MS = 5 * 60_000;
+const SEEN_MESSAGE_KEYS_LIMIT = 500;
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["done", "error", "stopped", "interrupted"]);
 // A model unavailable before native execution may be retried once. Failures after execution starts
 // require an explicit follow-up: replaying a task could repeat external actions.
 const FALLBACK_MODEL = process.env.SAND_ASIDE_BROWSE_FALLBACK_MODEL?.trim() || "gpt-5.5";
@@ -22,8 +28,22 @@ interface BotLink {
   pendingAnswers?: BrowseQuestionAnswer[];
   ownerAgentId?: string;
   source?: "created" | "selected" | "legacy";
-  /** Newest Aside message timestamp already shown in the bot chat. */
+  /** Newest Aside message timestamp already shown in the bot chat (query hint; not the dedup key). */
   lastSeenTs?: number;
+  /** Messages at or before this timestamp are never mirrored (link creation time, or the legacy cursor). */
+  mirrorFloorTs?: number;
+  /** Identities of Aside messages already mirrored (bounded, oldest first). Absent on legacy links. */
+  seenMessageKeys?: string[];
+  /** A user stop the browse service has not acknowledged yet; retried on every contact until confirmed. */
+  cancelRequested?: { at: number; reason: string; attempts: number; lastError?: string };
+}
+
+/** A saved link file that cannot be read is quarantined, never silently treated as "no session". */
+export class AsideLinkCorruptError extends Error {
+  constructor(readonly quarantinedPath: string) {
+    super(`The saved Aside session link is unreadable and was moved to ${quarantinedPath}. Reconnect with /aside link <session-id> or start fresh with /aside unlink.`);
+    this.name = "AsideLinkCorruptError";
+  }
 }
 
 /** A roster bot opts in by carrying `"runtime": "aside-browse"` in its profile.json. */
@@ -37,19 +57,61 @@ export function isAsideBotAgent(agentId: string): boolean {
 }
 
 function linkPath(agentId: string): string { return join(getSandAgentsRootDir(), agentId, LINK_FILENAME); }
+function quarantineLink(file: string): never {
+  const quarantined = `${file}.corrupt-${Date.now()}`;
+  try { renameSync(file, quarantined); } catch { /* leave the unreadable file in place if it cannot be moved */ }
+  throw new AsideLinkCorruptError(quarantined);
+}
 function readLink(agentId: string): BotLink | null {
+  const file = linkPath(agentId);
+  if (!existsSync(file)) return null;
   let link: BotLink;
   try {
-    if (!existsSync(linkPath(agentId))) return null;
-    link = JSON.parse(readFileSync(linkPath(agentId), "utf8")) as BotLink;
-  } catch { return null; }
-  if (typeof link?.browseId !== "string" || link.browseId.length === 0) return null;
+    link = JSON.parse(readFileSync(file, "utf8")) as BotLink;
+  } catch { return quarantineLink(file); }
+  if (link === null || typeof link !== "object" || typeof link.browseId !== "string" || link.browseId.length === 0) return quarantineLink(file);
   if (link.ownerAgentId !== undefined && link.ownerAgentId !== agentId) throw new Error("The saved Aside session belongs to another bot; explicitly select a session with /aside link <session-id>.");
   return { ...link, pendingKind: link.pendingKind ?? null, ownerAgentId: agentId, source: link.source ?? "legacy" };
 }
+/** readLink for observers that must not fail the caller: corruption and foreign ownership read as "no link". */
+function peekLink(agentId: string): BotLink | null {
+  try { return readLink(agentId); } catch { return null; }
+}
 function writeLink(agentId: string, link: BotLink | null): void {
-  if (link === null) { try { unlinkSync(linkPath(agentId)); } catch { /* absent */ } return; }
-  writeFileSync(linkPath(agentId), JSON.stringify({ ...link, ownerAgentId: agentId }, null, 2));
+  const file = linkPath(agentId);
+  if (link === null) { try { unlinkSync(file); } catch { /* absent */ } return; }
+  // Atomic replace: a crash mid-write leaves the previous link intact instead of a truncated file.
+  const temporary = `${file}.tmp-${process.pid}`;
+  writeFileSync(temporary, JSON.stringify({ ...link, ownerAgentId: agentId }, null, 2));
+  renameSync(temporary, file);
+}
+function messageKey(message: AsideMessage): string {
+  if (typeof message.id === "string" && message.id.length > 0) return `id:${message.id}`;
+  return `fp:${message.role}:${message.timestamp}:${createHash("sha1").update(message.text).digest("hex").slice(0, 16)}`;
+}
+function rememberSeen(link: BotLink, keys: readonly string[], newestTs: number): void {
+  const merged = [...(link.seenMessageKeys ?? []), ...keys.filter((key) => !(link.seenMessageKeys ?? []).includes(key))];
+  link.seenMessageKeys = merged.length > SEEN_MESSAGE_KEYS_LIMIT ? merged.slice(merged.length - SEEN_MESSAGE_KEYS_LIMIT) : merged;
+  link.lastSeenTs = Math.max(link.lastSeenTs ?? 0, newestTs);
+}
+/** Legacy links carry only a timestamp cursor: freeze it as the floor once so history is not replayed. */
+function upgradeLegacyCursor(link: BotLink): void {
+  if (link.seenMessageKeys !== undefined) return;
+  link.seenMessageKeys = [];
+  link.mirrorFloorTs = Math.max(link.mirrorFloorTs ?? 0, link.lastSeenTs ?? 0);
+}
+/** Records the session's current tail (the bot's own prompt/answer) as seen so it is not echoed back later. */
+async function absorbSessionTail(link: BotLink, client: BrowseClient): Promise<void> {
+  const tail = await client.asideMessages(link.browseId, 0);
+  upgradeLegacyCursor(link);
+  rememberSeen(link, tail.map(messageKey), tail.reduce((max, m) => Math.max(max, m.timestamp), 0));
+}
+function clearPending(link: BotLink): void {
+  link.pendingKind = null;
+  delete link.pendingToolCallId;
+  delete link.pendingRequest;
+  delete link.pendingDescription;
+  delete link.pendingAnswers;
 }
 /** Called when the user clears the bot's conversation: the next message starts a fresh Aside session. */
 export function forgetAsideBotLink(agentId: string): void { writeLink(agentId, null); }
@@ -106,26 +168,31 @@ export function parseAutomationWake(prompt: string): string | null {
  * chat. Returns the number of lines shown; advances link.lastSeenTs. */
 async function mirrorAsideMessages(agentId: string, link: BotLink, client: BrowseClient, send: (m: Record<string, unknown> & { type: string }) => void, log: (m: string) => void, stillCurrent: () => boolean = () => true): Promise<number> {
   let messages: AsideMessage[];
-  try { messages = await client.asideMessages(link.browseId, link.lastSeenTs ?? 0); } catch { return 0; }
+  try { messages = await client.asideMessages(link.browseId, Math.max(0, (link.lastSeenTs ?? 0) - MIRROR_LOOKBACK_MS)); } catch { return 0; }
   if (!stillCurrent()) return 0;
+  upgradeLegacyCursor(link);
+  const floor = link.mirrorFloorTs ?? 0;
   let shown = 0;
-  for (const m of messages) {
-    if (m.timestamp <= (link.lastSeenTs ?? 0)) continue;
-    link.lastSeenTs = m.timestamp;
+  for (const m of [...messages].sort((a, b) => a.timestamp - b.timestamp)) {
+    const key = messageKey(m);
+    if (m.timestamp <= floor || link.seenMessageKeys!.includes(key)) continue;
     const text = m.text.trim();
-    if (text.length === 0) continue;
+    if (text.length === 0) { rememberSeen(link, [key], m.timestamp); continue; }
     send({ type: "text", content: m.role === "user" ? `[Aside에서 입력] ${text}` : stripAsideCitations(text) });
     shown += 1;
-  }
-  if (shown > 0) {
-    // A nudge must not overwrite answers or a selection saved while its message fetch was in flight.
-    const latest = readLink(agentId);
+    rememberSeen(link, [key], m.timestamp);
+    // Persist each delivered identity immediately (at-least-once across a crash between send and save; a
+    // duplicate is visible and harmless, a lost user message is not). A nudge must not overwrite answers
+    // or a selection saved while its fetch was in flight, so merge into the latest stored link.
+    const latest = peekLink(agentId);
     if (latest?.browseId === link.browseId) {
-      latest.lastSeenTs = Math.max(latest.lastSeenTs ?? 0, link.lastSeenTs ?? 0);
+      upgradeLegacyCursor(latest);
+      latest.mirrorFloorTs = Math.max(latest.mirrorFloorTs ?? 0, floor);
+      rememberSeen(latest, link.seenMessageKeys!, link.lastSeenTs ?? 0);
       writeLink(agentId, latest);
     }
-    log(`[browse-runtime] bot ${agentId}: mirrored ${shown} Aside message(s) from ${link.browseId}`);
   }
+  if (shown > 0) log(`[browse-runtime] bot ${agentId}: mirrored ${shown} Aside message(s) from ${link.browseId}`);
   return shown;
 }
 
@@ -162,6 +229,47 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
   const send = (message: Record<string, unknown> & { type: string }) => deps.emitUpdate({ type: "send-message", message, timestampMs: Date.now() });
   const result = (text: string, sent: number): SandAgentRunnerResult => ({ text, sentMessageCount: sent, reacted: false, aborted: false, streamOutputProduced: false });
 
+  /** Asks the service to stop the linked session and reports truthfully. Returns true only when the service
+   * acknowledged the stop or the session is already terminal/absent; otherwise the durable cancel intent stays
+   * (with the attempt count and last error) so the next contact retries. `notify` posts a user-visible notice. */
+  const requestStop = async (link: BotLink, reason: string, notify: boolean): Promise<boolean> => {
+    const settle = (mutate: (latest: BotLink) => void) => {
+      const latest = peekLink(agentId);
+      if (latest?.browseId !== link.browseId) return;
+      mutate(latest);
+      writeLink(agentId, latest);
+    };
+    const confirm = (how: string) => {
+      settle((latest) => { delete latest.cancelRequested; });
+      delete link.cancelRequested;
+      deps.log(`[browse-runtime] bot ${agentId}: stop of ${link.browseId} confirmed (${how})`);
+      return true;
+    };
+    let failure: unknown;
+    try {
+      const client = deps.client();
+      try {
+        await client.stop(link.browseId);
+        return confirm("acknowledged");
+      } catch (error) {
+        if (isBrowseServiceError(error, "SESSION_NOT_FOUND")) return confirm("session absent");
+        failure = error;
+        try {
+          const view = await client.get(link.browseId);
+          if (TERMINAL_STATUSES.has(view.status)) return confirm(`already ${view.status}`);
+        } catch { /* the stop failure below is the truthful state */ }
+      }
+    } catch (error) { failure = error; }
+    const detail = failure instanceof Error ? failure.message : String(failure);
+    const attempts = (link.cancelRequested?.attempts ?? 0) + 1;
+    const cancelRequested = { at: link.cancelRequested?.at ?? Date.now(), reason, attempts, lastError: detail };
+    link.cancelRequested = cancelRequested;
+    settle((latest) => { latest.cancelRequested = cancelRequested; });
+    deps.log(`[browse-runtime] bot ${agentId}: STOP_FAILED for ${link.browseId} (attempt ${attempts}): ${detail}`);
+    if (notify) send({ type: "text", content: `[브라우저 봇] 중단 요청이 브라우저에 전달되지 않았습니다 (${detail}). 브라우저에서 작업이 계속되고 있을 수 있습니다. 다음 메시지에서 중단을 다시 시도합니다.` });
+    return false;
+  };
+
   const run = async (prompt: string, options?: Record<string, unknown>): Promise<SandAgentRunnerResult> => {
     const cardAnswer = options?.hidden === true ? null : decodeAsideSuspensionAnswer(prompt.trim());
     // A concrete selection is intentional UI mirroring. Account-wide recency is never ownership.
@@ -177,7 +285,7 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         const id = selection[2]!;
         const view = await deps.client().get(id);
         if (selectionGeneration !== generation) return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
-        const link: BotLink = { browseId: id, pendingKind: view.suspension?.kind ?? null, pendingToolCallId: view.suspension?.toolCallId, pendingRequest: view.suspension?.request, pendingDescription: view.suspension?.description, source: "selected", lastSeenTs: 0 };
+        const link: BotLink = { browseId: id, pendingKind: view.suspension?.kind ?? null, pendingToolCallId: view.suspension?.toolCallId, pendingRequest: view.suspension?.request, pendingDescription: view.suspension?.description, source: "selected", lastSeenTs: 0, mirrorFloorTs: 0, seenMessageKeys: [] };
         writeLink(agentId, link);
         send({ type: "text", content: `Aside 대화 ${id}에 연결했습니다.` });
         const shown = await mirrorAsideMessages(agentId, link, deps.client(), send, deps.log, () => selectionGeneration === generation);
@@ -200,8 +308,14 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
     const inbound = options?.hidden === true && routineTask === null ? parseInboundAgentWake(prompt) : null;
     if (options?.hidden === true && inbound === null && routineTask === null) {
       // Nudges: nothing owed, but use them to surface what the user typed in the Aside browser meanwhile.
-      const existing = readLink(agentId);
-      const shown = existing === null ? 0 : await mirrorAsideMessages(agentId, existing, deps.client(), send, deps.log, () => readLink(agentId)?.browseId === existing.browseId);
+      let existing: BotLink | null;
+      try { existing = readLink(agentId); } catch (error) {
+        deps.log(`[browse-runtime] bot ${agentId}: ${error instanceof Error ? error.message : String(error)}`);
+        return { text: "", sentMessageCount: 0, reacted: true, aborted: false };
+      }
+      // A stop the service never acknowledged is retried quietly on every contact.
+      if (existing?.cancelRequested !== undefined) await requestStop(existing, existing.cancelRequested.reason, false);
+      const shown = existing === null ? 0 : await mirrorAsideMessages(agentId, existing, deps.client(), send, deps.log, () => peekLink(agentId)?.browseId === existing.browseId);
       return { text: "", sentMessageCount: shown, reacted: true, aborted: false };
     }
     const text = routineTask ?? (inbound === null ? cardAnswer?.answer ?? prompt.trim() : inbound.text);
@@ -217,7 +331,27 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
     if (inbound !== null) deps.log(`[browse-runtime] bot ${agentId}: inbound task from ${inbound.fromName}`);
     const runGeneration = ++generation;
     const client = deps.client();
-    let link = readLink(agentId);
+    let link: BotLink | null;
+    try { link = readLink(agentId); } catch (error) {
+      if (!(error instanceof AsideLinkCorruptError)) throw error;
+      // Explicit recovery state: the user decides between reconnecting and starting fresh; nothing is started.
+      send({ type: "text", content: `[브라우저 봇] 저장된 Aside 연결 정보를 읽을 수 없어 ${error.quarantinedPath}(으)로 옮겨 두었습니다. 새 작업을 시작하지 않았습니다. 이전 대화에 다시 연결하려면 /aside link <세션 ID>, 새로 시작하려면 /aside unlink 를 보내 주세요.` });
+      await replyToSender("[error] 브라우저 봇의 저장된 연결 정보가 손상되어 작업을 시작하지 않았습니다.");
+      return { ...result("", 1), awaitingUserSelection: true };
+    }
+    if (link?.cancelRequested !== undefined) {
+      // A prior stop the service never confirmed blocks new work on that session until it is confirmed.
+      const confirmed = await requestStop(link, link.cancelRequested.reason, false);
+      if (runGeneration !== generation) return { text: "", sentMessageCount: 0, reacted: false, aborted: true };
+      if (!confirmed) {
+        const latest = peekLink(agentId);
+        const message = `[브라우저 봇] 이전 중단 요청이 아직 브라우저에 전달되지 않았습니다 (${latest?.cancelRequested?.lastError ?? "unknown error"}). 브라우저에서 작업이 계속되고 있을 수 있어 새 작업을 시작하지 않았습니다. 같은 메시지를 다시 보내면 중단을 재시도하고, 연결을 끊으려면 /aside unlink 를 보내 주세요.`;
+        send({ type: "text", content: message });
+        await replyToSender(message);
+        return { ...result("", 1), awaitingUserSelection: true };
+      }
+      link = peekLink(agentId) ?? link;
+    }
     let mirrored = 0;
     if (link !== null) mirrored = await mirrorAsideMessages(agentId, link, client, send, deps.log, () => runGeneration === generation);
     if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
@@ -235,11 +369,7 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         const pending = await client.get(link.browseId);
         if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
         if (pending.status !== "suspended" || pending.suspension === null) {
-          link.pendingKind = null;
-          delete link.pendingToolCallId;
-          delete link.pendingRequest;
-          delete link.pendingDescription;
-          delete link.pendingAnswers;
+          clearPending(link);
           writeLink(agentId, link);
           throw new Error("The browser session no longer has this pending question. Your answer was not submitted as a new task.");
         }
@@ -280,17 +410,13 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         } else response = parseSuspensionAnswer(link.pendingKind, text, link.pendingRequest);
         await client.answer(link.browseId, response, link.pendingToolCallId!);
         if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
-        link.pendingKind = null;
-        delete link.pendingToolCallId;
-        delete link.pendingRequest;
-        delete link.pendingDescription;
-        delete link.pendingAnswers;
+        clearPending(link);
         writeLink(agentId, link);
         deps.log(`[browse-runtime] bot ${agentId}: answered suspension on ${link.browseId}`);
       } else if (link !== null) {
         await sendBrowseFollowUp(client, link.browseId, text);
         if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
-        link.lastSeenTs = Date.now(); writeLink(agentId, link);
+        link.lastSeenTs = Math.max(link.lastSeenTs ?? 0, Date.now()); writeLink(agentId, link);
         deps.log(`[browse-runtime] bot ${agentId}: sent follow-up to ${link.browseId}`);
       } else {
         const created = await client.create({ task: text });
@@ -298,7 +424,7 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
           await client.stop(created.id);
           return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
         }
-        link = { browseId: created.id, pendingKind: null, source: "created", lastSeenTs: Date.now() }; writeLink(agentId, link); freshTask = true;
+        link = { browseId: created.id, pendingKind: null, source: "created", lastSeenTs: Date.now(), mirrorFloorTs: Date.now(), seenMessageKeys: [] }; writeLink(agentId, link); freshTask = true;
         deps.log(`[browse-runtime] bot ${agentId}: started ${created.id}`);
       }
     } catch (error) {
@@ -313,7 +439,7 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
           await client.stop(created.id);
           return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
         }
-        link = { browseId: created.id, pendingKind: null, source: "created", lastSeenTs: Date.now() }; writeLink(agentId, link); freshTask = true;
+        link = { browseId: created.id, pendingKind: null, source: "created", lastSeenTs: Date.now(), mirrorFloorTs: Date.now(), seenMessageKeys: [] }; writeLink(agentId, link); freshTask = true;
       } catch (fresh) {
         if ((isBrowseServiceError(fresh, "SESSION_SUSPENDED") || isBrowseServiceError(fresh, "STALE_SUSPENSION")) && link !== null) {
           // A question may have appeared after the last poll or in the deliberately linked Aside UI.
@@ -352,7 +478,7 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         link.pendingAnswers = [];
         // Move the mirror cursor past our own prompt (stored in the Aside chat by now) so the answer turn does
         // not echo it back as "[Aside에서 입력] …".
-        try { const tail = await client.asideMessages(link.browseId, 0); const last = tail[tail.length - 1]; if (last !== undefined) link.lastSeenTs = Math.max(link.lastSeenTs ?? 0, last.timestamp); } catch { /* keep the cursor */ }
+        try { await absorbSessionTail(link, client); } catch { /* keep the cursor */ }
         if (runGeneration !== generation) return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
         writeLink(agentId, link);
         send(suspensionWidget(link));
@@ -364,7 +490,7 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
         send({ type: "text", content: answer });
         await replyToSender(answer);
         // Keep the mirror cursor past this turn so the bot's own exchange is not echoed back later.
-        try { const tail = await client.asideMessages(link.browseId, 0); const last = tail[tail.length - 1]; if (runGeneration === generation && last !== undefined) { link.lastSeenTs = Math.max(link.lastSeenTs ?? 0, last.timestamp); writeLink(agentId, link); } } catch { /* mirror cursor is best effort */ }
+        try { const absorbed = { ...link }; await absorbSessionTail(absorbed, client); if (runGeneration === generation) { link = absorbed; writeLink(agentId, link); } } catch { /* mirror cursor is best effort */ }
         return result(view.result ?? "", 1 + mirrored);
       }
       if (view.status === "error") {
@@ -381,7 +507,7 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
               await client.stop(created.id);
               return { text: "", sentMessageCount: mirrored, reacted: false, aborted: true };
             }
-            link = { browseId: created.id, pendingKind: null, source: "created", lastSeenTs: Date.now() }; writeLink(agentId, link);
+            link = { browseId: created.id, pendingKind: null, source: "created", lastSeenTs: Date.now(), mirrorFloorTs: Date.now(), seenMessageKeys: [] }; writeLink(agentId, link);
             send({ type: "text", content: `[브라우저 봇] 기본 모델이 실패해서 ${FALLBACK_MODEL}(으)로 다시 시도합니다. (${view.error ?? "unknown error"})` });
             continue;
           } catch (error) { deps.log(`[browse-runtime] bot ${agentId}: fallback start failed: ${error instanceof Error ? error.message : String(error)}`); }
@@ -399,19 +525,22 @@ export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: stri
     run,
     interrupt: (reason: string) => {
       generation += 1;
-      const link = readLink(agentId);
+      let link: BotLink | null;
+      try { link = readLink(agentId); } catch (error) {
+        deps.log(`[browse-runtime] bot ${agentId}: interrupted (${reason}) but the link is unreadable: ${error instanceof Error ? error.message : String(error)}`);
+        return true;
+      }
       // Belmont interrupts the previous turn whenever a new user message arrives ("superseded by a
       // new user message"), including the answer to our own approval/question card. That must not
       // kill the Aside session: the answer resumes it. Only other interrupts (user stop, cancel) do.
       const superseded = /superseded/i.test(reason);
       if (link !== null && !superseded) {
-        void deps.client().stop(link.browseId).catch(() => undefined);
-        link.pendingKind = null;
-        delete link.pendingToolCallId;
-        delete link.pendingRequest;
-        delete link.pendingDescription;
-        delete link.pendingAnswers;
+        // The cancel intent is durable before the remote stop is attempted: a lost acknowledgement or a
+        // dead service leaves it in place, and every later contact retries until the service confirms.
+        link.cancelRequested = { at: Date.now(), reason, attempts: 0 };
+        clearPending(link);
         writeLink(agentId, link);
+        void requestStop(link, reason, true);
       }
       deps.log(`[browse-runtime] bot ${agentId}: interrupted (${reason})${superseded ? " — session kept" : ""}`);
       return true;
