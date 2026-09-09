@@ -29,6 +29,53 @@ export function ensureInstallationKeys(stateDir) {
 }
 
 /** Starts the daemon's Hono app with its WebSocket upgrade handling on the loopback port the extension expects. */
+export const FOR_CHROME_PREFIX = "/session/for-chrome/";
+/** The two original Aside extensions (component ids of the pinned 1.26.907 pair). */
+export const DEFAULT_FOR_CHROME_ORIGINS = Object.freeze([
+  "chrome-extension://fjdhphbdlfjogobdofoaagnlnkoibdge",
+  "chrome-extension://clcdgiameigmljcbkkcbjiljinmfkncl",
+]);
+
+/**
+ * Deliberate Belmont delta over the original daemon: the original exempts every `/session/for-chrome/*` route
+ * from daemon-token auth (loopback Host check only), and that prefix carries session mutations (rename, archive,
+ * delete, move, mark-read, open-folder, resolve-popover-action). Requiring the token is not possible without
+ * changing the pinned extension and the native tab strip, which both call these routes without one. What can be
+ * closed without touching them is the web-page vector: a mutation whose `Origin` is a web origin (http/https/
+ * file/"null") is refused. Requests without an Origin (the native browser process, local CLIs) and requests from
+ * the allow-listed extension origins pass unchanged. Reads (GET/HEAD) and preflights (OPTIONS) are never touched.
+ *
+ * BELMONT_BROWSE_FOR_CHROME_GUARD=enforce|report|off (default enforce); BELMONT_BROWSE_FOR_CHROME_ORIGINS overrides
+ * the extension allow-list (comma separated).
+ */
+export function createForChromeOriginGuard({ fetch, mode = process.env.BELMONT_BROWSE_FOR_CHROME_GUARD ?? "enforce", origins, log = () => {} }) {
+  if (typeof fetch !== "function") throw new TypeError("createForChromeOriginGuard needs the daemon fetch handler");
+  if (!["enforce", "report", "off"].includes(mode)) throw new Error(`BELMONT_BROWSE_FOR_CHROME_GUARD must be enforce, report or off, got ${JSON.stringify(mode)}`);
+  const allowed = new Set(origins ?? (process.env.BELMONT_BROWSE_FOR_CHROME_ORIGINS?.split(",").map((value) => value.trim()).filter(Boolean) ?? DEFAULT_FOR_CHROME_ORIGINS));
+  const guarded = async (request, ...rest) => {
+    if (mode !== "off") {
+      const method = request.method.toUpperCase();
+      let pathname = "";
+      try { pathname = new URL(request.url).pathname; } catch { pathname = ""; }
+      if (pathname.startsWith(FOR_CHROME_PREFIX) && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+        const origin = request.headers.get("origin");
+        if (origin !== null && !allowed.has(origin)) {
+          const detail = `${method} ${pathname} from origin ${origin}`;
+          if (mode === "enforce") {
+            log(`[daemon-server] for-chrome mutation refused: ${detail}`);
+            return Response.json({ error: { code: "FORBIDDEN", message: "Browser-side session changes are accepted only from the Aside extension or the browser itself." } }, { status: 403 });
+          }
+          log(`[daemon-server] for-chrome mutation would be refused (report mode): ${detail}`);
+        }
+      }
+    }
+    return fetch(request, ...rest);
+  };
+  guarded.mode = mode;
+  guarded.origins = [...allowed];
+  return guarded;
+}
+
 export async function startDaemonServer(server, { host = "127.0.0.1", port = 21420, isReady = () => true, requestShutdown, log = console.error } = {}) {
   if (!server?.serve || !server.WebSocketServer || !server.createServer) throw new Error("daemon bundle lacks __belmontServer (run tools/patch-daemon-linux.py)");
   let closing = false;
@@ -73,7 +120,7 @@ export async function startDaemonServer(server, { host = "127.0.0.1", port = 214
   const wss = new server.WebSocketServer({ noServer: true });
   return await new Promise((resolve, reject) => {
     try {
-      httpServer = server.serve({ hostname: host, port, fetch: app.fetch, websocket: { server: wss } }, (address) => {
+      httpServer = server.serve({ hostname: host, port, fetch: createForChromeOriginGuard({ fetch: app.fetch, log }), websocket: { server: wss } }, (address) => {
         // Some server adapters invoke this callback synchronously.
         queueMicrotask(() => {
           log(`[daemon-server] Aside daemon API listening at http://${host}:${address?.port ?? port}`);
