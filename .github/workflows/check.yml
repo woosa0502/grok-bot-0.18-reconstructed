@@ -26,7 +26,7 @@ jobs:
       - name: Hydrate the checksum-pinned shipped runtime
         run: npm run bootstrap
       - name: Install the system tools the media and document tests spawn
-        run: sudo apt-get install -y -qq ffmpeg poppler-utils bubblewrap && ffmpeg -version | head -1 && pdftotext -v 2>&1 | head -1 && bwrap --version
+        run: sudo apt-get install -y -qq ffmpeg poppler-utils bubblewrap && ffmpeg -version | head -1 && pdftotext -v 2>&1 | head -1 && bwrap --version && sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 && bwrap --ro-bind / / --unshare-user --dev /dev /bin/true && echo 'bwrap user namespaces ok'
       - name: Install the browser harness's locked dependency graph
         run: npm ci --no-audit --no-fund --prefix belmont-browse
       - name: Hydrate the checksum-pinned Aside inputs

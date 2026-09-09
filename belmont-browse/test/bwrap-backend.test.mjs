@@ -5,7 +5,12 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import path from "node:path";
 import { BubblewrapBackend } from "../src/bwrap-backend.mjs";
 
-const hasBwrap = existsSync("/usr/bin/bwrap");
+// bwrap must be installed AND able to create a user namespace here (GitHub's Ubuntu runners restrict unprivileged
+// user namespaces via AppArmor unless kernel.apparmor_restrict_unprivileged_userns=0; CI sets that). A host that
+// cannot is reported as an explicit skip reason, never as a pass.
+const bwrapProbe = existsSync("/usr/bin/bwrap") ? spawnSync("/usr/bin/bwrap", ["--ro-bind", "/", "/", "--unshare-user", "--dev", "/dev", "/bin/true"], { encoding: "utf8", timeout: 10_000 }) : null;
+const hasBwrap = bwrapProbe !== null && bwrapProbe.status === 0;
+const bwrapSkip = bwrapProbe === null ? "bwrap is not installed" : bwrapProbe.status === 0 ? false : `bwrap cannot create a user namespace here: ${(bwrapProbe.stderr || "").trim().split("\n")[0]}`;
 
 function runBackend(backend, command, options) {
   const args = backend.buildArgs(command, options);
@@ -27,7 +32,7 @@ function fixture(t) {
   return { root, readable, writable, hidden };
 }
 
-test("full readable root stays read-only while an explicit child remains writable", { skip: !hasBwrap }, (t) => {
+test("full readable root stays read-only while an explicit child remains writable", { skip: bwrapSkip }, (t) => {
   const f = fixture(t);
   const deniedPath = path.join(f.readable, "denied.txt");
   const allowedPath = path.join(f.writable, "allowed.txt");
@@ -46,7 +51,7 @@ test("full readable root stays read-only while an explicit child remains writabl
   assert.equal(result.args.includes("--remount-ro"), false);
 });
 
-test("full writable root executes with one writable base mount", { skip: !hasBwrap }, (t) => {
+test("full writable root executes with one writable base mount", { skip: bwrapSkip }, (t) => {
   const f = fixture(t);
   const outputPath = path.join(f.root, "root-write.txt");
   const result = runBackend(new BubblewrapBackend(), ["/bin/sh", "-c", `printf ROOT_WRITE_OK > '${outputPath}'`], {
@@ -61,7 +66,7 @@ test("full writable root executes with one writable base mount", { skip: !hasBwr
   assert.equal(result.args.includes("--remount-ro"), false);
 });
 
-test("scoped home hides siblings, preserves read-only input, and permits designated output", { skip: !hasBwrap }, (t) => {
+test("scoped home hides siblings, preserves read-only input, and permits designated output", { skip: bwrapSkip }, (t) => {
   const f = fixture(t);
   const deniedPath = path.join(f.readable, "denied.txt");
   const allowedPath = path.join(f.writable, "allowed.txt");
