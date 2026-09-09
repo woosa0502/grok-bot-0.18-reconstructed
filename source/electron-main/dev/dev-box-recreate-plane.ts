@@ -11,7 +11,9 @@ import type { BoxConnectionInfo } from "../../shared/node/egress-tunnel/box-conn
 import type { RecreateResult } from "../box/box-recreate-commands.js";
 
 export class SandDevBoxRecreateError extends Error {}
-export const PROD_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest";
+import { LOCAL_DOCKER_BOX_IMAGE } from "../box/local-docker-host-connector.js";
+/** Same digest-pinned image as the local VM; the mutable tag is no longer referenced at runtime. */
+export const PROD_BOX_IMAGE = LOCAL_DOCKER_BOX_IMAGE;
 export const GATEWAY_PROBE_TIMEOUT_MS = 3_000;
 export const FLUSH_TIMEOUT_MS = 30_000;
 export const COPY_IN_OUTCOME_TIMEOUT_MS = 90_000;

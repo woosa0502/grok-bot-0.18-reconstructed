@@ -25,4 +25,8 @@ if [[ "$BELMONT_BROWSE_NATIVE_COMPONENTS" == 1 ]]; then
     --profile-dir "$BELMONT_BROWSE_STATE_DIR/chrome-profile" \
     --version "${BELMONT_BROWSE_COMPONENT_VERSION:-1.26.907.1712}"
 fi
+# The binary must be the recorded build of the current source snapshot and the daemon bundle must be the pinned
+# one; a source change after the last build refuses to launch the old binary (BELMONT_BROWSE_ALLOW_UNVERIFIED_NATIVE=1
+# only downgrades that to a warning for deliberate experiments).
+"$NODE_BIN" tools/native-build-identity.mjs verify --chrome "$BELMONT_BROWSE_CHROME" --engine "$BELMONT_BROWSE_ENGINE"
 exec "$NODE_BIN" src/serve.mjs --port "${BELMONT_BROWSE_PORT:-9340}" --cdp-port "${BELMONT_BROWSE_CDP_PORT:-9333}" "$@"
