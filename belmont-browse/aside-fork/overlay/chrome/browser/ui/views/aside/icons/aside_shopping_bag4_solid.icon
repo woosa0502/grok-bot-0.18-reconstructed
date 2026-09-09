@@ -1,0 +1,22 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideShoppingBag4SolidIcon
+
+CANVAS_DIMENSIONS, 18,
+MOVE_TO, 9, 1.4994f,
+CUBIC_TO, 11.071f, 1.4994f, 12.75f, 3.1783f, 12.75f, 5.2494f,
+CUBIC_TO, 14.4068f, 5.2494f, 15.75f, 6.5925f, 15.75f, 8.2494f,
+V_LINE_TO, 12.7494f,
+CUBIC_TO, 15.75f, 14.4062f, 14.4068f, 15.7494f, 12.75f, 15.7494f,
+H_LINE_TO, 5.25f,
+CUBIC_TO, 3.5931f, 15.7494f, 2.25f, 14.4062f, 2.25f, 12.7494f,
+V_LINE_TO, 8.2494f,
+CUBIC_TO, 2.25f, 6.5925f, 3.5931f, 5.2494f, 5.25f, 5.2494f,
+CUBIC_TO, 5.25f, 3.1783f, 6.9289f, 1.4994f, 9, 1.4994f,
+CLOSE,
+MOVE_TO, 6.75f, 5.2494f,
+CUBIC_TO, 6.75f, 4.0068f, 7.7573f, 2.9994f, 9, 2.9994f,
+CUBIC_TO, 10.2427f, 2.9994f, 11.25f, 4.0068f, 11.25f, 5.2494f,
+H_LINE_TO, 6.75f,
+CLOSE,

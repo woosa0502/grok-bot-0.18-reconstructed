@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Aside remediation — initial subscription readiness</title>
+<style>body{font:18px sans-serif;margin:2rem}div{padding:1rem;margin:.5rem;background:#fee}#control{background:#efe}</style>
+<h1>Initial and partial filter compilation fixture</h1>
+<div class="remediation-late-ad" id="initial-first">Initial element from the immediate first list.</div>
+<div class="remediation-second-late-ad" id="initial-second">Initial element from the second list delayed three seconds.</div>
+<div id="control">Unmatched control stays visible.</div>
+<output id="result">Waiting for snapshots…</output>
+<script>
+window.remediationReadinessEvidence = [];
+for (const delay of [500, 1500, 4500, 6500]) {
+  setTimeout(() => {
+    window.remediationReadinessEvidence.push({
+      elapsedMs: performance.now(),
+      first: getComputedStyle(document.querySelector('#initial-first')).display,
+      second: getComputedStyle(document.querySelector('#initial-second')).display,
+      control: getComputedStyle(document.querySelector('#control')).display,
+    });
+    document.querySelector('#result').textContent = JSON.stringify(window.remediationReadinessEvidence, null, 2);
+  }, delay);
+}
+</script>
+</html>

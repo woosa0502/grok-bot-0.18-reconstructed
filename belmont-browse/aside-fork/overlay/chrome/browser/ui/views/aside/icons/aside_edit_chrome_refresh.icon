@@ -1,0 +1,32 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideEditChromeRefreshIcon
+
+CANVAS_DIMENSIONS, 16,
+FILL_RULE_NONZERO,
+MOVE_TO, 9.7f, 2.36f,
+CUBIC_TO, 10.78f, 1.27f, 12.55f, 1.27f, 13.64f, 2.36f,
+CUBIC_TO, 14.73f, 3.45f, 14.73f, 5.22f, 13.64f, 6.3f,
+LINE_TO, 5.67f, 14.28f,
+CUBIC_TO, 5.42f, 14.53f, 5.08f, 14.67f, 4.72f, 14.67f,
+H_LINE_TO, 2,
+CUBIC_TO, 1.63f, 14.67f, 1.33f, 14.37f, 1.33f, 14,
+V_LINE_TO, 11.28f,
+CUBIC_TO, 1.33f, 10.92f, 1.47f, 10.58f, 1.72f, 10.33f,
+LINE_TO, 9.7f, 2.36f,
+CLOSE,
+MOVE_TO, 2.67f, 11.28f,
+V_LINE_TO, 13.33f,
+H_LINE_TO, 4.72f,
+LINE_TO, 11.06f, 7,
+LINE_TO, 9, 4.94f,
+LINE_TO, 2.67f, 11.28f,
+CLOSE,
+MOVE_TO, 12.7f, 3.3f,
+CUBIC_TO, 12.13f, 2.74f, 11.21f, 2.74f, 10.64f, 3.3f,
+LINE_TO, 9.94f, 4,
+LINE_TO, 12, 6.06f,
+LINE_TO, 12.7f, 5.36f,
+CUBIC_TO, 13.26f, 4.79f, 13.26f, 3.87f, 12.7f, 3.3f,
+CLOSE,

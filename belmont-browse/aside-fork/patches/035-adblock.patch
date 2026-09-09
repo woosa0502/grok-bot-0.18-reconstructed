@@ -1,0 +1,3356 @@
+# Aside ad blocker replica (components/aside_adblock equivalent): engine, service, request proxy,
+# navigation block page, cosmetic tab helper, chrome://aside-adblock + chrome://adblock-internals.
+# Hooked files below carry only the ad-block hunks (other hunks belong to patches 024-034).
+diff --git a/chrome/browser/aside_adblock/BUILD.gn b/chrome/browser/aside_adblock/BUILD.gn
+new file mode 100644
+index 0000000000..a297f6cf61
+--- /dev/null
++++ b/chrome/browser/aside_adblock/BUILD.gn
+@@ -0,0 +1,40 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++# Replica of the original components/aside_adblock (browser side).
++source_set("aside_adblock") {
++  sources = [
++    "aside_adblock_engine.cc",
++    "aside_adblock_engine.h",
++    "aside_adblock_navigation_throttle.cc",
++    "aside_adblock_navigation_throttle.h",
++    "aside_adblock_proxying_url_loader_factory.cc",
++    "aside_adblock_proxying_url_loader_factory.h",
++    "aside_adblock_service.cc",
++    "aside_adblock_service.h",
++    "aside_adblock_service_factory.cc",
++    "aside_adblock_service_factory.h",
++    "aside_adblock_tab_helper.cc",
++    "aside_adblock_tab_helper.h",
++  ]
++  deps = [
++    "//base",
++    "//chrome/browser/profiles:profile",
++    "//chrome/common",
++    "//components/keyed_service/content",
++    "//components/keyed_service/core",
++    "//components/prefs",
++    "//components/subresource_filter/core/common",
++    "//components/subresource_filter/tools/rule_parser",
++    "//components/url_pattern_index",
++    "//components/url_pattern_index/proto:url_pattern_index",
++    "//content/public/browser",
++    "//crypto",
++    "//mojo/public/cpp/bindings",
++    "//net",
++    "//services/network/public/cpp",
++    "//services/network/public/mojom",
++    "//url",
++  ]
++}
+diff --git a/chrome/browser/aside_adblock/aside_adblock_engine.cc b/chrome/browser/aside_adblock/aside_adblock_engine.cc
+new file mode 100644
+index 0000000000..215ea31d04
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_engine.cc
+@@ -0,0 +1,431 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/aside_adblock/aside_adblock_engine.h"
++
++#include <string_view>
++
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/string_split.h"
++#include "base/strings/string_util.h"
++#include "components/subresource_filter/core/common/first_party_origin.h"
++#include "components/subresource_filter/core/common/indexed_ruleset.h"
++#include "components/subresource_filter/core/common/load_policy.h"
++#include "components/subresource_filter/tools/rule_parser/rule.h"
++#include "components/subresource_filter/tools/rule_parser/rule_parser.h"
++#include "components/url_pattern_index/flat/url_pattern_index_generated.h"
++#include "services/network/public/mojom/fetch_api.mojom.h"
++
++namespace aside_adblock {
++
++namespace {
++
++constexpr size_t kMaxInvalidLinesPerSource = 200;
++
++using url_pattern_index::proto::ElementType;
++
++// Options that only make sense for whole-document navigations. Rules carrying
++// them are indexed into the document rule set with the option rewritten to
++// "subdocument", which the parser understands.
++bool ExtractDocumentRule(std::string_view line, std::string* rewritten) {
++  size_t dollar = line.rfind('$');
++  if (dollar == std::string_view::npos || line.starts_with("@@")) {
++    return false;
++  }
++  std::string_view options = line.substr(dollar + 1);
++  std::vector<std::string> parts = base::SplitString(
++      options, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
++  bool has_document = false;
++  for (auto& part : parts) {
++    if (part == "document" || part == "doc") {
++      part = "subdocument";
++      has_document = true;
++    }
++  }
++  if (!has_document) {
++    return false;
++  }
++  *rewritten = std::string(line.substr(0, dollar + 1)) +
++               base::JoinString(parts, ",");
++  return true;
++}
++
++bool IsUnsupportedSelector(std::string_view selector) {
++  static constexpr std::string_view kUnsupported[] = {
++      ":-abp-", ":style(", ":remove(", ":matches-path(", ":upward(",
++      ":xpath(", ":has-text(", ":matches-css", ":min-text-length(",
++      ":watch-attr(", ":remove-attr(", ":remove-class(", ":others(",
++      ":matches-media(", ":matches-prop(", ":matches-attr(", ":if(",
++      ":if-not(", ":nth-ancestor(", ":shadow("};
++  for (std::string_view marker : kUnsupported) {
++    if (selector.find(marker) != std::string_view::npos) {
++      return true;
++    }
++  }
++  return false;
++}
++
++}  // namespace
++
++ElementType ElementTypeForDestination(
++    network::mojom::RequestDestination destination) {
++  using D = network::mojom::RequestDestination;
++  switch (destination) {
++    case D::kScript:
++    case D::kServiceWorker:
++    case D::kSharedWorker:
++    case D::kWorker:
++    case D::kAudioWorklet:
++    case D::kPaintWorklet:
++    case D::kJson:
++    case D::kWebBundle:
++    case D::kSpeculationRules:
++      return ElementType::ELEMENT_TYPE_SCRIPT;
++    case D::kImage:
++      return ElementType::ELEMENT_TYPE_IMAGE;
++    case D::kStyle:
++    case D::kXslt:
++      return ElementType::ELEMENT_TYPE_STYLESHEET;
++    case D::kFont:
++      return ElementType::ELEMENT_TYPE_FONT;
++    case D::kAudio:
++    case D::kVideo:
++    case D::kTrack:
++      return ElementType::ELEMENT_TYPE_MEDIA;
++    case D::kObject:
++    case D::kEmbed:
++      return ElementType::ELEMENT_TYPE_OBJECT;
++    case D::kIframe:
++    case D::kFrame:
++    case D::kFencedframe:
++    case D::kDocument:
++      return ElementType::ELEMENT_TYPE_SUBDOCUMENT;
++    case D::kReport:
++      return ElementType::ELEMENT_TYPE_PING;
++    case D::kEmpty:
++      return ElementType::ELEMENT_TYPE_XMLHTTPREQUEST;
++    default:
++      return ElementType::ELEMENT_TYPE_OTHER;
++  }
++}
++
++ElementType ElementTypeForName(const std::string& name, bool* is_document) {
++  *is_document = false;
++  std::string n = base::ToLowerASCII(name);
++  if (n == "script") {
++    return ElementType::ELEMENT_TYPE_SCRIPT;
++  }
++  if (n == "image" || n == "img") {
++    return ElementType::ELEMENT_TYPE_IMAGE;
++  }
++  if (n == "stylesheet" || n == "css") {
++    return ElementType::ELEMENT_TYPE_STYLESHEET;
++  }
++  if (n == "font") {
++    return ElementType::ELEMENT_TYPE_FONT;
++  }
++  if (n == "media" || n == "audio" || n == "video") {
++    return ElementType::ELEMENT_TYPE_MEDIA;
++  }
++  if (n == "object") {
++    return ElementType::ELEMENT_TYPE_OBJECT;
++  }
++  if (n == "subdocument" || n == "sub_frame" || n == "frame" || n == "iframe") {
++    return ElementType::ELEMENT_TYPE_SUBDOCUMENT;
++  }
++  if (n == "document" || n == "main_frame") {
++    *is_document = true;
++    return ElementType::ELEMENT_TYPE_SUBDOCUMENT;
++  }
++  if (n == "xmlhttprequest" || n == "xhr" || n == "fetch") {
++    return ElementType::ELEMENT_TYPE_XMLHTTPREQUEST;
++  }
++  if (n == "websocket") {
++    return ElementType::ELEMENT_TYPE_WEBSOCKET;
++  }
++  if (n == "ping" || n == "beacon") {
++    return ElementType::ELEMENT_TYPE_PING;
++  }
++  return ElementType::ELEMENT_TYPE_OTHER;
++}
++
++Engine::Engine()
++    : indexer_(std::make_unique<subresource_filter::RulesetIndexer>(1)),
++      document_indexer_(
++          std::make_unique<subresource_filter::RulesetIndexer>(2)) {}
++
++Engine::~Engine() = default;
++
++// static
++scoped_refptr<Engine> Engine::Build(const std::vector<FilterSource>& sources) {
++  scoped_refptr<Engine> engine(new Engine());
++  for (const FilterSource& source : sources) {
++    engine->AddSource(source);
++  }
++  engine->Finish();
++  return engine;
++}
++
++void Engine::AddSource(const FilterSource& source) {
++  SourceStats stats;
++  stats.id = source.id;
++  stats.title = source.title;
++  std::string source_label =
++      source.id == "custom"
++          ? "custom"
++          : (source.id.starts_with("manual:") ? source.id
++                                              : "subscription:" + source.title);
++
++  subresource_filter::RuleParser parser;
++  size_t line_no = 0;
++  for (std::string_view raw : base::SplitStringPiece(
++           source.text, "\n", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL)) {
++    ++line_no;
++    if (raw.empty() || raw[0] == '!' || raw[0] == '[') {
++      continue;
++    }
++    std::string line(raw);
++    std::string rewritten;
++    bool document_rule = ExtractDocumentRule(line, &rewritten);
++    url_pattern_index::proto::RuleType type =
++        parser.Parse(document_rule ? rewritten : line);
++    switch (type) {
++      case url_pattern_index::proto::RULE_TYPE_URL: {
++        url_pattern_index::proto::UrlRule proto =
++            parser.url_rule().ToProtobuf();
++        bool ok = document_rule ? document_indexer_->AddUrlRule(proto)
++                                : indexer_->AddUrlRule(proto);
++        if (ok) {
++          ++stats.network_rule_count;
++          rules_by_pattern_.emplace(
++              parser.url_rule().url_pattern,
++              RuleInfo{line, source_label});
++        } else {
++          ++stats.parse_error_count;
++          if (stats.invalid_lines.size() < kMaxInvalidLinesPerSource) {
++            stats.invalid_lines.push_back(
++                base::NumberToString(line_no) + ": " + line +
++                " (not indexable)");
++          }
++        }
++        break;
++      }
++      case url_pattern_index::proto::RULE_TYPE_STYLE: {
++        const subresource_filter::StyleRule& css = parser.style_rule();
++        if (IsUnsupportedSelector(css.selector)) {
++          ++stats.parse_error_count;
++          if (stats.invalid_lines.size() < kMaxInvalidLinesPerSource) {
++            stats.invalid_lines.push_back(base::NumberToString(line_no) +
++                                          ": " + line +
++                                          " (unsupported selector)");
++          }
++          break;
++        }
++        CosmeticRule rule;
++        rule.selector = css.selector;
++        rule.is_exception = css.is_allowlist;
++        for (const std::string& domain : css.domains) {
++          if (domain.starts_with("~")) {
++            rule.exclude.push_back(domain.substr(1));
++          } else {
++            rule.include.push_back(domain);
++          }
++        }
++        ++stats.cosmetic_rule_count;
++        if (!rule.is_exception && rule.include.empty() &&
++            rule.exclude.empty()) {
++          generic_selectors_.push_back(rule.selector);
++        } else {
++          conditional_rules_.push_back(std::move(rule));
++        }
++        break;
++      }
++      case url_pattern_index::proto::RULE_TYPE_COMMENT:
++        break;
++      default: {
++        ++stats.parse_error_count;
++        if (stats.invalid_lines.size() < kMaxInvalidLinesPerSource) {
++          const auto& err = parser.parse_error();
++          std::string why;
++          switch (err.error_code) {
++            case subresource_filter::RuleParser::ParseError::UNKNOWN_OPTION:
++              why = "unknown option";
++              break;
++            case subresource_filter::RuleParser::ParseError::
++                UNSUPPORTED_FEATURE:
++              why = "unsupported feature";
++              break;
++            case subresource_filter::RuleParser::ParseError::
++                EMPTY_CSS_SELECTOR:
++              why = "empty selector";
++              break;
++            case subresource_filter::RuleParser::ParseError::
++                DEPRECATED_OPTION:
++              why = "deprecated option";
++              break;
++            default:
++              why = "parse error";
++          }
++          stats.invalid_lines.push_back(base::NumberToString(line_no) + ": " +
++                                        line + " (" + why + ")");
++        }
++        break;
++      }
++    }
++  }
++  network_rule_count_ += stats.network_rule_count;
++  cosmetic_rule_count_ += stats.cosmetic_rule_count;
++  parse_error_count_ += stats.parse_error_count;
++  sources_.push_back(std::move(stats));
++}
++
++void Engine::Finish() {
++  indexer_->Finish();
++  document_indexer_->Finish();
++  flatbuffer_size_ = indexer_->data().size() + document_indexer_->data().size();
++  matcher_ = std::make_unique<subresource_filter::IndexedRulesetMatcher>(
++      indexer_->data());
++  document_matcher_ =
++      std::make_unique<subresource_filter::IndexedRulesetMatcher>(
++          document_indexer_->data());
++
++  // Exceptions without domains remove generic selectors outright.
++  base::flat_set<std::string> generic_exceptions;
++  for (const CosmeticRule& rule : conditional_rules_) {
++    if (rule.is_exception && rule.include.empty() && rule.exclude.empty()) {
++      generic_exceptions.insert(rule.selector);
++    }
++  }
++  if (!generic_exceptions.empty()) {
++    std::erase_if(generic_selectors_, [&](const std::string& s) {
++      return generic_exceptions.contains(s);
++    });
++  }
++  if (!generic_selectors_.empty()) {
++    generic_stylesheet_ =
++        base::JoinString(generic_selectors_, ",\n") + "{display:none!important;}\n";
++  }
++}
++
++const Engine::RuleInfo* Engine::FindRuleInfo(
++    const std::string& url_pattern) const {
++  auto it = rules_by_pattern_.find(url_pattern);
++  return it == rules_by_pattern_.end() ? nullptr : &it->second;
++}
++
++MatchResult Engine::Evaluate(const GURL& url,
++                             const url::Origin& initiator,
++                             ElementType element_type,
++                             bool is_document) const {
++  MatchResult result;
++  const subresource_filter::IndexedRulesetMatcher* matcher =
++      is_document ? document_matcher_.get() : matcher_.get();
++  if (!matcher || !url.is_valid()) {
++    return result;
++  }
++  subresource_filter::FirstPartyOrigin first_party(initiator);
++  const url_pattern_index::flat::UrlRule* rule = nullptr;
++  subresource_filter::LoadPolicy policy =
++      matcher->GetLoadPolicyForResourceLoad(url, first_party, element_type,
++                                            /*disable_generic_rules=*/false,
++                                            &rule);
++  if (rule) {
++    std::string pattern = rule->url_pattern() ? rule->url_pattern()->str() : "";
++    if (const RuleInfo* info = FindRuleInfo(pattern)) {
++      result.filter = info->text;
++      result.source = info->source;
++    } else {
++      result.filter = pattern;
++    }
++  }
++  switch (policy) {
++    case subresource_filter::LoadPolicy::DISALLOW:
++      result.should_block = true;
++      result.has_filter = true;
++      break;
++    case subresource_filter::LoadPolicy::EXPLICITLY_ALLOW:
++      result.has_exception = true;
++      result.has_filter = rule != nullptr;
++      break;
++    default:
++      break;
++  }
++  return result;
++}
++
++// static
++bool Engine::DomainMatches(const std::string& host, const std::string& domain) {
++  if (host == domain) {
++    return true;
++  }
++  return host.size() > domain.size() &&
++         host.ends_with(domain) &&
++         host[host.size() - domain.size() - 1] == '.';
++}
++
++std::string Engine::HidingStylesheet(const GURL& url) const {
++  if (!url.SchemeIsHTTPOrHTTPS()) {
++    return std::string();
++  }
++  const std::string host(url.host());
++  std::vector<std::string> selectors;
++  base::flat_set<std::string> exceptions;
++  for (const CosmeticRule& rule : conditional_rules_) {
++    bool included = rule.include.empty();
++    for (const std::string& d : rule.include) {
++      if (DomainMatches(host, d)) {
++        included = true;
++        break;
++      }
++    }
++    if (!included) {
++      continue;
++    }
++    bool excluded = false;
++    for (const std::string& d : rule.exclude) {
++      if (DomainMatches(host, d)) {
++        excluded = true;
++        break;
++      }
++    }
++    if (excluded) {
++      continue;
++    }
++    if (rule.is_exception) {
++      exceptions.insert(rule.selector);
++    } else {
++      selectors.push_back(rule.selector);
++    }
++  }
++  std::string css;
++  if (!generic_stylesheet_.empty()) {
++    if (exceptions.empty()) {
++      css = generic_stylesheet_;
++    } else {
++      std::vector<std::string> generic;
++      for (const std::string& s : generic_selectors_) {
++        if (!exceptions.contains(s)) {
++          generic.push_back(s);
++        }
++      }
++      if (!generic.empty()) {
++        css = base::JoinString(generic, ",\n") + "{display:none!important;}\n";
++      }
++    }
++  }
++  if (!selectors.empty()) {
++    std::vector<std::string> kept;
++    for (const std::string& s : selectors) {
++      if (!exceptions.contains(s)) {
++        kept.push_back(s);
++      }
++    }
++    if (!kept.empty()) {
++      css += base::JoinString(kept, ",\n") + "{display:none!important;}\n";
++    }
++  }
++  return css;
++}
++
++}  // namespace aside_adblock
+diff --git a/chrome/browser/aside_adblock/aside_adblock_engine.h b/chrome/browser/aside_adblock/aside_adblock_engine.h
+new file mode 100644
+index 0000000000..1c78f44907
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_engine.h
+@@ -0,0 +1,135 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++//
++// Aside ad-block engine (replica of the adblock-rust based engine of the
++// original components/aside_adblock). Filter lists in EasyList syntax are
++// parsed with //components/subresource_filter's rule parser and indexed with
++// //components/url_pattern_index; element hiding rules are kept as plain
++// selector tables. An Engine is immutable once built and can be shared across
++// threads.
++
++#ifndef CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_ENGINE_H_
++#define CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_ENGINE_H_
++
++#include <map>
++#include <memory>
++#include <string>
++#include <unordered_map>
++#include <vector>
++
++#include "base/containers/flat_set.h"
++#include "base/memory/ref_counted.h"
++#include "components/url_pattern_index/proto/rules.pb.h"
++#include "services/network/public/mojom/fetch_api.mojom-forward.h"
++#include "url/gurl.h"
++#include "url/origin.h"
++
++namespace subresource_filter {
++class IndexedRulesetMatcher;
++class RulesetIndexer;
++}  // namespace subresource_filter
++
++namespace aside_adblock {
++
++struct FilterSource {
++  std::string id;     // subscription id, "custom" or "manual:<file>"
++  std::string title;  // human readable title
++  std::string text;   // filter list text (UTF-8)
++};
++
++struct SourceStats {
++  std::string id;
++  std::string title;
++  int network_rule_count = 0;
++  int cosmetic_rule_count = 0;
++  int parse_error_count = 0;
++  std::vector<std::string> invalid_lines;  // "<line>: <error>", capped
++};
++
++struct MatchResult {
++  bool should_block = false;
++  bool has_filter = false;     // a blocking filter matched
++  bool has_exception = false;  // an exception (@@) filter matched
++  std::string filter;          // matched filter text (best effort)
++  std::string source;          // "subscription:<name>" / "custom" / "manual:<f>"
++  std::string rewritten_url;   // always empty (redirect rules unsupported)
++};
++
++// Maps a fetch destination to the EasyList resource type used for matching.
++url_pattern_index::proto::ElementType ElementTypeForDestination(
++    network::mojom::RequestDestination destination);
++
++// Parses a request type name as used by the internals page / TestRule
++// ("script", "image", "stylesheet", "subdocument", "document", "xmlhttprequest",
++// "font", "media", "websocket", "ping", "object", "other").
++url_pattern_index::proto::ElementType ElementTypeForName(
++    const std::string& name,
++    bool* is_document);
++
++class Engine : public base::RefCountedThreadSafe<Engine> {
++ public:
++  // Builds an engine from |sources|. Safe to call on a worker thread.
++  static scoped_refptr<Engine> Build(const std::vector<FilterSource>& sources);
++
++  Engine(const Engine&) = delete;
++  Engine& operator=(const Engine&) = delete;
++
++  // Network filtering. |is_document| selects the top-level document rule set
++  // ($document filters) instead of the sub-resource rule set.
++  MatchResult Evaluate(const GURL& url,
++                       const url::Origin& initiator,
++                       url_pattern_index::proto::ElementType element_type,
++                       bool is_document) const;
++
++  // Element hiding: CSS text ("sel1,sel2{display:none!important}") for the
++  // document at |url|, or empty when nothing applies.
++  std::string HidingStylesheet(const GURL& url) const;
++
++  const std::vector<SourceStats>& sources() const { return sources_; }
++  size_t flatbuffer_size() const { return flatbuffer_size_; }
++  int network_rule_count() const { return network_rule_count_; }
++  int cosmetic_rule_count() const { return cosmetic_rule_count_; }
++  int parse_error_count() const { return parse_error_count_; }
++
++ private:
++  friend class base::RefCountedThreadSafe<Engine>;
++  struct RuleInfo {
++    std::string text;
++    std::string source;
++  };
++  struct CosmeticRule {
++    std::string selector;
++    std::vector<std::string> include;
++    std::vector<std::string> exclude;
++    bool is_exception = false;
++  };
++
++  Engine();
++  ~Engine();
++
++  void AddSource(const FilterSource& source);
++  void Finish();
++  const RuleInfo* FindRuleInfo(const std::string& url_pattern) const;
++  static bool DomainMatches(const std::string& host, const std::string& domain);
++
++  std::unique_ptr<subresource_filter::RulesetIndexer> indexer_;
++  std::unique_ptr<subresource_filter::RulesetIndexer> document_indexer_;
++  std::unique_ptr<subresource_filter::IndexedRulesetMatcher> matcher_;
++  std::unique_ptr<subresource_filter::IndexedRulesetMatcher> document_matcher_;
++  std::unordered_multimap<std::string, RuleInfo> rules_by_pattern_;
++
++  std::vector<std::string> generic_selectors_;  // no include, no exclude
++  std::vector<CosmeticRule> conditional_rules_;  // has include or exclude
++  std::string generic_stylesheet_;
++
++  std::vector<SourceStats> sources_;
++  size_t flatbuffer_size_ = 0;
++  int network_rule_count_ = 0;
++  int cosmetic_rule_count_ = 0;
++  int parse_error_count_ = 0;
++};
++
++}  // namespace aside_adblock
++
++#endif  // CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_ENGINE_H_
+diff --git a/chrome/browser/aside_adblock/aside_adblock_navigation_throttle.cc b/chrome/browser/aside_adblock/aside_adblock_navigation_throttle.cc
+new file mode 100644
+index 0000000000..b9c978c5fb
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_navigation_throttle.cc
+@@ -0,0 +1,160 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/aside_adblock/aside_adblock_navigation_throttle.h"
++
++#include "base/json/string_escape.h"
++#include "base/logging.h"
++#include "base/strings/escape.h"
++#include "base/strings/strcat.h"
++#include "chrome/browser/aside_adblock/aside_adblock_service.h"
++#include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/navigation_entry.h"
++#include "content/public/browser/navigation_handle.h"
++#include "content/public/browser/navigation_throttle_registry.h"
++#include "content/public/browser/render_frame_host.h"
++#include "content/public/browser/web_contents.h"
++#include "net/base/net_errors.h"
++
++namespace aside_adblock {
++
++namespace {
++
++std::string BlockPageHtml(const GURL& url, const MatchResult& result) {
++  const std::string escaped_url = base::EscapeForHTML(url.spec());
++  const std::string escaped_filter = base::EscapeForHTML(result.filter);
++  return base::StrCat(
++      {"<!doctype html><html><head><meta charset=\"utf-8\">"
++       "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
++       "<title>Page blocked by Aside</title><style>"
++       "body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',"
++       "Roboto,sans-serif;background:#0f0f10;color:#e8e8e8;display:flex;"
++       "align-items:center;justify-content:center;min-height:100vh}"
++       ".card{max-width:520px;padding:32px;background:#1b1b1d;border-radius:16px;"
++       "box-shadow:0 12px 40px rgba(0,0,0,.4)}h1{font-size:22px;margin:0 0 8px}"
++       "p{margin:0 0 16px;color:#b8b8b8;line-height:1.5}code{display:block;"
++       "padding:10px 12px;background:#111;border-radius:8px;color:#d0d0d0;"
++       "word-break:break-all;font-size:12px;margin-bottom:8px}"
++       ".actions{display:flex;gap:12px;margin-top:20px}button{font:inherit;"
++       "padding:10px 16px;border-radius:10px;border:1px solid #3a3a3d;"
++       "background:#242427;color:#fff;cursor:pointer;text-decoration:none;"
++       "display:inline-block}a.button{font:inherit;padding:10px 16px;"
++       "border-radius:10px;border:1px solid #3a3a3d;background:#242427;"
++       "color:#fff;cursor:pointer;text-decoration:none;display:inline-block}"
++       "button.primary{"
++       "background:#fff;color:#111;border-color:#fff}</style></head><body>"
++       "<div class=\"card\" role=\"main\"><h1>Aside blocked this page</h1>"
++       "<p>A content filter matched this address before it was loaded.</p>"
++       "<code>", escaped_url, "</code>",
++       escaped_filter.empty()
++           ? ""
++           : base::StrCat({"<code>", escaped_filter, "</code>"}),
++       "<div class=\"actions\">"
++       "<button class=\"primary\" id=\"back\">Go back</button>"
++       "<a class=\"button\" id=\"continue\" href=\"", escaped_url,
++       "\">Continue once</a>"
++       "</div></div><script>"
++       "document.getElementById('back').onclick=function(){history.back();};"
++       "</script></body></html>"});
++}
++
++}  // namespace
++
++// static
++void AsideAdBlockNavigationThrottle::MaybeCreateAndAdd(
++    content::NavigationThrottleRegistry& registry) {
++  content::NavigationHandle& handle = registry.GetNavigationHandle();
++  if (!handle.GetURL().SchemeIsHTTPOrHTTPS()) {
++    return;
++  }
++  if (!AsideAdBlockService::Get(handle.GetWebContents()->GetBrowserContext())) {
++    return;
++  }
++  registry.AddThrottle(
++      std::make_unique<AsideAdBlockNavigationThrottle>(registry));
++}
++
++AsideAdBlockNavigationThrottle::AsideAdBlockNavigationThrottle(
++    content::NavigationThrottleRegistry& registry)
++    : content::NavigationThrottle(registry) {}
++
++AsideAdBlockNavigationThrottle::~AsideAdBlockNavigationThrottle() = default;
++
++content::NavigationThrottle::ThrottleCheckResult
++AsideAdBlockNavigationThrottle::WillStartRequest() {
++  return Check();
++}
++
++content::NavigationThrottle::ThrottleCheckResult
++AsideAdBlockNavigationThrottle::WillRedirectRequest() {
++  return Check();
++}
++
++const char* AsideAdBlockNavigationThrottle::GetNameForLogging() {
++  return "AsideAdBlockNavigationThrottle";
++}
++
++content::NavigationThrottle::ThrottleCheckResult
++AsideAdBlockNavigationThrottle::Check() {
++  content::NavigationHandle* handle = navigation_handle();
++  content::WebContents* contents = handle->GetWebContents();
++  AsideAdBlockService* service =
++      AsideAdBlockService::Get(contents->GetBrowserContext());
++  const GURL& url = handle->GetURL();
++  if (!service || !url.SchemeIsHTTPOrHTTPS()) {
++    return PROCEED;
++  }
++
++  if (handle->IsInPrimaryMainFrame()) {
++    if (allow_once_) {
++      return PROCEED;
++    }
++    // "Continue once": a user-gesture navigation from our own block page
++    // (an error document at the same URL) back to that URL.
++    content::RenderFrameHost* current = contents->GetPrimaryMainFrame();
++    content::NavigationEntry* entry =
++        contents->GetController().GetLastCommittedEntry();
++    const bool from_own_block_page =
++        current && current->IsErrorDocument() &&
++        ((entry && entry->GetURL() == url) ||
++         current->GetLastCommittedURL() == url);
++    VLOG(1) << "AsideAdBlock nav: " << url.spec() << " error_doc="
++            << (current && current->IsErrorDocument()) << " entry="
++            << (entry ? entry->GetURL().spec() : "(none)") << " gesture="
++            << handle->HasUserGesture() << " renderer="
++            << handle->IsRendererInitiated();
++    if (from_own_block_page && handle->HasUserGesture() &&
++        handle->IsRendererInitiated()) {
++      VLOG(1) << "AsideAdBlock nav: continue once for " << url.spec();
++      allow_once_ = true;
++      return PROCEED;
++    }
++    url::Origin initiator =
++        handle->GetInitiatorOrigin().value_or(url::Origin());
++    MatchResult result = service->Evaluate(
++        url, initiator, url_pattern_index::proto::ELEMENT_TYPE_SUBDOCUMENT,
++        /*is_document=*/true);
++    if (result.should_block) {
++      return ThrottleCheckResult(CANCEL, net::ERR_BLOCKED_BY_CLIENT,
++                                 BlockPageHtml(url, result));
++    }
++    return PROCEED;
++  }
++
++  if (handle->IsInMainFrame()) {
++    return PROCEED;  // fenced frames / portals: leave alone.
++  }
++  content::RenderFrameHost* parent = handle->GetParentFrame();
++  url::Origin initiator = parent ? parent->GetLastCommittedOrigin()
++                                 : url::Origin();
++  MatchResult result = service->Evaluate(
++      url, initiator, url_pattern_index::proto::ELEMENT_TYPE_SUBDOCUMENT,
++      /*is_document=*/false);
++  if (result.should_block) {
++    return ThrottleCheckResult(CANCEL, net::ERR_BLOCKED_BY_CLIENT);
++  }
++  return PROCEED;
++}
++
++}  // namespace aside_adblock
+diff --git a/chrome/browser/aside_adblock/aside_adblock_navigation_throttle.h b/chrome/browser/aside_adblock/aside_adblock_navigation_throttle.h
+new file mode 100644
+index 0000000000..c4e9c91556
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_navigation_throttle.h
+@@ -0,0 +1,42 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_NAVIGATION_THROTTLE_H_
++#define CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_NAVIGATION_THROTTLE_H_
++
++#include "content/public/browser/navigation_throttle.h"
++
++namespace content {
++class NavigationThrottleRegistry;
++}
++
++namespace aside_adblock {
++
++// Blocks navigations matched by $document rules (top-level) and by sub-frame
++// rules, rendering the "Page blocked by Aside" page with "Go back" and
++// "Continue once" actions like the original AsideAdBlockNavigationThrottle.
++class AsideAdBlockNavigationThrottle : public content::NavigationThrottle {
++ public:
++  static void MaybeCreateAndAdd(content::NavigationThrottleRegistry& registry);
++
++  explicit AsideAdBlockNavigationThrottle(
++      content::NavigationThrottleRegistry& registry);
++  ~AsideAdBlockNavigationThrottle() override;
++
++  // content::NavigationThrottle:
++  ThrottleCheckResult WillStartRequest() override;
++  ThrottleCheckResult WillRedirectRequest() override;
++  const char* GetNameForLogging() override;
++
++ private:
++  ThrottleCheckResult Check();
++
++  // Set once the user chose "Continue once" for this navigation so redirects
++  // (e.g. the https upgrade) of the same navigation pass as well.
++  bool allow_once_ = false;
++};
++
++}  // namespace aside_adblock
++
++#endif  // CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_NAVIGATION_THROTTLE_H_
+diff --git a/chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.cc b/chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.cc
+new file mode 100644
+index 0000000000..46b0c58079
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.cc
+@@ -0,0 +1,117 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.h"
++
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/logging.h"
++#include "chrome/browser/aside_adblock/aside_adblock_service.h"
++#include "content/public/browser/browser_context.h"
++#include "content/public/browser/render_frame_host.h"
++#include "net/base/net_errors.h"
++#include "services/network/public/cpp/resource_request.h"
++#include "services/network/public/cpp/url_loader_completion_status.h"
++#include "services/network/public/mojom/fetch_api.mojom.h"
++#include "services/network/public/mojom/url_loader.mojom.h"
++
++namespace aside_adblock {
++
++// static
++void AsideAdBlockProxyingURLLoaderFactory::MaybeProxy(
++    content::BrowserContext* browser_context,
++    content::RenderFrameHost* frame,
++    network::URLLoaderFactoryBuilder& factory_builder) {
++  AsideAdBlockService* service = AsideAdBlockService::Get(browser_context);
++  if (!service) {
++    return;
++  }
++  std::optional<url::Origin> frame_origin;
++  if (frame) {
++    frame_origin = frame->GetLastCommittedOrigin();
++  }
++  auto [proxied_receiver, target_remote] = factory_builder.Append();
++  VLOG(1) << "AsideAdBlock: proxying URLLoaderFactory for "
++          << (frame ? frame->GetLastCommittedURL().spec() : "(no frame)")
++          << " origin="
++          << (frame_origin ? frame_origin->Serialize() : "(none)");
++  // Self-owned; deleted on disconnect of all receivers or the target.
++  new AsideAdBlockProxyingURLLoaderFactory(
++      service->GetWeakPtr(), std::move(frame_origin),
++      std::move(proxied_receiver), std::move(target_remote));
++}
++
++AsideAdBlockProxyingURLLoaderFactory::AsideAdBlockProxyingURLLoaderFactory(
++    base::WeakPtr<AsideAdBlockService> service,
++    std::optional<url::Origin> frame_origin,
++    mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
++    mojo::PendingRemote<network::mojom::URLLoaderFactory> target)
++    : service_(std::move(service)), frame_origin_(std::move(frame_origin)) {
++  target_.Bind(std::move(target));
++  target_.set_disconnect_handler(
++      base::BindOnce(&AsideAdBlockProxyingURLLoaderFactory::OnDisconnect,
++                     base::Unretained(this)));
++  receivers_.Add(this, std::move(receiver));
++  receivers_.set_disconnect_handler(
++      base::BindRepeating(&AsideAdBlockProxyingURLLoaderFactory::OnDisconnect,
++                          base::Unretained(this)));
++}
++
++AsideAdBlockProxyingURLLoaderFactory::~AsideAdBlockProxyingURLLoaderFactory() =
++    default;
++
++void AsideAdBlockProxyingURLLoaderFactory::CreateLoaderAndStart(
++    mojo::PendingReceiver<network::mojom::URLLoader> loader,
++    int32_t request_id,
++    uint32_t options,
++    const network::ResourceRequest& request,
++    mojo::PendingRemote<network::mojom::URLLoaderClient> client,
++    const net::MutableNetworkTrafficAnnotationTag& traffic_annotation) {
++  if (!service_) {
++    VLOG(2) << "AsideAdBlock: no service for " << request.url.spec();
++  }
++  // Note: |is_outermost_main_frame| marks requests *made by* the top-level
++  // document (used for client hints), not navigations, so it must not be used
++  // to skip requests here. Document navigations never reach this factory.
++  if (service_ && request.url.SchemeIsHTTPOrHTTPS() &&
++      request.destination != network::mojom::RequestDestination::kDocument) {
++    url::Origin initiator;
++    if (request.request_initiator) {
++      initiator = *request.request_initiator;
++    } else if (frame_origin_) {
++      initiator = *frame_origin_;
++    }
++    MatchResult result = service_->Evaluate(
++        request.url, initiator,
++        ElementTypeForDestination(request.destination),
++        /*is_document=*/false);
++    VLOG(2) << "AsideAdBlock: " << request.url.spec() << " initiator="
++            << initiator.Serialize() << " dest="
++            << static_cast<int>(request.destination) << " -> "
++            << (result.should_block ? "BLOCK " + result.filter : "allow");
++    if (result.should_block) {
++      mojo::Remote<network::mojom::URLLoaderClient> remote(std::move(client));
++      remote->OnComplete(
++          network::URLLoaderCompletionStatus(net::ERR_BLOCKED_BY_CLIENT));
++      return;
++    }
++  }
++  target_->CreateLoaderAndStart(std::move(loader), request_id, options,
++                                request, std::move(client),
++                                traffic_annotation);
++}
++
++void AsideAdBlockProxyingURLLoaderFactory::Clone(
++    mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver) {
++  receivers_.Add(this, std::move(receiver));
++}
++
++void AsideAdBlockProxyingURLLoaderFactory::OnDisconnect() {
++  if (!target_.is_connected() || receivers_.empty()) {
++    delete this;
++  }
++}
++
++}  // namespace aside_adblock
+diff --git a/chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.h b/chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.h
+new file mode 100644
+index 0000000000..fc8f609179
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.h
+@@ -0,0 +1,72 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++//
++// URLLoaderFactory proxy that applies Aside's ad-block network rules to
++// sub-resource requests (the original blocks these from its
++// AsideAdBlockService request hook; this proxy is the equivalent insertion
++// point in ChromeContentBrowserClient::WillCreateURLLoaderFactory).
++
++#ifndef CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_PROXYING_URL_LOADER_FACTORY_H_
++#define CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_PROXYING_URL_LOADER_FACTORY_H_
++
++#include <optional>
++
++#include "base/memory/weak_ptr.h"
++#include "mojo/public/cpp/bindings/pending_receiver.h"
++#include "mojo/public/cpp/bindings/pending_remote.h"
++#include "mojo/public/cpp/bindings/receiver_set.h"
++#include "mojo/public/cpp/bindings/remote.h"
++#include "services/network/public/cpp/url_loader_factory_builder.h"
++#include "services/network/public/mojom/url_loader_factory.mojom.h"
++#include "url/origin.h"
++
++namespace content {
++class BrowserContext;
++class RenderFrameHost;
++}  // namespace content
++
++namespace aside_adblock {
++
++class AsideAdBlockService;
++
++class AsideAdBlockProxyingURLLoaderFactory
++    : public network::mojom::URLLoaderFactory {
++ public:
++  // Inserts a proxy into |factory_builder| when ad blocking applies to
++  // |browser_context|. |frame| may be null (worker / service worker cases).
++  static void MaybeProxy(content::BrowserContext* browser_context,
++                         content::RenderFrameHost* frame,
++                         network::URLLoaderFactoryBuilder& factory_builder);
++
++  AsideAdBlockProxyingURLLoaderFactory(
++      base::WeakPtr<AsideAdBlockService> service,
++      std::optional<url::Origin> frame_origin,
++      mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
++      mojo::PendingRemote<network::mojom::URLLoaderFactory> target);
++  ~AsideAdBlockProxyingURLLoaderFactory() override;
++
++  // network::mojom::URLLoaderFactory:
++  void CreateLoaderAndStart(
++      mojo::PendingReceiver<network::mojom::URLLoader> loader,
++      int32_t request_id,
++      uint32_t options,
++      const network::ResourceRequest& request,
++      mojo::PendingRemote<network::mojom::URLLoaderClient> client,
++      const net::MutableNetworkTrafficAnnotationTag& traffic_annotation)
++      override;
++  void Clone(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver)
++      override;
++
++ private:
++  void OnDisconnect();
++
++  base::WeakPtr<AsideAdBlockService> service_;
++  std::optional<url::Origin> frame_origin_;
++  mojo::ReceiverSet<network::mojom::URLLoaderFactory> receivers_;
++  mojo::Remote<network::mojom::URLLoaderFactory> target_;
++};
++
++}  // namespace aside_adblock
++
++#endif  // CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_PROXYING_URL_LOADER_FACTORY_H_
+diff --git a/chrome/browser/aside_adblock/aside_adblock_service.cc b/chrome/browser/aside_adblock/aside_adblock_service.cc
+new file mode 100644
+index 0000000000..8039e72a96
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_service.cc
+@@ -0,0 +1,817 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/aside_adblock/aside_adblock_service.h"
++
++#include <utility>
++
++#include "base/files/file_enumerator.h"
++#include "base/files/file_util.h"
++#include "base/functional/bind.h"
++#include "base/json/json_reader.h"
++#include "base/json/json_writer.h"
++#include "base/logging.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/string_util.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/task/thread_pool.h"
++#include "base/uuid.h"
++#include "chrome/browser/aside_adblock/aside_adblock_service_factory.h"
++#include "chrome/browser/profiles/profile.h"
++#include "components/prefs/pref_registry_simple.h"
++#include "components/prefs/pref_service.h"
++#include "content/public/browser/browser_context.h"
++#include "content/public/browser/storage_partition.h"
++#include "crypto/hash.h"
++#include "net/base/net_errors.h"
++#include "net/http/http_request_headers.h"
++#include "net/http/http_response_headers.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
++#include "services/network/public/cpp/resource_request.h"
++#include "services/network/public/cpp/shared_url_loader_factory.h"
++#include "services/network/public/cpp/simple_url_loader.h"
++#include "services/network/public/mojom/url_response_head.mojom.h"
++
++namespace aside_adblock {
++
++namespace {
++
++constexpr base::TimeDelta kUpdateInterval = base::Hours(24);
++constexpr base::TimeDelta kUpdateTick = base::Minutes(30);
++constexpr char kMetadataFile[] = "subscriptions.json";
++
++// Default subscriptions installed on first run (the original ships the
++// list selection through its extension settings; EasyList + EasyPrivacy are
++// the lists it exposes by default).
++struct DefaultSubscription {
++  const char* name;
++  const char* url;
++};
++constexpr DefaultSubscription kDefaultSubscriptions[] = {
++    {"EasyList", "https://easylist.to/easylist/easylist.txt"},
++    {"EasyPrivacy", "https://easylist.to/easylist/easyprivacy.txt"},
++};
++
++constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotation =
++    net::DefineNetworkTrafficAnnotation("aside_adblock_subscription", R"(
++        semantics {
++          sender: "Aside ad blocker"
++          description: "Downloads ad-block filter lists the user subscribed."
++          trigger: "Adding a subscription or the daily update."
++          data: "None."
++          destination: WEBSITE
++        }
++        policy {
++          cookies_allowed: NO
++          setting: "chrome://aside-adblock"
++          policy_exception_justification: "Not implemented."
++        })");
++
++double ToJsTime(base::Time t) {
++  return t.is_null() ? 0 : t.InMillisecondsFSinceUnixEpoch();
++}
++
++base::Time FromJsTime(double ms) {
++  return ms <= 0 ? base::Time()
++                 : base::Time::FromMillisecondsSinceUnixEpoch(ms);
++}
++
++std::string Sha256Hex(const std::string& text) {
++  return base::ToLowerASCII(base::HexEncode(crypto::hash::Sha256(text)));
++}
++
++base::ListValue ToList(const std::vector<std::string>& v) {
++  base::ListValue list;
++  for (const std::string& s : v) {
++    list.Append(s);
++  }
++  return list;
++}
++
++std::string ValidateSubscriptionUrl(const std::string& spec) {
++  GURL url(spec);
++  if (!url.is_valid()) {
++    return "Subscription URL is not valid.";
++  }
++  if (!url.SchemeIs("https") && !url.SchemeIs("http")) {
++    return "Subscription URL must use http or https.";
++  }
++  if (url.has_username() || url.has_password()) {
++    return "Subscription URL must not contain credentials.";
++  }
++  if (url.has_ref()) {
++    return "Subscription URL must not contain a fragment.";
++  }
++  if (url.HostIsIPAddress() && url.host() == "127.0.0.1") {
++    return "Subscription URL must not point at localhost.";
++  }
++  if (url.host() == "localhost") {
++    return "Subscription URL must not point at localhost.";
++  }
++  return std::string();
++}
++
++}  // namespace
++
++struct AsideAdBlockService::LoadedState {
++  std::vector<Subscription> subscriptions;
++  std::string custom_rules;
++  std::vector<ManualFile> manual_files;
++  std::string manual_error;
++  bool had_metadata = false;
++};
++
++Subscription::Subscription() = default;
++Subscription::Subscription(const Subscription&) = default;
++Subscription::~Subscription() = default;
++
++// static
++void AsideAdBlockService::RegisterProfilePrefs(PrefRegistrySimple* registry) {
++  registry->RegisterBooleanPref(kEnabledPref, true);
++}
++
++// static
++AsideAdBlockService* AsideAdBlockService::Get(
++    content::BrowserContext* context) {
++  return AsideAdBlockServiceFactory::GetForBrowserContext(context);
++}
++
++AsideAdBlockService::AsideAdBlockService(Profile* profile)
++    : profile_(profile) {
++  data_dir_ = profile->GetPath().AppendASCII("AsideAdBlock");
++  subscriptions_dir_ = data_dir_.AppendASCII("Subscriptions");
++  custom_rules_path_ = data_dir_.AppendASCII("Custom").AppendASCII("rules.txt");
++  manual_dir_ = data_dir_.AppendASCII("Manual");
++  cache_dir_ = data_dir_.AppendASCII("Cache");
++  LoadFromDisk();
++  update_timer_.Start(FROM_HERE, kUpdateTick, this,
++                      &AsideAdBlockService::OnAutomaticUpdateTick);
++}
++
++AsideAdBlockService::~AsideAdBlockService() = default;
++
++bool AsideAdBlockService::enabled() const {
++  return profile_->GetPrefs()->GetBoolean(kEnabledPref);
++}
++
++MatchResult AsideAdBlockService::Evaluate(
++    const GURL& url,
++    const url::Origin& initiator,
++    url_pattern_index::proto::ElementType element_type,
++    bool is_document) const {
++  if (!engine_ || !enabled()) {
++    return MatchResult();
++  }
++  return engine_->Evaluate(url, initiator, element_type, is_document);
++}
++
++std::string AsideAdBlockService::HidingStylesheet(const GURL& url) const {
++  if (!engine_ || !enabled()) {
++    return std::string();
++  }
++  return engine_->HidingStylesheet(url);
++}
++
++// ---- persistence -----------------------------------------------------------
++
++namespace {
++
++base::DictValue SubscriptionToDict(const Subscription& s) {
++  base::DictValue d;
++  d.Set("id", s.id);
++  d.Set("name", s.name);
++  d.Set("url", s.url);
++  d.Set("enabled", s.enabled);
++  d.Set("status", s.status);
++  d.Set("contentSize", static_cast<double>(s.content_size));
++  d.Set("digest", s.digest);
++  d.Set("etag", s.etag);
++  d.Set("lastModifiedHeader", s.last_modified_header);
++  d.Set("lastError", s.last_error);
++  d.Set("networkRuleCount", s.network_rule_count);
++  d.Set("cosmeticRuleCount", s.cosmetic_rule_count);
++  d.Set("parseErrorCount", s.parse_error_count);
++  d.Set("invalidLines", ToList(s.invalid_lines));
++  d.Set("lastSuccessfulCheckMs", ToJsTime(s.last_successful_check));
++  d.Set("lastContentChangeMs", ToJsTime(s.last_content_change));
++  d.Set("lastEngineActivationMs", ToJsTime(s.last_engine_activation));
++  d.Set("nextUpdateMs", ToJsTime(s.next_update));
++  return d;
++}
++
++Subscription SubscriptionFromDict(const base::DictValue& d) {
++  Subscription s;
++  s.id = d.FindString("id") ? *d.FindString("id") : "";
++  s.name = d.FindString("name") ? *d.FindString("name") : "";
++  s.url = d.FindString("url") ? *d.FindString("url") : "";
++  s.enabled = d.FindBool("enabled").value_or(true);
++  s.status = d.FindString("status") ? *d.FindString("status") : "idle";
++  s.content_size = static_cast<int64_t>(d.FindDouble("contentSize").value_or(0));
++  s.digest = d.FindString("digest") ? *d.FindString("digest") : "";
++  s.etag = d.FindString("etag") ? *d.FindString("etag") : "";
++  s.last_modified_header = d.FindString("lastModifiedHeader")
++                               ? *d.FindString("lastModifiedHeader")
++                               : "";
++  s.last_error = d.FindString("lastError") ? *d.FindString("lastError") : "";
++  s.last_successful_check =
++      FromJsTime(d.FindDouble("lastSuccessfulCheckMs").value_or(0));
++  s.last_content_change =
++      FromJsTime(d.FindDouble("lastContentChangeMs").value_or(0));
++  s.next_update = FromJsTime(d.FindDouble("nextUpdateMs").value_or(0));
++  if (s.status == "updating") {
++    s.status = "idle";
++  }
++  return s;
++}
++
++std::unique_ptr<AsideAdBlockService::LoadedState> ReadStateFromDisk(
++    base::FilePath data_dir,
++    base::FilePath subscriptions_dir,
++    base::FilePath custom_rules_path,
++    base::FilePath manual_dir) {
++  auto state = std::make_unique<AsideAdBlockService::LoadedState>();
++  base::CreateDirectory(subscriptions_dir);
++  base::CreateDirectory(custom_rules_path.DirName());
++  base::CreateDirectory(manual_dir);
++
++  std::string metadata;
++  if (base::ReadFileToString(data_dir.AppendASCII(kMetadataFile), &metadata)) {
++    state->had_metadata = true;
++    std::optional<base::Value> parsed = base::JSONReader::Read(metadata, base::JSON_PARSE_RFC);
++    if (parsed && parsed->is_dict()) {
++      if (const base::ListValue* list =
++              parsed->GetDict().FindList("subscriptions")) {
++        for (const base::Value& item : *list) {
++          if (!item.is_dict()) {
++            continue;
++          }
++          Subscription s = SubscriptionFromDict(item.GetDict());
++          if (s.id.empty() || s.url.empty()) {
++            continue;
++          }
++          base::ReadFileToString(subscriptions_dir.AppendASCII(s.id + ".txt"),
++                                 &s.text);
++          s.content_size = static_cast<int64_t>(s.text.size());
++          state->subscriptions.push_back(std::move(s));
++        }
++      }
++    }
++  }
++  base::ReadFileToString(custom_rules_path, &state->custom_rules);
++
++  base::FileEnumerator files(manual_dir, false, base::FileEnumerator::FILES,
++                             FILE_PATH_LITERAL("*.txt"));
++  for (base::FilePath path = files.Next(); !path.empty(); path = files.Next()) {
++    AsideAdBlockService::ManualFile file;
++    file.name = path.BaseName().AsUTF8Unsafe();
++    if (!base::ReadFileToString(path, &file.text)) {
++      state->manual_error = "Could not read " + file.name;
++      continue;
++    }
++    if (!base::IsStringUTF8(file.text)) {
++      state->manual_error = file.name + " is not valid UTF-8";
++      continue;
++    }
++    state->manual_files.push_back(std::move(file));
++  }
++  return state;
++}
++
++void WriteMetadataOnWorker(base::FilePath path, std::string json) {
++  base::CreateDirectory(path.DirName());
++  base::WriteFile(path, json);
++}
++
++void WriteTextOnWorker(base::FilePath path, std::string text) {
++  base::CreateDirectory(path.DirName());
++  base::WriteFile(path, text);
++}
++
++}  // namespace
++
++void AsideAdBlockService::LoadFromDisk() {
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(&ReadStateFromDisk, data_dir_, subscriptions_dir_,
++                     custom_rules_path_, manual_dir_),
++      base::BindOnce(&AsideAdBlockService::OnLoaded,
++                     weak_factory_.GetWeakPtr()));
++}
++
++void AsideAdBlockService::OnLoaded(std::unique_ptr<LoadedState> state) {
++  subscriptions_ = std::move(state->subscriptions);
++  custom_rules_ = std::move(state->custom_rules);
++  manual_files_ = std::move(state->manual_files);
++  manual_filter_error_ = std::move(state->manual_error);
++  loaded_ = true;
++  if (!state->had_metadata) {
++    for (const DefaultSubscription& def : kDefaultSubscriptions) {
++      Subscription s;
++      s.id = base::Uuid::GenerateRandomV4().AsLowercaseString();
++      s.name = def.name;
++      s.url = def.url;
++      s.status = "idle";
++      subscriptions_.push_back(std::move(s));
++    }
++    PersistMetadata();
++  }
++  RequestCompile();
++  for (const Subscription& s : subscriptions_) {
++    if (s.enabled && (s.text.empty() || s.next_update <= base::Time::Now())) {
++      StartDownload(s.id);
++    }
++  }
++}
++
++void AsideAdBlockService::PersistMetadata() {
++  base::DictValue root;
++  base::ListValue list;
++  for (const Subscription& s : subscriptions_) {
++    list.Append(SubscriptionToDict(s));
++  }
++  root.Set("subscriptions", std::move(list));
++  root.Set("version", 1);
++  std::string json;
++  base::JSONWriter::WriteWithOptions(
++      root, base::JSONWriter::OPTIONS_PRETTY_PRINT, &json);
++  base::ThreadPool::PostTask(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
++      base::BindOnce(&WriteMetadataOnWorker,
++                     data_dir_.AppendASCII(kMetadataFile), std::move(json)));
++}
++
++// ---- compilation -----------------------------------------------------------
++
++std::vector<FilterSource> AsideAdBlockService::CollectSources() const {
++  std::vector<FilterSource> sources;
++  for (const Subscription& s : subscriptions_) {
++    if (s.enabled && !s.text.empty()) {
++      sources.push_back({s.id, s.name, s.text});
++    }
++  }
++  if (!custom_rules_.empty()) {
++    sources.push_back({"custom", "Custom rules", custom_rules_});
++  }
++  for (const ManualFile& file : manual_files_) {
++    sources.push_back({"manual:" + file.name, file.name, file.text});
++  }
++  return sources;
++}
++
++void AsideAdBlockService::RequestCompile() {
++  ++requested_generation_;
++  if (compiling_) {
++    compile_pending_ = true;
++    return;
++  }
++  StartCompile();
++}
++
++void AsideAdBlockService::StartCompile() {
++  compiling_ = true;
++  compile_pending_ = false;
++  const uint64_t generation = requested_generation_;
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(&Engine::Build, CollectSources()),
++      base::BindOnce(&AsideAdBlockService::OnCompiled,
++                     weak_factory_.GetWeakPtr(), generation,
++                     base::TimeTicks::Now()));
++}
++
++void AsideAdBlockService::OnCompiled(uint64_t generation,
++                                     base::TimeTicks started,
++                                     scoped_refptr<Engine> engine) {
++  compiling_ = false;
++  last_compile_duration_ = base::TimeTicks::Now() - started;
++  if (!engine) {
++    last_compile_error_ = "Engine build failed";
++  } else {
++    last_compile_error_.clear();
++    engine_ = engine;
++    active_generation_ = generation;
++    last_engine_install_time_ = base::Time::Now();
++    last_cache_hit_ = false;
++    custom_network_rule_count_ = 0;
++    custom_cosmetic_rule_count_ = 0;
++    custom_parse_error_count_ = 0;
++    custom_invalid_lines_.clear();
++    for (const SourceStats& stats : engine->sources()) {
++      if (stats.id == "custom") {
++        custom_network_rule_count_ = stats.network_rule_count;
++        custom_cosmetic_rule_count_ = stats.cosmetic_rule_count;
++        custom_parse_error_count_ = stats.parse_error_count;
++        custom_invalid_lines_ = stats.invalid_lines;
++        continue;
++      }
++      if (Subscription* s = FindSubscription(stats.id)) {
++        s->network_rule_count = stats.network_rule_count;
++        s->cosmetic_rule_count = stats.cosmetic_rule_count;
++        s->parse_error_count = stats.parse_error_count;
++        s->invalid_lines = stats.invalid_lines;
++        s->last_engine_activation = last_engine_install_time_;
++        if (s->status == "idle" || s->status.empty()) {
++          s->status = "ready";
++        }
++      }
++    }
++    PersistMetadata();
++  }
++  if (compile_pending_) {
++    StartCompile();
++  }
++}
++
++// ---- subscriptions ---------------------------------------------------------
++
++Subscription* AsideAdBlockService::FindSubscription(const std::string& id) {
++  for (Subscription& s : subscriptions_) {
++    if (s.id == id) {
++      return &s;
++    }
++  }
++  return nullptr;
++}
++
++std::string AsideAdBlockService::SetEnabled(bool enabled) {
++  profile_->GetPrefs()->SetBoolean(kEnabledPref, enabled);
++  return std::string();
++}
++
++std::string AsideAdBlockService::AddSubscription(const std::string& name,
++                                                 const std::string& url) {
++  if (subscriptions_.size() >= kMaxSubscriptions) {
++    return "At most " + base::NumberToString(kMaxSubscriptions) +
++           " subscriptions are supported.";
++  }
++  std::string trimmed_url;
++  base::TrimWhitespaceASCII(url, base::TRIM_ALL, &trimmed_url);
++  std::string error = ValidateSubscriptionUrl(trimmed_url);
++  if (!error.empty()) {
++    return error;
++  }
++  for (const Subscription& s : subscriptions_) {
++    if (s.url == trimmed_url) {
++      return "This subscription URL is already present.";
++    }
++  }
++  Subscription s;
++  s.id = base::Uuid::GenerateRandomV4().AsLowercaseString();
++  base::TrimWhitespaceASCII(name, base::TRIM_ALL, &s.name);
++  if (s.name.empty()) {
++    s.name = GURL(trimmed_url).host();
++  }
++  s.url = trimmed_url;
++  s.status = "idle";
++  subscriptions_.push_back(std::move(s));
++  PersistMetadata();
++  StartDownload(subscriptions_.back().id);
++  return std::string();
++}
++
++std::string AsideAdBlockService::SetSubscriptionEnabled(const std::string& id,
++                                                        bool enabled) {
++  Subscription* s = FindSubscription(id);
++  if (!s) {
++    return "Unknown subscription.";
++  }
++  if (s->enabled == enabled) {
++    return std::string();
++  }
++  s->enabled = enabled;
++  PersistMetadata();
++  RequestCompile();
++  if (enabled && s->text.empty()) {
++    StartDownload(id);
++  }
++  return std::string();
++}
++
++std::string AsideAdBlockService::RemoveSubscription(const std::string& id) {
++  auto it = std::find_if(subscriptions_.begin(), subscriptions_.end(),
++                         [&](const Subscription& s) { return s.id == id; });
++  if (it == subscriptions_.end()) {
++    return "Unknown subscription.";
++  }
++  loaders_.erase(id);
++  subscriptions_.erase(it);
++  base::ThreadPool::PostTask(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
++      base::BindOnce(base::IgnoreResult(&base::DeleteFile),
++                     subscriptions_dir_.AppendASCII(id + ".txt")));
++  PersistMetadata();
++  RequestCompile();
++  return std::string();
++}
++
++std::string AsideAdBlockService::UpdateSubscription(const std::string& id) {
++  if (!FindSubscription(id)) {
++    return "Unknown subscription.";
++  }
++  StartDownload(id);
++  return std::string();
++}
++
++std::string AsideAdBlockService::UpdateAllSubscriptions() {
++  for (const Subscription& s : subscriptions_) {
++    if (s.enabled) {
++      StartDownload(s.id);
++    }
++  }
++  return std::string();
++}
++
++void AsideAdBlockService::StartDownload(const std::string& id) {
++  Subscription* s = FindSubscription(id);
++  if (!s || loaders_.contains(id)) {
++    return;
++  }
++  auto request = std::make_unique<network::ResourceRequest>();
++  request->url = GURL(s->url);
++  request->credentials_mode = network::mojom::CredentialsMode::kOmit;
++  request->method = net::HttpRequestHeaders::kGetMethod;
++  if (!s->etag.empty()) {
++    request->headers.SetHeader(net::HttpRequestHeaders::kIfNoneMatch, s->etag);
++  }
++  if (!s->last_modified_header.empty()) {
++    request->headers.SetHeader(net::HttpRequestHeaders::kIfModifiedSince,
++                               s->last_modified_header);
++  }
++  auto loader = network::SimpleURLLoader::Create(std::move(request),
++                                                 kTrafficAnnotation);
++  loader->SetAllowHttpErrorResults(true);
++  loader->SetTimeoutDuration(base::Minutes(2));
++  network::SimpleURLLoader* raw = loader.get();
++  loaders_[id] = std::move(loader);
++  s->status = "updating";
++  raw->DownloadToString(
++      profile_->GetDefaultStoragePartition()
++          ->GetURLLoaderFactoryForBrowserProcess()
++          .get(),
++      base::BindOnce(&AsideAdBlockService::OnDownloadComplete,
++                     weak_factory_.GetWeakPtr(), id),
++      kMaxSubscriptionBytes);
++}
++
++void AsideAdBlockService::OnDownloadComplete(const std::string& id,
++                                             std::optional<std::string> body) {
++  auto loader_it = loaders_.find(id);
++  if (loader_it == loaders_.end()) {
++    return;
++  }
++  std::unique_ptr<network::SimpleURLLoader> loader = std::move(loader_it->second);
++  loaders_.erase(loader_it);
++  Subscription* s = FindSubscription(id);
++  if (!s) {
++    return;
++  }
++  const base::Time now = base::Time::Now();
++  s->next_update = now + kUpdateInterval;
++
++  int status = 0;
++  const network::mojom::URLResponseHead* head = loader->ResponseInfo();
++  if (head && head->headers) {
++    status = head->headers->response_code();
++  }
++  auto fail = [&](const std::string& why) {
++    s->status = "error";
++    s->last_error = why;
++    PersistMetadata();
++  };
++  if (loader->NetError() != net::OK && loader->NetError() != net::ERR_FAILED) {
++    fail(std::string("Network error: ") + net::ErrorToShortString(loader->NetError()));
++    return;
++  }
++  if (status == 304) {
++    s->status = "ready";
++    s->last_error.clear();
++    s->last_successful_check = now;
++    PersistMetadata();
++    return;
++  }
++  if (status != 200 || !body) {
++    fail("HTTP status " + base::NumberToString(status));
++    return;
++  }
++  if (body->empty()) {
++    fail("Empty response");
++    return;
++  }
++  if (!base::IsStringUTF8(*body) ||
++      body->find('\0') != std::string::npos) {
++    fail("Response is not valid UTF-8 text");
++    return;
++  }
++  if (head && head->headers) {
++    s->etag = head->headers->GetNormalizedHeader("ETag").value_or("");
++    s->last_modified_header =
++        head->headers->GetNormalizedHeader("Last-Modified").value_or("");
++  }
++  s->status = "ready";
++  s->last_error.clear();
++  s->last_successful_check = now;
++  const std::string digest = Sha256Hex(*body);
++  if (digest != s->digest) {
++    s->digest = digest;
++    s->text = std::move(*body);
++    s->content_size = static_cast<int64_t>(s->text.size());
++    s->last_content_change = now;
++    base::ThreadPool::PostTask(
++        FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
++        base::BindOnce(&WriteTextOnWorker,
++                       subscriptions_dir_.AppendASCII(id + ".txt"), s->text));
++    if (s->enabled) {
++      RequestCompile();
++    }
++  }
++  PersistMetadata();
++}
++
++void AsideAdBlockService::OnAutomaticUpdateTick() {
++  if (!loaded_) {
++    return;
++  }
++  const base::Time now = base::Time::Now();
++  for (const Subscription& s : subscriptions_) {
++    if (s.enabled && s.next_update <= now) {
++      StartDownload(s.id);
++    }
++  }
++}
++
++// ---- custom / manual / cache ------------------------------------------------
++
++std::string AsideAdBlockService::SaveCustomRules(const std::string& rules) {
++  if (rules.size() > kMaxCustomRulesBytes) {
++    return "Custom rules exceed the 4 MiB limit.";
++  }
++  if (!base::IsStringUTF8(rules) || rules.find('\0') != std::string::npos) {
++    return "Custom rules must be UTF-8 text.";
++  }
++  custom_rules_ = rules;
++  pending_custom_rules_.clear();
++  base::ThreadPool::PostTask(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(&WriteTextOnWorker, custom_rules_path_, rules));
++  RequestCompile();
++  return std::string();
++}
++
++std::string AsideAdBlockService::ReloadManualFilters() {
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](base::FilePath manual_dir) {
++            auto state = std::make_unique<LoadedState>();
++            base::FileEnumerator files(manual_dir, false,
++                                       base::FileEnumerator::FILES,
++                                       FILE_PATH_LITERAL("*.txt"));
++            for (base::FilePath path = files.Next(); !path.empty();
++                 path = files.Next()) {
++              ManualFile file;
++              file.name = path.BaseName().AsUTF8Unsafe();
++              if (!base::ReadFileToString(path, &file.text) ||
++                  !base::IsStringUTF8(file.text)) {
++                state->manual_error = "Could not read " + file.name;
++                continue;
++              }
++              state->manual_files.push_back(std::move(file));
++            }
++            return state;
++          },
++          manual_dir_),
++      base::BindOnce(
++          [](base::WeakPtr<AsideAdBlockService> self,
++             std::unique_ptr<LoadedState> state) {
++            if (!self) {
++              return;
++            }
++            self->manual_files_ = std::move(state->manual_files);
++            self->manual_filter_error_ = std::move(state->manual_error);
++            self->RequestCompile();
++          },
++          weak_factory_.GetWeakPtr()));
++  return std::string();
++}
++
++std::string AsideAdBlockService::ClearEngineCache() {
++  base::ThreadPool::PostTask(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
++      base::BindOnce(base::IgnoreResult(&base::DeletePathRecursively),
++                     cache_dir_));
++  last_cache_hit_ = false;
++  RequestCompile();
++  return std::string();
++}
++
++// ---- diagnostics -----------------------------------------------------------
++
++base::DictValue AsideAdBlockService::TestRule(const std::string& url_spec,
++                                                const std::string& initiator,
++                                                const std::string& request_type,
++                                                const std::string& method,
++                                                bool third_party) const {
++  base::DictValue out;
++  GURL url(url_spec);
++  out.Set("url", url_spec);
++  out.Set("requestType", request_type);
++  out.Set("method", method);
++  out.Set("thirdParty", third_party);
++  if (!url.is_valid()) {
++    out.Set("error", "Invalid URL");
++    return out;
++  }
++  url::Origin origin;
++  GURL initiator_url(initiator);
++  if (initiator_url.is_valid()) {
++    origin = url::Origin::Create(initiator_url);
++  } else if (!third_party) {
++    origin = url::Origin::Create(url);
++  }
++  bool is_document = false;
++  url_pattern_index::proto::ElementType type =
++      ElementTypeForName(request_type, &is_document);
++  MatchResult r;
++  if (engine_) {
++    r = engine_->Evaluate(url, origin, type, is_document);
++  }
++  out.Set("engineAvailable", engine_ != nullptr);
++  out.Set("enabled", enabled());
++  out.Set("shouldBlock", r.should_block);
++  out.Set("hasFilter", r.has_filter);
++  out.Set("hasException", r.has_exception);
++  out.Set("filter", r.filter);
++  out.Set("source", r.source);
++  out.Set("rewrittenUrl", r.rewritten_url);
++  out.Set("initiator", origin.Serialize());
++  return out;
++}
++
++base::DictValue AsideAdBlockService::State() const {
++  base::DictValue d;
++  d.Set("enabled", enabled());
++  d.Set("loaded", loaded_);
++  d.Set("compiling", compiling_);
++  d.Set("requestedGeneration", static_cast<double>(requested_generation_));
++  d.Set("activeGeneration", static_cast<double>(active_generation_));
++  d.Set("lastCompileDurationMs",
++        static_cast<double>(last_compile_duration_.InMilliseconds()));
++  d.Set("lastEngineInstallTime", ToJsTime(last_engine_install_time_));
++  d.Set("lastEngineInstallTimeMs", ToJsTime(last_engine_install_time_));
++  d.Set("lastCompileError", last_compile_error_);
++  d.Set("networkAvailable", true);
++  d.Set("dataDirectory", data_dir_.AsUTF8Unsafe());
++  d.Set("cacheDirectory", cache_dir_.AsUTF8Unsafe());
++  d.Set("manualFilterDirectory", manual_dir_.AsUTF8Unsafe());
++  d.Set("manualFilterError", manual_filter_error_);
++  d.Set("manualFilterCount", static_cast<int>(manual_files_.size()));
++
++  base::ListValue subs;
++  for (const Subscription& s : subscriptions_) {
++    subs.Append(SubscriptionToDict(s));
++  }
++  d.Set("subscriptions", std::move(subs));
++
++  base::DictValue custom;
++  custom.Set("rules", custom_rules_);
++  custom.Set("pendingRules", pending_custom_rules_);
++  custom.Set("networkRuleCount", custom_network_rule_count_);
++  custom.Set("cosmeticRuleCount", custom_cosmetic_rule_count_);
++  custom.Set("parseErrorCount", custom_parse_error_count_);
++  custom.Set("invalidLines", ToList(custom_invalid_lines_));
++  custom.Set("contentSize", static_cast<double>(custom_rules_.size()));
++  custom.Set("maxSize", static_cast<double>(kMaxCustomRulesBytes));
++  d.Set("custom", std::move(custom));
++
++  base::ListValue engines;
++  if (engine_) {
++    base::DictValue e;
++    e.Set("kind", "active");
++    e.Set("generation", static_cast<double>(active_generation_));
++    e.Set("flatbufferSize", static_cast<double>(engine_->flatbuffer_size()));
++    e.Set("cacheHit", last_cache_hit_);
++    e.Set("networkRuleCount", engine_->network_rule_count());
++    e.Set("cosmeticRuleCount", engine_->cosmetic_rule_count());
++    e.Set("parseErrorCount", engine_->parse_error_count());
++    e.Set("compiledRegexCount", 0);
++    e.Set("regexes", base::ListValue());
++    e.Set("regexesTruncated", false);
++    base::ListValue sources;
++    for (const SourceStats& stats : engine_->sources()) {
++      base::DictValue s;
++      s.Set("id", stats.id);
++      s.Set("title", stats.title);
++      s.Set("networkRuleCount", stats.network_rule_count);
++      s.Set("cosmeticRuleCount", stats.cosmetic_rule_count);
++      s.Set("parseErrorCount", stats.parse_error_count);
++      sources.Append(std::move(s));
++    }
++    e.Set("sources", std::move(sources));
++    engines.Append(std::move(e));
++  }
++  d.Set("engines", std::move(engines));
++  return d;
++}
++
++}  // namespace aside_adblock
+diff --git a/chrome/browser/aside_adblock/aside_adblock_service.h b/chrome/browser/aside_adblock/aside_adblock_service.h
+new file mode 100644
+index 0000000000..c7ab8e59ce
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_service.h
+@@ -0,0 +1,171 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++//
++// Replica of the original components/aside_adblock AsideAdBlockService:
++// owns filter subscriptions, custom rules and manual filter files under
++// <profile>/AsideAdBlock, compiles them into an aside_adblock::Engine on a
++// worker thread, and serves the chrome://aside-adblock internals page.
++
++#ifndef CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_SERVICE_H_
++#define CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_SERVICE_H_
++
++#include <map>
++#include <memory>
++#include <optional>
++#include <string>
++#include <vector>
++
++#include "base/containers/flat_set.h"
++#include "base/files/file_path.h"
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/time/time.h"
++#include "base/timer/timer.h"
++#include "base/values.h"
++#include "chrome/browser/aside_adblock/aside_adblock_engine.h"
++#include "components/keyed_service/core/keyed_service.h"
++
++class PrefRegistrySimple;
++class Profile;
++
++namespace content {
++class BrowserContext;
++}
++
++namespace network {
++class SimpleURLLoader;
++}
++
++namespace aside_adblock {
++
++inline constexpr char kEnabledPref[] = "aside_adblock.enabled";
++inline constexpr size_t kMaxSubscriptions = 64;
++inline constexpr size_t kMaxCustomRulesBytes = 4 * 1024 * 1024;
++inline constexpr size_t kMaxSubscriptionBytes = 64 * 1024 * 1024;
++
++struct Subscription {
++  Subscription();
++  Subscription(const Subscription&);
++  ~Subscription();
++
++  std::string id;
++  std::string name;
++  std::string url;
++  bool enabled = true;
++  std::string status;  // "idle" | "updating" | "ready" | "error"
++  int64_t content_size = 0;
++  std::string digest;  // SHA-256 hex of the list text
++  std::string etag;
++  std::string last_modified_header;
++  std::string last_error;
++  int network_rule_count = 0;
++  int cosmetic_rule_count = 0;
++  int parse_error_count = 0;
++  std::vector<std::string> invalid_lines;
++  base::Time last_successful_check;
++  base::Time last_content_change;
++  base::Time last_engine_activation;
++  base::Time next_update;
++  std::string text;  // loaded filter list text (empty until fetched)
++};
++
++class AsideAdBlockService : public KeyedService {
++ public:
++  struct LoadedState;
++  struct ManualFile {
++    std::string name;
++    std::string text;
++  };
++  explicit AsideAdBlockService(Profile* profile);
++  ~AsideAdBlockService() override;
++
++  static void RegisterProfilePrefs(PrefRegistrySimple* registry);
++  static AsideAdBlockService* Get(content::BrowserContext* context);
++
++  bool enabled() const;
++  scoped_refptr<Engine> engine() const { return engine_; }
++
++  // Request filtering (empty result when disabled or no engine yet).
++  MatchResult Evaluate(const GURL& url,
++                       const url::Origin& initiator,
++                       url_pattern_index::proto::ElementType element_type,
++                       bool is_document) const;
++  std::string HidingStylesheet(const GURL& url) const;
++
++  // Internals page operations. Return an error message, empty on success.
++  std::string SetEnabled(bool enabled);
++  std::string AddSubscription(const std::string& name, const std::string& url);
++  std::string SetSubscriptionEnabled(const std::string& id, bool enabled);
++  std::string RemoveSubscription(const std::string& id);
++  std::string UpdateSubscription(const std::string& id);
++  std::string UpdateAllSubscriptions();
++  std::string SaveCustomRules(const std::string& rules);
++  std::string ReloadManualFilters();
++  std::string ClearEngineCache();
++  base::DictValue TestRule(const std::string& url,
++                             const std::string& initiator,
++                             const std::string& request_type,
++                             const std::string& method,
++                             bool third_party) const;
++  base::DictValue State() const;
++
++  const base::FilePath& data_directory() const { return data_dir_; }
++  base::WeakPtr<AsideAdBlockService> GetWeakPtr() {
++    return weak_factory_.GetWeakPtr();
++  }
++
++ private:
++
++  void LoadFromDisk();
++  void OnLoaded(std::unique_ptr<LoadedState> state);
++  void PersistMetadata();
++  void RequestCompile();
++  void StartCompile();
++  void OnCompiled(uint64_t generation,
++                  base::TimeTicks started,
++                  scoped_refptr<Engine> engine);
++  void StartDownload(const std::string& id);
++  void OnDownloadComplete(const std::string& id,
++                          std::optional<std::string> body);
++  void OnAutomaticUpdateTick();
++  Subscription* FindSubscription(const std::string& id);
++  std::vector<FilterSource> CollectSources() const;
++
++  raw_ptr<Profile> profile_;
++  base::FilePath data_dir_;
++  base::FilePath subscriptions_dir_;
++  base::FilePath custom_rules_path_;
++  base::FilePath manual_dir_;
++  base::FilePath cache_dir_;
++
++  bool loaded_ = false;
++  std::vector<Subscription> subscriptions_;
++  std::string custom_rules_;
++  std::string pending_custom_rules_;
++  int custom_network_rule_count_ = 0;
++  int custom_cosmetic_rule_count_ = 0;
++  int custom_parse_error_count_ = 0;
++  std::vector<std::string> custom_invalid_lines_;
++  std::vector<ManualFile> manual_files_;
++  std::string manual_filter_error_;
++
++  scoped_refptr<Engine> engine_;
++  bool compiling_ = false;
++  bool compile_pending_ = false;
++  uint64_t requested_generation_ = 0;
++  uint64_t active_generation_ = 0;
++  base::TimeDelta last_compile_duration_;
++  base::Time last_engine_install_time_;
++  std::string last_compile_error_;
++  bool last_cache_hit_ = false;
++
++  std::map<std::string, std::unique_ptr<network::SimpleURLLoader>> loaders_;
++  base::RepeatingTimer update_timer_;
++
++  base::WeakPtrFactory<AsideAdBlockService> weak_factory_{this};
++};
++
++}  // namespace aside_adblock
++
++#endif  // CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_SERVICE_H_
+diff --git a/chrome/browser/aside_adblock/aside_adblock_service_factory.cc b/chrome/browser/aside_adblock/aside_adblock_service_factory.cc
+new file mode 100644
+index 0000000000..a62190b850
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_service_factory.cc
+@@ -0,0 +1,47 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/aside_adblock/aside_adblock_service_factory.h"
++
++#include "chrome/browser/aside_adblock/aside_adblock_service.h"
++#include "chrome/browser/profiles/profile.h"
++
++namespace aside_adblock {
++
++// static
++AsideAdBlockService* AsideAdBlockServiceFactory::GetForBrowserContext(
++    content::BrowserContext* context) {
++  return static_cast<AsideAdBlockService*>(
++      GetInstance()->GetServiceForBrowserContext(context, /*create=*/true));
++}
++
++// static
++AsideAdBlockServiceFactory* AsideAdBlockServiceFactory::GetInstance() {
++  static base::NoDestructor<AsideAdBlockServiceFactory> instance;
++  return instance.get();
++}
++
++AsideAdBlockServiceFactory::AsideAdBlockServiceFactory()
++    : ProfileKeyedServiceFactory(
++          "AsideAdBlockService",
++          ProfileSelections::Builder()
++              .WithRegular(ProfileSelection::kOwnInstance)
++              .WithGuest(ProfileSelection::kOwnInstance)
++              .WithSystem(ProfileSelection::kNone)
++              .Build()) {}
++
++AsideAdBlockServiceFactory::~AsideAdBlockServiceFactory() = default;
++
++std::unique_ptr<KeyedService>
++AsideAdBlockServiceFactory::BuildServiceInstanceForBrowserContext(
++    content::BrowserContext* context) const {
++  return std::make_unique<AsideAdBlockService>(
++      Profile::FromBrowserContext(context));
++}
++
++bool AsideAdBlockServiceFactory::ServiceIsCreatedWithBrowserContext() const {
++  return true;
++}
++
++}  // namespace aside_adblock
+diff --git a/chrome/browser/aside_adblock/aside_adblock_service_factory.h b/chrome/browser/aside_adblock/aside_adblock_service_factory.h
+new file mode 100644
+index 0000000000..ec57c4604e
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_service_factory.h
+@@ -0,0 +1,33 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_SERVICE_FACTORY_H_
++#define CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_SERVICE_FACTORY_H_
++
++#include "base/no_destructor.h"
++#include "chrome/browser/profiles/profile_keyed_service_factory.h"
++
++namespace aside_adblock {
++
++class AsideAdBlockService;
++
++class AsideAdBlockServiceFactory : public ProfileKeyedServiceFactory {
++ public:
++  static AsideAdBlockService* GetForBrowserContext(
++      content::BrowserContext* context);
++  static AsideAdBlockServiceFactory* GetInstance();
++
++ private:
++  friend base::NoDestructor<AsideAdBlockServiceFactory>;
++  AsideAdBlockServiceFactory();
++  ~AsideAdBlockServiceFactory() override;
++
++  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
++      content::BrowserContext* context) const override;
++  bool ServiceIsCreatedWithBrowserContext() const override;
++};
++
++}  // namespace aside_adblock
++
++#endif  // CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_SERVICE_FACTORY_H_
+diff --git a/chrome/browser/aside_adblock/aside_adblock_tab_helper.cc b/chrome/browser/aside_adblock/aside_adblock_tab_helper.cc
+new file mode 100644
+index 0000000000..eacf16fcd8
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_tab_helper.cc
+@@ -0,0 +1,80 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/aside_adblock/aside_adblock_tab_helper.h"
++
++#include "base/json/json_writer.h"
++#include "base/strings/string_split.h"
++#include "base/values.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/aside_adblock/aside_adblock_service.h"
++#include "chrome/common/chrome_isolated_world_ids.h"
++#include "content/public/browser/render_frame_host.h"
++#include "content/public/browser/web_contents.h"
++
++namespace aside_adblock {
++
++AsideAdBlockTabHelper::AsideAdBlockTabHelper(content::WebContents* contents)
++    : content::WebContentsObserver(contents),
++      content::WebContentsUserData<AsideAdBlockTabHelper>(*contents) {}
++
++AsideAdBlockTabHelper::~AsideAdBlockTabHelper() = default;
++
++void AsideAdBlockTabHelper::DOMContentLoaded(
++    content::RenderFrameHost* render_frame_host) {
++  AsideAdBlockService* service =
++      AsideAdBlockService::Get(web_contents()->GetBrowserContext());
++  if (!service) {
++    return;
++  }
++  const GURL& url = render_frame_host->GetLastCommittedURL();
++  std::string css = service->HidingStylesheet(url);
++  if (css.empty()) {
++    return;
++  }
++  // |css| is "sel1,\nsel2,...{display:none!important;}\n" blocks; hand the
++  // selectors to the frame, drop the ones this engine cannot parse (one bad
++  // selector would otherwise void a whole rule) and apply them in chunks.
++  std::vector<std::string> selectors;
++  for (std::string_view block : base::SplitStringPiece(
++           css, "}", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY)) {
++    size_t brace = block.find('{');
++    if (brace == std::string_view::npos) {
++      continue;
++    }
++    for (std::string_view sel : base::SplitStringPiece(
++             block.substr(0, brace), ",\n", base::TRIM_WHITESPACE,
++             base::SPLIT_WANT_NONEMPTY)) {
++      selectors.emplace_back(sel);
++    }
++  }
++  base::ListValue list;
++  for (const std::string& sel : selectors) {
++    list.Append(sel);
++  }
++  std::string json;
++  base::JSONWriter::Write(list, &json);
++  std::string script =
++      "(function(){try{var all=" + json +
++      ";var ok=[];for(var i=0;i<all.length;i++){var q=all[i];"
++      "try{if(CSS.supports('selector('+q+')'))ok.push(q);}catch(e){}}"
++      "var s=document.getElementById('__aside_adblock_hide');"
++      "if(!s){s=document.createElement('style');s.id='__aside_adblock_hide';"
++      "(document.head||document.documentElement).appendChild(s);}"
++      "var css='';for(var j=0;j<ok.length;j+=200){"
++      "css+=ok.slice(j,j+200).join(',')+'{display:none!important;}\\n';}"
++      "s.textContent=css;"
++      "globalThis.__asideAdBlock={addHideSelectors:function(l){"
++      "s.textContent+=l.join(',')+'{display:none!important;}';},"
++      "scheduleProcedural:function(){},takePending:function(){return [];},"
++      "applied:ok.length,dropped:all.length-ok.length};"
++      "}catch(e){}})();";
++  render_frame_host->ExecuteJavaScriptInIsolatedWorld(
++      base::UTF8ToUTF16(script), base::NullCallback(),
++      ISOLATED_WORLD_ID_CHROME_INTERNAL);
++}
++
++WEB_CONTENTS_USER_DATA_KEY_IMPL(AsideAdBlockTabHelper);
++
++}  // namespace aside_adblock
+diff --git a/chrome/browser/aside_adblock/aside_adblock_tab_helper.h b/chrome/browser/aside_adblock/aside_adblock_tab_helper.h
+new file mode 100644
+index 0000000000..c6649cdbd3
+--- /dev/null
++++ b/chrome/browser/aside_adblock/aside_adblock_tab_helper.h
+@@ -0,0 +1,35 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_TAB_HELPER_H_
++#define CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_TAB_HELPER_H_
++
++#include "content/public/browser/web_contents_observer.h"
++#include "content/public/browser/web_contents_user_data.h"
++
++namespace aside_adblock {
++
++// Applies element hiding (cosmetic) filters to every frame once its DOM is
++// available. The original performs this in AsideAdBlockRenderFrameObserver via
++// the aside_adblock.mojom.CosmeticFilterHost interface; the fork injects the
++// same hide-selector stylesheet from the browser process instead.
++class AsideAdBlockTabHelper
++    : public content::WebContentsObserver,
++      public content::WebContentsUserData<AsideAdBlockTabHelper> {
++ public:
++  ~AsideAdBlockTabHelper() override;
++
++  // content::WebContentsObserver:
++  void DOMContentLoaded(content::RenderFrameHost* render_frame_host) override;
++
++ private:
++  friend class content::WebContentsUserData<AsideAdBlockTabHelper>;
++  explicit AsideAdBlockTabHelper(content::WebContents* contents);
++
++  WEB_CONTENTS_USER_DATA_KEY_DECL();
++};
++
++}  // namespace aside_adblock
++
++#endif  // CHROME_BROWSER_ASIDE_ADBLOCK_ASIDE_ADBLOCK_TAB_HELPER_H_
+diff --git a/chrome/browser/resources/aside_adblock/BUILD.gn b/chrome/browser/resources/aside_adblock/BUILD.gn
+new file mode 100644
+index 0000000000..29802cd341
+--- /dev/null
++++ b/chrome/browser/resources/aside_adblock/BUILD.gn
+@@ -0,0 +1,16 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++# chrome://aside-adblock page (original resources.pak 16070-16073, incl. the
++# original's generated mojom-webui bindings; served by AsideAdblockInternalsUI
++# from <exe dir>/aside_resources/adblock).
++copy("aside_adblock") {
++  sources = [
++    "adblock_internals.css",
++    "adblock_internals.html",
++    "adblock_internals.js",
++    "adblock_internals.mojom-webui.js",
++  ]
++  outputs = [ "$root_out_dir/aside_resources/adblock/{{source_file_part}}" ]
++}
+diff --git a/chrome/browser/resources/aside_adblock/adblock_internals.css b/chrome/browser/resources/aside_adblock/adblock_internals.css
+new file mode 100644
+index 0000000000..e424918afa
+--- /dev/null
++++ b/chrome/browser/resources/aside_adblock/adblock_internals.css
+@@ -0,0 +1,348 @@
++/* Copyright 2026 At Your Side Inc. */
++
++:root {
++  color-scheme: light dark;
++  font-family: system-ui, sans-serif;
++}
++
++* {
++  box-sizing: border-box;
++}
++
++body {
++  background: var(--color-aside-window-background);
++  color: var(--color-aside-surface-primary-foreground);
++  margin: 0;
++  min-width: 760px;
++}
++
++.page-header,
++main,
++.page-footer {
++  margin: 0 auto;
++  max-width: 1480px;
++  padding: 24px 32px;
++}
++
++.page-header {
++  align-items: center;
++  display: flex;
++  justify-content: space-between;
++  padding-bottom: 8px;
++}
++
++h1,
++h2,
++h3,
++p {
++  margin-top: 0;
++}
++
++h1 {
++  font-size: 28px;
++  margin-bottom: 6px;
++}
++
++h2 {
++  font-size: 19px;
++  margin-bottom: 5px;
++}
++
++h3 {
++  font-size: 15px;
++}
++
++p,
++td,
++th,
++label,
++button,
++input,
++select,
++textarea {
++  font-size: 13px;
++}
++
++p,
++.muted,
++.empty-state,
++.count-summary,
++.editor-footer {
++  color: var(--color-aside-surface-secondary-foreground);
++}
++
++.master-toggle,
++.check-label {
++  align-items: center;
++  display: flex;
++  font-weight: 600;
++  gap: 9px;
++}
++
++input[type='checkbox'] {
++  accent-color: var(--color-aside-action-accent-foreground);
++  height: 17px;
++  width: 17px;
++}
++
++main {
++  display: grid;
++  gap: 18px;
++  padding-top: 16px;
++}
++
++.page-footer {
++  color: var(--color-aside-surface-secondary-foreground);
++  font-size: 12px;
++  padding-bottom: 32px;
++  padding-top: 6px;
++  text-align: center;
++}
++
++.card {
++  background: var(--color-aside-surface-primary);
++  border: 1px solid var(--color-aside-surface-border);
++  border-radius: 14px;
++  box-shadow: 0 8px 24px var(--color-aside-shadow-subtle);
++  padding: 20px;
++}
++
++.section-heading,
++.editor-footer {
++  align-items: center;
++  display: flex;
++  gap: 16px;
++  justify-content: space-between;
++}
++
++.actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++}
++
++button,
++input,
++select,
++textarea {
++  background: var(--color-aside-surface-secondary);
++  border: 1px solid var(--color-aside-surface-border-strong);
++  border-radius: 8px;
++  color: var(--color-aside-surface-primary-foreground);
++}
++
++button {
++  cursor: pointer;
++  font-weight: 600;
++  min-height: 34px;
++  padding: 7px 13px;
++}
++
++button:hover {
++  background: var(--color-aside-menu-item-background-hover);
++}
++
++button:disabled {
++  color: var(--color-aside-surface-tertiary-foreground);
++  cursor: default;
++}
++
++input,
++select {
++  min-height: 36px;
++  padding: 7px 10px;
++  width: 100%;
++}
++
++textarea {
++  font-family: ui-monospace, monospace;
++  line-height: 1.5;
++  min-height: 260px;
++  padding: 12px;
++  resize: vertical;
++  width: 100%;
++}
++
++label > span {
++  display: block;
++  margin-bottom: 6px;
++}
++
++.inline-form {
++  align-items: end;
++  display: grid;
++  gap: 10px;
++  grid-template-columns: minmax(140px, 0.7fr) minmax(320px, 2fr) auto;
++  margin: 16px 0;
++}
++
++.data-grid {
++  display: grid;
++  gap: 0;
++  grid-template-columns: minmax(150px, 0.45fr) minmax(220px, 1fr);
++  margin: 12px 0 0;
++}
++
++.data-grid dt,
++.data-grid dd {
++  border-top: 1px solid var(--color-aside-surface-border);
++  margin: 0;
++  overflow-wrap: anywhere;
++  padding: 8px 4px;
++}
++
++.data-grid dt {
++  color: var(--color-aside-surface-secondary-foreground);
++  font-weight: 600;
++}
++
++.notice {
++  background: var(--color-aside-action-accent-background);
++  border-radius: 8px;
++  margin: 14px 0 0;
++  padding: 10px 12px;
++}
++
++.error,
++.row-error {
++  color: var(--color-aside-control-invalid);
++}
++
++.table-scroll {
++  overflow-x: auto;
++}
++
++table {
++  border-collapse: collapse;
++  min-width: 1120px;
++  width: 100%;
++}
++
++th,
++td {
++  border-bottom: 1px solid var(--color-aside-surface-border);
++  padding: 10px 8px;
++  text-align: start;
++  vertical-align: top;
++}
++
++th {
++  color: var(--color-aside-surface-secondary-foreground);
++  font-size: 12px;
++}
++
++.filter-url,
++.mono,
++pre {
++  font-family: ui-monospace, monospace;
++  overflow-wrap: anywhere;
++  white-space: pre-wrap;
++}
++
++.filter-name {
++  font-weight: 650;
++  margin-bottom: 4px;
++}
++
++.status-pill {
++  background: var(--color-aside-surface-tertiary);
++  border-radius: 999px;
++  display: inline-block;
++  font-size: 12px;
++  font-weight: 650;
++  padding: 4px 8px;
++}
++
++.status-pill.error {
++  background: var(--color-aside-control-invalid-subtle-background);
++}
++
++.status-pill.idle {
++  background: var(--color-aside-control-success-subtle-background);
++  color: var(--color-aside-control-success);
++}
++
++.editor-footer {
++  margin-top: 10px;
++}
++
++details {
++  border-top: 1px solid var(--color-aside-surface-border);
++  margin-top: 14px;
++  padding-top: 12px;
++}
++
++summary {
++  cursor: pointer;
++  font-weight: 600;
++}
++
++.test-grid {
++  align-items: end;
++  display: grid;
++  gap: 10px;
++  grid-template-columns: repeat(4, minmax(130px, 1fr));
++}
++
++.test-grid .wide {
++  grid-column: span 2;
++}
++
++.test-grid .check-label span {
++  margin: 0;
++}
++
++.engine-grid {
++  display: grid;
++  gap: 14px;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  margin-top: 14px;
++}
++
++.engine-card {
++  background: var(--color-aside-surface-secondary);
++  border: 1px solid var(--color-aside-surface-border);
++  border-radius: 10px;
++  min-width: 0;
++  padding: 14px;
++}
++
++.engine-card table {
++  min-width: 0;
++}
++
++.empty-state {
++  margin: 18px 0 4px;
++  text-align: center;
++}
++
++#status-message {
++  background: var(--color-aside-tooltip-background);
++  border: 1px solid var(--color-aside-tooltip-border);
++  border-radius: 9px;
++  bottom: 20px;
++  color: var(--color-aside-tooltip-foreground);
++  max-width: 520px;
++  opacity: 0;
++  padding: 10px 14px;
++  pointer-events: none;
++  position: fixed;
++  right: 24px;
++  transform: translateY(8px);
++  transition: opacity 120ms ease, transform 120ms ease;
++}
++
++#status-message.visible {
++  opacity: 1;
++  transform: translateY(0);
++}
++
++@media (max-width: 980px) {
++  .engine-grid {
++    grid-template-columns: 1fr;
++  }
++
++  .test-grid {
++    grid-template-columns: repeat(2, minmax(160px, 1fr));
++  }
++}
+diff --git a/chrome/browser/resources/aside_adblock/adblock_internals.html b/chrome/browser/resources/aside_adblock/adblock_internals.html
+new file mode 100644
+index 0000000000..6a5346673e
+--- /dev/null
++++ b/chrome/browser/resources/aside_adblock/adblock_internals.html
+@@ -0,0 +1,149 @@
++<!-- Copyright 2026 At Your Side Inc. -->
++<!doctype html>
++<html dir="$i18n{textdirection}" lang="$i18n{language}">
++  <head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <title>Adblock Internals</title>
++    <link rel="stylesheet" href="chrome://theme/colors.css?sets=ui,chrome">
++    <link rel="stylesheet" href="adblock_internals.css">
++  </head>
++  <body>
++    <header class="page-header">
++      <div>
++        <h1>Adblock Internals</h1>
++        <p>Profile-scoped subscriptions, custom rules, and engine diagnostics.</p>
++      </div>
++      <label class="master-toggle">
++        <input id="adblock-enabled" type="checkbox" role="switch">
++        <span>Ad blocker enabled</span>
++      </label>
++    </header>
++
++    <main>
++      <section class="card overview-card">
++        <div class="section-heading">
++          <div>
++            <h2>Overview</h2>
++            <p>Current profile and active engine generation.</p>
++          </div>
++          <div class="actions">
++            <button id="refresh-button" type="button">Refresh</button>
++            <button id="export-button" type="button">Export debug dump</button>
++          </div>
++        </div>
++        <dl id="overview-grid" class="data-grid"></dl>
++        <p id="compile-error" class="error" hidden></p>
++        <p class="notice">Turning the ad blocker off stops new network and cosmetic decisions immediately. Subscription changes become active after the engine rebuild finishes. Reload open pages after completion to remove already injected cosmetic rules.</p>
++      </section>
++
++      <section class="card">
++        <div class="section-heading">
++          <div>
++            <h2>Filter subscriptions</h2>
++            <p>HTTPS lists update conditionally with ETag and Last-Modified validators.</p>
++          </div>
++          <button id="update-all-button" type="button">Update all</button>
++        </div>
++        <form id="add-subscription-form" class="inline-form">
++          <label>
++            <span>Name</span>
++            <input id="subscription-name" maxlength="256" placeholder="EasyList">
++          </label>
++          <label class="url-field">
++            <span>HTTPS filter URL</span>
++            <input id="subscription-url" type="url" required placeholder="https://example.com/filter.txt">
++          </label>
++          <button type="submit">Add filter</button>
++        </form>
++        <div class="table-scroll">
++          <table>
++            <thead>
++              <tr>
++                <th>Enabled</th>
++                <th>Filter</th>
++                <th>Status</th>
++                <th>Rules</th>
++                <th>Updated</th>
++                <th>Next update</th>
++                <th>HTTP / content</th>
++                <th>Actions</th>
++              </tr>
++            </thead>
++            <tbody id="subscriptions-body"></tbody>
++          </table>
++        </div>
++        <p id="subscriptions-empty" class="empty-state">No URL subscriptions have been added to this profile.</p>
++      </section>
++
++      <section class="card">
++        <div class="section-heading">
++          <div>
++            <h2>Custom rules</h2>
++            <p>ABP/uBlock-compatible rules stored only in this profile.</p>
++          </div>
++          <div id="custom-counts" class="count-summary"></div>
++        </div>
++        <textarea id="custom-rules" spellcheck="false" placeholder="||ads.example^&#10;example.com##.sponsored"></textarea>
++        <div class="editor-footer">
++          <span id="custom-size"></span>
++          <button id="save-custom-button" type="button">Validate and save</button>
++        </div>
++        <details id="custom-invalid-details" hidden>
++          <summary>Unsupported or invalid custom rule lines</summary>
++          <pre id="custom-invalid-lines"></pre>
++        </details>
++      </section>
++
++      <section class="card">
++        <div class="section-heading">
++          <div>
++            <h2>Rule tester</h2>
++            <p>Tests the active profile engine and reports the matching raw rule and source line.</p>
++          </div>
++        </div>
++        <form id="rule-test-form" class="test-grid">
++          <label class="wide"><span>Request URL</span><input id="test-url" type="url" required placeholder="https://ads.example/banner.js"></label>
++          <label class="wide"><span>Initiator URL or hostname</span><input id="test-initiator" placeholder="https://publisher.example/"></label>
++          <label><span>Request type</span><select id="test-type"><option>script</option><option>image</option><option>stylesheet</option><option>xmlhttprequest</option><option>document</option><option>subdocument</option><option>websocket</option><option>other</option></select></label>
++          <label><span>Method</span><input id="test-method" value="GET"></label>
++          <label class="check-label"><input id="test-third-party" type="checkbox" checked><span>Third-party request</span></label>
++          <button type="submit">Test active rules</button>
++        </form>
++        <dl id="test-result" class="data-grid" hidden></dl>
++      </section>
++
++      <section class="card">
++        <div class="section-heading">
++          <div>
++            <h2>Engine diagnostics</h2>
++            <p>Serialized size, source parse counts, unsupported or invalid lines, and bounded regex diagnostics.</p>
++          </div>
++        </div>
++        <div id="engine-diagnostics" class="engine-grid"></div>
++      </section>
++
++      <section class="card">
++        <div class="section-heading">
++          <div>
++            <h2>Maintenance</h2>
++            <p>Manual development filters and compiled DAT cache.</p>
++          </div>
++          <div class="actions">
++            <button id="reload-manual-button" type="button">Reload manual filters</button>
++            <button id="clear-cache-button" type="button">Clear engine cache</button>
++          </div>
++        </div>
++        <dl id="maintenance-grid" class="data-grid"></dl>
++      </section>
++    </main>
++
++    <footer id="adblock-rust-attribution" class="page-footer">
++      Powered by <a href="https://github.com/brave/adblock-rust/" target="_blank" rel="noreferrer">adblock-rust</a>
++      · Licensed under the <a href="https://www.mozilla.org/MPL/2.0/" target="_blank" rel="noreferrer">Mozilla Public License 2.0</a>.
++    </footer>
++
++    <div id="status-message" role="status" aria-live="polite"></div>
++    <script type="module" src="adblock_internals.js"></script>
++  </body>
++</html>
+diff --git a/chrome/browser/resources/aside_adblock/adblock_internals.js b/chrome/browser/resources/aside_adblock/adblock_internals.js
+new file mode 100644
+index 0000000000..dfd86eb835
+--- /dev/null
++++ b/chrome/browser/resources/aside_adblock/adblock_internals.js
+@@ -0,0 +1,2 @@
++// Copyright 2026 At Your Side Inc.
++import{AdblockInternalsPageHandler}from"./adblock_internals.mojom-webui.js";const pageHandler=AdblockInternalsPageHandler.getRemote();function parseResponse(json,error=""){if(error){throw new Error(error)}return JSON.parse(json)}async function sendWithPromise(message,...args){switch(message){case"getAdblockState":{const{stateJson:stateJson}=await pageHandler.getState();return parseResponse(stateJson)}case"setAdblockEnabled":{const{stateJson:stateJson,error:error}=await pageHandler.setEnabled(args[0]);return parseResponse(stateJson,error)}case"addAdblockSubscription":{const{stateJson:stateJson,error:error}=await pageHandler.addSubscription(args[0],args[1]);return parseResponse(stateJson,error)}case"setAdblockSubscriptionEnabled":{const{stateJson:stateJson,error:error}=await pageHandler.setSubscriptionEnabled(args[0],args[1]);return parseResponse(stateJson,error)}case"removeAdblockSubscription":{const{stateJson:stateJson,error:error}=await pageHandler.removeSubscription(args[0]);return parseResponse(stateJson,error)}case"updateAdblockSubscription":{const{stateJson:stateJson,error:error}=await pageHandler.updateSubscription(args[0]);return parseResponse(stateJson,error)}case"updateAllAdblockSubscriptions":{const{stateJson:stateJson,error:error}=await pageHandler.updateAllSubscriptions();return parseResponse(stateJson,error)}case"saveCustomAdblockRules":{const{stateJson:stateJson,error:error}=await pageHandler.saveCustomRules(args[0]);return parseResponse(stateJson,error)}case"reloadManualAdblockFilters":{const{stateJson:stateJson,error:error}=await pageHandler.reloadManualFilters();return parseResponse(stateJson,error)}case"clearAdblockEngineCache":{const{stateJson:stateJson,error:error}=await pageHandler.clearEngineCache();return parseResponse(stateJson,error)}case"testAdblockRule":{const{resultJson:resultJson,error:error}=await pageHandler.testRule(args[0],args[1],args[2],args[3],args[4]);return parseResponse(resultJson,error)}default:throw new Error(`Unknown adblock operation: ${message}`)}}let currentState=null;let renderedStateJson="";let customRulesDirty=false;let statusTimer=0;function element(id){const found=document.getElementById(id);if(!found){throw new Error(`Missing element: ${id}`)}return found}function text(tag,value,className=""){const node=document.createElement(tag);node.textContent=value;if(className){node.className=className}return node}function showStatus(message,isError=false){const status=element("status-message");status.textContent=message;status.classList.toggle("error",isError);status.classList.add("visible");window.clearTimeout(statusTimer);statusTimer=window.setTimeout((()=>status.classList.remove("visible")),3500)}function errorMessage(error){if(typeof error==="string"){return error}if(error instanceof Error){return error.message}return"The operation failed."}async function runOperation(operation,success){try{const state=await operation();render(state);showStatus(success)}catch(error){showStatus(errorMessage(error),true)}}function delay(milliseconds){return new Promise((resolve=>window.setTimeout(resolve,milliseconds)))}async function waitForActiveEngine(initialState){let state=initialState;const deadline=performance.now()+3e4;while(state.compiling||state.activeGeneration!==state.requestedGeneration){if(!state.compiling&&state.lastCompileError){throw new Error(state.lastCompileError)}if(performance.now()>=deadline){throw new Error("Timed out waiting for the rebuilt filter engine.")}await delay(100);state=await sendWithPromise("getAdblockState");render(state)}return state}function formatDate(value){return value?new Date(value).toLocaleString():"Never"}function formatBytes(value){if(value<1024){return`${value} B`}if(value<1024*1024){return`${(value/1024).toFixed(1)} KiB`}return`${(value/(1024*1024)).toFixed(2)} MiB`}function setDataGrid(grid,entries){const nodes=[];for(const[label,value]of entries){nodes.push(text("dt",label),text("dd",value))}grid.replaceChildren(...nodes)}function renderOverview(state){element("adblock-enabled").checked=state.enabled;setDataGrid(element("overview-grid"),[["Profile data",state.dataDirectory],["Runtime state",state.enabled?"Enabled":"Disabled"],["Engine state",state.compiling?"Compiling candidate":"Idle"],["Generation",`${state.activeGeneration} active / ${state.requestedGeneration} requested`],["Last compile",`${state.lastCompileDurationMs.toFixed(1)} ms`],["Last activation",formatDate(state.lastEngineInstallTime)],["Network updater",state.networkAvailable?"Available":"Unavailable"]]);const error=element("compile-error");error.textContent=state.lastCompileError;error.hidden=!state.lastCompileError}function appendSubscriptionRow(body,subscription,engineCompiling){const row=document.createElement("tr");const enabledCell=document.createElement("td");const enabled=document.createElement("input");enabled.type="checkbox";enabled.checked=subscription.enabled;enabled.disabled=engineCompiling||subscription.status==="compiling";enabled.setAttribute("aria-label",`Enable ${subscription.name}`);enabled.addEventListener("change",(()=>runOperation((async()=>{const state=await sendWithPromise("setAdblockSubscriptionEnabled",subscription.id,enabled.checked);render(state);showStatus("Rebuilding the active filter engine…");return waitForActiveEngine(state)}),enabled.checked?"Filter enabled and active.":"Filter disabled and no longer active.")));enabledCell.appendChild(enabled);const filterCell=document.createElement("td");filterCell.append(text("div",subscription.name,"filter-name"),text("div",subscription.url,"filter-url muted"));if(subscription.lastError){filterCell.appendChild(text("div",subscription.lastError,"row-error"))}const statusCell=document.createElement("td");statusCell.appendChild(text("span",subscription.status,`status-pill ${subscription.status}`));const rulesCell=document.createElement("td");rulesCell.append(text("div",`${subscription.networkRuleCount} network`),text("div",`${subscription.cosmeticRuleCount} cosmetic`),text("div",`${subscription.parseErrorCount} unsupported / invalid`,subscription.parseErrorCount?"error":"muted"));const updatedCell=document.createElement("td");updatedCell.append(text("div",`Checked: ${formatDate(subscription.lastSuccessfulCheckMs)}`),text("div",`Changed: ${formatDate(subscription.lastContentChangeMs)}`),text("div",`Activated: ${formatDate(subscription.lastEngineActivationMs)}`));const nextCell=text("td",formatDate(subscription.nextUpdateMs));const metadataCell=document.createElement("td");metadataCell.append(text("div",formatBytes(subscription.contentSize)),text("div",subscription.etag?`ETag: ${subscription.etag}`:"No ETag","mono"),text("div",subscription.lastModifiedHeader||"No Last-Modified","mono"),text("div",subscription.digest?`SHA-256: ${subscription.digest}`:"No active content","mono"));if(subscription.invalidLines.length){const details=document.createElement("details");details.append(text("summary",`Unsupported or invalid lines (${subscription.invalidLines.length})`),text("pre",subscription.invalidLines.join("\n")));metadataCell.appendChild(details)}const actionsCell=document.createElement("td");const update=text("button","Update");update.type="button";update.disabled=subscription.status==="downloading"||subscription.status==="compiling";update.addEventListener("click",(()=>runOperation((()=>sendWithPromise("updateAdblockSubscription",subscription.id)),"Filter update queued.")));const remove=text("button","Remove");remove.type="button";remove.addEventListener("click",(()=>{if(!window.confirm(`Remove ${subscription.name} from this profile?`)){return}runOperation((()=>sendWithPromise("removeAdblockSubscription",subscription.id)),"Filter removed.")}));const actions=document.createElement("div");actions.className="actions";actions.append(update,remove);actionsCell.appendChild(actions);row.append(enabledCell,filterCell,statusCell,rulesCell,updatedCell,nextCell,metadataCell,actionsCell);body.appendChild(row)}function renderSubscriptions(state){const body=element("subscriptions-body");body.replaceChildren();for(const subscription of state.subscriptions){appendSubscriptionRow(body,subscription,state.compiling)}element("subscriptions-empty").hidden=state.subscriptions.length!==0}function renderCustom(state){const editor=element("custom-rules");if(!customRulesDirty&&document.activeElement!==editor){editor.value=state.custom.pendingRules??state.custom.rules}element("custom-counts").textContent=`${state.custom.networkRuleCount} network · `+`${state.custom.cosmeticRuleCount} cosmetic · `+`${state.custom.parseErrorCount} unsupported / invalid`;element("custom-size").textContent=`${formatBytes(state.custom.contentSize)} stored`;const details=element("custom-invalid-details");details.hidden=state.custom.invalidLines.length===0;element("custom-invalid-lines").textContent=state.custom.invalidLines.join("\n")}function renderEngine(state){const card=document.createElement("article");card.className="engine-card";card.appendChild(text("h3",`${state.kind} engine`));const summary=document.createElement("dl");summary.className="data-grid";setDataGrid(summary,[["Serialized size",formatBytes(state.flatbufferSize)],["Cache",state.cacheHit?"Hit":"Miss"],["Compiled regexes",String(state.compiledRegexCount)],["Source count",String(state.sources.length)]]);card.appendChild(summary);if(state.sources.length){const table=document.createElement("table");const head=document.createElement("thead");const headRow=document.createElement("tr");for(const label of["Source","Network","Cosmetic","Unsupported / invalid"]){headRow.appendChild(text("th",label))}head.appendChild(headRow);const body=document.createElement("tbody");for(const source of state.sources){const row=document.createElement("tr");row.append(text("td",source.title||"(untitled source)"),text("td",String(source.networkRuleCount)),text("td",String(source.cosmeticRuleCount)),text("td",String(source.parseErrorCount)));body.appendChild(row)}table.append(head,body);card.appendChild(table)}const regexDetails=document.createElement("details");regexDetails.appendChild(text("summary",`Regex diagnostics (${state.regexes.length}${state.regexesTruncated?"+":""})`));const regexText=state.regexes.map((regex=>`${regex.id} · ${regex.compiled?"compiled":"deferred"} · `+`${regex.usageCount} uses · ${regex.regex}`)).join("\n");regexDetails.appendChild(text("pre",regexText||"No regex entries."));card.appendChild(regexDetails);return card}function renderEngines(state){const container=element("engine-diagnostics");container.replaceChildren(...state.engines.map(renderEngine))}function renderMaintenance(state){setDataGrid(element("maintenance-grid"),[["Manual filter directory",state.manualFilterDirectory||"Not configured"],["Manual filter status",state.manualFilterError||"Ready"],["Engine cache directory",state.cacheDirectory]]);element("reload-manual-button").disabled=!state.manualFilterDirectory}function render(state){currentState=state;const stateJson=JSON.stringify(state);if(stateJson===renderedStateJson){return}renderOverview(state);renderSubscriptions(state);renderCustom(state);renderEngines(state);renderMaintenance(state);renderedStateJson=stateJson}async function refresh(silent=false){try{render(await sendWithPromise("getAdblockState"))}catch(error){if(!silent){showStatus(errorMessage(error),true)}}}function isUserInteracting(){const active=document.activeElement;if(active instanceof HTMLInputElement||active instanceof HTMLTextAreaElement||active instanceof HTMLSelectElement){return true}const selection=window.getSelection();return!!selection&&!selection.isCollapsed}function registerEvents(){element("adblock-enabled").addEventListener("change",(event=>{const enabled=event.target.checked;runOperation((()=>sendWithPromise("setAdblockEnabled",enabled)),enabled?"Ad blocker enabled for this profile.":"Ad blocker disabled for this profile.")}));element("refresh-button").addEventListener("click",(()=>refresh()));element("update-all-button").addEventListener("click",(()=>runOperation((()=>sendWithPromise("updateAllAdblockSubscriptions")),"All filter updates queued.")));element("add-subscription-form").addEventListener("submit",(event=>{event.preventDefault();const name=element("subscription-name").value.trim();const url=element("subscription-url").value.trim();runOperation((()=>sendWithPromise("addAdblockSubscription",name,url)),"Filter added and update queued.")}));const editor=element("custom-rules");editor.addEventListener("input",(()=>{customRulesDirty=true;element("custom-size").textContent=`${formatBytes(new Blob([editor.value]).size)} edited`}));element("save-custom-button").addEventListener("click",(()=>{runOperation((()=>sendWithPromise("saveCustomAdblockRules",editor.value)),"Custom rules are compiling.");customRulesDirty=false}));element("rule-test-form").addEventListener("submit",(async event=>{event.preventDefault();try{const result=await sendWithPromise("testAdblockRule",element("test-url").value,element("test-initiator").value,element("test-type").value,element("test-method").value,element("test-third-party").checked);const resultGrid=element("test-result");setDataGrid(resultGrid,[["Decision",result.shouldBlock?"Block":"Allow"],["Filter",result.filter||"None"],["Exception",result.exception||"None"],["Important",String(result.important)],["Redirect",result.redirect||"None"],["Rewritten URL",result.rewrittenUrl||"None"],["Source",result.sourceId||"Unknown / bundled manual source"],["Source line",result.sourceLine?String(result.sourceLine):"Unknown"]]);resultGrid.hidden=false}catch(error){showStatus(errorMessage(error),true)}}));element("reload-manual-button").addEventListener("click",(()=>runOperation((()=>sendWithPromise("reloadManualAdblockFilters")),"Manual filters are reloading.")));element("clear-cache-button").addEventListener("click",(()=>runOperation((()=>sendWithPromise("clearAdblockEngineCache")),"Compiled engine cache cleared.")));element("export-button").addEventListener("click",(()=>{if(!currentState){return}const blob=new Blob([JSON.stringify(currentState,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const anchor=document.createElement("a");anchor.href=url;anchor.download=`adblock-internals-${(new Date).toISOString()}.json`;anchor.click();URL.revokeObjectURL(url)}))}document.addEventListener("DOMContentLoaded",(()=>{registerEvents();refresh();window.setInterval((()=>{if(document.visibilityState==="visible"&&!isUserInteracting()){refresh(true)}}),2e3)}));
+\ No newline at end of file
+diff --git a/chrome/browser/resources/aside_adblock/adblock_internals.mojom-webui.js b/chrome/browser/resources/aside_adblock/adblock_internals.mojom-webui.js
+new file mode 100644
+index 0000000000..3f26ef833e
+--- /dev/null
++++ b/chrome/browser/resources/aside_adblock/adblock_internals.mojom-webui.js
+@@ -0,0 +1,4 @@
++// Copyright 2020 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++import{mojo}from"//resources/mojo/mojo/public/js/bindings.js";export class AdblockInternalsPageHandlerPendingReceiver{handle;constructor(handle){this.handle=mojo.internal.interfaceSupport.getEndpointForReceiver(handle)}bindInBrowser(scope="context"){mojo.internal.interfaceSupport.bind(this.handle,"adblock_internals.mojom.AdblockInternalsPageHandler",scope)}}export class AdblockInternalsPageHandlerRemote{proxy;$;onConnectionError;constructor(handle){this.proxy=new mojo.internal.interfaceSupport.InterfaceRemoteBase(AdblockInternalsPageHandlerPendingReceiver,handle);this.$=new mojo.internal.interfaceSupport.InterfaceRemoteBaseWrapper(this.proxy);this.onConnectionError=this.proxy.getConnectionErrorEventRouter()}getState(){return this.proxy.sendMessage(0,AdblockInternalsPageHandler_GetState_ParamsSpec.$,AdblockInternalsPageHandler_GetState_ResponseParamsSpec.$,[],false)}setEnabled(enabled){return this.proxy.sendMessage(1,AdblockInternalsPageHandler_SetEnabled_ParamsSpec.$,AdblockInternalsPageHandler_SetEnabled_ResponseParamsSpec.$,[enabled],false)}addSubscription(name,url){return this.proxy.sendMessage(2,AdblockInternalsPageHandler_AddSubscription_ParamsSpec.$,AdblockInternalsPageHandler_AddSubscription_ResponseParamsSpec.$,[name,url],false)}setSubscriptionEnabled(subscriptionId,enabled){return this.proxy.sendMessage(3,AdblockInternalsPageHandler_SetSubscriptionEnabled_ParamsSpec.$,AdblockInternalsPageHandler_SetSubscriptionEnabled_ResponseParamsSpec.$,[subscriptionId,enabled],false)}removeSubscription(subscriptionId){return this.proxy.sendMessage(4,AdblockInternalsPageHandler_RemoveSubscription_ParamsSpec.$,AdblockInternalsPageHandler_RemoveSubscription_ResponseParamsSpec.$,[subscriptionId],false)}updateSubscription(subscriptionId){return this.proxy.sendMessage(5,AdblockInternalsPageHandler_UpdateSubscription_ParamsSpec.$,AdblockInternalsPageHandler_UpdateSubscription_ResponseParamsSpec.$,[subscriptionId],false)}updateAllSubscriptions(){return this.proxy.sendMessage(6,AdblockInternalsPageHandler_UpdateAllSubscriptions_ParamsSpec.$,AdblockInternalsPageHandler_UpdateAllSubscriptions_ResponseParamsSpec.$,[],false)}saveCustomRules(rules){return this.proxy.sendMessage(7,AdblockInternalsPageHandler_SaveCustomRules_ParamsSpec.$,AdblockInternalsPageHandler_SaveCustomRules_ResponseParamsSpec.$,[rules],false)}reloadManualFilters(){return this.proxy.sendMessage(8,AdblockInternalsPageHandler_ReloadManualFilters_ParamsSpec.$,AdblockInternalsPageHandler_ReloadManualFilters_ResponseParamsSpec.$,[],false)}clearEngineCache(){return this.proxy.sendMessage(9,AdblockInternalsPageHandler_ClearEngineCache_ParamsSpec.$,AdblockInternalsPageHandler_ClearEngineCache_ResponseParamsSpec.$,[],false)}testRule(url,initiator,requestType,method,thirdParty){return this.proxy.sendMessage(10,AdblockInternalsPageHandler_TestRule_ParamsSpec.$,AdblockInternalsPageHandler_TestRule_ResponseParamsSpec.$,[url,initiator,requestType,method,thirdParty],false)}}export class AdblockInternalsPageHandlerReceiver{helper_internal_;$;onConnectionError;constructor(impl){this.helper_internal_=new mojo.internal.interfaceSupport.InterfaceReceiverHelperInternal(AdblockInternalsPageHandlerRemote);this.$=new mojo.internal.interfaceSupport.InterfaceReceiverHelper(this.helper_internal_);this.helper_internal_.registerHandler(0,AdblockInternalsPageHandler_GetState_ParamsSpec.$,AdblockInternalsPageHandler_GetState_ResponseParamsSpec.$,impl.getState.bind(impl),false);this.helper_internal_.registerHandler(1,AdblockInternalsPageHandler_SetEnabled_ParamsSpec.$,AdblockInternalsPageHandler_SetEnabled_ResponseParamsSpec.$,impl.setEnabled.bind(impl),false);this.helper_internal_.registerHandler(2,AdblockInternalsPageHandler_AddSubscription_ParamsSpec.$,AdblockInternalsPageHandler_AddSubscription_ResponseParamsSpec.$,impl.addSubscription.bind(impl),false);this.helper_internal_.registerHandler(3,AdblockInternalsPageHandler_SetSubscriptionEnabled_ParamsSpec.$,AdblockInternalsPageHandler_SetSubscriptionEnabled_ResponseParamsSpec.$,impl.setSubscriptionEnabled.bind(impl),false);this.helper_internal_.registerHandler(4,AdblockInternalsPageHandler_RemoveSubscription_ParamsSpec.$,AdblockInternalsPageHandler_RemoveSubscription_ResponseParamsSpec.$,impl.removeSubscription.bind(impl),false);this.helper_internal_.registerHandler(5,AdblockInternalsPageHandler_UpdateSubscription_ParamsSpec.$,AdblockInternalsPageHandler_UpdateSubscription_ResponseParamsSpec.$,impl.updateSubscription.bind(impl),false);this.helper_internal_.registerHandler(6,AdblockInternalsPageHandler_UpdateAllSubscriptions_ParamsSpec.$,AdblockInternalsPageHandler_UpdateAllSubscriptions_ResponseParamsSpec.$,impl.updateAllSubscriptions.bind(impl),false);this.helper_internal_.registerHandler(7,AdblockInternalsPageHandler_SaveCustomRules_ParamsSpec.$,AdblockInternalsPageHandler_SaveCustomRules_ResponseParamsSpec.$,impl.saveCustomRules.bind(impl),false);this.helper_internal_.registerHandler(8,AdblockInternalsPageHandler_ReloadManualFilters_ParamsSpec.$,AdblockInternalsPageHandler_ReloadManualFilters_ResponseParamsSpec.$,impl.reloadManualFilters.bind(impl),false);this.helper_internal_.registerHandler(9,AdblockInternalsPageHandler_ClearEngineCache_ParamsSpec.$,AdblockInternalsPageHandler_ClearEngineCache_ResponseParamsSpec.$,impl.clearEngineCache.bind(impl),false);this.helper_internal_.registerHandler(10,AdblockInternalsPageHandler_TestRule_ParamsSpec.$,AdblockInternalsPageHandler_TestRule_ResponseParamsSpec.$,impl.testRule.bind(impl),false);this.onConnectionError=this.helper_internal_.getConnectionErrorEventRouter()}}export class AdblockInternalsPageHandler{static get $interfaceName(){return"adblock_internals.mojom.AdblockInternalsPageHandler"}static getRemote(){let remote=new AdblockInternalsPageHandlerRemote;remote.$.bindNewPipeAndPassReceiver().bindInBrowser();return remote}}export class AdblockInternalsPageHandlerCallbackRouter{helper_internal_;$;router_;getState;setEnabled;addSubscription;setSubscriptionEnabled;removeSubscription;updateSubscription;updateAllSubscriptions;saveCustomRules;reloadManualFilters;clearEngineCache;testRule;onConnectionError;constructor(){this.helper_internal_=new mojo.internal.interfaceSupport.InterfaceReceiverHelperInternal(AdblockInternalsPageHandlerRemote);this.$=new mojo.internal.interfaceSupport.InterfaceReceiverHelper(this.helper_internal_);this.router_=new mojo.internal.interfaceSupport.CallbackRouter;this.getState=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(0,AdblockInternalsPageHandler_GetState_ParamsSpec.$,AdblockInternalsPageHandler_GetState_ResponseParamsSpec.$,this.getState.createReceiverHandler(true),false);this.setEnabled=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(1,AdblockInternalsPageHandler_SetEnabled_ParamsSpec.$,AdblockInternalsPageHandler_SetEnabled_ResponseParamsSpec.$,this.setEnabled.createReceiverHandler(true),false);this.addSubscription=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(2,AdblockInternalsPageHandler_AddSubscription_ParamsSpec.$,AdblockInternalsPageHandler_AddSubscription_ResponseParamsSpec.$,this.addSubscription.createReceiverHandler(true),false);this.setSubscriptionEnabled=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(3,AdblockInternalsPageHandler_SetSubscriptionEnabled_ParamsSpec.$,AdblockInternalsPageHandler_SetSubscriptionEnabled_ResponseParamsSpec.$,this.setSubscriptionEnabled.createReceiverHandler(true),false);this.removeSubscription=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(4,AdblockInternalsPageHandler_RemoveSubscription_ParamsSpec.$,AdblockInternalsPageHandler_RemoveSubscription_ResponseParamsSpec.$,this.removeSubscription.createReceiverHandler(true),false);this.updateSubscription=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(5,AdblockInternalsPageHandler_UpdateSubscription_ParamsSpec.$,AdblockInternalsPageHandler_UpdateSubscription_ResponseParamsSpec.$,this.updateSubscription.createReceiverHandler(true),false);this.updateAllSubscriptions=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(6,AdblockInternalsPageHandler_UpdateAllSubscriptions_ParamsSpec.$,AdblockInternalsPageHandler_UpdateAllSubscriptions_ResponseParamsSpec.$,this.updateAllSubscriptions.createReceiverHandler(true),false);this.saveCustomRules=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(7,AdblockInternalsPageHandler_SaveCustomRules_ParamsSpec.$,AdblockInternalsPageHandler_SaveCustomRules_ResponseParamsSpec.$,this.saveCustomRules.createReceiverHandler(true),false);this.reloadManualFilters=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(8,AdblockInternalsPageHandler_ReloadManualFilters_ParamsSpec.$,AdblockInternalsPageHandler_ReloadManualFilters_ResponseParamsSpec.$,this.reloadManualFilters.createReceiverHandler(true),false);this.clearEngineCache=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(9,AdblockInternalsPageHandler_ClearEngineCache_ParamsSpec.$,AdblockInternalsPageHandler_ClearEngineCache_ResponseParamsSpec.$,this.clearEngineCache.createReceiverHandler(true),false);this.testRule=new mojo.internal.interfaceSupport.InterfaceCallbackReceiver(this.router_);this.helper_internal_.registerHandler(10,AdblockInternalsPageHandler_TestRule_ParamsSpec.$,AdblockInternalsPageHandler_TestRule_ResponseParamsSpec.$,this.testRule.createReceiverHandler(true),false);this.onConnectionError=this.helper_internal_.getConnectionErrorEventRouter()}removeListener(id){return this.router_.removeListener(id)}}export const AdblockInternalsPageHandler_GetState_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_GetState_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_SetEnabled_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_SetEnabled_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_AddSubscription_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_AddSubscription_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_SetSubscriptionEnabled_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_SetSubscriptionEnabled_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_RemoveSubscription_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_RemoveSubscription_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_UpdateSubscription_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_UpdateSubscription_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_UpdateAllSubscriptions_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_UpdateAllSubscriptions_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_SaveCustomRules_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_SaveCustomRules_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_ReloadManualFilters_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_ReloadManualFilters_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_ClearEngineCache_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_ClearEngineCache_ResponseParamsSpec={$:{}};export const AdblockInternalsPageHandler_TestRule_ParamsSpec={$:{}};export const AdblockInternalsPageHandler_TestRule_ResponseParamsSpec={$:{}};mojo.internal.Struct(AdblockInternalsPageHandler_GetState_ParamsSpec.$,"AdblockInternalsPageHandler_GetState_Params",[],[[0,8]]);mojo.internal.Struct(AdblockInternalsPageHandler_GetState_ResponseParamsSpec.$,"AdblockInternalsPageHandler_GetState_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,16]]);mojo.internal.Struct(AdblockInternalsPageHandler_SetEnabled_ParamsSpec.$,"AdblockInternalsPageHandler_SetEnabled_Params",[mojo.internal.StructField("enabled",0,0,mojo.internal.Bool,false,false,0,undefined,undefined)],[[0,16]]);mojo.internal.Struct(AdblockInternalsPageHandler_SetEnabled_ResponseParamsSpec.$,"AdblockInternalsPageHandler_SetEnabled_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_AddSubscription_ParamsSpec.$,"AdblockInternalsPageHandler_AddSubscription_Params",[mojo.internal.StructField("name",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("url",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_AddSubscription_ResponseParamsSpec.$,"AdblockInternalsPageHandler_AddSubscription_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_SetSubscriptionEnabled_ParamsSpec.$,"AdblockInternalsPageHandler_SetSubscriptionEnabled_Params",[mojo.internal.StructField("subscriptionId",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("enabled",8,0,mojo.internal.Bool,false,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_SetSubscriptionEnabled_ResponseParamsSpec.$,"AdblockInternalsPageHandler_SetSubscriptionEnabled_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_RemoveSubscription_ParamsSpec.$,"AdblockInternalsPageHandler_RemoveSubscription_Params",[mojo.internal.StructField("subscriptionId",0,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,16]]);mojo.internal.Struct(AdblockInternalsPageHandler_RemoveSubscription_ResponseParamsSpec.$,"AdblockInternalsPageHandler_RemoveSubscription_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_UpdateSubscription_ParamsSpec.$,"AdblockInternalsPageHandler_UpdateSubscription_Params",[mojo.internal.StructField("subscriptionId",0,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,16]]);mojo.internal.Struct(AdblockInternalsPageHandler_UpdateSubscription_ResponseParamsSpec.$,"AdblockInternalsPageHandler_UpdateSubscription_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_UpdateAllSubscriptions_ParamsSpec.$,"AdblockInternalsPageHandler_UpdateAllSubscriptions_Params",[],[[0,8]]);mojo.internal.Struct(AdblockInternalsPageHandler_UpdateAllSubscriptions_ResponseParamsSpec.$,"AdblockInternalsPageHandler_UpdateAllSubscriptions_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_SaveCustomRules_ParamsSpec.$,"AdblockInternalsPageHandler_SaveCustomRules_Params",[mojo.internal.StructField("rules",0,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,16]]);mojo.internal.Struct(AdblockInternalsPageHandler_SaveCustomRules_ResponseParamsSpec.$,"AdblockInternalsPageHandler_SaveCustomRules_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_ReloadManualFilters_ParamsSpec.$,"AdblockInternalsPageHandler_ReloadManualFilters_Params",[],[[0,8]]);mojo.internal.Struct(AdblockInternalsPageHandler_ReloadManualFilters_ResponseParamsSpec.$,"AdblockInternalsPageHandler_ReloadManualFilters_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_ClearEngineCache_ParamsSpec.$,"AdblockInternalsPageHandler_ClearEngineCache_Params",[],[[0,8]]);mojo.internal.Struct(AdblockInternalsPageHandler_ClearEngineCache_ResponseParamsSpec.$,"AdblockInternalsPageHandler_ClearEngineCache_ResponseParams",[mojo.internal.StructField("stateJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);mojo.internal.Struct(AdblockInternalsPageHandler_TestRule_ParamsSpec.$,"AdblockInternalsPageHandler_TestRule_Params",[mojo.internal.StructField("url",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("initiator",8,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("requestType",16,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("method",24,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("thirdParty",32,0,mojo.internal.Bool,false,false,0,undefined,undefined)],[[0,48]]);mojo.internal.Struct(AdblockInternalsPageHandler_TestRule_ResponseParamsSpec.$,"AdblockInternalsPageHandler_TestRule_ResponseParams",[mojo.internal.StructField("resultJson",0,0,mojo.internal.String,null,false,0,undefined,undefined),mojo.internal.StructField("error",8,0,mojo.internal.String,null,false,0,undefined,undefined)],[[0,24]]);
+\ No newline at end of file
+diff --git a/chrome/browser/ui/webui/aside_adblock/BUILD.gn b/chrome/browser/ui/webui/aside_adblock/BUILD.gn
+new file mode 100644
+index 0000000000..dacf87bd87
+--- /dev/null
++++ b/chrome/browser/ui/webui/aside_adblock/BUILD.gn
+@@ -0,0 +1,31 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++import("//mojo/public/tools/bindings/mojom.gni")
++
++mojom("mojo_bindings") {
++  sources = [ "adblock_internals.mojom" ]
++  webui_module_path = "/"
++}
++
++source_set("aside_adblock") {
++  sources = [
++    "aside_adblock_internals_ui.cc",
++    "aside_adblock_internals_ui.h",
++  ]
++  public_deps = [
++    ":mojo_bindings",
++    "//content/public/browser",
++  ]
++  deps = [
++    "//base",
++    "//chrome/browser/aside_adblock",
++    "//chrome/browser/profiles:profile",
++    "//chrome/browser/resources/aside_adblock",
++    "//chrome/common",
++    "//mojo/public/cpp/bindings",
++    "//services/network/public/mojom",
++    "//ui/webui",
++  ]
++}
+diff --git a/chrome/browser/ui/webui/aside_adblock/adblock_internals.mojom b/chrome/browser/ui/webui/aside_adblock/adblock_internals.mojom
+new file mode 100644
+index 0000000000..30dd1f9ecb
+--- /dev/null
++++ b/chrome/browser/ui/webui/aside_adblock/adblock_internals.mojom
+@@ -0,0 +1,25 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++// Interface of the original chrome://aside-adblock page (same module,
++// interface and method names, so the original's generated JS bindings match).
++module adblock_internals.mojom;
++
++interface AdblockInternalsPageHandler {
++  GetState() => (string state_json);
++  SetEnabled(bool enabled) => (string state_json, string error);
++  AddSubscription(string name, string url) => (string state_json, string error);
++  SetSubscriptionEnabled(string subscription_id, bool enabled)
++      => (string state_json, string error);
++  RemoveSubscription(string subscription_id)
++      => (string state_json, string error);
++  UpdateSubscription(string subscription_id)
++      => (string state_json, string error);
++  UpdateAllSubscriptions() => (string state_json, string error);
++  SaveCustomRules(string rules) => (string state_json, string error);
++  ReloadManualFilters() => (string state_json, string error);
++  ClearEngineCache() => (string state_json, string error);
++  TestRule(string url, string initiator, string request_type, string method,
++           bool third_party) => (string result_json, string error);
++};
+diff --git a/chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.cc b/chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.cc
+new file mode 100644
+index 0000000000..a427cb478c
+--- /dev/null
++++ b/chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.cc
+@@ -0,0 +1,212 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.h"
++
++#include <string>
++#include <utility>
++
++#include "base/files/file_util.h"
++#include "base/functional/bind.h"
++#include "base/json/json_writer.h"
++#include "base/memory/ref_counted_memory.h"
++#include "base/path_service.h"
++#include "base/strings/string_util.h"
++#include "base/task/thread_pool.h"
++#include "chrome/browser/aside_adblock/aside_adblock_service.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/common/url_constants.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_ui.h"
++#include "content/public/browser/web_ui_data_source.h"
++#include "services/network/public/mojom/content_security_policy.mojom.h"
++#include "url/gurl.h"
++
++namespace {
++
++constexpr char kAsideAdblockHost[] = "aside-adblock";
++constexpr char kAdblockInternalsHost[] = "adblock-internals";
++
++base::FilePath ResourceDir() {
++  base::FilePath dir;
++  base::PathService::Get(base::DIR_EXE, &dir);
++  return dir.AppendASCII("aside_resources").AppendASCII("adblock");
++}
++
++bool ShouldHandleRequest(const std::string& path) {
++  return path.empty() || path == "adblock_internals.html" ||
++         path == "adblock_internals.css" || path == "adblock_internals.js" ||
++         path == "adblock_internals.mojom-webui.js";
++}
++
++scoped_refptr<base::RefCountedMemory> ReadResource(std::string path) {
++  if (path.empty()) {
++    path = "adblock_internals.html";
++  }
++  std::string data;
++  if (!base::ReadFileToString(ResourceDir().AppendASCII(path), &data)) {
++    return base::MakeRefCounted<base::RefCountedString>(std::string());
++  }
++  if (path.ends_with(".html")) {
++    base::ReplaceSubstringsAfterOffset(&data, 0, "$i18n{textdirection}", "ltr");
++    base::ReplaceSubstringsAfterOffset(&data, 0, "$i18n{language}", "en");
++  }
++  return base::MakeRefCounted<base::RefCountedString>(std::move(data));
++}
++
++void HandleRequest(const std::string& path,
++                   content::WebUIDataSource::GotDataCallback callback) {
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_BLOCKING},
++      base::BindOnce(&ReadResource, path), std::move(callback));
++}
++
++void ConfigureSource(content::WebUIDataSource* source) {
++  source->SetRequestFilter(base::BindRepeating(&ShouldHandleRequest),
++                           base::BindRepeating(&HandleRequest));
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::ScriptSrc,
++      "script-src chrome://resources 'self';");
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::StyleSrc,
++      "style-src chrome://theme chrome://resources 'self' 'unsafe-inline';");
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::TrustedTypes,
++      "trusted-types static-types adblock-internals lit-html;");
++  source->DisableTrustedTypesCSP();
++}
++
++}  // namespace
++
++AsideAdblockInternalsUIConfig::AsideAdblockInternalsUIConfig()
++    : DefaultWebUIConfig(content::kChromeUIScheme, kAsideAdblockHost) {}
++
++AsideAdblockInternalsAliasUIConfig::AsideAdblockInternalsAliasUIConfig()
++    : DefaultWebUIConfig(content::kChromeUIScheme, kAdblockInternalsHost) {}
++
++AsideAdblockInternalsUI::AsideAdblockInternalsUI(content::WebUI* web_ui)
++    : ui::MojoWebUIController(web_ui, /*enable_chrome_send=*/false) {
++  Profile* profile = Profile::FromWebUI(web_ui);
++  const std::string host(web_ui->GetWebContents()->GetVisibleURL().host());
++  content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
++      profile, host == kAdblockInternalsHost ? kAdblockInternalsHost
++                                             : kAsideAdblockHost);
++  ConfigureSource(source);
++}
++
++AsideAdblockInternalsUI::~AsideAdblockInternalsUI() = default;
++
++void AsideAdblockInternalsUI::BindInterface(
++    mojo::PendingReceiver<adblock_internals::mojom::AdblockInternalsPageHandler>
++        receiver) {
++  receivers_.Add(this, std::move(receiver));
++}
++
++std::string AsideAdblockInternalsUI::StateJson() {
++  aside_adblock::AsideAdBlockService* service =
++      aside_adblock::AsideAdBlockService::Get(Profile::FromWebUI(web_ui()));
++  std::string json;
++  if (service) {
++    base::JSONWriter::Write(service->State(), &json);
++  } else {
++    json = "{}";
++  }
++  return json;
++}
++
++#define ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, ...)              \
++  aside_adblock::AsideAdBlockService* service =                              \
++      aside_adblock::AsideAdBlockService::Get(Profile::FromWebUI(web_ui())); \
++  if (!service) {                                                            \
++    std::move(callback).Run(__VA_ARGS__);                                    \
++    return;                                                                  \
++  }
++
++void AsideAdblockInternalsUI::GetState(GetStateCallback callback) {
++  std::move(callback).Run(StateJson());
++}
++
++void AsideAdblockInternalsUI::SetEnabled(bool enabled,
++                                         SetEnabledCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string error = service->SetEnabled(enabled);
++  std::move(callback).Run(StateJson(), error);
++}
++
++void AsideAdblockInternalsUI::AddSubscription(const std::string& name,
++                                              const std::string& url,
++                                              AddSubscriptionCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string error = service->AddSubscription(name, url);
++  std::move(callback).Run(StateJson(), error);
++}
++
++void AsideAdblockInternalsUI::SetSubscriptionEnabled(
++    const std::string& subscription_id,
++    bool enabled,
++    SetSubscriptionEnabledCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string error = service->SetSubscriptionEnabled(subscription_id, enabled);
++  std::move(callback).Run(StateJson(), error);
++}
++
++void AsideAdblockInternalsUI::RemoveSubscription(
++    const std::string& subscription_id,
++    RemoveSubscriptionCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string error = service->RemoveSubscription(subscription_id);
++  std::move(callback).Run(StateJson(), error);
++}
++
++void AsideAdblockInternalsUI::UpdateSubscription(
++    const std::string& subscription_id,
++    UpdateSubscriptionCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string error = service->UpdateSubscription(subscription_id);
++  std::move(callback).Run(StateJson(), error);
++}
++
++void AsideAdblockInternalsUI::UpdateAllSubscriptions(
++    UpdateAllSubscriptionsCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string error = service->UpdateAllSubscriptions();
++  std::move(callback).Run(StateJson(), error);
++}
++
++void AsideAdblockInternalsUI::SaveCustomRules(const std::string& rules,
++                                              SaveCustomRulesCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string error = service->SaveCustomRules(rules);
++  std::move(callback).Run(StateJson(), error);
++}
++
++void AsideAdblockInternalsUI::ReloadManualFilters(
++    ReloadManualFiltersCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string error = service->ReloadManualFilters();
++  std::move(callback).Run(StateJson(), error);
++}
++
++void AsideAdblockInternalsUI::ClearEngineCache(
++    ClearEngineCacheCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string error = service->ClearEngineCache();
++  std::move(callback).Run(StateJson(), error);
++}
++
++void AsideAdblockInternalsUI::TestRule(const std::string& url,
++                                       const std::string& initiator,
++                                       const std::string& request_type,
++                                       const std::string& method,
++                                       bool third_party,
++                                       TestRuleCallback callback) {
++  ASIDE_ADBLOCK_SERVICE_OR_RETURN(service, callback, "{}", "No service");
++  std::string json;
++  base::JSONWriter::Write(
++      service->TestRule(url, initiator, request_type, method, third_party),
++      &json);
++  std::move(callback).Run(json, std::string());
++}
++
++WEB_UI_CONTROLLER_TYPE_IMPL(AsideAdblockInternalsUI)
+diff --git a/chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.h b/chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.h
+new file mode 100644
+index 0000000000..6c6a99e85d
+--- /dev/null
++++ b/chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.h
+@@ -0,0 +1,76 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEBUI_ASIDE_ADBLOCK_ASIDE_ADBLOCK_INTERNALS_UI_H_
++#define CHROME_BROWSER_UI_WEBUI_ASIDE_ADBLOCK_ASIDE_ADBLOCK_INTERNALS_UI_H_
++
++#include "chrome/browser/ui/webui/aside_adblock/adblock_internals.mojom.h"
++#include "content/public/browser/webui_config.h"
++#include "mojo/public/cpp/bindings/receiver_set.h"
++#include "ui/webui/mojo_web_ui_controller.h"
++
++namespace content {
++class WebUI;
++}
++
++// chrome://aside-adblock (alias chrome://adblock-internals): the original's
++// ad-block internals page, served from <exe>/aside_resources/adblock.
++class AsideAdblockInternalsUI
++    : public ui::MojoWebUIController,
++      public adblock_internals::mojom::AdblockInternalsPageHandler {
++ public:
++  explicit AsideAdblockInternalsUI(content::WebUI* web_ui);
++  ~AsideAdblockInternalsUI() override;
++
++  void BindInterface(
++      mojo::PendingReceiver<
++          adblock_internals::mojom::AdblockInternalsPageHandler> receiver);
++
++  // adblock_internals::mojom::AdblockInternalsPageHandler:
++  void GetState(GetStateCallback callback) override;
++  void SetEnabled(bool enabled, SetEnabledCallback callback) override;
++  void AddSubscription(const std::string& name,
++                       const std::string& url,
++                       AddSubscriptionCallback callback) override;
++  void SetSubscriptionEnabled(const std::string& subscription_id,
++                              bool enabled,
++                              SetSubscriptionEnabledCallback callback) override;
++  void RemoveSubscription(const std::string& subscription_id,
++                          RemoveSubscriptionCallback callback) override;
++  void UpdateSubscription(const std::string& subscription_id,
++                          UpdateSubscriptionCallback callback) override;
++  void UpdateAllSubscriptions(UpdateAllSubscriptionsCallback callback) override;
++  void SaveCustomRules(const std::string& rules,
++                       SaveCustomRulesCallback callback) override;
++  void ReloadManualFilters(ReloadManualFiltersCallback callback) override;
++  void ClearEngineCache(ClearEngineCacheCallback callback) override;
++  void TestRule(const std::string& url,
++                const std::string& initiator,
++                const std::string& request_type,
++                const std::string& method,
++                bool third_party,
++                TestRuleCallback callback) override;
++
++ private:
++  std::string StateJson();
++
++  mojo::ReceiverSet<adblock_internals::mojom::AdblockInternalsPageHandler>
++      receivers_;
++
++  WEB_UI_CONTROLLER_TYPE_DECL();
++};
++
++class AsideAdblockInternalsUIConfig
++    : public content::DefaultWebUIConfig<AsideAdblockInternalsUI> {
++ public:
++  AsideAdblockInternalsUIConfig();
++};
++
++class AsideAdblockInternalsAliasUIConfig
++    : public content::DefaultWebUIConfig<AsideAdblockInternalsUI> {
++ public:
++  AsideAdblockInternalsAliasUIConfig();
++};
++
++#endif  // CHROME_BROWSER_UI_WEBUI_ASIDE_ADBLOCK_ASIDE_ADBLOCK_INTERNALS_UI_H_
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+index bfc8555485..ac825feebc 100644
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -978,7 +978,9 @@ source_set("core") {
+     "//chrome/browser/metrics:expired_histograms_array",
+     "//chrome/browser/navigation_predictor",
+     "//chrome/browser/net",
++    "//chrome/browser/aside_adblock",
+     "//chrome/browser/notifications",
++    "//chrome/browser/ui/webui/aside_adblock",
+     "//chrome/browser/notifications:system_notification_helper",
+     "//chrome/browser/notifications/scheduler/public",
+     "//chrome/browser/omnibox",
+diff --git a/chrome/browser/chrome_browser_interface_binders_webui.cc b/chrome/browser/chrome_browser_interface_binders_webui.cc
+index 1cf053beb0..b4f7c4aee6 100644
+--- a/chrome/browser/chrome_browser_interface_binders_webui.cc
++++ b/chrome/browser/chrome_browser_interface_binders_webui.cc
+@@ -20,6 +20,7 @@
+ #include "chrome/browser/ui/webui/connectors_internals/connectors_internals_ui.h"
+ #include "chrome/browser/ui/webui/context_hub/context_hub.mojom.h"
+ #include "chrome/browser/ui/webui/context_hub/context_hub_ui.h"
++#include "chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.h"
+ #include "chrome/browser/ui/webui/data_sharing_internals/data_sharing_internals_ui.h"
+ #include "chrome/browser/ui/webui/engagement/site_engagement_ui.h"
+ #include "chrome/browser/ui/webui/location_internals/location_internals.mojom.h"
+@@ -231,6 +232,10 @@ void PopulateChromeWebUIFrameBindersPartsAllPlatforms(
+       data_sharing_internals::mojom::PageHandlerFactory,
+       DataSharingInternalsUI>(map);
+ 
++  RegisterWebUIControllerInterfaceBinder<
++      adblock_internals::mojom::AdblockInternalsPageHandler,
++      AsideAdblockInternalsUI>(map);
++
+   RegisterWebUIControllerInterfaceBinder<
+       connectors_internals::mojom::PageHandler,
+       enterprise_connectors::ConnectorsInternalsUI>(map);
+diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
+index 89df9311af..4a682f2f49 100644
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -56,6 +56,7 @@
+ #include "build/build_config.h"
+ #include "build/config/chromebox_for_meetings/buildflags.h"  // PLATFORM_CFM
+ #include "chrome/browser/after_startup_task_utils.h"
++#include "chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.h"
+ #include "chrome/browser/ai/ai_manager.h"
+ #include "chrome/browser/app_mode/app_mode_utils.h"
+ #include "chrome/browser/battery/battery_saver.h"
+@@ -6734,6 +6735,16 @@ void ChromeContentBrowserClient::WillCreateURLLoaderFactory(
+       frame, type == URLLoaderFactoryType::kNavigation, request_initiator,
+       isolation_info, factory_builder);
+ 
++  // Aside ad blocker: filter sub-resource requests (navigations are handled
++  // by AsideAdBlockNavigationThrottle).
++  if (type == URLLoaderFactoryType::kDocumentSubResource ||
++      type == URLLoaderFactoryType::kWorkerSubResource ||
++      type == URLLoaderFactoryType::kServiceWorkerSubResource ||
++      type == URLLoaderFactoryType::kWorkerMainResource) {
++    aside_adblock::AsideAdBlockProxyingURLLoaderFactory::MaybeProxy(
++        browser_context, frame, factory_builder);
++  }
++
+ #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
+   if (disable_secure_dns) {
+     WebContents* web_contents = WebContents::FromRenderFrameHost(frame);
+diff --git a/chrome/browser/chrome_content_browser_client_navigation_throttles.cc b/chrome/browser/chrome_content_browser_client_navigation_throttles.cc
+index 8de81338cc..4812110657 100644
+--- a/chrome/browser/chrome_content_browser_client_navigation_throttles.cc
++++ b/chrome/browser/chrome_content_browser_client_navigation_throttles.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/chrome_content_browser_client_navigation_throttles.h"
++#include "chrome/browser/aside_adblock/aside_adblock_navigation_throttle.h"
+ 
+ #include "base/command_line.h"
+ #include "base/feature_list.h"
+@@ -302,6 +303,7 @@ void CreateAndAddChromeThrottlesForNavigation(
+   }
+ 
+   DSEPrewarmNavigationThrottle::MaybeCreateAndAdd(registry);
++  aside_adblock::AsideAdBlockNavigationThrottle::MaybeCreateAndAdd(registry);
+ 
+ #if BUILDFLAG(IS_ANDROID)
+   // TODO(davidben): This is insufficient to integrate with prerender properly.
+diff --git a/chrome/browser/prefs/browser_prefs.cc b/chrome/browser/prefs/browser_prefs.cc
+index 48394ef7d6..634b80c621 100644
+--- a/chrome/browser/prefs/browser_prefs.cc
++++ b/chrome/browser/prefs/browser_prefs.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/prefs/browser_prefs.h"
++#include "chrome/browser/aside_adblock/aside_adblock_service.h"
+ 
+ #include <array>
+ #include <optional>
+@@ -1781,6 +1824,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
+   permissions::RegisterProfilePrefs(registry);
+   PermissionBubbleMediaAccessHandler::RegisterProfilePrefs(registry);
+   PlatformNotificationServiceImpl::RegisterProfilePrefs(registry);
++  aside_adblock::AsideAdBlockService::RegisterProfilePrefs(registry);
+   policy::URLBlocklistManager::RegisterProfilePrefs(registry);
+   PolicyUI::RegisterProfilePrefs(registry);
+   PrefProxyConfigTrackerImpl::RegisterProfilePrefs(registry);
+diff --git a/chrome/browser/ui/BUILD.gn b/chrome/browser/ui/BUILD.gn
+index 017a8c3ff7..8fed0075c0 100644
+--- a/chrome/browser/ui/BUILD.gn
++++ b/chrome/browser/ui/BUILD.gn
+@@ -689,6 +689,9 @@ static_library("ui") {
+     "//chrome/browser/ui/webui/sanitized_image:sanitized_image_source",
+     "//chrome/browser/ui/webui/sync_internals",
+     "//chrome/browser/ui/webui/translate_internals",
++    "//chrome/browser/aside_adblock",
++    "//chrome/browser/ui/webui/aside_adblock",
++    "//chrome/browser/ui/webui/aside_import_data",
+     "//chrome/browser/ui/webui/version",
+     "//chrome/browser/ui/zoom",
+     "//chrome/browser/undo",
+diff --git a/chrome/browser/ui/tab_helpers.cc b/chrome/browser/ui/tab_helpers.cc
+index 229fe0b443..1d539ad40c 100644
+--- a/chrome/browser/ui/tab_helpers.cc
++++ b/chrome/browser/ui/tab_helpers.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/tab_helpers.h"
++#include "chrome/browser/aside_adblock/aside_adblock_tab_helper.h"
+ 
+ #include <cstdint>
+ #include <memory>
+@@ -335,6 +336,7 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents) {
+   // ZoomController comes before common tab helpers since ChromeAutofillClient
+   // may want to register as a ZoomObserver with it.
+   zoom::ZoomController::CreateForWebContents(web_contents);
++  aside_adblock::AsideAdBlockTabHelper::CreateForWebContents(web_contents);
+ #endif
+ 
+   // infobars::ContentInfoBarManager comes before common tab helpers since
+diff --git a/chrome/browser/ui/webui/BUILD.gn b/chrome/browser/ui/webui/BUILD.gn
+index 9ad30f708e..8e7905d09b 100644
+--- a/chrome/browser/ui/webui/BUILD.gn
++++ b/chrome/browser/ui/webui/BUILD.gn
+@@ -95,6 +95,8 @@ source_set("configs") {
+     "//chrome/browser/ui/webui/sync_internals",
+     "//chrome/browser/ui/webui/translate_internals",
+     "//chrome/browser/ui/webui/usb_internals",
++    "//chrome/browser/ui/webui/aside_adblock",
++    "//chrome/browser/ui/webui/aside_import_data",
+     "//chrome/browser/ui/webui/version",
+     "//components/compose:buildflags",
+     "//components/lens:buildflags",
+diff --git a/chrome/browser/ui/webui/chrome_web_ui_configs.cc b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+index 184305a45a..a5d93f3265 100644
+--- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
++++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+@@ -2,6 +2,8 @@
+ // Use of this source code is governed by a BSD-style license that can be
+ // found in the LICENSE file.
+ 
++#include "chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.h"
++#include "chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.h"
+ #include "chrome/browser/ui/webui/chrome_web_ui_configs.h"
+ 
+ #include "build/android_buildflags.h"
+@@ -252,6 +254,9 @@ void RegisterChromeWebUIConfigs() {
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+ 
+   auto& map = content::WebUIConfigMap::GetInstance();
++  map.AddWebUIConfig(std::make_unique<AsideImportDataUIConfig>());
++  map.AddWebUIConfig(std::make_unique<AsideAdblockInternalsUIConfig>());
++  map.AddWebUIConfig(std::make_unique<AsideAdblockInternalsAliasUIConfig>());
+   map.AddWebUIConfig(std::make_unique<AccessibilityUIConfig>());
+   map.AddWebUIConfig(std::make_unique<AutofillInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<BluetoothInternalsUIConfig>());

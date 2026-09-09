@@ -1,0 +1,19 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideCircleHalfFillStrokeIcon
+
+CANVAS_DIMENSIONS, 18,
+MOVE_TO, 8.9994f, 14.9994f,
+CUBIC_TO, 12.3131f, 14.9994f, 14.9994f, 12.3131f, 14.9994f, 8.9994f,
+CUBIC_TO, 14.9994f, 5.6857f, 12.3131f, 2.9994f, 8.9994f, 2.9994f,
+V_LINE_TO, 14.9994f,
+CLOSE,
+MOVE_TO, 16.4994f, 8.9994f,
+CUBIC_TO, 16.4994f, 13.1415f, 13.1415f, 16.4994f, 8.9994f, 16.4994f,
+CUBIC_TO, 8.7183f, 16.4994f, 8.4406f, 16.4839f, 8.167f, 16.4536f,
+CUBIC_TO, 4.4162f, 16.039f, 1.4994f, 12.8604f, 1.4994f, 8.9994f,
+CUBIC_TO, 1.4994f, 5.1384f, 4.4162f, 1.9598f, 8.167f, 1.5451f,
+CUBIC_TO, 8.4406f, 1.5149f, 8.7183f, 1.4994f, 8.9994f, 1.4994f,
+CUBIC_TO, 13.1415f, 1.4994f, 16.4994f, 4.8573f, 16.4994f, 8.9994f,
+CLOSE,

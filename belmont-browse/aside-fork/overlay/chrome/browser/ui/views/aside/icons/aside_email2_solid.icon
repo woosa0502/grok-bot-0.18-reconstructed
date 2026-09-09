@@ -1,0 +1,27 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideEmail2SolidIcon
+
+CANVAS_DIMENSIONS, 18,
+FILL_RULE_NONZERO,
+MOVE_TO, 1.6038f, 5.2141f,
+CUBIC_TO, 1.9493f, 3.9388f, 3.1149f, 3.0006f, 4.4997f, 3.0006f,
+H_LINE_TO, 13.4996f,
+CUBIC_TO, 14.8844f, 3.0006f, 16.0499f, 3.9388f, 16.3955f, 5.2141f,
+LINE_TO, 9.6705f, 8.5767f,
+CUBIC_TO, 9.2482f, 8.7878f, 8.7511f, 8.7878f, 8.3288f, 8.5767f,
+LINE_TO, 1.6038f, 5.2141f,
+CLOSE,
+NEW_PATH,
+FILL_RULE_NONZERO,
+MOVE_TO, 1.4994f, 6.8382f,
+V_LINE_TO, 11.9997f,
+CUBIC_TO, 1.4994f, 13.6565f, 2.8425f, 14.9997f, 4.4994f, 14.9997f,
+H_LINE_TO, 13.4994f,
+CUBIC_TO, 15.1562f, 14.9997f, 16.4994f, 13.6565f, 16.4994f, 11.9997f,
+V_LINE_TO, 6.8382f,
+LINE_TO, 10.341f, 9.9174f,
+CUBIC_TO, 9.4964f, 10.3397f, 8.5023f, 10.3397f, 7.6577f, 9.9174f,
+LINE_TO, 1.4994f, 6.8382f,
+CLOSE,

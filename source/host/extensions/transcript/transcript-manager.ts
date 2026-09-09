@@ -230,7 +230,9 @@ export class TranscriptManager {
   }
   setTurnExecution(execution: TurnExecutionPort): void {
     this.execution = {
-      ...execution,
+      get canExecute() { return execution.canExecute; },
+      get canExecuteGroupMember() { return execution.canExecuteGroupMember; },
+      isRunReady: () => execution.isRunReady(),
       createRunner: (session: any, ...args: any[]) =>
         this.userStops.guardRunner(session.id, execution.createRunner(session, ...args)),
       createGroupMemberRunner: (session: any, ...args: any[]) =>

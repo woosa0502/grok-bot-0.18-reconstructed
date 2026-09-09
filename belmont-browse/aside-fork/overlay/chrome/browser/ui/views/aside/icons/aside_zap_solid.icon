@@ -1,0 +1,19 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideZapSolidIcon
+
+CANVAS_DIMENSIONS, 18,
+FILL_RULE_NONZERO,
+MOVE_TO, 10.5008f, 1.8003f,
+CUBIC_TO, 10.5008f, 0.6872f, 9.0571f, 0.2501f, 8.4397f, 1.1762f,
+LINE_TO, 2.3904f, 10.2502f,
+CUBIC_TO, 1.892f, 10.9978f, 2.428f, 11.9993f, 3.3265f, 11.9993f,
+H_LINE_TO, 7.5008f,
+V_LINE_TO, 16.1982f,
+CUBIC_TO, 7.5008f, 17.3113f, 8.9444f, 17.7484f, 9.5618f, 16.8222f,
+LINE_TO, 15.6112f, 7.7483f,
+CUBIC_TO, 16.1096f, 7.0006f, 15.5736f, 5.9992f, 14.6751f, 5.9992f,
+H_LINE_TO, 10.5008f,
+V_LINE_TO, 1.8003f,
+CLOSE,

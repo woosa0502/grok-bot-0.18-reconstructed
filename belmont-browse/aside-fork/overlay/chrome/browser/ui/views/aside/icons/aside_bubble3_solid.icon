@@ -1,0 +1,21 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideBubble3SolidIcon
+
+CANVAS_DIMENSIONS, 18,
+FILL_RULE_NONZERO,
+MOVE_TO, 8.9994f, 1.4994f,
+CUBIC_TO, 4.8573f, 1.4994f, 1.4994f, 4.8573f, 1.4994f, 8.9994f,
+CUBIC_TO, 1.4994f, 10.1161f, 1.7439f, 11.1776f, 2.1831f, 12.1318f,
+CUBIC_TO, 2.189f, 12.1447f, 2.191f, 12.155f, 2.1916f, 12.1612f,
+CUBIC_TO, 2.1918f, 12.1641f, 2.1917f, 12.1658f, 2.1916f, 12.1665f,
+CUBIC_TO, 2.1915f, 12.1672f, 2.1913f, 12.1676f, 2.1916f, 12.1665f,
+LINE_TO, 1.5946f, 14.0846f,
+CUBIC_TO, 1.1499f, 15.5136f, 2.4762f, 16.8621f, 3.9123f, 16.4411f,
+LINE_TO, 5.9276f, 15.8503f,
+CUBIC_TO, 5.9293f, 15.8502f, 5.9407f, 15.8492f, 5.961f, 15.8582f,
+CUBIC_TO, 6.8908f, 16.2706f, 7.9194f, 16.4994f, 8.9994f, 16.4994f,
+CUBIC_TO, 13.1415f, 16.4994f, 16.4994f, 13.1415f, 16.4994f, 8.9994f,
+CUBIC_TO, 16.4994f, 4.8573f, 13.1415f, 1.4994f, 8.9994f, 1.4994f,
+CLOSE,

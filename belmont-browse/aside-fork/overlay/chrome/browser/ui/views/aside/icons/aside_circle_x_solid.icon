@@ -1,0 +1,30 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideCircleXSolidIcon
+
+CANVAS_DIMENSIONS, 16,
+MOVE_TO, 1.33f, 8,
+CUBIC_TO, 1.33f, 4.32f, 4.32f, 1.33f, 8, 1.33f,
+CUBIC_TO, 11.68f, 1.33f, 14.67f, 4.32f, 14.67f, 8,
+CUBIC_TO, 14.67f, 11.68f, 11.68f, 14.67f, 8, 14.67f,
+CUBIC_TO, 4.32f, 14.67f, 1.33f, 11.68f, 1.33f, 8,
+CLOSE,
+MOVE_TO, 6.47f, 5.53f,
+CUBIC_TO, 6.21f, 5.27f, 5.79f, 5.27f, 5.53f, 5.53f,
+CUBIC_TO, 5.27f, 5.79f, 5.27f, 6.21f, 5.53f, 6.47f,
+LINE_TO, 7.06f, 8,
+LINE_TO, 5.53f, 9.53f,
+CUBIC_TO, 5.27f, 9.79f, 5.27f, 10.21f, 5.53f, 10.47f,
+CUBIC_TO, 5.79f, 10.73f, 6.21f, 10.73f, 6.47f, 10.47f,
+LINE_TO, 8, 8.94f,
+LINE_TO, 9.53f, 10.47f,
+CUBIC_TO, 9.79f, 10.73f, 10.21f, 10.73f, 10.47f, 10.47f,
+CUBIC_TO, 10.73f, 10.21f, 10.73f, 9.79f, 10.47f, 9.53f,
+LINE_TO, 8.94f, 8,
+LINE_TO, 10.47f, 6.47f,
+CUBIC_TO, 10.73f, 6.21f, 10.73f, 5.79f, 10.47f, 5.53f,
+CUBIC_TO, 10.21f, 5.27f, 9.79f, 5.27f, 9.53f, 5.53f,
+LINE_TO, 8, 7.06f,
+LINE_TO, 6.47f, 5.53f,
+CLOSE,

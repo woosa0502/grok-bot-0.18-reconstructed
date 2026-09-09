@@ -1,0 +1,16 @@
+||example.org^$document
+||example.net^$document
+127.0.0.1:18791/redir.js$script,redirect=noopjs
+127.0.0.1:18791/imp.js$script,important
+@@127.0.0.1:18791/imp.js$script
+127.0.0.1:18791/exc.js$script
+@@127.0.0.1:18791/exc.js$script
+/127\.0\.0\.1:18791\/rx-[0-9]+\.js/$script
+127.0.0.1:18791/method$method=post
+127.0.0.1:18791/track.gif$image,redirect=1x1.gif
+127.0.0.1:18791/csp.html$csp=script-src 'none'
+&popunder=$popup
+127.0.0.1##.aside-site-specific
+@@||127.0.0.1^$generichide
+127.0.0.1##.aside-proc-item:has-text(Sponsored)
+127.0.0.1##.aside-style-item:style(color: rgb(9, 8, 7) !important)

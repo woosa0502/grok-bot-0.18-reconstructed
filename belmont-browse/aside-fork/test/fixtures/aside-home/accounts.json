@@ -1,0 +1,31 @@
+{
+ "version": 1,
+ "currentAccountId": 0,
+ "accounts": [
+  {
+   "id": 0,
+   "name": "Local Account",
+   "provider": "anonymous",
+   "mode": "local",
+   "authStatus": "active",
+   "userId": "u_test_1",
+   "email": "test@example.com",
+   "createdAt": 1788578743318
+  }
+ ],
+ "sessions": {
+  "0": {
+   "accessToken": "a",
+   "refreshToken": "b",
+   "expiresAt": 1788665143318
+  }
+ },
+ "localBootstraps": {
+  "0": {
+   "isComplete": true,
+   "createdAt": 1788578743318
+  }
+ },
+ "profileBindings": {},
+ "profileAccountBindings": {}
+}

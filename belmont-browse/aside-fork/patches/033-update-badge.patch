@@ -1,0 +1,172 @@
+diff --git a/chrome/browser/ui/BUILD.gn b/chrome/browser/ui/BUILD.gn
+index 017a8c3ff7..6596986ba7 100644
+--- a/chrome/browser/ui/BUILD.gn
++++ b/chrome/browser/ui/BUILD.gn
+@@ -689,6 +689,7 @@ static_library("ui") {
+     "//chrome/browser/ui/webui/sanitized_image:sanitized_image_source",
+     "//chrome/browser/ui/webui/sync_internals",
+     "//chrome/browser/ui/webui/translate_internals",
++    "//chrome/browser/ui/webui/aside_import_data",
+     "//chrome/browser/ui/webui/version",
+     "//chrome/browser/ui/zoom",
+     "//chrome/browser/undo",
+@@ -4050,6 +4051,38 @@ static_library("ui") {
+       "views/frame/top_container_view.cc",
+       "views/frame/top_container_view.h",
+       "views/frame/top_controls_slide_controller.h",
++      "views/frame/aside_tab_search_bubble.cc",
++      "views/frame/aside_tab_search_bubble.h",
++      "views/tabs/aside_update_badge_button.cc",
++      "views/tabs/aside_update_badge_button.h",
++      "views/tabs/aside_agent_tabs_button.cc",
++      "views/tabs/aside_agent_tabs_button.h",
++      "views/aside/aside_text_button.cc",
++      "views/aside/aside_text_button.h",
++      "views/frame/aside_profile_footer_view.cc",
++      "views/frame/aside_profile_footer_view.h",
++      "views/frame/aside_bookmarks_section_view.cc",
++      "views/frame/aside_bookmarks_section_view.h",
++      "views/frame/aside_task_views.cc",
++      "views/frame/aside_task_views.h",
++      "views/frame/aside_tab_switcher.cc",
++      "views/frame/aside_tab_switcher.h",
++      "views/frame/aside_tab_switcher_view.cc",
++      "views/frame/aside_tab_switcher_view.h",
++      "views/frame/aside_agent_control_banner.cc",
++      "views/frame/aside_agent_control_banner.h",
++      "views/frame/aside_vertical_tab_strip_additions.cc",
++      "aside/aside_fonts.cc",
++      "aside/aside_fonts.h",
++      "aside/aside_tasks_client.cc",
++      "aside/aside_tasks_client.h",
++      "aside/aside_agent_tabs.cc",
++      "aside/aside_agent_tabs.h",
++      "aside/aside_ai_tabs_metadata.cc",
++      "aside/aside_ai_tabs_metadata.h",
++      "aside/aside_extension_bridge.cc",
++      "aside/aside_extension_bridge.h",
++      "views/frame/aside_vertical_tab_strip_additions.h",
+       "views/frame/vertical_tab_strip_region_view.cc",
+       "views/frame/vertical_tab_strip_region_view.h",
+       "views/frame/web_contents_close_handler.cc",
+diff --git a/chrome/browser/ui/views/tabs/aside_update_badge_button.h b/chrome/browser/ui/views/tabs/aside_update_badge_button.h
+new file mode 100644
+index 0000000000..5445d73848
+--- /dev/null
++++ b/chrome/browser/ui/views/tabs/aside_update_badge_button.h
+@@ -0,0 +1,38 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_TABS_ASIDE_UPDATE_BADGE_BUTTON_H_
++#define CHROME_BROWSER_UI_VIEWS_TABS_ASIDE_UPDATE_BADGE_BUTTON_H_
++
++#include "base/memory/raw_ptr.h"
++#include "chrome/browser/upgrade_detector/upgrade_observer.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/controls/button/label_button.h"
++
++class Browser;
++
++// Badge shown in the vertical tab strip header when an update is ready
++// (RE: AsideUpdateBadgeButton, 0x3fc3dc8; version "1.0.825.1"; honours
++// --simulate-upgrade / --aside-debug-update-prompt). Pressing it runs the
++// relaunch/update flow (IDC_UPGRADE_DIALOG).
++class AsideUpdateBadgeButton : public views::LabelButton,
++                               public UpgradeObserver {
++  METADATA_HEADER(AsideUpdateBadgeButton, views::LabelButton)
++
++ public:
++  explicit AsideUpdateBadgeButton(Browser* browser);
++  ~AsideUpdateBadgeButton() override;
++
++  void UpdateVisibility();
++
++  // UpgradeObserver:
++  void OnUpgradeRecommended() override;
++
++ private:
++  void OnPressed();
++
++  raw_ptr<Browser> browser_;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_TABS_ASIDE_UPDATE_BADGE_BUTTON_H_
+diff --git a/chrome/browser/ui/views/tabs/aside_update_badge_button.cc b/chrome/browser/ui/views/tabs/aside_update_badge_button.cc
+new file mode 100644
+index 0000000000..e2cfb3e796
+--- /dev/null
++++ b/chrome/browser/ui/views/tabs/aside_update_badge_button.cc
+@@ -0,0 +1,71 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/tabs/aside_update_badge_button.h"
++
++#include "base/command_line.h"
++#include "base/functional/bind.h"
++#include "chrome/app/chrome_command_ids.h"
++#include "chrome/browser/ui/aside/aside_fonts.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/browser_commands.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "chrome/browser/upgrade_detector/upgrade_detector.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/color/color_id.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/views/controls/label.h"
++
++namespace {
++
++// Original switch (0x3fc6bf8) that forces the prompt for debugging.
++constexpr char kDebugUpdatePromptSwitch[] = "aside-debug-update-prompt";
++constexpr char16_t kUpdateLabel[] = u"Update";
++constexpr char16_t kUpdateTooltip[] = u"Review App Update";  // IDS 9869
++
++}  // namespace
++
++AsideUpdateBadgeButton::AsideUpdateBadgeButton(Browser* browser)
++    : views::LabelButton(
++          base::BindRepeating(&AsideUpdateBadgeButton::OnPressed,
++                              base::Unretained(this)),
++          kUpdateLabel),
++      browser_(browser) {
++  SetImageModel(views::Button::STATE_NORMAL,
++                ui::ImageModel::FromVectorIcon(kAsideArrowDownStrokeIcon,
++                                               ui::kColorSysOnPrimary, 14));
++  SetTooltipText(kUpdateTooltip);
++  SetImageLabelSpacing(4);
++  SetBorder(views::CreateEmptyBorder(gfx::Insets::VH(3, 8)));
++  label()->SetFontList(aside::UiFontList(12, gfx::Font::Weight::MEDIUM));
++  SetEnabledTextColors(ui::kColorSysOnPrimary);
++  SetBackground(views::CreateRoundedRectBackground(ui::kColorSysPrimary, 10));
++  UpgradeDetector::GetInstance()->AddObserver(this);
++  UpdateVisibility();
++}
++
++AsideUpdateBadgeButton::~AsideUpdateBadgeButton() {
++  UpgradeDetector::GetInstance()->RemoveObserver(this);
++}
++
++void AsideUpdateBadgeButton::UpdateVisibility() {
++  const bool forced = base::CommandLine::ForCurrentProcess()->HasSwitch(
++      kDebugUpdatePromptSwitch);
++  SetVisible(forced || UpgradeDetector::GetInstance()->notify_upgrade());
++  if (parent()) {
++    parent()->InvalidateLayout();
++  }
++}
++
++void AsideUpdateBadgeButton::OnUpgradeRecommended() {
++  UpdateVisibility();
++}
++
++void AsideUpdateBadgeButton::OnPressed() {
++  chrome::ExecuteCommand(browser_, IDC_UPGRADE_DIALOG);
++}
++
++BEGIN_METADATA(AsideUpdateBadgeButton)
++END_METADATA

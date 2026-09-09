@@ -1,0 +1,50 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Aside adblock test</title></head>
+<body>
+<h1>adblock test page</h1>
+<div id="gen1" class="ADBox" style="width:100px;height:50px;background:red">adsbygoogle</div>
+<div id="gen2" class="ADBAR" style="width:100px;height:50px;background:orange">ad-banner</div>
+<div id="ctrl" class="content" style="width:100px;height:50px;background:green">control</div>
+<div id="site1" class="aside-site-specific" style="width:100px;height:50px;background:purple">site-specific</div>
+<div id="proc1" class="aside-proc-item" style="width:100px;height:30px;background:pink">Sponsored content</div>
+<div id="proc2" class="aside-proc-item" style="width:100px;height:30px;background:lightblue">Normal content</div>
+<div id="styled" class="aside-style-item" style="width:100px;height:30px">styled</div>
+<iframe id="adframe" src="https://googleads.g.doubleclick.net/pagead/ads?client=test" width="200" height="50"></iframe>
+<script>
+window.__results = {};
+function rec(k, v) { window.__results[k] = v; }
+var s = document.createElement('script');
+s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js';
+s.onload = function(){ rec('adsbygoogle_script', 'loaded'); };
+s.onerror = function(){ rec('adsbygoogle_script', 'error'); };
+document.head.appendChild(s);
+fetch('https://www.googletagmanager.com/gtm.js?id=GTM-TEST',{mode:'no-cors'}).then(r => rec('gtm_fetch', 'ok ' + r.status)).catch(e => rec('gtm_fetch', 'error ' + e.message));
+fetch('https://www.google-analytics.com/analytics.js',{mode:'no-cors'}).then(r => rec('ga_fetch', 'ok ' + r.status)).catch(e => rec('ga_fetch', 'error ' + e.message));
+fetch('https://example.com/',{mode:'no-cors'}).then(r => rec('example_fetch', 'ok ' + r.status)).catch(e => rec('example_fetch', 'error ' + e.message));
+var img = new Image(); img.onload = function(){ rec('ad_pixel', 'loaded'); }; img.onerror = function(){ rec('ad_pixel', 'error'); };
+img.src = 'https://ad.doubleclick.net/ddm/ad/N1/B1/pixel.gif';
+// --- extended syntax (custom rules installed by the test script) ---
+// $redirect=noopjs: request answered with an empty script -> onload, marker stays unset
+var r = document.createElement('script'); r.src = '/redir.js';
+r.onload = function(){ rec('redirect_script', 'loaded marker=' + String(window.__redir_marker)); };
+r.onerror = function(){ rec('redirect_script', 'error'); };
+document.head.appendChild(r);
+// $important beats an exception
+var i = document.createElement('script'); i.src = '/imp.js';
+i.onload = function(){ rec('important_script', 'loaded'); }; i.onerror = function(){ rec('important_script', 'error'); };
+document.head.appendChild(i);
+// plain exception (control for the $important case)
+var x = document.createElement('script'); x.src = '/exc.js';
+x.onload = function(){ rec('exception_script', 'loaded'); }; x.onerror = function(){ rec('exception_script', 'error'); };
+document.head.appendChild(x);
+// /regex/ rule
+var g = document.createElement('script'); g.src = '/rx-123.js';
+g.onload = function(){ rec('regex_script', 'loaded'); }; g.onerror = function(){ rec('regex_script', 'error'); };
+document.head.appendChild(g);
+// $method=post
+fetch('/method', {method:'GET'}).then(r => rec('method_get', 'ok ' + r.status)).catch(e => rec('method_get', 'error ' + e.message));
+fetch('/method', {method:'POST', body:'x'}).then(r => rec('method_post', 'ok ' + r.status)).catch(e => rec('method_post', 'error ' + e.message));
+// 1x1.gif redirect
+var p = new Image(); p.onload = function(){ rec('gif_redirect', 'loaded ' + p.naturalWidth + 'x' + p.naturalHeight); }; p.onerror = function(){ rec('gif_redirect', 'error'); };
+p.src = '/track.gif';
+</script>
+</body></html>

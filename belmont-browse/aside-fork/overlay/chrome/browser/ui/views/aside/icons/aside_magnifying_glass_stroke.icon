@@ -1,0 +1,23 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideMagnifyingGlassStrokeIcon
+
+CANVAS_DIMENSIONS, 16,
+MOVE_TO, 7.33f, 2,
+CUBIC_TO, 10.28f, 2, 12.67f, 4.39f, 12.67f, 7.33f,
+CUBIC_TO, 12.67f, 8.57f, 12.25f, 9.7f, 11.54f, 10.6f,
+LINE_TO, 13.8f, 12.86f,
+CUBIC_TO, 14.06f, 13.12f, 14.06f, 13.54f, 13.8f, 13.8f,
+CUBIC_TO, 13.54f, 14.07f, 13.12f, 14.06f, 12.86f, 13.8f,
+LINE_TO, 10.6f, 11.54f,
+CUBIC_TO, 9.7f, 12.25f, 8.57f, 12.67f, 7.33f, 12.67f,
+CUBIC_TO, 4.39f, 12.67f, 2, 10.28f, 2, 7.33f,
+CUBIC_TO, 2, 4.39f, 4.39f, 2, 7.33f, 2,
+CLOSE,
+MOVE_TO, 7.33f, 3.33f,
+CUBIC_TO, 5.12f, 3.33f, 3.33f, 5.12f, 3.33f, 7.33f,
+CUBIC_TO, 3.33f, 9.54f, 5.12f, 11.33f, 7.33f, 11.33f,
+CUBIC_TO, 9.54f, 11.33f, 11.33f, 9.54f, 11.33f, 7.33f,
+CUBIC_TO, 11.33f, 5.12f, 9.54f, 3.33f, 7.33f, 3.33f,
+CLOSE,

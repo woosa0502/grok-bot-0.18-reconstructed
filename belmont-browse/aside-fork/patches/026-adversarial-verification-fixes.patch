@@ -1,0 +1,70 @@
+# 026 — adversarial verification of the comparison pass (user: "적대적 검증해라")
+#
+# Method: attack every claim from patches 024/025 with the binary (function-level
+# disassembly, base::Value payload/type-tag layout: payload @+0, type @+0x18) and
+# the extension consumer. Results:
+#
+# REGRESSION I HAD INTRODUCED (reverted):
+#  - browserPreferences.getSearchEngines item: settings dropdown renders `o.name`.
+#    "shortName" (patch 025) was wrong for THIS namespace -> back to "name".
+#    (omnibox.getSearchEngines keeps shortName — its own builder 0x405aef8.)
+#
+# SYSTEMIC ERROR FOUND: pref store. The original registers these in RegisterLocalState
+# (0x22c97b8, same function as restart.*, background_mode.enabled, headless.mode):
+#    aside.browser_preferences.browser_color_scheme   int  default 0 (system)   [mine: profile, 2]
+#    aside.browser_preferences.horizontal_tab_strip_shrink_to_fit_enabled  bool false
+#    aside.mini_popup.shortcut                        str  default "Alt+Space"  [mine: ""]
+#    aside.mini_popup.enabled                         bool default false        [mine: true]
+#    aside.browser_preferences.vertical_tabs_enabled  bool default true
+#  Handlers read them via g_browser_process->local_state() ([gbp+0x38]).
+#  Profile prefs (registered next to ntp.* at 0x336fa08..): account_id int default -1 [mine 0],
+#    account_user_id/profile_id "" , tab_switcher.sort_by_recently_used true [mine false],
+#    vertical_tabs.bookmarks_section_enabled true [mine false], auto_pip.enabled false.
+#
+# TWO-LAYER PREFS (tab style, horizontal tab shrink, color scheme):
+#    read : Local State aside key if Preference::HasUserSetting() else per-profile pref
+#           (vertical_tabs.enabled = prefs::kVerticalTabsEnabled, Aside default TRUE — changed
+#            tab_strip_prefs.cc; horizontal_tab_strip.shrink_to_fit_enabled — new profile pref, false)
+#    write: Local State aside key + per-profile pref on this profile AND every loaded profile
+#           (0x3fd8740 / 0x406bd70). Color scheme: --force-dark-mode pins dark; write applies
+#           ThemeService::SetBrowserColorScheme to all loaded profiles (0x3fc82c0).
+#    setTabStyle rejects values other than vertical/horizontal: Error("Invalid tab style").
+#
+# FIELD/BEHAVIOUR CORRECTIONS:
+#  - getKeepTasksRunningState -> {supported, enabled, canSet, policyDisabled}
+#      (0x406c834; canSet = IsUserModifiablePreference(background_mode.enabled), policyDisabled=!canSet)
+#    setKeepTasksRunningEnabled -> Error("Keep tasks running setting is disabled by policy") when managed.
+#  - getDefaultBrowserState/setAsDefaultBrowser -> {state, isDefault, canSet, policyDisabled}
+#      state in {not_default, default, unknown, other_mode_default}; isDefault == (state==IS_DEFAULT) ONLY
+#      (cmp w21,#1); canSet = policyDisabled ? false : CanSetAsDefaultBrowser();
+#      policyDisabled = local_state pref kDefaultBrowserSettingEnabled IsManaged && !value (0x406c7bc);
+#      setAsDefaultBrowser refuses with Error("Default browser setting is disabled by policy").
+#  - getDockState/addToDock -> {supported, isAdded, canAdd} (0x7ade390).
+#  - getLanguageSettings.preferredLanguages = language::LanguagePrefs::GetUserSelectedLanguagesList
+#      (intl.selected_languages; helpers 0x10e8980/0x9a0a358) — NOT intl.accept_languages;
+#      spellCheckSupported = FindPreference(browser.enable_spellchecking) != null.
+#    setPreferredLanguages = LanguagePrefs::SetUserSelectedLanguagesList.
+#  - getSupportedLanguages = TranslatePrefs::GetLanguageInfoList(app_locale, IsTranslateAllowedByPolicy)
+#      items {code, displayName, nativeDisplayName, supportsSpellcheck, supportsTranslate} (0x406f0ec..0x406f10c)
+#      == chrome.languageSettingsPrivate.getLanguageList logic. Replaces my l10n_util list.
+#  - asideMiniPopup get/setEnabled, get/setShortcut -> Local State; Error("Local State unavailable");
+#      setShortcut rejects empty (original parses the accelerator: "Invalid mini popup shortcut" — parser
+#      not reproduced; documented approximation).
+#
+# CONFIRMED (no change): schema deep-diff 0 differences across 6 namespaces; getProfiles;
+#   asideNotification; getInputState fields; add*Context {ok,contextToken}; import fields;
+#   auto_pip/tab_switcher/bookmarks_section are plain profile prefs.
+#
+# PROCESS BUG: pgrep -f '<pattern>' self-matched my own shell (again) -> I wrongly reported
+#   "still linking" for hours; the link had finished at 23:15. Use pgrep -f '[n]inja ...'.
+
+# INTEGRATION-CAUGHT REGRESSION (after the defaults fix):
+#  - getProfileContext: the original emits each field only when it has a value
+#      (RE 0x404e7c8..0x404e96c: profileId/profilePath/boundUserId non-empty, profileIndex known,
+#       boundAccountId only when aside.account_id >= 0 — tbnz w0,#31 skips the Set).
+#    Mine always emitted boundAccountId/boundUserId; with account_id default -1 the daemon's
+#    zod schema (boundAccountId >= 0, boundUserId min 1) rejected accounts.ensureProfileAccount
+#    107x and persistent daemon connections dropped 12 -> 1. Fixed: conditional emission +
+#    Error("Aside account profile context unavailable") when profileId is missing.
+#  - Contract test: SW `run()` fired twice (onInstalled + direct) and raced on round-trip
+#    assertions; guarded to a single run. /json tab titles are HTML-escaped -> html.unescape.

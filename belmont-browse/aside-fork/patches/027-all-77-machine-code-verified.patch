@@ -1,0 +1,76 @@
+# 027 — every one of the 77 functions verified at machine-code level (user: "1번부터 완료")
+#
+# METHOD (re-tools/resolve-run-table.py, output re-tools/aside-run-analysis.json):
+#  - ExtensionFunctionRegistry table in __DATA_CONST (0xe28d000..0xe290000), 3 words per entry,
+#    order {factory, name, histogram}; pointers are dyld chained fixups (target = low 36 bits).
+#  - factory: mov w0,#size; bl operator new; bl ExtensionFunction ctor; adrp/add VPTR; str x8,[x0]
+#  - vptr slot 1 (vptr+8) == Run(); bodies bounded by the next Run().
+#  - Per Run(): every ADRP+ADD string (error messages, dict keys, pref keys) + BL targets mapped
+#    to known helpers (FindPreference 0x592d30, GetBoolean 0x2ee328, GetInteger 0x2a6428,
+#    GetString 0xdfc640, Set 0x2133324, dict.Set 0x82540c/0x401a68/0x16387f0/0xf77610,
+#    Error() 0x67dd070, NoArguments 0x67dd8b8, WithArguments 0x6847080, GetProfile 0x406af80,
+#    IsUserModifiable 0x89bf03c, HasUserSetting 0x89bfd30, LanguagePrefs 0x10e8980 ...).
+#  - Auto-diff of those strings against my implementation found 163 missing; all triaged.
+#
+# CHANGES:
+#  validation errors (original validates args by hand): every setter now returns the original
+#    message when Params::Create fails — "Invalid browser color scheme", "Invalid tab style",
+#    "Invalid horizontal tab shrink enabled value", "Invalid tab switcher sort by recently used value",
+#    "Invalid default zoom", "Invalid keep tasks running enabled value", "Invalid auto pip enabled value",
+#    "Invalid vertical tabs bookmarks section enabled value", "Invalid preferred languages",
+#    "Invalid spell check enabled value", "Invalid search engine id", "Invalid daemon auth challenge",
+#    "Invalid import options", "Invalid import source", "Invalid import job id",
+#    "Invalid mini popup enabled state", "Invalid mini popup shortcut", "Invalid mini popup state",
+#    "Invalid mini popup size", "Invalid option window size", "Invalid Chromium profile index",
+#    omnibox: "Invalid arguments" everywhere.
+#  policy gates: setPreferredLanguages ("Preferred languages setting is disabled by policy",
+#    IsUserModifiable(intl.selected_languages)), setSpellCheckEnabled ("Spell check setting is
+#    disabled by policy"), setDefaultSearchEngine ("Default search engine setting is disabled by
+#    policy", DefaultSearchManager::FROM_POLICY), get/setSearchEngines ("Search engine settings
+#    unavailable").
+#  setBrowserColorScheme rejects values other than system/light/dark.
+#  setDefaultZoom: range [0.25, 5.0] (fcmp #5.0 / #0.25 at 0x406c284).
+#  getBrowserVersion: returns the original's literal "1.0.825.1" (0x7ade840).
+#  signDaemonAuthChallenge: failures are Error("Invalid daemon auth challenge") /
+#    Error("Installation signing key unavailable") instead of {error} dicts.
+#  getProfiles: Error("Chromium profile manager unavailable").
+#  asideMiniPopup: "Aside mini popup unavailable" (service null), switchProfile
+#    "Chromium profile manager unavailable"/"Chromium profile is locked", pickDirectory
+#    "Folder picker request already in progress" (single in-flight picker).
+#  asideNotification (0x3f39310/0x3f39878): runtime private-entitlement check ("Permission denied:
+#    missing private entitlements"), tab lookup ("Invalid tabId for requestPermission"), http(s)-only
+#    ("Tab URL is not eligible for notification permission"), per-origin ledger in NEW profile dict
+#    pref persistent_notifications.ai_delivery_mode_by_origin (origin -> 1) + content setting
+#    ALLOW; revoke: ("Invalid origin for revokePermission"), ledger remove + content setting DEFAULT.
+#  asideOmnibox (0x40596d0..0x4063a40):
+#    - session ids are "%016llX%016llX" of two RandUint64 (was UUID);
+#    - every session call checks ownership: "asideOmnibox session not found or not owned by this
+#      extension"; service null: "asideOmnibox service is unavailable";
+#    - createSession(options{tabId?}) -> {sessionId, targetInternalTabId, targetTabId, targetUrl,
+#      contentSharingEnabled (= contextual_search.search_content_sharing_settings == 0),
+#      aimEligible (false in this fork: no contextual search service), canShowAiMode
+#      (= omnibox.show_ai_mode_omnibox_button)}; errors "Invalid tabId",
+#      "No target tab available for asideOmnibox session", "Failed to create asideOmnibox session";
+#    - getSearchEngines: full TemplateURLData projection (+logoUrl, doodleUrl, originatingUrl,
+#      alternateUrls, inputEncodings, searchIntentParams, prepopulateId, usageCount,
+#      safeForAutoreplace, enforcedByPolicy, dateCreatedMs, lastModifiedMs, lastVisitedMs);
+#    - open*/executeAction/submitQuery use ui::DispositionFromClick(mouseButton, alt, ctrl, meta,
+#      shift); submitQuery searches the default engine; addFileContext validates base64
+#      ("Invalid bytesBase64 payload"); addTabContext/getTabPreview validate the tab ("Invalid
+#      tabId"); deleteContext validates the token ("Invalid contextToken"); clearFiles clears tokens.
+#  asideBrowserImport (0x404f988..): real import via ExternalProcessImporterHost + ProfileWriter,
+#    job registry {jobId, progress, state queued|importing|succeeded|cancelled, currentDataKind,
+#    errorMessage, sourceId}, onImportProgress event (new histogram 579), string source ids
+#    (firefox/safari/edge/ie/bookmarks-file per platform), validation messages incl.
+#    "Safari import requires safariArchive.data", "Import requires an extension page";
+#    startImport -> {jobId, state:"queued"}.
+#
+# DOCUMENTED APPROXIMATIONS (no Linux original or Chromium equivalent):
+#  - executeAction/activateKeyword/onNavigationLikely: acknowledge (original drives its
+#    searchbox.mojom page); executeAction navigates to the match instead of OmniboxAction::Execute.
+#  - aimEligible always false; getPlaceholderConfig value shape unverified (no consumer).
+#  - import source detection is Chromium's ImporterList (Linux: firefox, bookmarks file); the
+#    original also detects chrome/brave/edge/arc/dia/comet/atlas profile dirs on macOS.
+#  - dataKinds vocabulary assumed {bookmarks,history,passwords,search_engines,home_page,autofill};
+#    unknown kinds are ignored rather than rejected.
+#  - setShortcut accelerator parser not reproduced (empty string rejected only).

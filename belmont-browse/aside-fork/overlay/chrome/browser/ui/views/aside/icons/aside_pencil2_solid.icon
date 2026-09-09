@@ -1,0 +1,27 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsidePencil2SolidIcon
+
+CANVAS_DIMENSIONS, 18,
+FILL_RULE_NONZERO,
+MOVE_TO, 13.6877f, 8.7484f,
+LINE_TO, 7.7778f, 14.6597f,
+CUBIC_TO, 7.3463f, 15.091f, 6.7931f, 15.3804f, 6.1928f, 15.4896f,
+LINE_TO, 2.7592f, 16.1136f,
+CUBIC_TO, 2.5172f, 16.1575f, 2.2689f, 16.0802f, 2.0949f, 15.9063f,
+CUBIC_TO, 1.9211f, 15.7324f, 1.8438f, 15.4839f, 1.8876f, 15.242f,
+LINE_TO, 2.5117f, 11.8084f,
+CUBIC_TO, 2.6209f, 11.2083f, 2.9102f, 10.6548f, 3.3415f, 10.2235f,
+LINE_TO, 9.2521f, 4.3128f,
+LINE_TO, 13.6877f, 8.7484f,
+CLOSE,
+NEW_PATH,
+FILL_RULE_NONZERO,
+MOVE_TO, 10.9069f, 2.6574f,
+CUBIC_TO, 12.1318f, 1.4326f, 14.1175f, 1.4326f, 15.3425f, 2.6574f,
+CUBIC_TO, 16.5672f, 3.8823f, 16.5673f, 5.8682f, 15.3425f, 7.093f,
+LINE_TO, 14.7477f, 7.687f,
+LINE_TO, 10.3122f, 3.2514f,
+LINE_TO, 10.9069f, 2.6574f,
+CLOSE,

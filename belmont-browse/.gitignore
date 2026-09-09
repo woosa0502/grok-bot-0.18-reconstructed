@@ -1,0 +1,25 @@
+# Published source is separate from local profiles, downloaded payloads and evidence.
+/.state/
+/vendor/
+node_modules/
+__pycache__/
+*.py[cod]
+*.log
+*.backup-*
+/docs/pwa-review-2026-09-03/
+/docs/pwa-review-2026-09-03.md
+/aside-fork/aside-*.bin
+/aside-fork/ui-shots/
+/aside-fork/original-resources/
+/aside-fork/PHASE-C-minipopup-architecture.txt
+/aside-fork/original-pref-keys.txt
+/aside-fork/re-tools/aside-run-analysis.json
+/aside-fork/usecases/*.txt
+/aside-fork/usecases/sources/
+/aside-fork/test/**/result*.json
+/aside-fork/test/adblock/adblock-rust-check/rejected.txt
+/aside-fork/test/adblock/adblock-rust-check/result-*.txt
+/aside-fork/test/adblock/classify/*.tsv
+/aside-fork/test/adblock/classify/easylist.txt
+/aside-fork/test/adblock/classify/easyprivacy.txt
+/aside-fork/test/adblock/classify/*.summary.txt

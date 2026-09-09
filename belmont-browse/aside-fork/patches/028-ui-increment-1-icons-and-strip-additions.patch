@@ -1,0 +1,45 @@
+# 028 — UI layer, increment 1 (task #2): icons + vertical-tab-strip additions
+#
+# ASSETS
+#  - 119 Aside vector icons extracted verbatim from the original (gfx::VectorIcon structs:
+#    name -> reps -> PathElement stream, decoded with Chromium 151's CommandType order) into
+#    chrome/browser/ui/views/aside/icons/*.icon; target //chrome/browser/ui/views/aside/icons
+#    (aggregate_vector_icons + static_library "icons"); symbols identical to the original
+#    (kAsideEditThinStrokeIcon, kAsideSparklesTwo2solidIcon, kAsideArrowDownStrokeIcon, ...).
+#    Reference copies: aside-fork/original-resources/icons/.
+#  - Icon usage map (which class references which icon) in UI-PLAN.md; e.g. NewChatTabButton
+#    = kAsideEditThinStrokeIcon, tabs header "Tidy" = sparkles, "Organizer" = arrow-down,
+#    agent tabs = kAsideWindowSparkleStrokeIcon, profile = kAccountCircleChromeRefreshOld +
+#    kAsideExpandMore, search = kAsideMagnifyingGlassStroke.
+#  - tabs::kVerticalTabs FEATURE_ENABLED_BY_DEFAULT (chrome/browser/ui/tabs/features.cc).
+#
+# NEW VIEW chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.{h,cc}
+#  Inserted in VerticalTabStripRegionView right after top_button_separator_ (the original's
+#  builder creates, in order: AsideNewChatTabButton(792B) -> TabsHeaderActionButton(776B) ->
+#  AsideSectionDivider(848B) -> AsideSectionView(776B) -> IconButton "Tidy"(sparkles) ->
+#  IconButton "Organizer"(arrow-down) -> AsideSectionHeaderButton(792B)).
+#   - New Chat button (pencil icon) -> chrome::NewTab (NTP is the extension's chat page).
+#   - Header row: "Tidy" (no-op here; original = daemon-driven AI tidying) and "Organizer"
+#     toggle (tooltips "Hide Organizer"/"View Organizer", IDS 11729/11728).
+#   - Divider; sections "Tab Groups" (IDS 11730; rows = TabGroupModel groups, click activates
+#     the group's first tab, color from GetTabGroupTabStripColorId) and
+#     "Recent Chats & Threads" (IDS 11731; empty for now — data source not yet identified).
+#   Layout properties taken from the builder: kCrossAxisAlignment=kStretch(3) for the button
+#   rows, margins TLBR(4,7,0,7) (0xd739f90) and (0,0,0,4) (0xd739f70).
+#
+# HONEST FIDELITY NOTE: class structure, icons, strings and margins are from the binary;
+#  exact per-view painting (TabsHeaderActionButton rounded rect r=10, section row heights
+#  48/32, fonts: the original bundles Geist) is NOT yet reproduced — see UI-PLAN.md next steps.
+
+# INCREMENT 1b (same files)
+#  - Ordering: Chromium's SetTabStripView reorders the tab list to separator+1; the fork
+#    re-inserts the additions at separator+1 so New Chat / header / organizer stay ABOVE the
+#    tab list (original builder order).
+#  - Layout: BoxLayout rows with fixed button padding (VH(6,10) / VH(4,8)); no vertical growth.
+#  - "Recent Chats & Threads" is live: the original's native code fetches the daemon's public
+#    loopback route GET http://127.0.0.1:21420/session/for-chrome/recents
+#    (items {id,title,status,unread,createdAt,updatedAt,projectId}); the fork does the same with
+#    SimpleURLLoader every 30s; unread rows emphasized; clicking opens the extension route
+#    newtab.html#/u/<aside.account_user_id>/tasks/<id> (extension route /u/$userId/tasks/$sessionId).
+#  - Crash fix: MdTextButton rejects STYLE_EMPHASIZED (typography CHECK); unread rows now
+#    carry an icon marker instead.

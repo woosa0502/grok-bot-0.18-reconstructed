@@ -1,0 +1,3687 @@
+diff --git a/chrome/browser/chrome_content_browser_client_navigation_throttles.cc b/chrome/browser/chrome_content_browser_client_navigation_throttles.cc
+index 8de81338cc..96662d2153 100644
+--- a/chrome/browser/chrome_content_browser_client_navigation_throttles.cc
++++ b/chrome/browser/chrome_content_browser_client_navigation_throttles.cc
+@@ -3,6 +3,10 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/chrome_content_browser_client_navigation_throttles.h"
++#include "chrome/browser/aside_adblock/aside_adblock_navigation_throttle.h"
++#if !BUILDFLAG(IS_ANDROID)
++#include "chrome/browser/ui/tabs/pinned_tab_service.h"
++#endif
+ 
+ #include "base/command_line.h"
+ #include "base/feature_list.h"
+@@ -302,6 +306,10 @@ void CreateAndAddChromeThrottlesForNavigation(
+   }
+ 
+   DSEPrewarmNavigationThrottle::MaybeCreateAndAdd(registry);
++  aside_adblock::AsideAdBlockNavigationThrottle::MaybeCreateAndAdd(registry);
++#if !BUILDFLAG(IS_ANDROID)
++  PinnedTabNavigationThrottle::MaybeCreateAndAdd(registry);
++#endif
+ 
+ #if BUILDFLAG(IS_ANDROID)
+   // TODO(davidben): This is insufficient to integrate with prerender properly.
+diff --git a/chrome/browser/ui/tabs/pinned_tab_service.cc b/chrome/browser/ui/tabs/pinned_tab_service.cc
+index 61f36bddf0..05d6ff6799 100644
+--- a/chrome/browser/ui/tabs/pinned_tab_service.cc
++++ b/chrome/browser/ui/tabs/pinned_tab_service.cc
+@@ -11,8 +11,101 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
++#include "base/task/sequenced_task_runner.h"
+ #include "chrome/browser/ui/tabs/pinned_tab_codec.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "components/tabs/public/tab_interface.h"
++#include "content/public/browser/navigation_handle.h"
++#include "content/public/common/referrer.h"
++#include "content/public/browser/navigation_throttle_registry.h"
++#include "content/public/browser/web_contents.h"
++#include "net/base/net_errors.h"
++#include "net/base/registry_controlled_domains/registry_controlled_domain.h"
++#include "ui/base/page_transition_types.h"
++#include "ui/base/window_open_disposition.h"
++
++namespace {
++
++// Two URLs belong to the same site when their registrable domains match; a
++// pinned tab is allowed to move freely inside its own site.
++bool SameSite(const GURL& a, const GURL& b) {
++  if (!a.is_valid() || !b.is_valid()) {
++    return true;
++  }
++  if (a.SchemeIs(url::kAboutScheme) || b.SchemeIs(url::kAboutScheme)) {
++    return true;
++  }
++  return net::registry_controlled_domains::SameDomainOrHost(
++      a, b, net::registry_controlled_domains::INCLUDE_PRIVATE_REGISTRIES);
++}
++
++}  // namespace
++
++// static
++void PinnedTabNavigationThrottle::MaybeCreateAndAdd(
++    content::NavigationThrottleRegistry& registry) {
++  content::NavigationHandle& handle = registry.GetNavigationHandle();
++  if (!handle.IsInPrimaryMainFrame()) {
++    return;
++  }
++  tabs::TabInterface* tab =
++      tabs::TabInterface::MaybeGetFromContents(handle.GetWebContents());
++  if (!tab || !tab->IsPinned()) {
++    return;
++  }
++  registry.AddThrottle(
++      std::make_unique<PinnedTabNavigationThrottle>(registry));
++}
++
++PinnedTabNavigationThrottle::PinnedTabNavigationThrottle(
++    content::NavigationThrottleRegistry& registry)
++    : content::NavigationThrottle(registry) {}
++
++PinnedTabNavigationThrottle::~PinnedTabNavigationThrottle() = default;
++
++const char* PinnedTabNavigationThrottle::GetNameForLogging() {
++  return "PinnedTabNavigationThrottle";
++}
++
++content::NavigationThrottle::ThrottleCheckResult
++PinnedTabNavigationThrottle::WillStartRequest() {
++  return Check();
++}
++
++content::NavigationThrottle::ThrottleCheckResult
++PinnedTabNavigationThrottle::WillRedirectRequest() {
++  return Check();
++}
++
++content::NavigationThrottle::ThrottleCheckResult
++PinnedTabNavigationThrottle::Check() {
++  content::NavigationHandle& handle = *navigation_handle();
++  content::WebContents* contents = handle.GetWebContents();
++  if (!contents) {
++    return PROCEED;
++  }
++  // Only link activations from the page itself are redirected; anything the
++  // browser or the user typed keeps the tab.
++  if (!handle.IsRendererInitiated() ||
++      !ui::PageTransitionCoreTypeIs(handle.GetPageTransition(),
++                                    ui::PAGE_TRANSITION_LINK)) {
++    return PROCEED;
++  }
++  tabs::TabInterface* tab = tabs::TabInterface::MaybeGetFromContents(contents);
++  if (!tab || !tab->IsPinned()) {
++    return PROCEED;
++  }
++  const GURL current = contents->GetLastCommittedURL();
++  if (SameSite(current, handle.GetURL())) {
++    return PROCEED;
++  }
++  content::OpenURLParams params(
++      handle.GetURL(), content::Referrer(handle.GetReferrer()),
++      WindowOpenDisposition::NEW_FOREGROUND_TAB, ui::PAGE_TRANSITION_LINK,
++      /*is_renderer_initiated=*/false);
++  contents->OpenURL(params, /*navigation_handle_callback=*/{});
++  return CANCEL_AND_IGNORE;
++}
+ 
+ PinnedTabService::PinnedTabService(Profile* profile) : profile_(profile) {
+   closing_all_browsers_subscription_ = chrome::AddClosingAllBrowsersCallback(
+@@ -70,6 +163,43 @@ void PinnedTabService::OnTabStripModelChanged(
+   if (change.type() == TabStripModelChange::kInserted) {
+     need_to_write_pinned_tabs_ = true;
+   }
++  SchedulePinnedTabsReconciliation();
++}
++
++void PinnedTabService::SchedulePinnedTabsReconciliation() {
++  if (reconciliation_scheduled_) {
++    return;
++  }
++  reconciliation_scheduled_ = true;
++  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE, base::BindOnce(&PinnedTabService::ReconcilePinnedTabs,
++                                weak_factory_.GetWeakPtr()));
++}
++
++void PinnedTabService::ReconcilePinnedTabs() {
++  reconciliation_scheduled_ = false;
++  // Pinned tabs must stay in one contiguous run at the front of each window;
++  // a tab that lost or gained its pin out of order is moved back into place.
++  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
++      [this](BrowserWindowInterface* browser) {
++        if (browser->GetProfile() != profile_ ||
++            browser->GetType() != BrowserWindowInterface::TYPE_NORMAL) {
++          return true;
++        }
++        TabStripModel* model = browser->GetTabStripModel();
++        int expected = 0;
++        for (int i = 0; i < model->count(); ++i) {
++          if (!model->IsTabPinned(i)) {
++            continue;
++          }
++          if (i != expected) {
++            model->MoveWebContentsAt(i, expected, /*select_after_move=*/false);
++          }
++          ++expected;
++        }
++        return true;
++      });
++  WritePinnedTabsIfNecessary();
+ }
+ 
+ void PinnedTabService::WillCloseAllTabs(TabStripModel* tab_strip_model) {
+diff --git a/chrome/browser/ui/tabs/pinned_tab_service.h b/chrome/browser/ui/tabs/pinned_tab_service.h
+index a3cb859d1e..819fdf26b5 100644
+--- a/chrome/browser/ui/tabs/pinned_tab_service.h
++++ b/chrome/browser/ui/tabs/pinned_tab_service.h
+@@ -10,12 +10,45 @@
+ #include "base/scoped_observation.h"
+ #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "base/memory/weak_ptr.h"
+ #include "components/keyed_service/core/keyed_service.h"
++#include "content/public/browser/navigation_throttle.h"
+ 
+ class Profile;
+ class BrowserWindowInterface;
+ class GlobalBrowserCollection;
+ 
++namespace content {
++class NavigationThrottleRegistry;
++}
++
++// Aside fork: keeps a pinned tab on the site it was pinned to. A link-initiated
++// main-frame navigation that leaves the pinned tab's site is cancelled and
++// re-opened in a new foreground tab instead.
++//
++// The class name and its logging name are the original's
++// (pinned_tab_service.cc, arm64 0x3fcaf60 returns "PinnedTabNavigationThrottle";
++// the string table entry sits at 0xd317505 next to
++// "SchedulePinnedTabsReconciliation" and the pinned_tab_service.cc path). The
++// decision rule below is inferred from the name and from the pinned-tab
++// contract; the original's exact predicate is not recoverable from strings.
++class PinnedTabNavigationThrottle : public content::NavigationThrottle {
++ public:
++  static void MaybeCreateAndAdd(content::NavigationThrottleRegistry& registry);
++
++  explicit PinnedTabNavigationThrottle(
++      content::NavigationThrottleRegistry& registry);
++  ~PinnedTabNavigationThrottle() override;
++
++  // content::NavigationThrottle:
++  ThrottleCheckResult WillStartRequest() override;
++  ThrottleCheckResult WillRedirectRequest() override;
++  const char* GetNameForLogging() override;
++
++ private:
++  ThrottleCheckResult Check();
++};
++
+ // PinnedTabService is responsible for updating preferences with the set of
+ // pinned tabs to restore at startup. PinnedTabService listens for the
+ // appropriate set of notifications to know it should update preferences.
+@@ -46,6 +79,15 @@ class PinnedTabService : public BrowserCollectionObserver,
+   // window has been added since the last time the method was called.
+   void WritePinnedTabsIfNecessary();
+ 
++  // Aside fork: coalesced re-check of the pinned tabs across this profile's
++  // windows, posted at most once per task-runner turn. The original guards it
++  // with a single bool (arm64 0x3fcaf6c: test/set of the byte at +0xc8, then
++  // one PostTask), which is what is reproduced here.
++  void SchedulePinnedTabsReconciliation();
++  void ReconcilePinnedTabs();
++
++  bool reconciliation_scheduled_ = false;
++
+   raw_ptr<Profile> profile_;
+ 
+   // True if we should save the pinned tabs when a browser window closes or the
+@@ -57,6 +99,8 @@ class PinnedTabService : public BrowserCollectionObserver,
+       browser_collection_observation_{this};
+ 
+   base::CallbackListSubscription closing_all_browsers_subscription_;
++
++  base::WeakPtrFactory<PinnedTabService> weak_factory_{this};
+ };
+ 
+ #endif  // CHROME_BROWSER_UI_TABS_PINNED_TAB_SERVICE_H_
+diff --git a/chrome/browser/ui/tabs/tab_menu_model.cc b/chrome/browser/ui/tabs/tab_menu_model.cc
+index 1baf7a072c..8d25470b09 100644
+--- a/chrome/browser/ui/tabs/tab_menu_model.cc
++++ b/chrome/browser/ui/tabs/tab_menu_model.cc
+@@ -486,6 +486,14 @@ void TabMenuModel::Build(int index) {
+                  tab_strip_->IsReadLaterSupportedForAny(indices));
+   }
+ 
++  // Aside fork: "Add bookmark" / "Remove bookmark" sits with the read-later
++  // entry. Labels are the original's UTF-16 literals (arm64 0xd77b120 /
++  // 0xd77b0dc); the plural forms carry the tab title, which the original also
++  // has ("Add to bookmarks: " / "Remove bookmark: ", 0xd77b13a / 0xd77b0fc).
++  AddItem(TabStripModel::CommandAddToBookmarks,
++          tab_strip_->AreAllTabsBookmarked(indices) ? u"Remove bookmark"
++                                                    : u"Add bookmark");
++
+   if (show_glic_items && !glic_displayed) {
+     AppendGlicItems(index, num_tabs, indices);
+   }
+diff --git a/chrome/browser/ui/tabs/tab_strip_model.cc b/chrome/browser/ui/tabs/tab_strip_model.cc
+index e45f2404bd..2bc08b3834 100644
+--- a/chrome/browser/ui/tabs/tab_strip_model.cc
++++ b/chrome/browser/ui/tabs/tab_strip_model.cc
+@@ -48,7 +48,11 @@
+ #include "chrome/browser/reading_list/reading_list_model_factory.h"
+ #include "chrome/browser/resource_coordinator/tab_helper.h"
+ #include "chrome/browser/send_tab_to_self/send_tab_to_self_util.h"
++#include "chrome/browser/bookmarks/bookmark_model_factory.h"
+ #include "chrome/browser/ui/bookmarks/bookmark_utils.h"
++#include "components/bookmarks/browser/bookmark_model.h"
++#include "components/bookmarks/browser/bookmark_node.h"
++#include "components/bookmarks/common/bookmark_metrics.h"
+ #include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/browser_command_controller.h"
+ #include "chrome/browser/ui/browser_commands.h"
+@@ -2491,12 +2495,32 @@ bool TabStripModel::IsContextMenuCommandEnabled(
+     case CommandToggleVertical:
+       return true;
+ 
++    case CommandAddToBookmarks:
++      return BookmarkModelFactory::GetForBrowserContext(profile()) != nullptr;
++
+     default:
+       SCOPED_CRASH_KEY_NUMBER("TabStripModel", "command_id", command_id);
+       NOTREACHED() << "Unsupported command: " << command_id;
+   }
+ }
+ 
++bool TabStripModel::AreAllTabsBookmarked(
++    const std::vector<int>& indices) const {
++  bookmarks::BookmarkModel* model =
++      BookmarkModelFactory::GetForBrowserContext(profile());
++  if (!model || !model->loaded() || indices.empty()) {
++    return false;
++  }
++  for (int index : indices) {
++    content::WebContents* contents = GetWebContentsAt(index);
++    if (!contents ||
++        model->GetNodesByURL(contents->GetLastCommittedURL()).empty()) {
++      return false;
++    }
++  }
++  return true;
++}
++
+ void TabStripModel::ExecuteContextMenuCommand(int context_index,
+                                               ContextMenuCommand command_id) {
+   // This should have been tested by IsContextMenuCommandEnabled.
+@@ -2842,6 +2866,41 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
+       break;
+     }
+ 
++    case CommandAddToBookmarks: {
++      base::UmaHistogramCounts1000(
++          "Tab.ContextMenu.AddToBookmarks.SelectedTabsCount",
++          selection_model_.size());
++      base::RecordAction(UserMetricsAction("TabContextMenu_AddToBookmarks"));
++      bookmarks::BookmarkModel* model =
++          BookmarkModelFactory::GetForBrowserContext(profile());
++      if (!model || !model->loaded()) {
++        break;
++      }
++      // The label toggles, so the command toggles: if every selected tab is
++      // already bookmarked, remove them; otherwise add the missing ones.
++      const std::vector<int> indices = GetIndicesForCommand(context_index);
++      const bool remove = AreAllTabsBookmarked(indices);
++      for (int index : indices) {
++        content::WebContents* contents = GetWebContentsAt(index);
++        if (!contents) {
++          continue;
++        }
++        const GURL url = contents->GetLastCommittedURL();
++        auto existing = model->GetNodesByURL(url);
++        if (remove) {
++          for (const bookmarks::BookmarkNode* node : existing) {
++            model->Remove(node, bookmarks::metrics::BookmarkEditSource::kUser,
++                          FROM_HERE);
++          }
++        } else if (existing.empty()) {
++          model->AddURL(model->bookmark_bar_node(),
++                        model->bookmark_bar_node()->children().size(),
++                        contents->GetTitle(), url);
++        }
++      }
++      break;
++    }
++
+     case CommandCopyURL: {
+       base::UmaHistogramCounts1000("Tab.ContextMenu.CopyURL.SelectedTabsCount",
+                                    selection_model_.size());
+diff --git a/chrome/browser/ui/tabs/tab_strip_model.h b/chrome/browser/ui/tabs/tab_strip_model.h
+index cf144a90c3..c2f4e34223 100644
+--- a/chrome/browser/ui/tabs/tab_strip_model.h
++++ b/chrome/browser/ui/tabs/tab_strip_model.h
+@@ -232,6 +232,14 @@ class TabStripModel {
+   // Retrieve the Profile associated with this TabStripModel.
+   Profile* profile() const { return profile_; }
+ 
++  // Aside profile pager: repoints an *empty* tab strip at another profile so
++  // the same window can show a different profile's tabs (see
++  // Browser::SetProfileForAsideProfileSwitch).
++  void SetProfileForAsideProfileSwitch(Profile* profile) {
++    CHECK(empty());
++    profile_ = profile;
++  }
++
+   // Retrieve the index of the currently active WebContents. The only time this
+   // is kNoTab is if the tab strip is being initialized or destroyed. Note that
+   // tab strip destruction is an asynchronous process.
+@@ -765,6 +773,12 @@ class TabStripModel {
+     CommandGoBack,
+     CommandCloseAllTabs,
+     CommandToggleVertical,
++    // Aside fork: "Add bookmark" / "Remove bookmark" on the tab context menu.
++    // Evidence: the original records
++    // "Tab.ContextMenu.AddToBookmarks.SelectedTabsCount" (x86_64 slice, region
++    // 0x04863470) and carries the two labels as UTF-16 literals at arm64
++    // 0xd77b120 / 0xd77b0dc.
++    CommandAddToBookmarks,
+     CommandGlicShare,
+     CommandGlicCreateNewChat,
+     CommandGlicSwitchToRecentConversation,
+@@ -778,6 +792,10 @@ class TabStripModel {
+   bool IsContextMenuCommandEnabled(int context_index,
+                                    ContextMenuCommand command_id) const;
+ 
++  // Aside fork: true when every tab in `indices` is already bookmarked. Decides
++  // whether CommandAddToBookmarks reads "Add bookmark" or "Remove bookmark".
++  bool AreAllTabsBookmarked(const std::vector<int>& indices) const;
++
+   // Performs the action associated with the specified command for the given
+   // TabStripModel index |context_index|.  If |context_index| is selected the
+   // command applies to all selected tabs.
+diff --git a/chrome/browser/ui/views/frame/aside_bookmark_dialogs.cc b/chrome/browser/ui/views/frame/aside_bookmark_dialogs.cc
+new file mode 100644
+index 0000000000..688e2bc1df
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_bookmark_dialogs.cc
+@@ -0,0 +1,235 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_bookmark_dialogs.h"
++
++#include <memory>
++#include <string>
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/location.h"
++#include "base/memory/raw_ptr.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/bookmarks/bookmark_model_factory.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/dialogs/browser_dialogs.h"
++#include "components/bookmarks/browser/bookmark_model.h"
++#include "components/bookmarks/browser/bookmark_node.h"
++#include "components/bookmarks/browser/bookmark_utils.h"
++#include "components/bookmarks/common/bookmark_metrics.h"
++#include "components/url_formatter/url_fixer.h"
++#include "ui/base/interaction/element_identifier.h"
++#include "ui/base/models/dialog_model.h"
++#include "ui/base/models/dialog_model_field.h"
++#include "url/gurl.h"
++
++namespace aside {
++namespace {
++
++// vertical_tab_bookmarks_view.cc lines 148-150 in the original.
++DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kRenameFolderFieldId);
++DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kEditBookmarkNameFieldId);
++DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kEditBookmarkUrlFieldId);
++
++// Original UTF-16 literals (arm64 0xd77ab0c-0xd77ad8a).
++constexpr char16_t kRename[] = u"Rename";
++constexpr char16_t kDelete[] = u"Delete";
++constexpr char16_t kCancel[] = u"Cancel";
++constexpr char16_t kSave[] = u"Save";
++constexpr char16_t kRenameFolderTitle[] = u"Rename Folder";
++constexpr char16_t kFolderName[] = u"Folder name";
++constexpr char16_t kDeleteFolderTitle[] = u"Delete Folder";
++constexpr char16_t kDeleteThisFolder[] =
++    u"Delete this folder and everything inside it?";
++constexpr char16_t kDeleteQuotePrefix[] = u"Delete \"";
++constexpr char16_t kAndEverythingInside[] = u"\" and everything inside it?";
++constexpr char16_t kEditBookmarkTitle[] = u"Edit Bookmark";
++constexpr char16_t kName[] = u"Name";
++constexpr char16_t kUrl[] = u"URL";
++constexpr char16_t kDeleteThisBookmark[] = u"Delete this bookmark?";
++constexpr char16_t kQuoteQuestion[] = u"\"?";
++constexpr char16_t kDeleteBookmarkTitle[] = u"Delete Bookmark";
++
++bookmarks::BookmarkModel* ModelFor(Browser* browser) {
++  return browser ? BookmarkModelFactory::GetForBrowserContext(
++                       browser->profile())
++                 : nullptr;
++}
++
++const bookmarks::BookmarkNode* NodeFor(Browser* browser, int64_t id) {
++  bookmarks::BookmarkModel* model = ModelFor(browser);
++  if (!model || !model->loaded()) {
++    return nullptr;
++  }
++  return bookmarks::GetBookmarkNodeByID(model, id);
++}
++
++// Both delete dialogs pick between a generic sentence and one that quotes the
++// node title, exactly like the original (RE 0x43c6c58 / 0x43c6fc0: the branch
++// tests the title for emptiness and otherwise concatenates
++// 'Delete "' + title + suffix).
++std::u16string DeleteBody(const std::u16string& title,
++                          const std::u16string& generic,
++                          const std::u16string& suffix) {
++  if (title.empty()) {
++    return generic;
++  }
++  return std::u16string(kDeleteQuotePrefix) + title + suffix;
++}
++
++// Self-owned delegate: DialogModel owns it, so the raw Browser pointer only has
++// to survive as long as the dialog. Weakness is handled by re-resolving the
++// node by id on accept.
++class BookmarkDialogDelegate : public ui::DialogModelDelegate {
++ public:
++  BookmarkDialogDelegate(Browser* browser, int64_t node_id)
++      : browser_(browser), node_id_(node_id) {}
++
++  void OnRenameFolder() {
++    const bookmarks::BookmarkNode* node = NodeFor(browser_, node_id_);
++    bookmarks::BookmarkModel* model = ModelFor(browser_);
++    if (!node || !model || !node->is_folder()) {
++      return;
++    }
++    model->SetTitle(node,
++                    dialog_model()->GetTextfieldByUniqueId(kRenameFolderFieldId)
++                        ->text(),
++                    bookmarks::metrics::BookmarkEditSource::kUser);
++  }
++
++  void OnEditBookmark() {
++    const bookmarks::BookmarkNode* node = NodeFor(browser_, node_id_);
++    bookmarks::BookmarkModel* model = ModelFor(browser_);
++    if (!node || !model || !node->is_url()) {
++      return;
++    }
++    model->SetTitle(
++        node,
++        dialog_model()->GetTextfieldByUniqueId(kEditBookmarkNameFieldId)->text(),
++        bookmarks::metrics::BookmarkEditSource::kUser);
++    const GURL url = url_formatter::FixupURL(
++        base::UTF16ToUTF8(
++            dialog_model()->GetTextfieldByUniqueId(kEditBookmarkUrlFieldId)
++                ->text()),
++        std::string());
++    if (url.is_valid()) {
++      model->SetURL(node, url, bookmarks::metrics::BookmarkEditSource::kUser);
++    }
++  }
++
++  void OnDelete() {
++    const bookmarks::BookmarkNode* node = NodeFor(browser_, node_id_);
++    bookmarks::BookmarkModel* model = ModelFor(browser_);
++    if (!node || !model || node->is_permanent_node()) {
++      return;
++    }
++    model->Remove(node, bookmarks::metrics::BookmarkEditSource::kUser,
++                  FROM_HERE);
++  }
++
++ private:
++  raw_ptr<Browser> browser_;
++  const int64_t node_id_;
++};
++
++}  // namespace
++
++void ShowRenameFolderDialog(Browser* browser, int64_t folder_id) {
++  const bookmarks::BookmarkNode* node = NodeFor(browser, folder_id);
++  if (!node || !node->is_folder()) {
++    return;
++  }
++  auto delegate = std::make_unique<BookmarkDialogDelegate>(browser, folder_id);
++  BookmarkDialogDelegate* delegate_ptr = delegate.get();
++  auto model =
++      ui::DialogModel::Builder(std::move(delegate))
++          .SetTitle(kRenameFolderTitle)
++          .SetInternalName("VerticalTabBookmarksRenameFolder")
++          .AddTextfield(kRenameFolderFieldId, kFolderName, node->GetTitle())
++          .AddOkButton(
++              base::BindOnce(&BookmarkDialogDelegate::OnRenameFolder,
++                             base::Unretained(delegate_ptr)),
++              ui::DialogModel::Button::Params().SetLabel(kRename))
++          .AddCancelButton(base::DoNothing(),
++                           ui::DialogModel::Button::Params().SetLabel(kCancel))
++          .SetInitiallyFocusedField(kRenameFolderFieldId)
++          .Build();
++  chrome::ShowBrowserModal(browser, std::move(model));
++}
++
++void ShowDeleteFolderDialog(Browser* browser, int64_t folder_id) {
++  const bookmarks::BookmarkNode* node = NodeFor(browser, folder_id);
++  if (!node || !node->is_folder() || node->is_permanent_node()) {
++    return;
++  }
++  auto delegate = std::make_unique<BookmarkDialogDelegate>(browser, folder_id);
++  BookmarkDialogDelegate* delegate_ptr = delegate.get();
++  auto model =
++      ui::DialogModel::Builder(std::move(delegate))
++          .SetTitle(kDeleteFolderTitle)
++          .SetInternalName("VerticalTabBookmarksDeleteFolder")
++          .AddParagraph(ui::DialogModelLabel(DeleteBody(
++              node->GetTitle(), kDeleteThisFolder, kAndEverythingInside)))
++          .AddOkButton(
++              base::BindOnce(&BookmarkDialogDelegate::OnDelete,
++                             base::Unretained(delegate_ptr)),
++              ui::DialogModel::Button::Params().SetLabel(kDelete).SetStyle(
++                  ui::ButtonStyle::kProminent))
++          .AddCancelButton(base::DoNothing(),
++                           ui::DialogModel::Button::Params().SetLabel(kCancel))
++          .Build();
++  chrome::ShowBrowserModal(browser, std::move(model));
++}
++
++void ShowEditBookmarkDialog(Browser* browser, int64_t node_id) {
++  const bookmarks::BookmarkNode* node = NodeFor(browser, node_id);
++  if (!node || !node->is_url()) {
++    return;
++  }
++  auto delegate = std::make_unique<BookmarkDialogDelegate>(browser, node_id);
++  BookmarkDialogDelegate* delegate_ptr = delegate.get();
++  auto model =
++      ui::DialogModel::Builder(std::move(delegate))
++          .SetTitle(kEditBookmarkTitle)
++          .SetInternalName("VerticalTabBookmarksEditBookmark")
++          .AddTextfield(kEditBookmarkNameFieldId, kName, node->GetTitle())
++          .AddTextfield(kEditBookmarkUrlFieldId, kUrl,
++                        base::UTF8ToUTF16(node->url().spec()))
++          .AddOkButton(base::BindOnce(&BookmarkDialogDelegate::OnEditBookmark,
++                                      base::Unretained(delegate_ptr)),
++                       ui::DialogModel::Button::Params().SetLabel(kSave))
++          .AddCancelButton(base::DoNothing(),
++                           ui::DialogModel::Button::Params().SetLabel(kCancel))
++          .SetInitiallyFocusedField(kEditBookmarkNameFieldId)
++          .Build();
++  chrome::ShowBrowserModal(browser, std::move(model));
++}
++
++void ShowDeleteBookmarkDialog(Browser* browser, int64_t node_id) {
++  const bookmarks::BookmarkNode* node = NodeFor(browser, node_id);
++  if (!node || !node->is_url()) {
++    return;
++  }
++  auto delegate = std::make_unique<BookmarkDialogDelegate>(browser, node_id);
++  BookmarkDialogDelegate* delegate_ptr = delegate.get();
++  auto model =
++      ui::DialogModel::Builder(std::move(delegate))
++          .SetTitle(kDeleteBookmarkTitle)
++          .SetInternalName("VerticalTabBookmarksDeleteBookmark")
++          .AddParagraph(ui::DialogModelLabel(DeleteBody(
++              node->GetTitle(), kDeleteThisBookmark, kQuoteQuestion)))
++          .AddOkButton(
++              base::BindOnce(&BookmarkDialogDelegate::OnDelete,
++                             base::Unretained(delegate_ptr)),
++              ui::DialogModel::Button::Params().SetLabel(kDelete).SetStyle(
++                  ui::ButtonStyle::kProminent))
++          .AddCancelButton(base::DoNothing(),
++                           ui::DialogModel::Button::Params().SetLabel(kCancel))
++          .Build();
++  chrome::ShowBrowserModal(browser, std::move(model));
++}
++
++}  // namespace aside
+diff --git a/chrome/browser/ui/views/frame/aside_bookmark_dialogs.h b/chrome/browser/ui/views/frame/aside_bookmark_dialogs.h
+new file mode 100644
+index 0000000000..1279b88546
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_bookmark_dialogs.h
+@@ -0,0 +1,41 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_BOOKMARK_DIALOGS_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_BOOKMARK_DIALOGS_H_
++
++#include <cstdint>
++
++class Browser;
++
++// The four bookmark dialogs the original opens from the vertical tab strip's
++// bookmarks section (RE of vertical_tab_bookmarks_view.cc, Aside 1.0.825.1:
++// VerticalTabBookmarksRenameFolder / DeleteFolderById /
++// VerticalTabBookmarksEditBookmark / DeleteBookmarkById; the textfield element
++// ids kRenameFolderFieldId, kEditBookmarkNameFieldId and
++// kEditBookmarkUrlFieldId are declared at lines 148-150 of that file, so the
++// original builds these with ui::DialogModel too).
++//
++// Strings are the original's UTF-16 literals (x86_64 slice 0xe9a7530-0xe9a76bc,
++// arm64 0xd77ac1e-0xd77ad8a).
++namespace aside {
++
++// "Rename Folder" — textfield labelled "Folder name", accept button "Rename".
++void ShowRenameFolderDialog(Browser* browser, int64_t folder_id);
++
++// "Delete Folder" — body 'Delete "<name>" and everything inside it?' (or
++// "Delete this folder and everything inside it?" when the name is empty),
++// accept button "Delete".
++void ShowDeleteFolderDialog(Browser* browser, int64_t folder_id);
++
++// "Edit Bookmark" — textfields "Name" and "URL", accept button "Save".
++void ShowEditBookmarkDialog(Browser* browser, int64_t node_id);
++
++// "Delete Bookmark" — body 'Delete "<name>"?' (or "Delete this bookmark?"),
++// accept button "Delete".
++void ShowDeleteBookmarkDialog(Browser* browser, int64_t node_id);
++
++}  // namespace aside
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_BOOKMARK_DIALOGS_H_
+diff --git a/chrome/browser/ui/views/frame/aside_bookmarks_section_view.cc b/chrome/browser/ui/views/frame/aside_bookmarks_section_view.cc
+new file mode 100644
+index 0000000000..c445679db8
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_bookmarks_section_view.cc
+@@ -0,0 +1,382 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_bookmarks_section_view.h"
++
++#include <memory>
++#include <utility>
++#include <vector>
++
++#include "base/functional/bind.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/values.h"
++#include "chrome/app/chrome_command_ids.h"
++#include "chrome/browser/bookmarks/bookmark_model_factory.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/aside/aside_fonts.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/browser_commands.h"
++#include "chrome/browser/ui/navigator/browser_navigator.h"
++#include "chrome/browser/ui/navigator/browser_navigator_params.h"
++#include "chrome/browser/ui/tabs/split_tab_metrics.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/views/aside/aside_text_button.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "chrome/browser/ui/views/frame/aside_bookmark_dialogs.h"
++#include "components/bookmarks/browser/bookmark_model.h"
++#include "components/bookmarks/browser/bookmark_node.h"
++#include "components/bookmarks/browser/bookmark_utils.h"
++#include "components/prefs/pref_service.h"
++#include "components/prefs/scoped_user_pref_update.h"
++#include "components/split_tabs/split_tab_visual_data.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/base/page_transition_types.h"
++#include "ui/base/window_open_disposition.h"
++#include "ui/color/color_id.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/layout/box_layout.h"
++
++namespace {
++
++constexpr char kEnabledPref[] = "aside.vertical_tabs.bookmarks_section_enabled";
++constexpr char kExpandedPref[] =
++    "aside.vertical_tabs.bookmarks_section_expanded";
++constexpr char kExpandedFoldersPref[] =
++    "aside.vertical_tabs.expanded_bookmark_folder_ids";
++constexpr char16_t kBookmarksTitle[] = u"Bookmarks";
++// Original UTF-16 literal 0xd77adaa: the empty-state row under the header.
++constexpr char16_t kEmptyState[] = u"Drag tabs here to add bookmarks";
++constexpr int kIndent = 14;
++constexpr int kMaxRows = 40;
++
++// Folder row menu (RE 0x43c2700: AddItem(1,"Rename"), AddItem(2,"Delete"),
++// AddSeparator(NORMAL), AddItem(3,"Manage Bookmarks")).
++enum FolderMenuCommand {
++  kFolderRename = 1,
++  kFolderDelete = 2,
++  kManageBookmarks = 3,
++};
++
++// Bookmark row menu (RE 0x43c2b80-0x43c2ee0: command ids 0x64..0x6a in this
++// order, with one separator after "Delete").
++enum BookmarkMenuCommand {
++  kBookmarkEdit = 0x64,
++  kBookmarkDelete = 0x65,
++  kBookmarkOpenIncognito = 0x66,
++  kBookmarkOpenNewTabGroup = 0x67,
++  kBookmarkOpenNewTab = 0x68,
++  kBookmarkOpenNewWindow = 0x69,
++  kBookmarkOpenSplitView = 0x6a,
++};
++
++// Original UTF-16 literals, arm64 0xd77ab0c-0xd77abf8.
++constexpr char16_t kRename[] = u"Rename";
++constexpr char16_t kDelete[] = u"Delete";
++constexpr char16_t kManageBookmarksLabel[] = u"Manage Bookmarks";
++constexpr char16_t kEdit[] = u"Edit";
++constexpr char16_t kOpenInIncognitoWindow[] = u"Open in Incognito window";
++constexpr char16_t kOpenInNewTabGroup[] = u"Open in new tab group";
++constexpr char16_t kOpenInNewTab[] = u"Open in new tab";
++constexpr char16_t kOpenInNewWindow[] = u"Open in new window";
++constexpr char16_t kOpenInSplitView[] = u"Open in split view";
++
++}  // namespace
++
++AsideBookmarksSectionView::AsideBookmarksSectionView(Browser* browser)
++    : browser_(browser) {
++  SetOrientation(views::BoxLayout::Orientation::kVertical);
++  SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++
++  header_ = AddChildView(std::make_unique<AsideTextButton>(
++      base::BindRepeating(&AsideBookmarksSectionView::ToggleSection,
++                          base::Unretained(this)),
++      kBookmarksTitle, views::style::CONTEXT_BUTTON_MD));
++  header_->SetStyle(ui::ButtonStyle::kText);
++  header_->SetCustomPadding(gfx::Insets::VH(4, 8));
++  header_->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  header_->SetLabelStyle(views::style::STYLE_BODY_4_BOLD);
++  header_->SetImageLabelSpacing(4);
++  header_->SetLabelFontList(
++      aside::UiFontList(12, gfx::Font::Weight::SEMIBOLD));
++
++  auto rows = std::make_unique<views::BoxLayoutView>();
++  rows->SetOrientation(views::BoxLayout::Orientation::kVertical);
++  rows->SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++  rows_ = AddChildView(std::move(rows));
++
++  auto empty = std::make_unique<views::Label>(kEmptyState);
++  empty->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  empty->SetMultiLine(true);
++  empty->SetEnabledColor(ui::kColorLabelForegroundSecondary);
++  empty->SetFontList(aside::UiFontList(12));
++  empty->SetBorder(views::CreateEmptyBorder(gfx::Insets::TLBR(2, 10, 6, 8)));
++  empty_label_ = AddChildView(std::move(empty));
++
++  model_ = BookmarkModelFactory::GetForBrowserContext(browser_->profile());
++  if (model_) {
++    model_->AddObserver(this);
++  }
++  pref_registrar_.Init(browser_->profile()->GetPrefs());
++  auto rebuild = base::BindRepeating(&AsideBookmarksSectionView::Rebuild,
++                                     base::Unretained(this));
++  pref_registrar_.Add(kEnabledPref, rebuild);
++  pref_registrar_.Add(kExpandedPref, rebuild);
++  pref_registrar_.Add(kExpandedFoldersPref, rebuild);
++  tab_representation_ =
++      std::make_unique<AsideBookmarkTabRepresentation>(browser_);
++  tab_representation_subscription_ =
++      tab_representation_->AddChangedCallback(rebuild);
++  Rebuild();
++}
++
++AsideBookmarksSectionView::~AsideBookmarksSectionView() {
++  if (model_) {
++    model_->RemoveObserver(this);
++  }
++}
++
++void AsideBookmarksSectionView::BookmarkModelChanged() {
++  Rebuild();
++}
++
++std::set<std::string> AsideBookmarksSectionView::ExpandedFolderIds() const {
++  std::set<std::string> ids;
++  for (const base::Value& v :
++       browser_->profile()->GetPrefs()->GetList(kExpandedFoldersPref)) {
++    if (v.is_string()) {
++      ids.insert(v.GetString());
++    }
++  }
++  return ids;
++}
++
++bool AsideBookmarksSectionView::IsFolderExpanded(int64_t folder_id) const {
++  return ExpandedFolderIds().contains(base::NumberToString(folder_id));
++}
++
++void AsideBookmarksSectionView::Rebuild() {
++  PrefService* prefs = browser_->profile()->GetPrefs();
++  const bool enabled = prefs->GetBoolean(kEnabledPref);
++  const bool expanded = prefs->GetBoolean(kExpandedPref);
++  SetVisible(enabled && model_ && model_->loaded());
++  header_->SetImageModel(
++      views::Button::STATE_NORMAL,
++      ui::ImageModel::FromVectorIcon(expanded ? kAsideExpandMoreIcon
++                                              : kAsideChevronRightMediumStrokeIcon,
++                                     ui::kColorIcon, 14));
++  rows_->RemoveAllChildViews();
++  row_nodes_.clear();
++  rows_->SetVisible(expanded);
++  if (enabled && expanded && model_ && model_->loaded()) {
++    AddNodeRows(model_->bookmark_bar_node(), 0);
++  }
++  // The original shows "Drag tabs here to add bookmarks" only while the section
++  // is open and holds nothing.
++  empty_label_->SetVisible(expanded && rows_->children().empty());
++  InvalidateLayout();
++  if (parent()) {
++    parent()->InvalidateLayout();
++  }
++}
++
++void AsideBookmarksSectionView::AddNodeRows(const bookmarks::BookmarkNode* node,
++                                            int depth) {
++  if (!node) {
++    return;
++  }
++  for (const auto& child : node->children()) {
++    if (rows_->children().size() >= kMaxRows) {
++      return;
++    }
++    const bool folder = child->is_folder();
++    const bool open = folder && IsFolderExpanded(child->id());
++    auto* row = rows_->AddChildView(std::make_unique<AsideTextButton>(
++        folder ? base::BindRepeating(&AsideBookmarksSectionView::ToggleFolder,
++                                     base::Unretained(this), child->id())
++               : base::BindRepeating(&AsideBookmarksSectionView::OpenBookmark,
++                                     base::Unretained(this), child->id()),
++        child->GetTitle()));
++    row->SetStyle(ui::ButtonStyle::kText);
++    row->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    row->SetCustomPadding(gfx::Insets::TLBR(3, 8 + depth * kIndent, 3, 8));
++    row->SetImageLabelSpacing(6);
++    row->SetLabelFontList(aside::UiFontList(13));
++    row->SetTooltipText(folder ? child->GetTitle()
++                               : base::UTF8ToUTF16(child->url().spec()));
++    row->SetImageModel(
++        views::Button::STATE_NORMAL,
++        ui::ImageModel::FromVectorIcon(
++            folder ? (open ? kAsideExpandMoreIcon : kAsideBookmarkFolderIcon)
++                   : kAsideBookmarkSolidIcon,
++            ui::kColorIcon, 14));
++    // VerticalBookmarkRowView: right click opens the folder or bookmark menu.
++    row->set_context_menu_controller(this);
++    // Aside: a bookmark that points at an open tab represents that tab.  The
++    // original records the pairing under bookmark_tab_representation_node_id /
++    // bookmark_tab_representation_host; here the row shows it and clicking it
++    // activates the tab instead of navigating again.
++    if (!folder && tab_representation_ &&
++        tab_representation_->IsNodeRepresentingOpenTab(child->id())) {
++      row->SetImageModel(views::Button::STATE_NORMAL,
++                         ui::ImageModel::FromVectorIcon(
++                             kAsideBookmarkSolidIcon, ui::kColorSysPrimary, 14));
++      row->SetTooltipText(base::UTF8ToUTF16(
++          child->url().spec() + "  (" +
++          std::string(AsideBookmarkTabRepresentation::kHostKey) + ": " +
++          tab_representation_->RepresentationForNode(child->id())->host + ")"));
++    }
++    row_nodes_[row] = RowInfo{child->id(), folder};
++    if (open) {
++      AddNodeRows(child.get(), depth + 1);
++    }
++  }
++}
++
++void AsideBookmarksSectionView::ToggleSection() {
++  PrefService* prefs = browser_->profile()->GetPrefs();
++  prefs->SetBoolean(kExpandedPref, !prefs->GetBoolean(kExpandedPref));
++}
++
++void AsideBookmarksSectionView::ToggleFolder(int64_t folder_id) {
++  ScopedListPrefUpdate update(browser_->profile()->GetPrefs(),
++                              kExpandedFoldersPref);
++  const std::string id = base::NumberToString(folder_id);
++  base::ListValue& list = update.Get();
++  if (!list.EraseValue(base::Value(id))) {
++    list.Append(id);
++  }
++}
++
++void AsideBookmarksSectionView::OpenBookmark(int64_t node_id) {
++  OpenBookmarkWith(node_id, WindowOpenDisposition::CURRENT_TAB);
++}
++
++void AsideBookmarksSectionView::OpenBookmarkWith(
++    int64_t node_id,
++    WindowOpenDisposition disposition) {
++  if (!model_) {
++    return;
++  }
++  const bookmarks::BookmarkNode* node =
++      bookmarks::GetBookmarkNodeByID(model_, node_id);
++  if (!node || !node->is_url()) {
++    return;
++  }
++  // Aside: if this bookmark represents an open tab, activate that tab.
++  if (disposition == WindowOpenDisposition::CURRENT_TAB &&
++      tab_representation_) {
++    const std::optional<AsideBookmarkTabRepresentation::Representation>
++        representation = tab_representation_->RepresentationForNode(node_id);
++    if (representation.has_value() && representation->tab_index >= 0 &&
++        representation->tab_index < browser_->tab_strip_model()->count()) {
++      browser_->tab_strip_model()->ActivateTabAt(representation->tab_index);
++      return;
++    }
++  }
++  NavigateParams params(browser_, node->url(),
++                        ui::PAGE_TRANSITION_AUTO_BOOKMARK);
++  params.disposition = disposition;
++  Navigate(&params);
++}
++
++void AsideBookmarksSectionView::ShowContextMenuForViewImpl(
++    views::View* source,
++    const gfx::Point& point,
++    ui::mojom::MenuSourceType source_type) {
++  auto it = row_nodes_.find(source);
++  if (it == row_nodes_.end()) {
++    return;
++  }
++  pending_menu_ = it->second;
++  menu_model_ = std::make_unique<ui::SimpleMenuModel>(this);
++  if (pending_menu_.is_folder) {
++    menu_model_->AddItem(kFolderRename, kRename);
++    menu_model_->AddItem(kFolderDelete, kDelete);
++    menu_model_->AddSeparator(ui::NORMAL_SEPARATOR);
++    menu_model_->AddItem(kManageBookmarks, kManageBookmarksLabel);
++  } else {
++    menu_model_->AddItem(kBookmarkEdit, kEdit);
++    menu_model_->AddItem(kBookmarkDelete, kDelete);
++    menu_model_->AddSeparator(ui::NORMAL_SEPARATOR);
++    menu_model_->AddItem(kBookmarkOpenIncognito, kOpenInIncognitoWindow);
++    menu_model_->AddItem(kBookmarkOpenNewTabGroup, kOpenInNewTabGroup);
++    menu_model_->AddItem(kBookmarkOpenNewTab, kOpenInNewTab);
++    menu_model_->AddItem(kBookmarkOpenNewWindow, kOpenInNewWindow);
++    menu_model_->AddItem(kBookmarkOpenSplitView, kOpenInSplitView);
++  }
++  menu_runner_ = std::make_unique<views::MenuRunner>(
++      menu_model_.get(),
++      views::MenuRunner::HAS_MNEMONICS | views::MenuRunner::CONTEXT_MENU);
++  menu_runner_->RunMenuAt(GetWidget(), nullptr, gfx::Rect(point, gfx::Size()),
++                          views::MenuAnchorPosition::kTopLeft, source_type);
++}
++
++bool AsideBookmarksSectionView::IsCommandIdChecked(int command_id) const {
++  return false;
++}
++
++bool AsideBookmarksSectionView::IsCommandIdEnabled(int command_id) const {
++  return true;
++}
++
++void AsideBookmarksSectionView::ExecuteCommand(int command_id,
++                                               int event_flags) {
++  const int64_t id = pending_menu_.node_id;
++  switch (command_id) {
++    case kFolderRename:
++      aside::ShowRenameFolderDialog(browser_, id);
++      break;
++    case kFolderDelete:
++      aside::ShowDeleteFolderDialog(browser_, id);
++      break;
++    case kManageBookmarks:
++      chrome::ExecuteCommand(browser_, IDC_SHOW_BOOKMARK_MANAGER);
++      break;
++    case kBookmarkEdit:
++      aside::ShowEditBookmarkDialog(browser_, id);
++      break;
++    case kBookmarkDelete:
++      aside::ShowDeleteBookmarkDialog(browser_, id);
++      break;
++    case kBookmarkOpenIncognito:
++      OpenBookmarkWith(id, WindowOpenDisposition::OFF_THE_RECORD);
++      break;
++    case kBookmarkOpenNewTabGroup: {
++      TabStripModel* model = browser_->tab_strip_model();
++      const int before = model->count();
++      OpenBookmarkWith(id, WindowOpenDisposition::NEW_BACKGROUND_TAB);
++      if (model->count() > before) {
++        model->AddToNewGroup({model->count() - 1});
++      }
++      break;
++    }
++    case kBookmarkOpenNewTab:
++      OpenBookmarkWith(id, WindowOpenDisposition::NEW_FOREGROUND_TAB);
++      break;
++    case kBookmarkOpenNewWindow:
++      OpenBookmarkWith(id, WindowOpenDisposition::NEW_WINDOW);
++      break;
++    case kBookmarkOpenSplitView: {
++      TabStripModel* model = browser_->tab_strip_model();
++      const int before = model->count();
++      OpenBookmarkWith(id, WindowOpenDisposition::NEW_BACKGROUND_TAB);
++      if (model->count() > before) {
++        model->AddToNewSplit({model->count() - 1},
++                             split_tabs::SplitTabVisualData(),
++                             split_tabs::SplitTabCreatedSource::
++                                 kBookmarkContextMenu);
++      }
++      break;
++    }
++    default:
++      break;
++  }
++}
++
++BEGIN_METADATA(AsideBookmarksSectionView)
++END_METADATA
+diff --git a/chrome/browser/ui/views/frame/aside_bookmarks_section_view.h b/chrome/browser/ui/views/frame/aside_bookmarks_section_view.h
+new file mode 100644
+index 0000000000..8dccb83d12
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_bookmarks_section_view.h
+@@ -0,0 +1,109 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_BOOKMARKS_SECTION_VIEW_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_BOOKMARKS_SECTION_VIEW_H_
++
++#include <map>
++#include <optional>
++#include <memory>
++#include <set>
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "base/callback_list.h"
++#include "chrome/browser/ui/views/frame/aside_bookmark_tab_representation.h"
++#include "components/bookmarks/browser/base_bookmark_model_observer.h"
++#include "components/prefs/pref_change_registrar.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/menus/simple_menu_model.h"
++#include "ui/views/context_menu_controller.h"
++#include "ui/views/controls/menu/menu_runner.h"
++#include "ui/views/layout/box_layout_view.h"
++
++class Browser;
++
++namespace bookmarks {
++class BookmarkModel;
++class BookmarkNode;
++}  // namespace bookmarks
++
++namespace views {
++class Label;
++}
++
++class AsideTextButton;
++
++// Vertical tab strip "Bookmarks" section: the bookmark bar tree with
++// expandable folders. Driven by the prefs the original consumes
++// (aside.vertical_tabs.bookmarks_section_enabled / _expanded /
++// expanded_bookmark_folder_ids; RE strings in
++// vertical_tab_strip_region_view.cc, icons kAsideBookmarkFolderIcon /
++// kAsideBookmarkSolidIcon / kAsideChevronRightMediumStrokeIcon /
++// kAsideExpandMoreIcon).
++//
++// The original names this VerticalTabBookmarksView (rows:
++// VerticalBookmarkRowView) in
++// chrome/browser/ui/views/frame/vertical_tab_bookmarks_view.cc. Its two row
++// context menus and the four edit dialogs are reproduced here; the dialogs live
++// in aside_bookmark_dialogs.{h,cc}.
++class AsideBookmarksSectionView : public views::BoxLayoutView,
++                                  public bookmarks::BaseBookmarkModelObserver,
++                                  public views::ContextMenuController,
++                                  public ui::SimpleMenuModel::Delegate {
++  METADATA_HEADER(AsideBookmarksSectionView, views::BoxLayoutView)
++
++ public:
++  explicit AsideBookmarksSectionView(Browser* browser);
++  ~AsideBookmarksSectionView() override;
++
++  void Rebuild();
++
++  // bookmarks::BaseBookmarkModelObserver:
++  void BookmarkModelChanged() override;
++
++  // views::ContextMenuController:
++  void ShowContextMenuForViewImpl(
++      views::View* source,
++      const gfx::Point& point,
++      ui::mojom::MenuSourceType source_type) override;
++
++  // ui::SimpleMenuModel::Delegate:
++  bool IsCommandIdChecked(int command_id) const override;
++  bool IsCommandIdEnabled(int command_id) const override;
++  void ExecuteCommand(int command_id, int event_flags) override;
++
++ private:
++  void AddNodeRows(const bookmarks::BookmarkNode* node, int depth);
++  void ToggleSection();
++  void ToggleFolder(int64_t folder_id);
++  void OpenBookmark(int64_t node_id);
++  bool IsFolderExpanded(int64_t folder_id) const;
++  std::set<std::string> ExpandedFolderIds() const;
++  // Opens `node_id` with `disposition`; used by the "Open in ..." commands.
++  void OpenBookmarkWith(int64_t node_id, WindowOpenDisposition disposition);
++
++  raw_ptr<Browser> browser_;
++  raw_ptr<bookmarks::BookmarkModel> model_ = nullptr;
++  raw_ptr<AsideTextButton> header_ = nullptr;
++  raw_ptr<views::View> rows_ = nullptr;
++  // "Drag tabs here to add bookmarks" — the original's empty-state row.
++  raw_ptr<views::Label> empty_label_ = nullptr;
++  PrefChangeRegistrar pref_registrar_;
++  // Aside: which bookmarks stand in for an open tab.
++  std::unique_ptr<AsideBookmarkTabRepresentation> tab_representation_;
++  base::CallbackListSubscription tab_representation_subscription_;
++
++  // Row -> bookmark node id / kind, for the two context menus.
++  struct RowInfo {
++    int64_t node_id = 0;
++    bool is_folder = false;
++  };
++  std::map<views::View*, RowInfo> row_nodes_;
++  RowInfo pending_menu_;
++  std::unique_ptr<ui::SimpleMenuModel> menu_model_;
++  std::unique_ptr<views::MenuRunner> menu_runner_;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_BOOKMARKS_SECTION_VIEW_H_
+diff --git a/chrome/browser/ui/views/frame/aside_pinned_entries_view.cc b/chrome/browser/ui/views/frame/aside_pinned_entries_view.cc
+new file mode 100644
+index 0000000000..f5d24bd47a
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_pinned_entries_view.cc
+@@ -0,0 +1,241 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_pinned_entries_view.h"
++
++#include <utility>
++#include <vector>
++
++#include "base/functional/bind.h"
++#include "base/location.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/bookmarks/bookmark_model_factory.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "components/bookmarks/browser/bookmark_model.h"
++#include "components/bookmarks/browser/bookmark_node.h"
++#include "components/bookmarks/common/bookmark_metrics.h"
++#include "components/favicon/content/content_favicon_driver.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/color/color_id.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/views/accessibility/view_accessibility.h"
++#include "ui/views/controls/button/image_button.h"
++#include "ui/views/controls/button/image_button_factory.h"
++#include "ui/views/layout/box_layout.h"
++#include "ui/views/layout/flex_layout.h"
++
++namespace {
++
++// Original UTF-16 literals, arm64 0xd77b0dc-0xd77b1c8.
++constexpr char16_t kRemoveBookmark[] = u"Remove bookmark";
++constexpr char16_t kRemoveBookmarkPrefix[] = u"Remove bookmark: ";
++constexpr char16_t kAddBookmark[] = u"Add bookmark";
++constexpr char16_t kAddToBookmarksPrefix[] = u"Add to bookmarks: ";
++constexpr char16_t kRemoveFromPin[] = u"Remove from pin";
++constexpr char16_t kRemoveFromPinPrefix[] = u"Remove from pin: ";
++constexpr char16_t kSwitchToPrefix[] = u"Switch to ";
++constexpr char16_t kPaused[] = u"Paused";
++constexpr char16_t kPausedSuffix[] = u", Paused";
++
++constexpr int kEntryIconSize = 16;
++
++enum PinnedEntryCommand {
++  kRemoveFromPinCommand = 1,
++  kToggleBookmarkCommand = 2,
++};
++
++}  // namespace
++
++AsidePinnedEntriesView::AsidePinnedEntriesView(Browser* browser,
++                                               Orientation orientation)
++    : browser_(browser), orientation_(orientation) {
++  auto* layout = SetLayoutManager(std::make_unique<views::FlexLayout>());
++  layout->SetOrientation(orientation_ == Orientation::kHorizontal
++                             ? views::LayoutOrientation::kHorizontal
++                             : views::LayoutOrientation::kVertical);
++  layout->SetCollapseMargins(true);
++  layout->SetDefault(views::kMarginsKey, gfx::Insets::VH(2, 2));
++  if (browser_) {
++    browser_->tab_strip_model()->AddObserver(this);
++  }
++  Rebuild();
++}
++
++AsidePinnedEntriesView::~AsidePinnedEntriesView() {
++  if (browser_) {
++    browser_->tab_strip_model()->RemoveObserver(this);
++  }
++}
++
++void AsidePinnedEntriesView::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  Rebuild();
++}
++
++void AsidePinnedEntriesView::OnTabPinnedStateChanged(tabs::TabInterface* tab,
++                                                     int index) {
++  // Pinning a tab that already sits in the leading run moves nothing, so
++  // OnTabStripModelChanged never fires for it.
++  Rebuild();
++}
++
++void AsidePinnedEntriesView::OnTabChangedAt(tabs::TabInterface* tab,
++                                            int index,
++                                            TabChangeType change_type) {
++  if (change_type == TabChangeType::kAll) {
++    Rebuild();
++  }
++}
++
++bool AsidePinnedEntriesView::IsEntryBookmarked(int index) const {
++  bookmarks::BookmarkModel* model =
++      BookmarkModelFactory::GetForBrowserContext(browser_->profile());
++  content::WebContents* contents =
++      browser_->tab_strip_model()->GetWebContentsAt(index);
++  if (!model || !model->loaded() || !contents) {
++    return false;
++  }
++  return !model->GetNodesByURL(contents->GetLastCommittedURL()).empty();
++}
++
++void AsidePinnedEntriesView::Rebuild() {
++  RemoveAllChildViews();
++  entry_indices_.clear();
++  if (!browser_) {
++    SetVisible(false);
++    return;
++  }
++  TabStripModel* model = browser_->tab_strip_model();
++  for (int i = 0; i < model->count(); ++i) {
++    if (!model->IsTabPinned(i)) {
++      break;  // Pinned tabs are always the leading run.
++    }
++    content::WebContents* contents = model->GetWebContentsAt(i);
++    if (!contents) {
++      continue;
++    }
++    ui::ImageModel favicon =
++        ui::ImageModel::FromVectorIcon(kAsideGlobeIcon, ui::kColorIcon,
++                                       kEntryIconSize);
++    if (auto* driver = favicon::ContentFaviconDriver::FromWebContents(contents);
++        driver && !driver->GetFavicon().IsEmpty()) {
++      favicon = ui::ImageModel::FromImage(driver->GetFavicon());
++    }
++    const std::u16string title = contents->GetTitle();
++    const bool paused = contents->WasDiscarded();
++    auto entry = views::CreateVectorImageButtonWithNativeTheme(
++        base::BindRepeating(&AsidePinnedEntriesView::ActivateEntry,
++                            base::Unretained(this), i),
++        kAsideGlobeIcon, kEntryIconSize);
++    entry->SetImageModel(views::Button::STATE_NORMAL, favicon);
++    // "Switch to <title>", with ", Paused" appended for a discarded tab; a tab
++    // with no title at all falls back to the bare "Paused" label.
++    std::u16string tooltip = title.empty() && paused
++                                 ? std::u16string(kPaused)
++                                 : std::u16string(kSwitchToPrefix) + title;
++    if (paused && !title.empty()) {
++      tooltip += kPausedSuffix;
++    }
++    entry->SetTooltipText(tooltip);
++    entry->GetViewAccessibility().SetName(tooltip);
++    entry->set_context_menu_controller(this);
++    views::View* added = AddChildView(std::move(entry));
++    entry_indices_[added] = i;
++  }
++  SetVisible(!children().empty());
++  InvalidateLayout();
++}
++
++void AsidePinnedEntriesView::ActivateEntry(int index) {
++  TabStripModel* model = browser_->tab_strip_model();
++  if (index >= 0 && index < model->count()) {
++    model->ActivateTabAt(index);
++  }
++}
++
++void AsidePinnedEntriesView::ShowContextMenuForViewImpl(
++    views::View* source,
++    const gfx::Point& point,
++    ui::mojom::MenuSourceType source_type) {
++  auto it = entry_indices_.find(source);
++  if (it == entry_indices_.end()) {
++    return;
++  }
++  pending_index_ = it->second;
++  content::WebContents* contents =
++      browser_->tab_strip_model()->GetWebContentsAt(pending_index_);
++  const std::u16string title = contents ? contents->GetTitle() : u"";
++  const bool bookmarked = IsEntryBookmarked(pending_index_);
++  menu_model_ = std::make_unique<ui::SimpleMenuModel>(this);
++  menu_model_->AddItem(kRemoveFromPinCommand, kRemoveFromPin);
++  menu_model_->SetAccessibleNameAt(
++      menu_model_->GetItemCount() - 1,
++      std::u16string(kRemoveFromPinPrefix) + title);
++  menu_model_->AddItem(kToggleBookmarkCommand,
++                       bookmarked ? kRemoveBookmark : kAddBookmark);
++  menu_model_->SetAccessibleNameAt(
++      menu_model_->GetItemCount() - 1,
++      (bookmarked ? std::u16string(kRemoveBookmarkPrefix)
++                  : std::u16string(kAddToBookmarksPrefix)) +
++          title);
++  menu_runner_ = std::make_unique<views::MenuRunner>(
++      menu_model_.get(),
++      views::MenuRunner::HAS_MNEMONICS | views::MenuRunner::CONTEXT_MENU);
++  menu_runner_->RunMenuAt(GetWidget(), nullptr, gfx::Rect(point, gfx::Size()),
++                          views::MenuAnchorPosition::kTopLeft, source_type);
++}
++
++bool AsidePinnedEntriesView::IsCommandIdChecked(int command_id) const {
++  return false;
++}
++
++bool AsidePinnedEntriesView::IsCommandIdEnabled(int command_id) const {
++  return true;
++}
++
++void AsidePinnedEntriesView::ExecuteCommand(int command_id, int event_flags) {
++  TabStripModel* model = browser_->tab_strip_model();
++  if (pending_index_ < 0 || pending_index_ >= model->count()) {
++    return;
++  }
++  switch (command_id) {
++    case kRemoveFromPinCommand:
++      model->SetTabPinned(pending_index_, false);
++      break;
++    case kToggleBookmarkCommand: {
++      bookmarks::BookmarkModel* bookmarks =
++          BookmarkModelFactory::GetForBrowserContext(browser_->profile());
++      content::WebContents* contents = model->GetWebContentsAt(pending_index_);
++      if (!bookmarks || !bookmarks->loaded() || !contents) {
++        break;
++      }
++      const GURL url = contents->GetLastCommittedURL();
++      auto existing = bookmarks->GetNodesByURL(url);
++      if (existing.empty()) {
++        bookmarks->AddURL(bookmarks->bookmark_bar_node(),
++                          bookmarks->bookmark_bar_node()->children().size(),
++                          contents->GetTitle(), url);
++      } else {
++        for (const bookmarks::BookmarkNode* node : existing) {
++          bookmarks->Remove(node,
++                            bookmarks::metrics::BookmarkEditSource::kUser,
++                            FROM_HERE);
++        }
++      }
++      break;
++    }
++    default:
++      break;
++  }
++}
++
++BEGIN_METADATA(AsidePinnedEntriesView)
++END_METADATA
+diff --git a/chrome/browser/ui/views/frame/aside_pinned_entries_view.h b/chrome/browser/ui/views/frame/aside_pinned_entries_view.h
+new file mode 100644
+index 0000000000..56e8511457
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_pinned_entries_view.h
+@@ -0,0 +1,89 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_PINNED_ENTRIES_VIEW_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_PINNED_ENTRIES_VIEW_H_
++
++#include <map>
++#include <memory>
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/menus/simple_menu_model.h"
++#include "ui/views/context_menu_controller.h"
++#include "ui/views/controls/menu/menu_runner.h"
++#include "ui/views/view.h"
++
++class Browser;
++
++// The strip of pinned-tab chips the original puts above the tab list
++// (VerticalPinnedTabEntriesView in vertical_pinned_tab_entries_view.cc and
++// HorizontalPinnedTabEntriesView in horizontal_tab_strip_region_view.cc; each
++// chip is an `EntryView`).
++//
++// Reproduced behaviour and strings, all from the original's UTF-16 literals
++// (arm64 0xd77b0dc-0xd77b1c8):
++//   * click a chip -> "Switch to <title>"
++//   * a discarded tab reads "Paused" / "<title>, Paused"
++//   * context menu: "Remove from pin", then "Add bookmark" / "Remove bookmark"
++//     with the accessible forms "Remove from pin: <title>",
++//     "Add to bookmarks: <title>" and "Remove bookmark: <title>".
++//
++// Not reproduced: chip drag-to-reorder (PinnedEntryDragGhost, FinishEntryDrag,
++// CancelEntryDragFromCaptureLoss) and bookmark drop
++// (OnBookmarkDroppedOnPinnedEntries, BookmarkDragPreview) — those need the
++// original's drag controller, which leaves no strings to reconstruct it from.
++class AsidePinnedEntriesView : public views::View,
++                               public TabStripModelObserver,
++                               public views::ContextMenuController,
++                               public ui::SimpleMenuModel::Delegate {
++  METADATA_HEADER(AsidePinnedEntriesView, views::View)
++
++ public:
++  enum class Orientation { kHorizontal, kVertical };
++
++  AsidePinnedEntriesView(Browser* browser, Orientation orientation);
++  AsidePinnedEntriesView(const AsidePinnedEntriesView&) = delete;
++  AsidePinnedEntriesView& operator=(const AsidePinnedEntriesView&) = delete;
++  ~AsidePinnedEntriesView() override;
++
++  // TabStripModelObserver:
++  void OnTabStripModelChanged(TabStripModel* tab_strip_model,
++                              const TabStripModelChange& change,
++                              const TabStripSelectionChange& selection) override;
++  // Pinning a tab that is already in place does not change the model, so the
++  // chips have to follow the pin flag and the tab's title/favicon separately.
++  void OnTabPinnedStateChanged(tabs::TabInterface* tab, int index) override;
++  void OnTabChangedAt(tabs::TabInterface* tab,
++                      int index,
++                      TabChangeType change_type) override;
++
++  // views::ContextMenuController:
++  void ShowContextMenuForViewImpl(
++      views::View* source,
++      const gfx::Point& point,
++      ui::mojom::MenuSourceType source_type) override;
++
++  // ui::SimpleMenuModel::Delegate:
++  bool IsCommandIdChecked(int command_id) const override;
++  bool IsCommandIdEnabled(int command_id) const override;
++  void ExecuteCommand(int command_id, int event_flags) override;
++
++  void Rebuild();
++
++ private:
++  void ActivateEntry(int tab_handle_index);
++  bool IsEntryBookmarked(int index) const;
++
++  raw_ptr<Browser> browser_;
++  const Orientation orientation_;
++  std::map<views::View*, int> entry_indices_;
++  int pending_index_ = -1;
++  std::unique_ptr<ui::SimpleMenuModel> menu_model_;
++  std::unique_ptr<views::MenuRunner> menu_runner_;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_PINNED_ENTRIES_VIEW_H_
+diff --git a/chrome/browser/ui/views/frame/aside_task_views.cc b/chrome/browser/ui/views/frame/aside_task_views.cc
+new file mode 100644
+index 0000000000..39a775ba19
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_task_views.cc
+@@ -0,0 +1,302 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_task_views.h"
++
++#include <memory>
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/timer/timer.h"
++#include "base/functional/callback_helpers.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/dialogs/browser_dialogs.h"
++#include "ui/base/interaction/element_identifier.h"
++#include "ui/base/models/dialog_model.h"
++#include "ui/base/models/dialog_model_field.h"
++#include "ui/base/ui_base_types.h"
++#include "base/strings/utf_string_conversions.h"
++#include "third_party/skia/include/core/SkColor.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/mojom/dialog_button.mojom.h"
++#include "ui/color/color_id.h"
++#include "ui/color/color_provider.h"
++#include "ui/gfx/canvas.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/gfx/geometry/rect_f.h"
++#include "ui/views/bubble/bubble_border.h"
++#include "ui/views/bubble/bubble_dialog_delegate_view.h"
++#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/controls/textfield/textfield.h"
++#include "ui/views/controls/textfield/textfield_controller.h"
++#include "ui/events/event.h"
++#include "ui/events/keycodes/keyboard_codes.h"
++#include "base/memory/raw_ptr.h"
++#include "ui/views/layout/box_layout.h"
++#include "ui/views/layout/box_layout_view.h"
++#include "ui/views/widget/widget.h"
++
++namespace {
++
++constexpr int kDotSize = 8;
++
++class PopoverController {
++ public:
++  PopoverController(views::View* anchor,
++                    const base::DictValue& popover,
++                    base::RepeatingCallback<void(const std::string&)> on_action)
++      : on_action_(std::move(on_action)) {
++    delegate_ = std::make_unique<views::BubbleDialogDelegate>(
++        anchor, views::BubbleBorder::LEFT_TOP);
++    delegate_->SetButtons(static_cast<int>(ui::mojom::DialogButton::kNone));
++    delegate_->SetShowCloseButton(true);
++    delegate_->SetShowTitle(false);
++    delegate_->set_margins(gfx::Insets(12));
++
++    auto contents = std::make_unique<views::BoxLayoutView>();
++    contents->SetOrientation(views::BoxLayout::Orientation::kVertical);
++    contents->SetBetweenChildSpacing(8);
++    const std::string* title = popover.FindString("title");
++    const std::string* body = popover.FindString("body");
++    auto* title_label = contents->AddChildView(std::make_unique<views::Label>(
++        base::UTF8ToUTF16(title ? *title : std::string()),
++        views::style::CONTEXT_DIALOG_TITLE, views::style::STYLE_PRIMARY));
++    title_label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    title_label->SetMultiLine(true);
++    title_label->SetMaximumWidth(280);
++    auto* body_label = contents->AddChildView(std::make_unique<views::Label>(
++        base::UTF8ToUTF16(body ? *body : std::string()),
++        views::style::CONTEXT_LABEL, views::style::STYLE_SECONDARY));
++    body_label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    body_label->SetMultiLine(true);
++    body_label->SetMaximumWidth(280);
++    auto* actions = contents->AddChildView(std::make_unique<views::BoxLayoutView>());
++    actions->SetOrientation(views::BoxLayout::Orientation::kHorizontal);
++    actions->SetMainAxisAlignment(views::LayoutAlignment::kEnd);
++    actions->SetBetweenChildSpacing(8);
++    if (const base::ListValue* list = popover.FindList("actions")) {
++      for (const base::Value& action : *list) {
++        const base::DictValue* d = action.GetIfDict();
++        if (!d) {
++          continue;
++        }
++        const std::string* id = d->FindString("id");
++        const std::string* label = d->FindString("label");
++        if (!id || !label) {
++          continue;
++        }
++        auto* button = actions->AddChildView(std::make_unique<views::MdTextButton>(
++            base::BindRepeating(&PopoverController::OnAction,
++                                base::Unretained(this), *id),
++            base::UTF8ToUTF16(*label)));
++        button->SetStyle(d->FindBool("primary").value_or(false)
++                             ? ui::ButtonStyle::kProminent
++                             : ui::ButtonStyle::kTonal);
++      }
++    }
++    delegate_->SetContentsView(std::move(contents));
++    widget_ = views::BubbleDialogDelegate::CreateBubble(
++        delegate_.get(), base::BindOnce(&PopoverController::OnClosed,
++                                        base::Unretained(this)));
++    widget_->Show();
++  }
++
++ private:
++  void OnAction(const std::string& action_id) {
++    on_action_.Run(action_id);
++    if (widget_) {
++      widget_->Close();
++    }
++  }
++  void OnClosed(views::Widget::ClosedReason) { delete this; }
++
++  base::RepeatingCallback<void(const std::string&)> on_action_;
++  std::unique_ptr<views::BubbleDialogDelegate> delegate_;
++  std::unique_ptr<views::Widget> widget_;
++};
++
++}  // namespace
++
++AsideTaskStatusDotView::AsideTaskStatusDotView(const std::string& status)
++    : status_(status) {
++  SetPreferredSize(gfx::Size(kDotSize + 4, kDotSize + 4));
++}
++
++AsideTaskStatusDotView::~AsideTaskStatusDotView() = default;
++
++void AsideTaskStatusDotView::OnPaint(gfx::Canvas* canvas) {
++  const ui::ColorProvider* provider = GetColorProvider();
++  SkColor color = provider->GetColor(ui::kColorSysPrimary);
++  if (status_ == "error") {
++    color = provider->GetColor(ui::kColorAlertHighSeverity);
++  } else if (status_ == "awaiting-approval" || status_ == "awaiting-answer") {
++    color = provider->GetColor(ui::kColorAlertMediumSeverityIcon);
++  } else if (status_ == "finished-unread") {
++    color = provider->GetColor(ui::kColorSysPrimary);
++  }
++  cc::PaintFlags flags;
++  flags.setAntiAlias(true);
++  flags.setColor(color);
++  gfx::RectF bounds(GetLocalBounds());
++  bounds.Inset(2);
++  canvas->DrawCircle(bounds.CenterPoint(), kDotSize / 2.0f, flags);
++}
++
++BEGIN_METADATA(AsideTaskStatusDotView)
++END_METADATA
++
++namespace {
++
++// vertical_tab_strip_region_view.cc:286 in the original.
++DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kRenameChatFieldId);
++
++// Original UTF-16 literals (arm64 0xd77af72-0xd77b07c).
++constexpr char16_t kNewChatName[] = u"New chat name";
++constexpr char16_t kChooseShortName[] =
++    u"Choose a short, recognizable name.";
++constexpr char16_t kSave[] = u"Save";
++constexpr char16_t kCancel[] = u"Cancel";
++constexpr char16_t kArchiveSessionTitle[] = u"Archive session?";
++constexpr char16_t kArchiveSessionBody[] = u"This will archive this task";
++constexpr char16_t kArchiveAllTitle[] = u"Archive all chats?";
++constexpr char16_t kArchiveAllBody[] = u"This will archive all chats.";
++constexpr char16_t kArchive[] = u"Archive";
++
++class RenameChatDelegate : public ui::DialogModelDelegate {
++ public:
++  explicit RenameChatDelegate(
++      base::OnceCallback<void(const std::u16string&)> on_submit)
++      : on_submit_(std::move(on_submit)) {}
++
++  void OnAccept() {
++    if (!on_submit_) {
++      return;
++    }
++    std::move(on_submit_)
++        .Run(dialog_model()->GetTextfieldByUniqueId(kRenameChatFieldId)->text());
++  }
++
++ private:
++  base::OnceCallback<void(const std::u16string&)> on_submit_;
++};
++
++// The two archive confirmations differ only in their strings.
++void ShowArchiveConfirm(Browser* browser,
++                        const std::u16string& title,
++                        const std::u16string& body,
++                        const std::string& internal_name,
++                        base::OnceClosure on_accept) {
++  if (!browser) {
++    return;
++  }
++  auto model =
++      ui::DialogModel::Builder()
++          .SetTitle(title)
++          .SetInternalName(internal_name)
++          .AddParagraph(ui::DialogModelLabel(body))
++          .AddOkButton(
++              std::move(on_accept),
++              ui::DialogModel::Button::Params().SetLabel(kArchive).SetStyle(
++                  ui::ButtonStyle::kProminent))
++          .AddCancelButton(base::DoNothing(),
++                           ui::DialogModel::Button::Params().SetLabel(kCancel))
++          .Build();
++  chrome::ShowBrowserModal(browser, std::move(model));
++}
++
++}  // namespace
++
++void ShowAsideRenameChatDialog(
++    Browser* browser,
++    const std::u16string& initial_title,
++    base::OnceCallback<void(const std::u16string&)> on_submit) {
++  if (!browser) {
++    return;
++  }
++  auto delegate = std::make_unique<RenameChatDelegate>(std::move(on_submit));
++  RenameChatDelegate* delegate_ptr = delegate.get();
++  auto model =
++      ui::DialogModel::Builder(std::move(delegate))
++          .SetTitle(kNewChatName)
++          .SetSubtitle(kChooseShortName)
++          .SetInternalName("VerticalTabStripRenameChat")
++          .AddTextfield(kRenameChatFieldId, kNewChatName, initial_title)
++          .AddOkButton(base::BindOnce(&RenameChatDelegate::OnAccept,
++                                      base::Unretained(delegate_ptr)),
++                       ui::DialogModel::Button::Params().SetLabel(kSave))
++          .AddCancelButton(base::DoNothing(),
++                           ui::DialogModel::Button::Params().SetLabel(kCancel))
++          .SetInitiallyFocusedField(kRenameChatFieldId)
++          .Build();
++  chrome::ShowBrowserModal(browser, std::move(model));
++}
++
++void ShowAsideArchiveSessionDialog(Browser* browser,
++                                   base::OnceClosure on_accept) {
++  ShowArchiveConfirm(browser, kArchiveSessionTitle, kArchiveSessionBody,
++                     "VerticalTabStripArchiveSession", std::move(on_accept));
++}
++
++void ShowAsideArchiveAllChatsDialog(Browser* browser,
++                                    base::OnceClosure on_accept) {
++  ShowArchiveConfirm(browser, kArchiveAllTitle, kArchiveAllBody,
++                     "VerticalTabStripArchiveAllChats", std::move(on_accept));
++}
++
++namespace {
++
++// Self-owned: deletes itself when its widget closes.
++class ToastController {
++ public:
++  ToastController(views::View* anchor, const std::u16string& text) {
++    delegate_ = std::make_unique<views::BubbleDialogDelegate>(
++        anchor, views::BubbleBorder::LEFT_TOP);
++    delegate_->SetButtons(static_cast<int>(ui::mojom::DialogButton::kNone));
++    delegate_->SetShowTitle(false);
++    delegate_->SetShowCloseButton(false);
++    delegate_->set_margins(gfx::Insets::VH(8, 12));
++    auto label = std::make_unique<views::Label>(text);
++    label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    delegate_->SetContentsView(std::move(label));
++    widget_ = views::BubbleDialogDelegate::CreateBubble(
++        delegate_.get(),
++        base::BindOnce(&ToastController::OnClosed, base::Unretained(this)));
++    widget_->Show();
++    timer_.Start(FROM_HERE, base::Seconds(2),
++                 base::BindOnce(&ToastController::Dismiss,
++                                base::Unretained(this)));
++  }
++
++ private:
++  void Dismiss() {
++    if (widget_) {
++      widget_->Close();
++    }
++  }
++  void OnClosed(views::Widget::ClosedReason) { delete this; }
++
++  std::unique_ptr<views::BubbleDialogDelegate> delegate_;
++  std::unique_ptr<views::Widget> widget_;
++  base::OneShotTimer timer_;
++};
++
++}  // namespace
++
++void ShowAsideToast(views::View* anchor, const std::u16string& text) {
++  if (!anchor || !anchor->GetWidget()) {
++    return;
++  }
++  new ToastController(anchor, text);  // self-owned
++}
++
++void ShowAsideTaskPopover(
++    views::View* anchor,
++    const base::DictValue& popover,
++    base::RepeatingCallback<void(const std::string&)> on_action) {
++  if (!anchor) {
++    return;
++  }
++  new PopoverController(anchor, popover, std::move(on_action));  // self-owned
++}
+diff --git a/chrome/browser/ui/views/frame/aside_task_views.h b/chrome/browser/ui/views/frame/aside_task_views.h
+new file mode 100644
+index 0000000000..5bf459af5b
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_task_views.h
+@@ -0,0 +1,69 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TASK_VIEWS_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TASK_VIEWS_H_
++
++#include <string>
++
++#include "base/functional/callback.h"
++#include "base/values.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/view.h"
++
++namespace views {
++class View;
++}
++
++// Small status dot for a task row (RE: AsideTaskStatusDotView; colours by
++// status: awaiting-approval / awaiting-answer / error / finished-unread).
++class AsideTaskStatusDotView : public views::View {
++  METADATA_HEADER(AsideTaskStatusDotView, views::View)
++
++ public:
++  explicit AsideTaskStatusDotView(const std::string& status);
++  ~AsideTaskStatusDotView() override;
++
++  void OnPaint(gfx::Canvas* canvas) override;
++
++ private:
++  std::string status_;
++};
++
++class Browser;
++
++// Rename dialog for a chat row ("nameChat"). The original builds it with
++// ui::DialogModel (internal name "VerticalTabStripRenameChat", textfield id
++// declared at vertical_tab_strip_region_view.cc:286 as kRenameChatFieldId) and
++// the strings "New chat name" / "Choose a short, recognizable name." / "Save" /
++// "Cancel" (arm64 0xd77af72-0xd77afde).
++void ShowAsideRenameChatDialog(
++    Browser* browser,
++    const std::u16string& initial_title,
++    base::OnceCallback<void(const std::u16string&)> on_submit);
++
++// "Archive session?" / "This will archive this task" / "Archive"
++// (arm64 0xd77afec, 0xd77b00e, 0xd77b046).
++void ShowAsideArchiveSessionDialog(Browser* browser,
++                                   base::OnceClosure on_accept);
++
++// "Archive all chats?" / "This will archive all chats." / "Archive"
++// (arm64 0xd77b056, 0xd77b07c, 0xd77b046).
++void ShowAsideArchiveAllChatsDialog(Browser* browser,
++                                    base::OnceClosure on_accept);
++
++// Short confirmation bubble anchored to `anchor`, closing itself after a
++// moment. The original uses it for "Session ID Copied!" (arm64 0xd77b0b6).
++void ShowAsideToast(views::View* anchor, const std::u16string& text);
++
++// Task popover (RE: AsideTaskPopoverContentController /
++// MaybeShowNewAsideTaskPopover): title, body and action buttons from the
++// daemon's `popover` {id, kind, title, body, actions:[{id,label,primary}]}.
++// `on_action` receives the chosen actionId.
++
++void ShowAsideTaskPopover(views::View* anchor,
++                          const base::DictValue& popover,
++                          base::RepeatingCallback<void(const std::string&)> on_action);
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TASK_VIEWS_H_
+diff --git a/chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.cc b/chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.cc
+new file mode 100644
+index 0000000000..8b16930a05
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.cc
+@@ -0,0 +1,835 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.h"
++
++#include <memory>
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/json/json_reader.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/profiles/profile.h"
++#include "content/public/browser/browser_context.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/storage_partition.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
++#include "services/network/public/cpp/resource_request.h"
++#include "services/network/public/cpp/shared_url_loader_factory.h"
++#include "services/network/public/cpp/simple_url_loader.h"
++#include "components/prefs/pref_service.h"
++#include "ui/base/window_open_disposition.h"
++#include "url/gurl.h"
++#include "chrome/browser/ui/aside/aside_extension_bridge.h"
++#include "chrome/browser/ui/aside/aside_fonts.h"
++#include "chrome/browser/ui/views/aside/aside_text_button.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/app/chrome_command_ids.h"
++#include "chrome/browser/ui/browser_commands.h"
++#include "chrome/browser/ui/tabs/tab_strip_prefs.h"
++#include "chrome/common/pref_names.h"
++#include "chrome/browser/ui/tabs/tab_group_model.h"
++#include "chrome/browser/ui/tabs/tab_group_theme.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "chrome/browser/ui/views/frame/aside_bookmarks_section_view.h"
++#include "chrome/browser/ui/views/frame/aside_pinned_entries_view.h"
++#include "chrome/browser/ui/views/frame/aside_task_views.h"
++#include "chrome/browser/bookmarks/bookmark_model_factory.h"
++#include "components/bookmarks/browser/bookmark_model.h"
++#include "components/bookmarks/browser/bookmark_node.h"
++#include "ui/base/clipboard/scoped_clipboard_writer.h"
++#include "ui/views/border.h"
++#include "ui/views/controls/throbber.h"
++#include "ui/views/controls/menu/menu_runner.h"
++#include "ui/menus/simple_menu_model.h"
++#include "base/json/json_writer.h"
++#include "chrome/browser/ui/views/tabs/aside_agent_tabs_button.h"
++#include "chrome/browser/ui/views/tabs/aside_update_badge_button.h"
++#include "components/tab_groups/tab_group_visual_data.h"
++#include "components/tabs/public/tab_group.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/base/mojom/ui_base_types.mojom.h"
++#include "ui/color/color_id.h"
++#include "ui/gfx/font_list.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/views/background.h"
++#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/controls/separator.h"
++#include "ui/views/layout/box_layout_view.h"
++#include "ui/views/layout/flex_layout.h"
++#include "ui/views/layout/flex_layout_view.h"
++#include "ui/views/layout/flex_layout_types.h"
++#include "ui/views/layout/layout_types.h"
++#include "ui/views/view_class_properties.h"
++
++namespace {
++
++// Original strings (Aside 1.0.825.1 locale pak; ids in comments).
++constexpr char16_t kViewOrganizer[] = u"View Organizer";   // IDS 11728
++constexpr char16_t kHideOrganizer[] = u"Hide Organizer";   // IDS 11729
++constexpr char16_t kTabGroups[] = u"Tab Groups";           // IDS 11730
++constexpr char16_t kRecentChats[] = u"Recent Chats & Threads";  // IDS 11731
++constexpr char16_t kAsideTasks[] = u"Aside Tasks";  // UTF-16 literal 0xcf648d6
++// Chat row context menu. Command ids and order are the original's
++// (RE 0x43d16dc-0x43d1a10: AddItem(0x7d0..0x7d3), separator,
++// AddItem(0x7d4..0x7d5), separator, AddItem(0x7d6)); labels are its UTF-16
++// literals at arm64 0xd77ae36-0xd77aeea. Daemon command words come from
++// vertical_tab_strip_region_view.cc's dispatcher (arm64 0xd6bc900-0xd6bc93f:
++// nameChat / archive / mark-read / mark-all-read / archive-all-chats /
++// open-folder).
++enum TaskMenuCommand {
++  kTaskMenuRename = 0x7d0,
++  kTaskMenuArchive = 0x7d1,
++  kTaskMenuBookmarkChat = 0x7d2,
++  kTaskMenuMarkRead = 0x7d3,
++  kTaskMenuOpenFolder = 0x7d4,
++  kTaskMenuCopySessionId = 0x7d5,
++  kTaskMenuOpenInNewTab = 0x7d6,
++  // Section header menu (RE 0x43d2734-0x43d2864: 0x834, 0x835, separator,
++  // 0x836).
++  kSectionMenuMarkAllRead = 0x834,
++  kSectionMenuArchiveAll = 0x835,
++  kSectionMenuShowAllChats = 0x836,
++  // Strip (empty area) context menu — RE IDS 277/9443/176/12245/9449/294/
++  // 11699/11710 loaded by vertical_tab_strip_region_view.cc (0x43a8xxx).
++  kStripMenuNewTab = 100,
++  kStripMenuReopenClosedTab,
++  kStripMenuBookmarkAllTabs,
++  kStripMenuGroupAllTabs,
++  kStripMenuNameWindow,
++  kStripMenuCreateSplitView,
++  kStripMenuTaskManager,
++  kStripMenuShowTabsHorizontally,
++};
++// Literals the original builds inline (RE 0x365ff84 "Tidy", 0x36600d0
++// "Organizer").
++constexpr char16_t kTidy[] = u"Tidy";
++constexpr char16_t kOrganizer[] = u"Organizer";
++constexpr char16_t kNewChat[] = u"New Chat";
++
++// Chat row / section menu labels, original UTF-16 literals
++// (arm64 0xd77ae36-0xd77af54).
++constexpr char16_t kRenameChat[] = u"Rename chat";
++constexpr char16_t kArchiveChat[] = u"Archive Chat";
++constexpr char16_t kBookmarkChat[] = u"Bookmark chat";
++constexpr char16_t kMarkAsRead[] = u"Mark as read";
++constexpr char16_t kOpenFolderInFinder[] = u"Open folder in Finder";
++constexpr char16_t kCopySessionId[] = u"Copy session ID";
++constexpr char16_t kOpenInANewTab[] = u"Open in a new tab";
++constexpr char16_t kMarkAllAsRead[] = u"Mark all as read";
++constexpr char16_t kArchiveAllChats[] = u"Archive all chats";
++constexpr char16_t kShowAllChats[] = u"Show all chats";
++// Row status / fallback strings (arm64 0xd77b242-0xd77b286, 0xd77b22e,
++// 0xd77b0b6).
++constexpr char16_t kAwaitingApproval[] = u"Awaiting approval";
++constexpr char16_t kAwaitingAnswer[] = u"Awaiting answer";
++constexpr char16_t kUntitledTask[] = u"Untitled task";
++constexpr char16_t kShowMore[] = u"Show more";
++constexpr char16_t kSessionIdCopied[] = u"Session ID Copied!";
++
++// "Awaiting approval" / "Awaiting answer" next to a row that is waiting on the
++// user. Empty for every other status.
++std::u16string StatusLabelFor(const std::string& status) {
++  if (status == "awaiting-approval") {
++    return kAwaitingApproval;
++  }
++  if (status == "awaiting-answer") {
++    return kAwaitingAnswer;
++  }
++  return std::u16string();
++}
++
++constexpr int kIconSize = 16;
++constexpr base::TimeDelta kRecentsRefresh = base::Seconds(30);
++// RE 0xd739f90 / 0xd739f70: margins used around the header row and dividers.
++constexpr gfx::Insets kHeaderMargins = gfx::Insets::TLBR(4, 7, 0, 7);
++constexpr gfx::Insets kDividerMargins = gfx::Insets::TLBR(0, 0, 0, 4);
++
++std::unique_ptr<views::MdTextButton> MakeIconTextButton(
++    views::Button::PressedCallback callback,
++    const std::u16string& text,
++    const gfx::VectorIcon& icon) {
++  auto button =
++      std::make_unique<AsideTextButton>(std::move(callback), text);
++  button->SetStyle(ui::ButtonStyle::kText);
++  button->SetImageModel(
++      views::Button::STATE_NORMAL,
++      ui::ImageModel::FromVectorIcon(icon, ui::kColorIcon, kIconSize));
++  button->SetLabelFontList(
++      aside::UiFontList(13, gfx::Font::Weight::MEDIUM));
++  return button;
++}
++
++// RE: AsideSectionHeaderButton — a text button carrying the section title.
++std::unique_ptr<views::View> MakeSectionHeader(
++    const std::u16string& title,
++    views::Button::PressedCallback callback) {
++  auto button = std::make_unique<AsideTextButton>(
++      std::move(callback), title, views::style::CONTEXT_BUTTON_MD);
++  button->SetStyle(ui::ButtonStyle::kText);
++  button->SetCustomPadding(gfx::Insets::VH(4, 8));
++  button->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  button->SetTooltipText(title);
++  button->SetLabelStyle(views::style::STYLE_BODY_4_BOLD);
++  button->SetLabelFontList(
++      aside::UiFontList(12, gfx::Font::Weight::SEMIBOLD));
++  return button;
++}
++
++}  // namespace
++
++AsideVerticalTabStripAdditions::AsideVerticalTabStripAdditions(Browser* browser)
++    : browser_(browser) {
++  SetLayoutManager(std::make_unique<views::FlexLayout>())
++      ->SetOrientation(views::LayoutOrientation::kVertical)
++      .SetCrossAxisAlignment(views::LayoutAlignment::kStretch)
++      .SetCollapseMargins(true);
++
++  // AsideNewChatTabButtonContainer / AsideNewChatTabButton: one full-width
++  // row of fixed height; the region's vertical FlexLayout keeps it at its
++  // preferred size (the original's container is a plain View with the button
++  // stretched across it).
++  auto* new_chat_container = AddChildView(std::make_unique<views::BoxLayoutView>());
++  new_chat_container->SetOrientation(views::BoxLayout::Orientation::kHorizontal);
++  new_chat_container->SetProperty(views::kMarginsKey, kHeaderMargins);
++  auto* new_chat = new_chat_container->AddChildView(MakeIconTextButton(
++      base::BindRepeating(&AsideVerticalTabStripAdditions::OnNewChatPressed,
++                          base::Unretained(this)),
++      kNewChat, kAsideEditThinStrokeIcon));
++  new_chat->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  new_chat->SetCustomPadding(gfx::Insets::VH(6, 10));
++  new_chat_container->SetFlexForView(new_chat, 1);
++
++  // TabsHeaderActionButton row: "Tidy" (sparkles) + "Organizer" (arrow-down).
++  // Header actions row. FlexLayout lets the text buttons shrink (elide)
++  // instead of dropping out when the strip is narrow.
++  auto* header_row = AddChildView(std::make_unique<views::FlexLayoutView>());
++  header_row->SetOrientation(views::LayoutOrientation::kHorizontal);
++  header_row->SetProperty(views::kMarginsKey, kHeaderMargins);
++  header_row->SetMainAxisAlignment(views::LayoutAlignment::kEnd);
++  header_row->SetCrossAxisAlignment(views::LayoutAlignment::kCenter);
++  header_row->SetDefault(views::kMarginsKey, gfx::Insets::TLBR(0, 0, 0, 2));
++  header_row->SetDefault(
++      views::kFlexBehaviorKey,
++      views::FlexSpecification(views::MinimumFlexSizeRule::kScaleToMinimum,
++                               views::MaximumFlexSizeRule::kPreferred));
++  auto* tidy = header_row->AddChildView(MakeIconTextButton(
++      base::BindRepeating(&AsideVerticalTabStripAdditions::OnTidyPressed,
++                          base::Unretained(this)),
++      kTidy, kAsideSparklesTwo2solidIcon));
++  tidy->SetCustomPadding(gfx::Insets::VH(4, 6));
++  tidy->SetImageLabelSpacing(4);
++  organizer_button_ = header_row->AddChildView(MakeIconTextButton(
++      base::BindRepeating(&AsideVerticalTabStripAdditions::OnOrganizerToggled,
++                          base::Unretained(this)),
++      kOrganizer, kAsideArrowDownStrokeIcon));
++  organizer_button_->SetCustomPadding(gfx::Insets::VH(4, 6));
++  organizer_button_->SetImageLabelSpacing(4);
++  organizer_button_->SetTooltipText(kHideOrganizer);
++
++  // AsideUpdateBadgeButton (hidden until an update is ready).
++  header_row->AddChildView(std::make_unique<AsideUpdateBadgeButton>(browser_));
++  // AsideAgentTabsButton (hidden until the "Agent Tabs" group exists).
++  header_row->AddChildView(std::make_unique<AsideAgentTabsButton>(browser_));
++
++  // VerticalPinnedTabEntriesView: the pinned-tab chips above the tab list.
++  AddChildView(std::make_unique<AsidePinnedEntriesView>(
++      browser, AsidePinnedEntriesView::Orientation::kHorizontal));
++
++  // AsideSectionDivider.
++  auto* divider = AddChildView(std::make_unique<views::Separator>());
++  divider->SetProperty(views::kMarginsKey, kDividerMargins);
++
++  // Organizer: sections.
++  auto organizer = std::make_unique<views::BoxLayoutView>();
++  organizer->SetOrientation(views::BoxLayout::Orientation::kVertical);
++  organizer->SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++  organizer_ = organizer.get();
++  detached_organizer_ = std::move(organizer);
++  organizer_->AddChildView(
++      MakeSectionHeader(kTabGroups, views::Button::PressedCallback()));
++  auto tab_groups_rows = std::make_unique<views::BoxLayoutView>();
++  tab_groups_rows->SetOrientation(views::BoxLayout::Orientation::kVertical);
++  tab_groups_rows->SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++  tab_groups_rows_ = organizer_->AddChildView(std::move(tab_groups_rows));
++  // Bookmarks section (pref-gated).
++  organizer_->AddChildView(std::make_unique<AsideBookmarksSectionView>(browser_));
++
++  // "Aside Tasks": sessions needing attention (running / awaiting / error).
++  {
++    auto section = std::make_unique<views::BoxLayoutView>();
++    section->SetOrientation(views::BoxLayout::Orientation::kVertical);
++    section->SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++    section->AddChildView(
++        MakeSectionHeader(kAsideTasks, views::Button::PressedCallback()));
++    auto rows = std::make_unique<views::BoxLayoutView>();
++    rows->SetOrientation(views::BoxLayout::Orientation::kVertical);
++    rows->SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++    tasks_rows_ = section->AddChildView(std::move(rows));
++    tasks_section_ = organizer_->AddChildView(std::move(section));
++    tasks_section_->SetVisible(false);
++  }
++  recents_header_ = organizer_->AddChildView(MakeSectionHeader(
++      kRecentChats,
++      base::BindRepeating(&AsideVerticalTabStripAdditions::OpenRecentsList,
++                          base::Unretained(this))));
++  recents_header_->set_context_menu_controller(this);
++  auto recents_rows = std::make_unique<views::BoxLayoutView>();
++  recents_rows->SetOrientation(views::BoxLayout::Orientation::kVertical);
++  recents_rows->SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++  recents_rows_ = organizer_->AddChildView(std::move(recents_rows));
++  // "Show more" opens the full task list (arm64 0xd77b22e).
++  auto* show_more = organizer_->AddChildView(std::make_unique<AsideTextButton>(
++      base::BindRepeating(&AsideVerticalTabStripAdditions::OpenRecentsList,
++                          base::Unretained(this)),
++      kShowMore));
++  show_more->SetStyle(ui::ButtonStyle::kText);
++  show_more->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  show_more->SetCustomPadding(gfx::Insets::VH(4, 8));
++  show_more->SetLabelFontList(aside::UiFontList(12));
++  show_more->SetVisible(false);
++  show_more_row_ = show_more;
++
++  if (browser_) {
++    browser_->tab_strip_model()->AddObserver(this);
++  }
++  RebuildTabGroupsSection();
++  FetchRecents();
++  recents_timer_.Start(FROM_HERE, kRecentsRefresh, this,
++                       &AsideVerticalTabStripAdditions::FetchRecents);
++}
++
++AsideVerticalTabStripAdditions::~AsideVerticalTabStripAdditions() {
++  if (browser_) {
++    browser_->tab_strip_model()->RemoveObserver(this);
++  }
++}
++
++void AsideVerticalTabStripAdditions::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  RebuildTabGroupsSection();
++}
++
++void AsideVerticalTabStripAdditions::OnTabGroupChanged(
++    const TabGroupChange& change) {
++  RebuildTabGroupsSection();
++}
++
++std::unique_ptr<views::View> AsideVerticalTabStripAdditions::TakeOrganizerView() {
++  return std::move(detached_organizer_);
++}
++
++void AsideVerticalTabStripAdditions::OnNewChatPressed() {
++  if (!browser_) {
++    return;
++  }
++  // RE 0x43ee0e0: "main.html" + "/tasks/new" through the account-scoped
++  // extension URL builder.
++  aside::ShowExtensionPage(
++      browser_, aside::ExtensionPageUrl(browser_->profile(), "main.html",
++                                        "/tasks/new"));
++}
++
++void AsideVerticalTabStripAdditions::OnTidyPressed() {
++  if (!browser_) {
++    return;
++  }
++  // RE 0x43d2b7c: the Tidy button posts an external runtime message to the
++  // extension, which runs its AI tab-tidy planner and replies {success,...}.
++  TabStripModel* model = browser_->tab_strip_model();
++  base::DictValue payload;
++  payload.Set("source", "vertical_tabs_sidebar");
++  payload.Set("action", "tidy");
++  payload.Set("tab_count", model ? model->count() : 0);
++  payload.Set("active_tab_index", model ? model->active_index() : -1);
++  if (content::WebContents* active =
++          model ? model->GetActiveWebContents() : nullptr) {
++    payload.Set("active_tab_url", active->GetVisibleURL().spec());
++    payload.Set("active_tab_title", base::UTF16ToUTF8(active->GetTitle()));
++  }
++  aside::SendExternalMessage(browser_->profile(), "aside.verticalTabsTidy",
++                             std::move(payload));
++}
++
++void AsideVerticalTabStripAdditions::OnOrganizerToggled() {
++  organizer_visible_ = !organizer_visible_;
++  organizer_->SetVisible(organizer_visible_);
++  organizer_button_->SetTooltipText(organizer_visible_ ? kHideOrganizer
++                                                       : kViewOrganizer);
++  InvalidateLayout();
++}
++
++void AsideVerticalTabStripAdditions::RebuildTabGroupsSection() {
++  if (!tab_groups_rows_ || !browser_) {
++    return;
++  }
++  tab_groups_rows_->RemoveAllChildViews();
++  TabStripModel* model = browser_->tab_strip_model();
++  TabGroupModel* groups = model->group_model();
++  if (!groups) {
++    return;
++  }
++  for (const tab_groups::TabGroupId& id : groups->ListTabGroups()) {
++    const TabGroup* group = groups->GetTabGroup(id);
++    if (!group) {
++      continue;
++    }
++    const tab_groups::TabGroupVisualData* visual = group->visual_data();
++    std::u16string title = visual ? visual->title() : std::u16string();
++    if (title.empty()) {
++      title = u"Unnamed group";
++    }
++    const gfx::Range tabs = group->ListTabs();
++    auto* row = tab_groups_rows_->AddChildView(
++        std::make_unique<views::MdTextButton>(
++            base::BindRepeating(
++                [](TabStripModel* m, size_t index) {
++                  if (index < static_cast<size_t>(m->count())) {
++                    m->ActivateTabAt(static_cast<int>(index));
++                  }
++                },
++                base::Unretained(model), static_cast<size_t>(tabs.start())),
++            title));
++    row->SetStyle(ui::ButtonStyle::kText);
++    row->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    row->SetCustomPadding(gfx::Insets::VH(4, 10));
++    if (visual) {
++      row->SetImageModel(
++          views::Button::STATE_NORMAL,
++          ui::ImageModel::FromVectorIcon(
++              kAsideCircleXSolidIcon,
++              GetTabGroupTabStripColorId(visual->color(),
++                                         /*active_frame=*/true),
++              10));
++    }
++  }
++  InvalidateLayout();
++}
++
++void AsideVerticalTabStripAdditions::FetchRecents() {
++  if (!browser_ || recents_in_flight_) {
++    return;
++  }
++  if (!tasks_client_) {
++    tasks_client_ = std::make_unique<aside::TasksClient>(browser_->profile());
++  }
++  recents_in_flight_ = true;
++  tasks_client_->Get(
++      "/session/for-chrome/recents",
++      base::BindOnce(&AsideVerticalTabStripAdditions::OnRecentsFetched,
++                     weak_factory_.GetWeakPtr()));
++}
++
++views::View* AsideVerticalTabStripAdditions::MakeTaskRow(
++    views::View* parent,
++    const base::DictValue& item) {
++  const std::string id = *item.FindString("id");
++  const std::string title = *item.FindString("title");
++  // "Untitled task" when the daemon has no name yet (arm64 0xd77b286).
++  const std::u16string row_title =
++      title.empty() ? std::u16string(kUntitledTask) : base::UTF8ToUTF16(title);
++  const bool unread = item.FindBool("unread").value_or(false);
++  const std::string* status_ptr = item.FindString("status");
++  const std::string status = status_ptr ? *status_ptr : "idle";
++
++  auto* row = parent->AddChildView(std::make_unique<views::BoxLayoutView>());
++  row->SetOrientation(views::BoxLayout::Orientation::kHorizontal);
++  row->SetCrossAxisAlignment(views::LayoutAlignment::kCenter);
++  row->SetBetweenChildSpacing(2);
++  if (status == "running") {
++    auto* throbber = row->AddChildView(std::make_unique<views::Throbber>());
++    throbber->SetPreferredSize(gfx::Size(12, 12));
++    throbber->Start();
++  } else if (status != "idle") {
++    row->AddChildView(std::make_unique<AsideTaskStatusDotView>(status));
++  }
++  auto* button = row->AddChildView(std::make_unique<AsideTextButton>(
++      base::BindRepeating(&AsideVerticalTabStripAdditions::OpenSession,
++                          base::Unretained(this), id),
++      row_title));
++  button->SetStyle(ui::ButtonStyle::kText);
++  button->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  button->SetCustomPadding(gfx::Insets::VH(4, 8));
++  const std::u16string status_label = StatusLabelFor(status);
++  button->SetTooltipText(status_label.empty()
++                             ? row_title
++                             : row_title + u" \u2014 " + status_label);
++  button->SetLabelFontList(aside::UiFontList(13));
++  if (unread) {
++    button->SetImageModel(views::Button::STATE_NORMAL,
++                          ui::ImageModel::FromVectorIcon(
++                              kAsideBell2SolidIcon, ui::kColorIcon, 10));
++  }
++  row->SetFlexForView(button, 1);
++  if (!status_label.empty()) {
++    auto* status_view = row->AddChildView(
++        std::make_unique<views::Label>(status_label));
++    status_view->SetFontList(aside::UiFontList(11));
++    status_view->SetEnabledColor(ui::kColorLabelForegroundSecondary);
++    status_view->SetBorder(
++        views::CreateEmptyBorder(gfx::Insets::TLBR(0, 0, 0, 6)));
++  }
++  // Right click: task commands.
++  button->set_context_menu_controller(this);
++  row_menus_[button] = RowInfo{id, title, unread};
++  return row;
++}
++
++void AsideVerticalTabStripAdditions::OnRecentsFetched(
++    std::optional<std::string> body) {
++  recents_in_flight_ = false;
++  if (!recents_rows_ || !body) {
++    return;
++  }
++  std::optional<base::Value> parsed =
++      base::JSONReader::Read(*body, base::JSON_PARSE_RFC);
++  if (!parsed || !parsed->is_list()) {
++    return;
++  }
++  recents_rows_->RemoveAllChildViews();
++  tasks_rows_->RemoveAllChildViews();
++  row_menus_.clear();
++  int shown = 0;
++  int total = 0;
++  bool attention = false;
++  for (const base::Value& entry : parsed->GetList()) {
++    const base::DictValue* item = entry.GetIfDict();
++    if (!item || !item->FindString("id") || !item->FindString("title")) {
++      continue;
++    }
++    const std::string* status = item->FindString("status");
++    const bool needs_attention =
++        status && (*status == "running" || *status == "awaiting-approval" ||
++                   *status == "awaiting-answer" || *status == "error");
++    if (needs_attention) {
++      views::View* row = MakeTaskRow(tasks_rows_, *item);
++      attention = true;
++      MaybeShowPopover(row, *item);
++      continue;
++    }
++    ++total;
++    if (shown < 8) {
++      MakeTaskRow(recents_rows_, *item);
++      ++shown;
++    }
++  }
++  if (show_more_row_) {
++    show_more_row_->SetVisible(total > shown);
++  }
++  tasks_section_->SetVisible(attention);
++  if (attention && !organizer_visible_) {
++    // RE: MaybeExpandTasksSectionForAttention.
++    OnOrganizerToggled();
++  }
++  InvalidateLayout();
++}
++
++void AsideVerticalTabStripAdditions::MaybeShowPopover(
++    views::View* row,
++    const base::DictValue& item) {
++  const base::DictValue* popover = item.FindDict("popover");
++  if (!popover) {
++    return;
++  }
++  const std::string* popover_id = popover->FindString("id");
++  const std::string* session_id = item.FindString("id");
++  if (!popover_id || !session_id || shown_popovers_.contains(*popover_id)) {
++    return;
++  }
++  shown_popovers_.insert(*popover_id);
++  ShowAsideTaskPopover(
++      row, *popover,
++      base::BindRepeating(&AsideVerticalTabStripAdditions::OnPopoverAction,
++                          weak_factory_.GetWeakPtr(), *session_id,
++                          *popover_id));
++}
++
++void AsideVerticalTabStripAdditions::OnPopoverAction(
++    const std::string& session_id,
++    const std::string& popover_id,
++    const std::string& action_id) {
++  if (!tasks_client_) {
++    return;
++  }
++  base::DictValue body;
++  body.Set("accountId", std::max(tasks_client_->account_id(), 0));
++  body.Set("sessionId", session_id);
++  body.Set("popoverId", popover_id);
++  body.Set("actionId", action_id);
++  std::string json;
++  base::JSONWriter::Write(body, &json);
++  tasks_client_->PostJson(
++      "/session/for-chrome/resolve-popover-action", std::move(json),
++      base::BindOnce(&AsideVerticalTabStripAdditions::OnPopoverActionResolved,
++                     weak_factory_.GetWeakPtr()));
++}
++
++void AsideVerticalTabStripAdditions::OnPopoverActionResolved(
++    std::optional<std::string> body) {
++  std::optional<base::Value> parsed =
++      body ? base::JSONReader::Read(*body, base::JSON_PARSE_RFC)
++           : std::nullopt;
++  if (parsed && parsed->is_dict()) {
++    const std::string* action = parsed->GetDict().FindString("clientAction");
++    const std::string* url = parsed->GetDict().FindString("url");
++    if (action && *action == "open-url" && url && browser_) {
++      aside::ShowExtensionPage(browser_, GURL(*url));
++    }
++  }
++  FetchRecents();
++}
++
++void AsideVerticalTabStripAdditions::ShowRowMenu(const std::string& session_id,
++                                                 const std::string& title,
++                                                 bool unread,
++                                                 const gfx::Point& point) {
++  menu_model_ = std::make_unique<ui::SimpleMenuModel>(this);
++  menu_model_->AddItem(kTaskMenuRename, kRenameChat);
++  menu_model_->AddItem(kTaskMenuArchive, kArchiveChat);
++  menu_model_->AddItem(kTaskMenuBookmarkChat, kBookmarkChat);
++  menu_model_->AddItem(kTaskMenuMarkRead, kMarkAsRead);
++  menu_model_->AddSeparator(ui::NORMAL_SEPARATOR);
++  menu_model_->AddItem(kTaskMenuOpenFolder, kOpenFolderInFinder);
++  menu_model_->AddItem(kTaskMenuCopySessionId, kCopySessionId);
++  menu_model_->AddSeparator(ui::NORMAL_SEPARATOR);
++  menu_model_->AddItem(kTaskMenuOpenInNewTab, kOpenInANewTab);
++  menu_runner_ = std::make_unique<views::MenuRunner>(
++      menu_model_.get(), views::MenuRunner::HAS_MNEMONICS |
++                             views::MenuRunner::CONTEXT_MENU);
++  pending_menu_ = RowInfo{session_id, title, unread};
++  menu_runner_->RunMenuAt(GetWidget(), nullptr, gfx::Rect(point, gfx::Size()),
++                          views::MenuAnchorPosition::kTopLeft,
++                          ui::mojom::MenuSourceType::kMouse);
++}
++
++void AsideVerticalTabStripAdditions::ShowSectionMenu(const gfx::Point& point) {
++  menu_model_ = std::make_unique<ui::SimpleMenuModel>(this);
++  menu_model_->AddItem(kSectionMenuMarkAllRead, kMarkAllAsRead);
++  menu_model_->AddItem(kSectionMenuArchiveAll, kArchiveAllChats);
++  menu_model_->AddSeparator(ui::NORMAL_SEPARATOR);
++  menu_model_->AddItem(kSectionMenuShowAllChats, kShowAllChats);
++  menu_runner_ = std::make_unique<views::MenuRunner>(
++      menu_model_.get(), views::MenuRunner::HAS_MNEMONICS |
++                             views::MenuRunner::CONTEXT_MENU);
++  menu_runner_->RunMenuAt(GetWidget(), nullptr, gfx::Rect(point, gfx::Size()),
++                          views::MenuAnchorPosition::kTopLeft,
++                          ui::mojom::MenuSourceType::kMouse);
++}
++
++void AsideVerticalTabStripAdditions::ShowStripMenu(const gfx::Point& point) {
++  menu_model_ = std::make_unique<ui::SimpleMenuModel>(this);
++  menu_model_->AddItem(kStripMenuNewTab, u"New Tab");
++  menu_model_->AddItem(kStripMenuReopenClosedTab, u"Reopen Closed Tab");
++  menu_model_->AddSeparator(ui::NORMAL_SEPARATOR);
++  menu_model_->AddItem(kStripMenuBookmarkAllTabs, u"Bookmark All Tabs…");
++  menu_model_->AddItem(kStripMenuGroupAllTabs, u"Group All Tabs");
++  menu_model_->AddItem(kStripMenuNameWindow, u"Name Window…");
++  menu_model_->AddItem(kStripMenuCreateSplitView, u"Create split view");
++  menu_model_->AddSeparator(ui::NORMAL_SEPARATOR);
++  menu_model_->AddItem(kStripMenuTaskManager, u"Task Manager");
++  menu_model_->AddItem(kStripMenuShowTabsHorizontally,
++                       u"Show Tabs Horizontally");
++  menu_runner_ = std::make_unique<views::MenuRunner>(
++      menu_model_.get(), views::MenuRunner::HAS_MNEMONICS |
++                             views::MenuRunner::CONTEXT_MENU);
++  menu_runner_->RunMenuAt(GetWidget(), nullptr, gfx::Rect(point, gfx::Size()),
++                          views::MenuAnchorPosition::kTopLeft,
++                          ui::mojom::MenuSourceType::kMouse);
++}
++
++void AsideVerticalTabStripAdditions::ShowContextMenuForViewImpl(
++    views::View* source,
++    const gfx::Point& point,
++    ui::mojom::MenuSourceType source_type) {
++  if (source == recents_header_) {
++    ShowSectionMenu(point);
++    return;
++  }
++  auto it = row_menus_.find(source);
++  if (it == row_menus_.end()) {
++    ShowStripMenu(point);
++    return;
++  }
++  ShowRowMenu(it->second.session_id, it->second.title, it->second.unread,
++              point);
++}
++
++bool AsideVerticalTabStripAdditions::IsCommandIdChecked(int command_id) const {
++  return false;
++}
++
++bool AsideVerticalTabStripAdditions::IsCommandIdEnabled(int command_id) const {
++  return true;
++}
++
++void AsideVerticalTabStripAdditions::ExecuteCommand(int command_id,
++                                                    int event_flags) {
++  const std::string& id = pending_menu_.session_id;
++  switch (command_id) {
++    case kTaskMenuRename:
++      ShowAsideRenameChatDialog(
++          browser_, base::UTF8ToUTF16(pending_menu_.title),
++          base::BindOnce(&AsideVerticalTabStripAdditions::OnRenameSubmitted,
++                         weak_factory_.GetWeakPtr(), id));
++      break;
++    case kTaskMenuArchive:
++      ShowAsideArchiveSessionDialog(
++          browser_,
++          base::BindOnce(&AsideVerticalTabStripAdditions::RunTaskCommand,
++                         weak_factory_.GetWeakPtr(),
++                         "/session/for-chrome/" + id + "/archive", "{}"));
++      break;
++    case kTaskMenuBookmarkChat:
++      BookmarkSession(id, pending_menu_.title);
++      break;
++    case kTaskMenuMarkRead:
++      RunTaskCommand("/session/for-chrome/" + id + "/mark-read", "{}");
++      break;
++    case kTaskMenuOpenFolder:
++      RunTaskCommand("/session/for-chrome/" + id + "/open-folder", "{}");
++      break;
++    case kTaskMenuCopySessionId:
++      CopySessionId(id);
++      break;
++    case kTaskMenuOpenInNewTab:
++      OpenSession(id);
++      break;
++    case kSectionMenuMarkAllRead:
++      RunTaskCommand("/session/for-chrome/mark-all-read", "{}");
++      break;
++    case kSectionMenuArchiveAll:
++      ShowAsideArchiveAllChatsDialog(
++          browser_,
++          base::BindOnce(&AsideVerticalTabStripAdditions::RunTaskCommand,
++                         weak_factory_.GetWeakPtr(),
++                         "/session/for-chrome/archive-all-chats", "{}"));
++      break;
++    case kSectionMenuShowAllChats:
++      OpenRecentsList();
++      break;
++    case kStripMenuNewTab:
++      chrome::ExecuteCommand(browser_, IDC_NEW_TAB);
++      break;
++    case kStripMenuReopenClosedTab:
++      chrome::ExecuteCommand(browser_, IDC_RESTORE_TAB);
++      break;
++    case kStripMenuBookmarkAllTabs:
++      chrome::ExecuteCommand(browser_, IDC_BOOKMARK_ALL_TABS);
++      break;
++    case kStripMenuGroupAllTabs: {
++      TabStripModel* model = browser_->tab_strip_model();
++      std::vector<int> indices;
++      for (int i = 0; i < model->count(); ++i) {
++        if (!model->GetTabGroupForTab(i)) {
++          indices.push_back(i);
++        }
++      }
++      if (!indices.empty()) {
++        model->AddToNewGroup(indices);
++      }
++      break;
++    }
++    case kStripMenuNameWindow:
++      chrome::ExecuteCommand(browser_, IDC_NAME_WINDOW);
++      break;
++    case kStripMenuCreateSplitView:
++      chrome::ExecuteCommand(browser_, IDC_NEW_SPLIT_TAB);
++      break;
++    case kStripMenuTaskManager:
++      chrome::ExecuteCommand(browser_, IDC_TASK_MANAGER);
++      break;
++    case kStripMenuShowTabsHorizontally:
++      browser_->profile()->GetPrefs()->SetBoolean(prefs::kVerticalTabsEnabled,
++                                                  false);
++      break;
++    default:
++      break;
++  }
++}
++
++void AsideVerticalTabStripAdditions::OnRenameSubmitted(
++    const std::string& session_id,
++    const std::u16string& title) {
++  base::DictValue body;
++  body.Set("title", base::UTF16ToUTF8(title));
++  std::string json;
++  base::JSONWriter::Write(body, &json);
++  RunTaskCommand("/session/for-chrome/" + session_id + "/rename",
++                 std::move(json));
++}
++
++void AsideVerticalTabStripAdditions::RunTaskCommand(const std::string& path,
++                                                    std::string body) {
++  if (!tasks_client_) {
++    return;
++  }
++  tasks_client_->PostJson(
++      path, std::move(body),
++      base::BindOnce(&AsideVerticalTabStripAdditions::OnTaskCommandDone,
++                     weak_factory_.GetWeakPtr()));
++}
++
++void AsideVerticalTabStripAdditions::OnTaskCommandDone(
++    std::optional<std::string> body) {
++  FetchRecents();
++}
++
++void AsideVerticalTabStripAdditions::CopySessionId(
++    const std::string& session_id) {
++  ui::ScopedClipboardWriter(ui::ClipboardBuffer::kCopyPaste)
++      .WriteText(base::UTF8ToUTF16(session_id));
++  // The original confirms with a short "Session ID Copied!" bubble
++  // (arm64 0xd77b0b6, xrefs 0x43dc25c / 0x43dc298).
++  ShowAsideToast(this, kSessionIdCopied);
++}
++
++void AsideVerticalTabStripAdditions::BookmarkSession(
++    const std::string& session_id,
++    const std::string& title) {
++  if (!browser_) {
++    return;
++  }
++  bookmarks::BookmarkModel* model =
++      BookmarkModelFactory::GetForBrowserContext(browser_->profile());
++  if (!model || !model->loaded()) {
++    return;
++  }
++  const GURL url = aside::ExtensionPageUrl(browser_->profile(), "main.html",
++                                           "/tasks/" + session_id);
++  model->AddURL(model->bookmark_bar_node(),
++                model->bookmark_bar_node()->children().size(),
++                title.empty() ? std::u16string(kUntitledTask)
++                              : base::UTF8ToUTF16(title),
++                url);
++}
++
++void AsideVerticalTabStripAdditions::OpenSession(const std::string& session_id) {
++  if (!browser_) {
++    return;
++  }
++  // RE 0x43d8e40: "main.html" + "/tasks" + "/" + id via the account-scoped
++  // extension URL builder ("#/u/<aside.account_id>").
++  aside::ShowExtensionPage(
++      browser_, aside::ExtensionPageUrl(browser_->profile(), "main.html",
++                                        "/tasks/" + session_id));
++}
++
++void AsideVerticalTabStripAdditions::OpenRecentsList() {
++  if (!browser_) {
++    return;
++  }
++  // RE 0x43d2000: section header opens the full task list.
++  aside::ShowExtensionPage(
++      browser_,
++      aside::ExtensionPageUrl(browser_->profile(), "main.html",
++                              "/tasks?view=list&filter=all&order=desc"));
++}
++
++BEGIN_METADATA(AsideVerticalTabStripAdditions)
++END_METADATA
+diff --git a/chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.h b/chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.h
+new file mode 100644
+index 0000000000..6a116b2831
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.h
+@@ -0,0 +1,144 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_VERTICAL_TAB_STRIP_ADDITIONS_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_VERTICAL_TAB_STRIP_ADDITIONS_H_
++
++#include <memory>
++#include <optional>
++#include <string>
++
++#include <map>
++#include <set>
++
++#include "base/memory/raw_ptr.h"
++#include "base/values.h"
++#include "chrome/browser/ui/aside/aside_tasks_client.h"
++#include "ui/menus/simple_menu_model.h"
++#include "ui/views/controls/menu/menu_runner.h"
++#include "ui/views/context_menu_controller.h"
++#include "base/memory/weak_ptr.h"
++#include "base/timer/timer.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/view.h"
++
++class Browser;
++
++namespace network {
++class SimpleURLLoader;
++}
++
++namespace views {
++class Label;
++class MdTextButton;
++}  // namespace views
++
++// The Aside-specific rows that the original inserts into the vertical tab
++// strip between the top button container and the tab list (RE of
++// vertical_tab_strip_region_view.cc, Aside 1.0.825.1, builder @0x365e800):
++//   [AsideNewChatTabButtonContainer] -> [AsideNewChatTabButton]
++//   [TabsHeaderActionButton] ... [AsideIconButton "Tidy"][AsideIconButton "Organizer"]
++//   [AsideSectionDivider]
++//   [AsideSectionView "Tab Groups"] / [AsideSectionView "Recent Chats & Threads"]
++// Class names, icons (kAsideEditThinStrokeIcon, kAsideSparklesTwo2solidIcon,
++// kAsideArrowDownStrokeIcon) and strings (IDS 11728-11731) are the original's.
++class AsideVerticalTabStripAdditions : public views::View,
++                                       public TabStripModelObserver,
++                                       public views::ContextMenuController,
++                                       public ui::SimpleMenuModel::Delegate {
++  METADATA_HEADER(AsideVerticalTabStripAdditions, views::View)
++
++ public:
++  explicit AsideVerticalTabStripAdditions(Browser* browser);
++  AsideVerticalTabStripAdditions(const AsideVerticalTabStripAdditions&) = delete;
++  AsideVerticalTabStripAdditions& operator=(
++      const AsideVerticalTabStripAdditions&) = delete;
++  ~AsideVerticalTabStripAdditions() override;
++
++  // TabStripModelObserver:
++  void OnTabStripModelChanged(TabStripModel* tab_strip_model,
++                              const TabStripModelChange& change,
++                              const TabStripSelectionChange& selection) override;
++  void OnTabGroupChanged(const TabGroupChange& change) override;
++
++  bool organizer_visible() const { return organizer_visible_; }
++  // The organizer sections ("Tab Groups", "Recent Chats & Threads") are a
++  // separate view so the region can place them below the tab list (original
++  // builder order: header row -> divider -> tab list -> sections).
++  std::unique_ptr<views::View> TakeOrganizerView();
++
++ private:
++  void OnNewChatPressed();
++  void OnTidyPressed();
++  void OnOrganizerToggled();
++  void RebuildTabGroupsSection();
++  // "Recent Chats & Threads": the original fetches the daemon's
++  // GET http://127.0.0.1:21420/session/for-chrome/recents (a public loopback
++  // route) and lists {id,title,status,unread,...}.
++  void FetchRecents();
++  void OnRecentsFetched(std::optional<std::string> body);
++  views::View* MakeTaskRow(views::View* parent, const base::DictValue& item);
++  void MaybeShowPopover(views::View* row, const base::DictValue& item);
++  void OnPopoverAction(const std::string& session_id,
++                       const std::string& popover_id,
++                       const std::string& action_id);
++  void OnPopoverActionResolved(std::optional<std::string> body);
++  void ShowRowMenu(const std::string& session_id,
++                   const std::string& title,
++                   bool unread,
++                   const gfx::Point& point);
++  void OnRenameSubmitted(const std::string& session_id,
++                         const std::u16string& title);
++  void ShowStripMenu(const gfx::Point& point);
++  // "Recent Chats & Threads" header menu (RE 0x43d2734).
++  void ShowSectionMenu(const gfx::Point& point);
++  // "Copy session ID" -> clipboard, then the "Session ID Copied!" toast.
++  void CopySessionId(const std::string& session_id);
++  // "Bookmark chat" -> a bookmark pointing at the session's extension page.
++  void BookmarkSession(const std::string& session_id, const std::string& title);
++
++  // views::ContextMenuController:
++  void ShowContextMenuForViewImpl(
++      views::View* source,
++      const gfx::Point& point,
++      ui::mojom::MenuSourceType source_type) override;
++
++  // ui::SimpleMenuModel::Delegate:
++  bool IsCommandIdChecked(int command_id) const override;
++  bool IsCommandIdEnabled(int command_id) const override;
++  void ExecuteCommand(int command_id, int event_flags) override;
++  void RunTaskCommand(const std::string& path, std::string body);
++  void OnTaskCommandDone(std::optional<std::string> body);
++  void OpenSession(const std::string& session_id);
++  void OpenRecentsList();
++
++  raw_ptr<Browser> browser_;
++  bool organizer_visible_ = true;
++  raw_ptr<views::View> organizer_ = nullptr;
++  std::unique_ptr<views::View> detached_organizer_;
++  raw_ptr<views::View> tab_groups_rows_ = nullptr;
++  raw_ptr<views::MdTextButton> organizer_button_ = nullptr;
++  raw_ptr<views::View> recents_rows_ = nullptr;
++  raw_ptr<views::View> recents_header_ = nullptr;
++  raw_ptr<views::View> show_more_row_ = nullptr;
++  raw_ptr<views::View> tasks_section_ = nullptr;
++  raw_ptr<views::View> tasks_rows_ = nullptr;
++  std::unique_ptr<aside::TasksClient> tasks_client_;
++  std::set<std::string> shown_popovers_;
++  std::unique_ptr<ui::SimpleMenuModel> menu_model_;
++  std::unique_ptr<views::MenuRunner> menu_runner_;
++  bool recents_in_flight_ = false;
++  struct RowInfo {
++    std::string session_id;
++    std::string title;
++    bool unread = false;
++  };
++  std::map<views::View*, RowInfo> row_menus_;
++  RowInfo pending_menu_;
++  base::RepeatingTimer recents_timer_;
++  base::WeakPtrFactory<AsideVerticalTabStripAdditions> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_VERTICAL_TAB_STRIP_ADDITIONS_H_
+diff --git a/chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.cc b/chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.cc
+index 7c991f9d61..62533545b3 100644
+--- a/chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.cc
++++ b/chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.h"
+ 
++#include "chrome/browser/ui/views/frame/aside_pinned_entries_view.h"
++
+ #include "base/feature_list.h"
+ #include "base/functional/bind.h"
+ #include "base/strings/utf_string_conversions.h"
+@@ -225,6 +227,20 @@ HorizontalTabStripRegionView::HorizontalTabStripRegionView(
+     }
+   }
+ 
++  // Aside fork: HorizontalPinnedTabEntriesView — the pinned-tab chips the
++  // original places ahead of the tab strip (region 0x04c6a630,
++  // horizontal_tab_strip_region_view.cc).
++  if (browser_view->browser() &&
++      browser_view->browser()->GetType() ==
++          BrowserWindowInterface::Type::TYPE_NORMAL) {
++    aside_pinned_entries_ =
++        AddChildView(std::make_unique<AsidePinnedEntriesView>(
++            browser_view->browser(),
++            AsidePinnedEntriesView::Orientation::kHorizontal));
++    aside_pinned_entries_->SetProperty(views::kCrossAxisAlignmentKey,
++                                       views::LayoutAlignment::kCenter);
++  }
++
+   tab_strip_ = AddChildView(CreateTabStrip(this, browser_view));
+ 
+   // Allow the |tab_strip_| to grow into the free space available in
+diff --git a/chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.h b/chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.h
+index 774e58392e..9e48be47dd 100644
+--- a/chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.h
++++ b/chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.h
+@@ -30,6 +30,7 @@ class TabStripComboButton;
+ class TabStrip;
+ class TabStripScrollContainer;
+ class TabStripControlButton;
++class AsidePinnedEntriesView;
+ 
+ // Container for the tabstrip and the other views sharing space with it -
+ // with the exception of the caption buttons.
+@@ -50,6 +51,11 @@ class HorizontalTabStripRegionView final : public TabStripRegionView {
+ 
+   views::Button* new_tab_button_for_testing() { return new_tab_button_; }
+ 
++  // Aside fork: the pinned-tab chip strip ahead of the tabs.
++  AsidePinnedEntriesView* aside_pinned_entries() {
++    return aside_pinned_entries_;
++  }
++
+   views::View* reserved_grab_handle_space_for_testing() {
+     return reserved_grab_handle_space_;
+   }
+@@ -136,6 +142,7 @@ class HorizontalTabStripRegionView final : public TabStripRegionView {
+   raw_ptr<TabStripScrollContainer> tab_strip_scroll_container_ = nullptr;
+   raw_ptr<TabStripComboButton> combo_button_ = nullptr;
+   raw_ptr<views::Button> new_tab_button_ = nullptr;
++  raw_ptr<AsidePinnedEntriesView> aside_pinned_entries_ = nullptr;
+   raw_ptr<TabStripControlButton> unfocus_button_ = nullptr;
+ 
+   std::unique_ptr<views::ActionViewController> action_view_controller_;
+diff --git a/chrome/browser/ui/views/frame/top_container_loading_bar.cc b/chrome/browser/ui/views/frame/top_container_loading_bar.cc
+new file mode 100644
+index 0000000000..a024e2d963
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/top_container_loading_bar.cc
+@@ -0,0 +1,106 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/top_container_loading_bar.h"
++
++#include <algorithm>
++
++#include "cc/paint/paint_flags.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/color/color_id.h"
++#include "ui/color/color_provider.h"
++#include "ui/gfx/canvas.h"
++#include "ui/gfx/geometry/rect_f.h"
++
++namespace {
++
++// The original's band is a few device-independent pixels tall and hugs the
++// bottom edge of the top container.
++constexpr int kLoadingBarHeight = 3;
++
++}  // namespace
++
++TopContainerLoadingBar::TopContainerLoadingBar(Browser* browser)
++    : browser_(browser) {
++  SetCanProcessEventsWithinSubtree(false);
++  SetVisible(false);
++  if (browser_) {
++    browser_->tab_strip_model()->AddObserver(this);
++    ObserveActiveTab();
++  }
++}
++
++TopContainerLoadingBar::~TopContainerLoadingBar() {
++  if (browser_) {
++    browser_->tab_strip_model()->RemoveObserver(this);
++  }
++}
++
++void TopContainerLoadingBar::SetLoadingProgress(double progress) {
++  progress = std::clamp(progress, 0.0, 1.0);
++  if (loading_progress_ == progress) {
++    return;
++  }
++  loading_progress_ = progress;
++  // Hidden while idle and once the load has completed, exactly like the
++  // original's fade-out at progress == 1.
++  SetVisible(progress > 0.0 && progress < 1.0);
++  SchedulePaint();
++}
++
++double TopContainerLoadingBar::GetLoadingProgress() const {
++  return loading_progress_;
++}
++
++void TopContainerLoadingBar::OnPaint(gfx::Canvas* canvas) {
++  const ui::ColorProvider* provider = GetColorProvider();
++  if (!provider || loading_progress_ <= 0.0) {
++    return;
++  }
++  gfx::RectF bounds(GetLocalBounds());
++  bounds.set_height(std::min<float>(bounds.height(), kLoadingBarHeight));
++  bounds.set_y(GetLocalBounds().bottom() - bounds.height());
++  bounds.set_width(bounds.width() * loading_progress_);
++  cc::PaintFlags flags;
++  flags.setAntiAlias(true);
++  flags.setStyle(cc::PaintFlags::kFill_Style);
++  flags.setColor(provider->GetColor(ui::kColorSysPrimary));
++  canvas->DrawRect(bounds, flags);
++}
++
++void TopContainerLoadingBar::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  if (selection.active_tab_changed()) {
++    ObserveActiveTab();
++  }
++}
++
++void TopContainerLoadingBar::ObserveActiveTab() {
++  content::WebContents* active =
++      browser_ ? browser_->tab_strip_model()->GetActiveWebContents() : nullptr;
++  Observe(active);
++  SetLoadingProgress(active && active->IsLoading() ? active->GetLoadProgress()
++                                                   : 0.0);
++}
++
++void TopContainerLoadingBar::LoadProgressChanged(double progress) {
++  SetLoadingProgress(progress);
++}
++
++void TopContainerLoadingBar::DidStartLoading() {
++  SetLoadingProgress(0.05);
++}
++
++void TopContainerLoadingBar::DidStopLoading() {
++  SetLoadingProgress(0.0);
++}
++
++BEGIN_METADATA(TopContainerLoadingBar)
++ADD_PROPERTY_METADATA(double, LoadingProgress)
++END_METADATA
+diff --git a/chrome/browser/ui/views/frame/top_container_loading_bar.h b/chrome/browser/ui/views/frame/top_container_loading_bar.h
+new file mode 100644
+index 0000000000..8311b4e3ef
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/top_container_loading_bar.h
+@@ -0,0 +1,61 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_TOP_CONTAINER_LOADING_BAR_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_TOP_CONTAINER_LOADING_BAR_H_
++
++#include "base/memory/raw_ptr.h"
++#include "base/scoped_observation.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "content/public/browser/web_contents_observer.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/view.h"
++
++class Browser;
++
++// The page-load progress band the original draws along the bottom edge of the
++// top container (RE: LoadingBarView / TopContainerLoadingBar with the metadata
++// property "LoadingProgress", declared in
++// chrome/browser/ui/views/frame/top_container_loading_bar.h; class names at
++// arm64 0xd6bc414 / 0xd6bc423 / 0xd6bc43a and the metadata registration at
++// 0x43a978c-0x43a97f4).
++//
++// The bar tracks the active tab: it appears when a load starts, follows
++// WebContents::GetLoadProgress(), and fades out when the load finishes.
++class TopContainerLoadingBar : public views::View,
++                               public TabStripModelObserver,
++                               public content::WebContentsObserver {
++  METADATA_HEADER(TopContainerLoadingBar, views::View)
++
++ public:
++  explicit TopContainerLoadingBar(Browser* browser);
++  TopContainerLoadingBar(const TopContainerLoadingBar&) = delete;
++  TopContainerLoadingBar& operator=(const TopContainerLoadingBar&) = delete;
++  ~TopContainerLoadingBar() override;
++
++  // Metadata property "LoadingProgress": 0 (idle) to 1 (complete).
++  void SetLoadingProgress(double progress);
++  double GetLoadingProgress() const;
++
++  // views::View:
++  void OnPaint(gfx::Canvas* canvas) override;
++
++  // TabStripModelObserver:
++  void OnTabStripModelChanged(TabStripModel* tab_strip_model,
++                              const TabStripModelChange& change,
++                              const TabStripSelectionChange& selection) override;
++
++  // content::WebContentsObserver:
++  void LoadProgressChanged(double progress) override;
++  void DidStartLoading() override;
++  void DidStopLoading() override;
++
++ private:
++  void ObserveActiveTab();
++
++  raw_ptr<Browser> browser_;
++  double loading_progress_ = 0.0;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_TOP_CONTAINER_LOADING_BAR_H_
+diff --git a/chrome/browser/ui/views/frame/top_container_view.cc b/chrome/browser/ui/views/frame/top_container_view.cc
+index 854a015553..09be916661 100644
+--- a/chrome/browser/ui/views/frame/top_container_view.cc
++++ b/chrome/browser/ui/views/frame/top_container_view.cc
+@@ -12,6 +12,7 @@
+ #include "chrome/browser/ui/views/frame/browser_widget.h"
+ #include "chrome/browser/ui/views/frame/custom_corners_background.h"
+ #include "chrome/browser/ui/views/frame/themed_background.h"
++#include "chrome/browser/ui/views/frame/top_container_loading_bar.h"
+ #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+ #include "ui/base/metadata/metadata_impl_macros.h"
+ #include "ui/color/color_id.h"
+@@ -32,6 +33,13 @@ TopContainerView::TopContainerView(BrowserView* browser_view)
+       *this, *browser_view, kColorToolbar, kColorToolbar);
+   background->SetVisible(false);
+   SetBackground(std::move(background));
++
++  // Aside fork: TopContainerLoadingBar. Added last so it paints over the tab
++  // strip and toolbar, and marked as ignored by layout because the browser
++  // layout positions this container's children from an explicit list.
++  loading_bar_ = AddChildView(
++      std::make_unique<TopContainerLoadingBar>(browser_view->browser()));
++  loading_bar_->SetProperty(views::kViewIgnoredByLayoutKey, true);
+ }
+ 
+ TopContainerView::~TopContainerView() = default;
+@@ -108,5 +116,14 @@ void TopContainerView::ChildPreferredSizeChanged(views::View* child) {
+   PreferredSizeChanged();
+ }
+ 
++void TopContainerView::OnBoundsChanged(const gfx::Rect& previous_bounds) {
++  if (loading_bar_) {
++    constexpr int kLoadingBarHeight = 3;
++    loading_bar_->SetBoundsRect(gfx::Rect(0, height() - kLoadingBarHeight,
++                                          width(), kLoadingBarHeight));
++  }
++  views::View::OnBoundsChanged(previous_bounds);
++}
++
+ BEGIN_METADATA(TopContainerView)
+ END_METADATA
+diff --git a/chrome/browser/ui/views/frame/top_container_view.h b/chrome/browser/ui/views/frame/top_container_view.h
+index df8bba99aa..79ef08c5b9 100644
+--- a/chrome/browser/ui/views/frame/top_container_view.h
++++ b/chrome/browser/ui/views/frame/top_container_view.h
+@@ -11,6 +11,7 @@
+ #include "ui/views/view.h"
+ 
+ class BrowserView;
++class TopContainerLoadingBar;
+ 
+ // Container for the BrowserView's tab strip, toolbar, and sometimes bookmark
+ // bar. In Chrome OS immersive fullscreen it stacks on top of other views in
+@@ -31,10 +32,15 @@ class TopContainerView : public views::View {
+   // views::View overrides:
+   void PaintChildren(const views::PaintInfo& paint_info) override;
+   void ChildPreferredSizeChanged(views::View* child) override;
++  void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
+ 
+  private:
+   // The parent of this view. Not owned.
+   raw_ptr<BrowserView> browser_view_;
++
++  // Aside fork: the page-load band along the bottom edge. The browser layout
++  // does not know about this child, so this view positions it itself.
++  raw_ptr<TopContainerLoadingBar> loading_bar_ = nullptr;
+ };
+ 
+ #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_TOP_CONTAINER_VIEW_H_
+diff --git a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
+index ecc6a1c81c..5c491994a1 100644
+--- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
++++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
+@@ -4,6 +4,9 @@
+ 
+ #include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
+ 
++#include "chrome/browser/ui/views/frame/aside_profile_footer_view.h"
++#include "chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.h"
++
+ #include <algorithm>
+ #include <optional>
+ #include <variant>
+@@ -63,7 +66,11 @@
+ #include "ui/base/metadata/metadata_impl_macros.h"
+ #include "ui/color/color_id.h"
+ #include "ui/compositor/layer.h"
++#include "cc/paint/paint_flags.h"
++#include "ui/color/color_provider.h"
+ #include "ui/display/screen.h"
++#include "ui/gfx/canvas.h"
++#include "ui/gfx/geometry/rect_f.h"
+ #include "ui/events/event.h"
+ #include "ui/gfx/geometry/point.h"
+ #include "ui/views/background.h"
+@@ -97,6 +104,21 @@ constexpr ShadowFrameView::ShadowAlpha kExpandOnHoverShadowAlpha(
+      .dark_ambient = 0.0});
+ }  // namespace
+ 
++// Aside fork: named subclass so the resize handle carries the original's class
++// name (VerticalTabsResizeArea, arm64 0xd6bcf0a). Behaviour is unchanged.
++class VerticalTabsResizeArea : public views::ResizeArea {
++  METADATA_HEADER(VerticalTabsResizeArea, views::ResizeArea)
++
++ public:
++  explicit VerticalTabsResizeArea(views::ResizeAreaDelegate* delegate)
++      : views::ResizeArea(delegate) {}
++  ~VerticalTabsResizeArea() override = default;
++};
++
++BEGIN_METADATA(VerticalTabsResizeArea)
++END_METADATA
++
++
+ DEFINE_CLASS_CUSTOM_ELEMENT_EVENT_TYPE(VerticalTabStripRegionView,
+                                        kAnimationCompletedEvent);
+ 
+@@ -144,6 +166,26 @@ VerticalTabStripRegionView::VerticalTabStripRegionView(
+   top_button_separator_->SetProperty(
+       views::kMarginsKey, gfx::Insets::VH(0, region_horizontal_padding));
+ 
++  // Aside fork: the original's new-chat / tabs-header / organizer rows sit
++  // between the top separator and the tab list.
++  aside_additions_ =
++      AddChildView(std::make_unique<AsideVerticalTabStripAdditions>(
++          browser_view->browser()));
++  aside_additions_->SetProperty(
++      views::kMarginsKey, gfx::Insets::VH(0, region_horizontal_padding));
++  // Chromium 151's vertical tab strip already provides the original's
++  // context menu items (IDS 11709-11719 are Chromium strings).
++  aside_organizer_ = AddChildView(aside_additions_->TakeOrganizerView());
++  aside_organizer_->SetProperty(
++      views::kMarginsKey, gfx::Insets::VH(0, region_horizontal_padding));
++  cross_section_drag_preview_ =
++      AddChildView(std::make_unique<CrossSectionDragPreview>());
++  cross_section_drag_preview_->SetProperty(views::kViewIgnoredByLayoutKey,
++                                           true);
++  aside_footer_ = AddChildView(std::make_unique<AsideProfileFooterView>(browser_view->browser()));
++  aside_footer_->SetProperty(
++      views::kMarginsKey, gfx::Insets::VH(0, region_horizontal_padding));
++
+   bottom_button_container_ =
+       AddChildView(std::make_unique<VerticalTabStripBottomContainer>(
+           state_controller_, root_action_item, browser_view->browser(),
+@@ -163,7 +205,9 @@ VerticalTabStripRegionView::VerticalTabStripRegionView(
+ 
+   gemini_button_ = AddChildView(std::make_unique<views::View>());
+ 
+-  resize_area_ = AddChildView(std::make_unique<views::ResizeArea>(this));
++  // Aside fork: the original names this subclass VerticalTabsResizeArea
++  // (arm64 0xd6bcf0a) so it can be found by class name in the view tree.
++  resize_area_ = AddChildView(std::make_unique<VerticalTabsResizeArea>(this));
+   resize_area_->SetProperty(views::kViewIgnoredByLayoutKey, true);
+   resize_area_->SetFocusBehavior(views::View::FocusBehavior::ACCESSIBLE_ONLY);
+   views::FocusRing::Install(resize_area_);
+@@ -503,9 +547,41 @@ void VerticalTabStripRegionView::HandleMouseExited() {
+     return;
+   }
+ #endif
++  // Aside: the pointer can leave this view's event region while still resting
++  // on the collapse button or on the strip's outer edge, and upstream then
++  // closes the preview under the pointer.  The original polls instead
++  // (StartToolbarCollapseButtonHoverMonitorTimer, 100 ms); do the same and
++  // leave the decision to the monitor.
++  if (is_expanded_on_hover_ && StartAsideCollapseHoverMonitor()) {
++    return;
++  }
+   UpdateExpandOnHoverState(false);
+ }
+ 
++// Returns true when the pointer is still over the strip or its collapse
++// button, in which case the monitor takes over closing the preview.
++bool VerticalTabStripRegionView::StartAsideCollapseHoverMonitor() {
++  const views::View* collapse_button =
++      top_button_container_ ? top_button_container_->GetCollapseButton()
++                            : nullptr;
++  if (!AsideToolbarCollapseHoverMonitor::IsPointerInside(this,
++                                                         collapse_button)) {
++    return false;
++  }
++  aside_collapse_hover_monitor_.Start(
++      this, collapse_button,
++      base::BindRepeating(
++          [](VerticalTabStripRegionView* view, bool pointer_inside) {
++            if (pointer_inside) {
++              return;
++            }
++            view->aside_collapse_hover_monitor_.Stop();
++            view->UpdateExpandOnHoverState(false);
++          },
++          base::Unretained(this)));
++  return true;
++}
++
+ void VerticalTabStripRegionView::OnTabGroupFocusChanged(
+     std::optional<tab_groups::TabGroupId> new_focused_group_id,
+     std::optional<tab_groups::TabGroupId> old_focused_group_id) {
+@@ -526,6 +602,48 @@ VerticalTabStripRegionView::GetExpandOnHoverLock(
+   return std::make_unique<VerticalTabStripExpandOnHoverLock>(this, lock_type);
+ }
+ 
++VerticalTabStripRegionView::CrossSectionDragPreview::CrossSectionDragPreview() {
++  SetVisible(false);
++  SetCanProcessEventsWithinSubtree(false);
++}
++
++VerticalTabStripRegionView::CrossSectionDragPreview::
++    ~CrossSectionDragPreview() = default;
++
++void VerticalTabStripRegionView::CrossSectionDragPreview::SetTargetSection(
++    views::View* section) {
++  section_ = section;
++  if (!section || !section->GetVisible() || section->bounds().IsEmpty()) {
++    SetVisible(false);
++    return;
++  }
++  SetBoundsRect(section->bounds());
++  SetVisible(true);
++  SchedulePaint();
++}
++
++void VerticalTabStripRegionView::CrossSectionDragPreview::OnPaint(
++    gfx::Canvas* canvas) {
++  const ui::ColorProvider* provider = GetColorProvider();
++  if (!provider) {
++    return;
++  }
++  cc::PaintFlags flags;
++  flags.setAntiAlias(true);
++  flags.setStyle(cc::PaintFlags::kFill_Style);
++  flags.setColor(SkColorSetA(provider->GetColor(ui::kColorSysPrimary), 0x2b));
++  gfx::RectF bounds(GetLocalBounds());
++  bounds.Inset(1);
++  canvas->DrawRoundRect(bounds, 8, flags);
++  flags.setStyle(cc::PaintFlags::kStroke_Style);
++  flags.setStrokeWidth(1);
++  flags.setColor(provider->GetColor(ui::kColorSysPrimary));
++  canvas->DrawRoundRect(bounds, 8, flags);
++}
++
++BEGIN_METADATA(VerticalTabStripRegionView, CrossSectionDragPreview)
++END_METADATA
++
+ void VerticalTabStripRegionView::HandleDragUpdate(
+     const std::optional<BrowserRootView::DropIndex>& index) {
+   SetLinkDropArrow(index);
+@@ -534,12 +652,47 @@ void VerticalTabStripRegionView::HandleDragUpdate(
+     link_drag_lock_ =
+         GetExpandOnHoverLock(ExpandOnHoverLockType::kKeepCurrentState);
+   }
++  UpdateCrossSectionDragPreview(index);
+ }
+ 
+ void VerticalTabStripRegionView::HandleDragExited() {
+   SetLinkDropArrow(std::nullopt);
+   link_drag_lock_.reset();
+   UpdateExpandOnHoverState(false);
++  if (cross_section_drag_preview_) {
++    cross_section_drag_preview_->SetTargetSection(nullptr);
++  }
++}
++
++void VerticalTabStripRegionView::UpdateCrossSectionDragPreview(
++    const std::optional<BrowserRootView::DropIndex>& index) {
++  if (!cross_section_drag_preview_) {
++    return;
++  }
++  // A drop that lands inside the tab list keeps the ordinary drop arrow; only
++  // a drop aimed at one of the other sections gets the preview band.
++  if (index.has_value() || !aside_organizer_ ||
++      !aside_organizer_->GetVisible()) {
++    cross_section_drag_preview_->SetTargetSection(nullptr);
++    return;
++  }
++  display::Screen* screen = display::Screen::Get();
++  const gfx::Point cursor =
++      screen ? screen->GetCursorScreenPoint() : gfx::Point();
++  gfx::Point local = cursor;
++  views::View::ConvertPointFromScreen(this, &local);
++  views::View* target = nullptr;
++  const std::array<views::View*, 2> candidates = {
++      static_cast<views::View*>(aside_organizer_),
++      static_cast<views::View*>(aside_additions_)};
++  for (views::View* candidate : candidates) {
++    if (candidate && candidate->GetVisible() &&
++        candidate->bounds().Contains(local)) {
++      target = candidate;
++      break;
++    }
++  }
++  cross_section_drag_preview_->SetTargetSection(target);
+ }
+ 
+ gfx::Point VerticalTabStripRegionView::GetLinkDropArrowPosition(
+@@ -774,6 +927,15 @@ views::View* VerticalTabStripRegionView::SetTabStripView(
+   std::optional<size_t> separator_index = GetIndexOf(top_button_separator_);
+   CHECK(separator_index.has_value());
+   ReorderChildView(tab_strip_view_, separator_index.value() + 1);
++  // Aside fork: keep the new-chat / organizer rows above the tab list, as in
++  // the original (builder order: NewChatTabButton before the tab strip).
++  if (aside_additions_) {
++    ReorderChildView(aside_additions_, separator_index.value() + 1);
++    // tab list now sits at separator+2; the organizer sections follow it.
++    if (aside_organizer_) {
++      ReorderChildView(aside_organizer_, separator_index.value() + 3);
++    }
++  }
+ 
+   OnCollapseStateChanged(state_controller_->GetCollapseState());
+ 
+@@ -1052,6 +1214,11 @@ void VerticalTabStripRegionView::AnimateExpandOnHover(bool expand) {
+   is_expanded_on_hover_ = expand;
+   ResetExpandOnHoverTimers();
+ 
++  // Aside: the poll that keeps the preview alive only matters while it is up.
++  if (!expand) {
++    aside_collapse_hover_monitor_.Stop();
++  }
++
+   if (expand) {
+     expand_on_hover_start_time_ = base::TimeTicks::Now();
+     base::RecordAction(
+diff --git a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
+index 5d035b9eea..f441d84fd5 100644
+--- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
++++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
+@@ -18,6 +18,7 @@
+ #include "chrome/browser/ui/tabs/tab_data.h"
+ #include "chrome/browser/ui/tabs/vertical_tab_strip_state.h"
+ #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
++#include "chrome/browser/ui/views/frame/aside_toolbar_collapse_hover_monitor.h"
+ #include "chrome/browser/ui/views/frame/base_tab_strip_region_view.h"
+ #include "chrome/browser/ui/views/tabs/common/tab_strip_view.h"
+ #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.h"
+@@ -33,6 +34,7 @@
+ #include "ui/views/focus/focus_manager.h"
+ 
+ class BrowserView;
++class AsideVerticalTabStripAdditions;
+ class VerticalTabStripTopContainer;
+ class VerticalTabStripBottomContainer;
+ class ShadowFrameView;
+@@ -195,6 +197,29 @@ class VerticalTabStripRegionView final
+     raw_ptr<VerticalTabStripRegionView> region_view_;
+   };
+ 
++  // Aside fork: while a tab or link drag hovers a part of the strip that is
++  // not the tab list (the Aside rows, the bookmarks section, the pinned-entry
++  // chips), the original paints a preview band where the drop would land
++  // instead of the usual drop arrow. The class name is the original's
++  // ("VerticalTabStripRegionView::CrossSectionDragPreview", arm64 0xd6bc8ba).
++  class CrossSectionDragPreview : public views::View {
++    METADATA_HEADER(CrossSectionDragPreview, views::View)
++
++   public:
++    CrossSectionDragPreview();
++    ~CrossSectionDragPreview() override;
++
++    // Shows the band over `section` (a child of the region view), or hides it
++    // when `section` is null.
++    void SetTargetSection(views::View* section);
++
++    // views::View:
++    void OnPaint(gfx::Canvas* canvas) override;
++
++   private:
++    raw_ptr<views::View> section_ = nullptr;
++  };
++
+   // Used to create and destroy locks for the expand on hover state.
+   friend class VerticalTabStripExpandOnHoverLock;
+ 
+@@ -226,6 +251,10 @@ class VerticalTabStripRegionView final
+   void OnMouseVelocityHeuristicInterval();
+   void CalculateMouseVelocityForExpandOnHover();
+   void ResetExpandOnHoverTimers();
++  // Aside: starts the 100 ms poll that keeps the collapsed strip's hover
++  // preview open while the pointer rests on the collapse button or the strip's
++  // edge.  Returns false when the pointer is already gone.
++  bool StartAsideCollapseHoverMonitor();
+   void AnimateExpandOnHover(bool expand);
+ 
+   void RegisterExpandOnHoverLock(VerticalTabStripExpandOnHoverLock* lock);
+@@ -240,6 +269,11 @@ class VerticalTabStripRegionView final
+ 
+   void OnActiveTabChanged(const tabs::TabInterface* active_tab);
+ 
++  // Aside fork: moves/hides the cross-section drop preview for the current
++  // drag position.
++  void UpdateCrossSectionDragPreview(
++      const std::optional<BrowserRootView::DropIndex>& index);
++
+   raw_ptr<VerticalTabStripTopContainer> top_button_container_ = nullptr;
+   raw_ptr<views::Separator> top_button_separator_ = nullptr;
+   raw_ptr<VerticalTabStripBottomContainer> bottom_button_container_ = nullptr;
+@@ -250,6 +284,11 @@ class VerticalTabStripRegionView final
+   raw_ptr<views::FlexLayout> flex_layout_ = nullptr;
+ 
+   const raw_ptr<tabs::VerticalTabStripStateController> state_controller_;
++  // Aside fork: new chat / tidy / organizer rows (see the class comment).
++  raw_ptr<AsideVerticalTabStripAdditions> aside_additions_ = nullptr;
++  raw_ptr<views::View> aside_organizer_ = nullptr;
++  raw_ptr<views::View> aside_footer_ = nullptr;
++  raw_ptr<CrossSectionDragPreview> cross_section_drag_preview_ = nullptr;
+   std::optional<base::CallbackListSubscription>
+       expand_on_hover_enabled_changed_subscription_;
+   std::optional<base::CallbackListSubscription>
+@@ -275,6 +314,10 @@ class VerticalTabStripRegionView final
+       update_state_controller_collapsed_callback_;
+ 
+   base::OneShotTimer expand_on_hover_timer_;
++  // Aside: keeps the hover preview alive while the pointer rests on the
++  // collapse button or the strip's edge (RE
++  // StartToolbarCollapseButtonHoverMonitorTimer, 100 ms).
++  AsideToolbarCollapseHoverMonitor aside_collapse_hover_monitor_;
+   bool is_expanded_on_hover_ = false;
+   std::optional<base::TimeTicks> expand_on_hover_start_time_;
+   base::RetainingOneShotTimer expand_on_hover_heuristic_timer_;
+diff --git a/chrome/browser/ui/views/permissions/permission_prompt_bubble_one_origin_view.cc b/chrome/browser/ui/views/permissions/permission_prompt_bubble_one_origin_view.cc
+index 6ac7e2fc04..184811e956 100644
+--- a/chrome/browser/ui/views/permissions/permission_prompt_bubble_one_origin_view.cc
++++ b/chrome/browser/ui/views/permissions/permission_prompt_bubble_one_origin_view.cc
+@@ -118,9 +118,24 @@ std::vector<base::SafeRef<permissions::PermissionRequest>> GetVisibleRequests(
+   return visible_requests;
+ }
+ 
++// Aside fork: the two explanation lines the original adds under the prompt
++// title (UTF-16 literals, arm64 0xd77b3a8 and 0xd77b420, both built in the
++// permission prompt at 0x4438a14 / 0x4438f70).
++//
++// The notification line is the one that advertises the AI inbox; the one-time
++// line is shown whenever the prompt offers an "Allow this time" button.
++constexpr char16_t kAsideNotificationsExtraText[] =
++    u"Get notifications instantly, or let AI handle them for you.";
++constexpr char16_t kAsideAllowOnceExtraText[] =
++    u"Allow once, or always allow for this site.";
++
+ // Get extra information to display for the permission, if any.
+ std::optional<std::u16string> GetExtraText(
+     permissions::PermissionPrompt::Delegate& delegate) {
++  if (delegate.Requests()[0]->request_type() ==
++      permissions::RequestType::kNotifications) {
++    return std::u16string(kAsideNotificationsExtraText);
++  }
+   switch (delegate.Requests()[0]->request_type()) {
+     case permissions::RequestType::kStorageAccess:
+       return l10n_util::GetStringFUTF16(
+@@ -161,6 +176,9 @@ PermissionPromptBubbleOneOriginView::PermissionPromptBubbleOneOriginView(
+       {{title_offset, title_offset + GetUrlIdentityObject().name.length()}});
+ 
+   auto extra_text = GetExtraText(*delegate.get());
++  if (!extra_text.has_value() && IsOneTimePermission(*delegate.get())) {
++    extra_text = std::u16string(kAsideAllowOnceExtraText);
++  }
+   if (extra_text.has_value()) {
+     CreateExtraTextLabel(extra_text.value());
+   }
+diff --git a/chrome/browser/ui/views/status_bubble_views.cc b/chrome/browser/ui/views/status_bubble_views.cc
+index 56d564c5d1..6f6bb9a1ba 100644
+--- a/chrome/browser/ui/views/status_bubble_views.cc
++++ b/chrome/browser/ui/views/status_bubble_views.cc
+@@ -63,6 +63,22 @@
+ 
+ namespace {
+ 
++// Aside fork: the status bubble shows the browser's own pages under the
++// product's scheme. The original tests the elided text for the "chrome://"
++// prefix and swaps in "aside://" before painting (arm64 0x4443950-0x444399c
++// and 0x444368c-0x44436a4, both inside StatusBubbleViews::SetURL). Display
++// only — nothing resolves aside:// as a real scheme.
++constexpr char16_t kChromeSchemePrefix[] = u"chrome://";
++constexpr char16_t kAsideSchemePrefix[] = u"aside://";
++
++std::u16string AsideRewriteSchemeForDisplay(std::u16string text) {
++  if (text.starts_with(kChromeSchemePrefix)) {
++    text.replace(0, std::u16string_view(kChromeSchemePrefix).size(),
++                 kAsideSchemePrefix);
++  }
++  return text;
++}
++
+ // The roundedness of the edges of our bubble.
+ constexpr int kBubbleCornerRadius = 4;
+ 
+@@ -899,11 +915,12 @@ void StatusBubbleViews::SetURL(const GURL& url) {
+   // Set Elided Text corresponding to the GURL object.
+   int text_width = static_cast<int>(
+       size_.width() - (kShadowThickness + kTextHorizPadding) * 2 - 1);
+-  url_text_ = url_formatter::ElideUrl(url, GetFont(), text_width);
++  url_text_ = AsideRewriteSchemeForDisplay(
++      url_formatter::ElideUrl(url, GetFont(), text_width));
+ 
+   // Get the width of the URL if the bubble width is the maximum size.
+-  std::u16string full_size_elided_url =
+-      url_formatter::ElideUrl(url, GetFont(), GetMaxStatusBubbleWidth());
++  std::u16string full_size_elided_url = AsideRewriteSchemeForDisplay(
++      url_formatter::ElideUrl(url, GetFont(), GetMaxStatusBubbleWidth()));
+   int url_width = GetWidthForURL(full_size_elided_url);
+ 
+   // Get the width for the url if it is unexpanded.
+@@ -912,7 +929,8 @@ void StatusBubbleViews::SetURL(const GURL& url) {
+   // Reset expansion state only when bubble is completely hidden.
+   if (view_->GetState() == StatusView::BubbleState::kHidden) {
+     is_expanded_ = false;
+-    url_text_ = url_formatter::ElideUrl(url, GetFont(), unexpanded_width);
++    url_text_ = AsideRewriteSchemeForDisplay(
++        url_formatter::ElideUrl(url, GetFont(), unexpanded_width));
+     SetBubbleWidth(unexpanded_width);
+   }
+ 
+@@ -920,7 +938,8 @@ void StatusBubbleViews::SetURL(const GURL& url) {
+     // If bubble is not expanded & not empty, make it fit properly in the
+     // unexpanded bubble
+     if (!is_expanded_ & !url.is_empty()) {
+-      url_text_ = url_formatter::ElideUrl(url, GetFont(), unexpanded_width);
++      url_text_ = AsideRewriteSchemeForDisplay(
++          url_formatter::ElideUrl(url, GetFont(), unexpanded_width));
+       SetBubbleWidth(unexpanded_width);
+     }
+ 
+@@ -1080,8 +1099,8 @@ bool StatusBubbleViews::IsFrameMaximized() {
+ void StatusBubbleViews::ExpandBubble() {
+   // Elide URL to maximum possible size, then check actual length (it may
+   // still be too long to fit) before expanding bubble.
+-  url_text_ =
+-      url_formatter::ElideUrl(url_, GetFont(), GetMaxStatusBubbleWidth());
++  url_text_ = AsideRewriteSchemeForDisplay(
++      url_formatter::ElideUrl(url_, GetFont(), GetMaxStatusBubbleWidth()));
+   int expanded_bubble_width =
+       std::min(GetWidthForURL(url_text_), GetMaxStatusBubbleWidth());
+   is_expanded_ = true;

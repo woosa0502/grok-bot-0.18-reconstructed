@@ -1,0 +1,23 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideClock3OClockSolidIcon
+
+CANVAS_DIMENSIONS, 18,
+MOVE_TO, 8.9994f, 1.4994f,
+CUBIC_TO, 13.1415f, 1.4994f, 16.4994f, 4.8573f, 16.4994f, 8.9994f,
+CUBIC_TO, 16.4994f, 13.1415f, 13.1415f, 16.4994f, 8.9994f, 16.4994f,
+CUBIC_TO, 4.8573f, 16.4994f, 1.4994f, 13.1415f, 1.4994f, 8.9994f,
+CUBIC_TO, 1.4994f, 4.8573f, 4.8573f, 1.4994f, 8.9994f, 1.4994f,
+CLOSE,
+MOVE_TO, 8.9994f, 4.4994f,
+CUBIC_TO, 8.5852f, 4.4994f, 8.2494f, 4.8352f, 8.2494f, 5.2494f,
+V_LINE_TO, 8.9994f,
+CUBIC_TO, 8.2494f, 9.4136f, 8.5852f, 9.7494f, 8.9994f, 9.7494f,
+H_LINE_TO, 11.9994f,
+CUBIC_TO, 12.4136f, 9.7494f, 12.7494f, 9.4136f, 12.7494f, 8.9994f,
+CUBIC_TO, 12.7494f, 8.5852f, 12.4136f, 8.2494f, 11.9994f, 8.2494f,
+H_LINE_TO, 9.7494f,
+V_LINE_TO, 5.2494f,
+CUBIC_TO, 9.7494f, 4.8352f, 9.4136f, 4.4994f, 8.9994f, 4.4994f,
+CLOSE,

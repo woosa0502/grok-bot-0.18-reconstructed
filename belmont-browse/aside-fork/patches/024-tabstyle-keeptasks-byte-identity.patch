@@ -1,0 +1,34 @@
+# 024 — tabStyle / keepTasksRunning byte-identity correction
+#
+# Comparison against the original binary found two invented pref keys that do
+# NOT exist in the original's 28 aside.* keys:
+#   - aside.tab_style               (my invention)
+#   - aside.keep_tasks_running_enabled (my invention)
+#
+# RE of the original (aside-arm64.bin) established the real sources:
+#
+# 1) getTabStyle/setTabStyle: the original surfaces the vertical-tabs toggle as
+#    a string. Storage key = aside.browser_preferences.vertical_tabs_enabled (bool).
+#    - registration site 0x22c989c registers it with a base::Value default built
+#      from `mov w20,#1` (strb w20,[sp,#0x20]) => default = true.
+#    - the bool->string formatter at 0xa469318 selects "vertical"/"horizontal".
+#    Mapping: true->"vertical", false->"horizontal".
+#
+# 2) getKeepTasksRunningState/setKeepTasksRunningEnabled: "keep tasks running"
+#    is Chromium background mode. Binary contains "background_mode.enabled"
+#    (@0xc7754bf) = prefs::kBackgroundModeEnabled, a LOCAL_STATE pref (default
+#    true, registered by BackgroundModeManager::RegisterPrefs). NOT an aside key.
+#
+# --- chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.cc
+#   getTabStyle:  GetBoolean("aside.browser_preferences.vertical_tabs_enabled") ? "vertical" : "horizontal"
+#   setTabStyle:  SetBoolean("aside.browser_preferences.vertical_tabs_enabled", tab_style == "vertical")
+#   getKeepTasksRunningState: g_browser_process->local_state()->GetBoolean(prefs::kBackgroundModeEnabled)
+#   setKeepTasksRunningEnabled: local_state()->SetBoolean(prefs::kBackgroundModeEnabled, enabled)
+#   + #include "chrome/common/pref_names.h"
+#
+# --- chrome/browser/prefs/browser_prefs.cc
+#   - RegisterStringPref("aside.tab_style", "")
+#   + RegisterBooleanPref("aside.browser_preferences.vertical_tabs_enabled", true)
+#   - RegisterBooleanPref("aside.keep_tasks_running_enabled", false)   (removed; native pref used)
+#
+# See overlay/ for the full post-change files.

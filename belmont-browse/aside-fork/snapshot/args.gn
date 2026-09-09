@@ -1,0 +1,16 @@
+# Aside 포크 재현 빌드 설정 (원본 args.mac 참고 + 리눅스/이 환경 최적화)
+is_debug = false
+is_component_build = false          # 원본과 동일: 단일 바이너리
+symbol_level = 1                    # 링크 램 절감 (0이면 더 절감되나 디버그 불가)
+blink_symbol_level = 0
+dcheck_always_on = false
+use_remoteexec = false              # 분산 빌드 없음 (로컬 8코어)
+target_os = "linux"
+target_cpu = "x64"
+is_official_build = false           # 순정 빌드 (원본 signing/updater는 제외)
+enable_nacl = false
+proprietary_codecs = true           # H.264 등 (원본과 동일 재생 능력)
+ffmpeg_branding = "Chrome"
+use_sysroot = true
+# 링크 램 절감
+use_thin_lto = false

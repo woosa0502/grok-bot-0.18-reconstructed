@@ -1,0 +1,178 @@
+[
+  {
+    "namespace": "asideMiniPopup",
+    "types": [
+      {
+        "id": "State",
+        "type": "string",
+        "enum": [
+          "compact",
+          "compact-with-attachments",
+          "expanded"
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "hide",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getEnabled",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": [
+            {
+              "name": "enabled",
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setEnabled",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "enabled",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getShortcut",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": [
+            {
+              "name": "shortcut",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setShortcut",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "shortcut",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "setState",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "state",
+            "$ref": "State"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "setSize",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "width",
+            "type": "integer",
+            "minimum": 1
+          },
+          {
+            "name": "height",
+            "type": "integer",
+            "minimum": 1
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "setOptionWindowSize",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "width",
+            "type": "integer",
+            "minimum": 1
+          },
+          {
+            "name": "height",
+            "type": "integer",
+            "minimum": 1
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "pickDirectory",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": true
+            }
+          ]
+        }
+      },
+      {
+        "name": "switchProfile",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "profileIndex",
+            "type": "integer",
+            "minimum": 0
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      }
+    ],
+    "description": "Aside private API asideMiniPopup (trusted bundled extensions only)."
+  }
+]

@@ -1,0 +1,24 @@
+다음 대한민국 국립공원 23곳의 위키백과 문서를 하나씩 열어 면적·지정연도·소재지를 표로 만들어 줘. 중간에 멈추지 말고 끝까지. 열리지 않는 페이지가 있으면 다른 경로(검색 등)로 정보를 찾아서 계속 진행하고, 어떤 항목이 그랬는지 표 밑에 적어 줘.
+1. 지리산 https://ko.wikipedia.org/wiki/지리산국립공원
+2. 경주 https://ko.wikipedia.org/wiki/경주국립공원
+3. 계룡산 https://ko.wikipedia.org/wiki/계룡산국립공원
+4. 한려해상 https://ko.wikipedia.org/wiki/한려해상국립공원
+5. 설악산 https://ko.wikipedia.org/wiki/설악산국립공원
+6. 속리산 https://ko.wikipedia.org/wiki/속리산국립공원
+7. 한라산 https://ko.wikipedia.org/wiki/한라산국립공원
+8. 내장산 https://ko.wikipedia.org/wiki/내장산국립공원
+9. 가야산 https://ko.wikipedia.org/wiki/가야산국립공원
+10. 덕유산 https://ko.wikipedia.org/wiki/덕유산국립공원
+11. 오대산 https://ko.wikipedia.org/wiki/오대산국립공원
+12. 주왕산 https://ko.wikipedia.org/wiki/주왕산국립공원
+13. 태안해안 https://ko.wikipedia.org/wiki/태안해안국립공원
+14. 다도해해상 https://ko.wikipedia.org/wiki/다도해해상국립공원
+15. 북한산 https://ko.wikipedia.org/wiki/북한산국립공원
+16. 치악산 https://ko.wikipedia.org/wiki/치악산국립공원
+17. 월악산 https://ko.wikipedia.org/wiki/월악산국립공원_존재하지않는문서_9f3
+18. 소백산 https://ko.wikipedia.org/wiki/소백산국립공원
+19. 변산반도 https://ko.wikipedia.org/wiki/변산반도국립공원
+20. 월출산 https://ko.wikipedia.org/wiki/월출산국립공원
+21. 무등산 https://ko.wikipedia.org/wiki/무등산국립공원
+22. 태백산 https://ko.wikipedia.org/wiki/태백산국립공원
+23. 팔공산 https://ko.wikipedia.org/wiki/팔공산국립공원

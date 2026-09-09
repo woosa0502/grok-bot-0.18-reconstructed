@@ -1,0 +1,29 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideDiamondSolidIcon
+
+CANVAS_DIMENSIONS, 18,
+MOVE_TO, 4.5067f, 2.9722f,
+CUBIC_TO, 5.0504f, 2.5062f, 5.7429f, 2.25f, 6.4591f, 2.25f,
+H_LINE_TO, 11.5444f,
+CUBIC_TO, 12.2606f, 2.25f, 12.9531f, 2.5062f, 13.4968f, 2.9722f,
+LINE_TO, 16.2701f, 5.3493f,
+CUBIC_TO, 17.5969f, 6.4866f, 17.6747f, 8.5127f, 16.439f, 9.7484f,
+LINE_TO, 11.1231f, 15.0644f,
+CUBIC_TO, 9.9515f, 16.2359f, 8.052f, 16.2359f, 6.8804f, 15.0644f,
+LINE_TO, 1.5645f, 9.7484f,
+CUBIC_TO, 0.3288f, 8.5127f, 0.4066f, 6.4866f, 1.7334f, 5.3493f,
+LINE_TO, 4.5067f, 2.9722f,
+CLOSE,
+MOVE_TO, 7.6571f, 6.5303f,
+CUBIC_TO, 7.95f, 6.2374f, 7.95f, 5.7626f, 7.6571f, 5.4697f,
+CUBIC_TO, 7.3642f, 5.1768f, 6.8893f, 5.1768f, 6.5964f, 5.4697f,
+LINE_TO, 5.3615f, 6.7045f,
+CUBIC_TO, 4.9222f, 7.1438f, 4.9222f, 7.8562f, 5.3615f, 8.2955f,
+LINE_TO, 6.5964f, 9.5303f,
+CUBIC_TO, 6.8893f, 9.8232f, 7.3642f, 9.8232f, 7.6571f, 9.5303f,
+CUBIC_TO, 7.95f, 9.2374f, 7.95f, 8.7626f, 7.6571f, 8.4697f,
+LINE_TO, 6.6874f, 7.5f,
+LINE_TO, 7.6571f, 6.5303f,
+CLOSE,

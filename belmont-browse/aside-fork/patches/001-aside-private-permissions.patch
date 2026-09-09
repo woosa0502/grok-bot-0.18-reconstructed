@@ -1,0 +1,129 @@
+diff --git a/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc b/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc
+index 77b95c43ee..4d7f37ff36 100644
+--- a/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc
++++ b/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc
+@@ -179,7 +179,11 @@ ExtensionFunction::ResponseAction TabCaptureCaptureFunction::Run() {
+   if (!extension()->permissions_data()->HasAPIPermissionForTab(
+           sessions::SessionTabHelper::IdForTab(target_contents).id(),
+           mojom::APIPermissionID::kTabCaptureForTab) &&
+-      (GetAllowlistedExtensionID() != extension_id)) {
++      (GetAllowlistedExtensionID() != extension_id) &&
++      // Aside: a trusted extension holding this permission may capture without
++      // a user gesture (used for background tab previews).
++      !extension()->permissions_data()->HasAPIPermission(
++          mojom::APIPermissionID::kAsideCaptureTabWithoutUserInteraction)) {
+     return RespondNow(Error(kGrantError));
+   }
+ 
+@@ -257,7 +261,11 @@ ExtensionFunction::ResponseAction TabCaptureGetMediaStreamIdFunction::Run() {
+   if (!extension()->permissions_data()->HasAPIPermissionForTab(
+           sessions::SessionTabHelper::IdForTab(target_contents).id(),
+           mojom::APIPermissionID::kTabCaptureForTab) &&
+-      (GetAllowlistedExtensionID() != extension_id)) {
++      (GetAllowlistedExtensionID() != extension_id) &&
++      // Aside: a trusted extension holding this permission may capture without
++      // a user gesture (used for background tab previews).
++      !extension()->permissions_data()->HasAPIPermission(
++          mojom::APIPermissionID::kAsideCaptureTabWithoutUserInteraction)) {
+     return RespondNow(Error(kGrantError));
+   }
+ 
+diff --git a/chrome/common/extensions/api/_permission_features.json b/chrome/common/extensions/api/_permission_features.json
+index be9119db6f..1b46606440 100644
+--- a/chrome/common/extensions/api/_permission_features.json
++++ b/chrome/common/extensions/api/_permission_features.json
+@@ -1184,5 +1184,54 @@
+       "7D5A66C88A25019F997E548DEC5E0011E2855591",  // http://crbug.com/40181096
+       "F740D260E7E2107B3AE454F512B65AE6CF244433"   // http://b/273392894
+     ]
++  },
++  "at.studio.Aside.ext.private.capture-tab-without-userinteraction": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.account": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.browser-import": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.notification": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.omnibox": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.pref-get-set": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.launch-extension": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
+   }
+ }
+diff --git a/chrome/common/extensions/permissions/chrome_api_permissions.cc b/chrome/common/extensions/permissions/chrome_api_permissions.cc
+index 8e93fc106c..b34bba16da 100644
+--- a/chrome/common/extensions/permissions/chrome_api_permissions.cc
++++ b/chrome/common/extensions/permissions/chrome_api_permissions.cc
+@@ -221,6 +221,15 @@ constexpr APIPermissionInfo::InitInfo permissions_to_register[] = {
+      APIPermissionInfo::kFlagImpliesFullURLAccess},
+     {APIPermissionID::kTabCaptureForTab, "tabCaptureForTab",
+      APIPermissionInfo::kFlagInternal},
++    // Aside private permission: capture a tab without a user gesture.
++    {APIPermissionID::kAsideCaptureTabWithoutUserInteraction,
++     "at.studio.Aside.ext.private.capture-tab-without-userinteraction"},
++    {APIPermissionID::kAsideAccount, "at.studio.Aside.ext.private.account"},
++    {APIPermissionID::kAsideBrowserImport, "at.studio.Aside.ext.private.browser-import"},
++    {APIPermissionID::kAsideNotification, "at.studio.Aside.ext.private.notification"},
++    {APIPermissionID::kAsideOmnibox, "at.studio.Aside.ext.private.omnibox"},
++    {APIPermissionID::kAsidePrefGetSet, "at.studio.Aside.ext.private.pref-get-set"},
++    {APIPermissionID::kAsideLaunchExtension, "at.studio.Aside.ext.private.launch-extension"},
+ 
+     // Platform-app permissions.
+     {APIPermissionID::kFileSystemProvider, "fileSystemProvider",
+diff --git a/extensions/common/mojom/api_permission_id.mojom b/extensions/common/mojom/api_permission_id.mojom
+index 4e1045188b..3f4bc7c9d7 100644
+--- a/extensions/common/mojom/api_permission_id.mojom
++++ b/extensions/common/mojom/api_permission_id.mojom
+@@ -294,6 +294,15 @@ enum APIPermissionID {
+   kIndigoPrivate = 267,
+   kContextualTasksPrivate = 268,
+   kDictationPrivate = 269,
++  // Aside: allows a trusted extension to capture a tab without a user gesture.
++  kAsideCaptureTabWithoutUserInteraction = 270,
++  // Aside: private permissions for trusted bundled extensions.
++  kAsideAccount = 271,
++  kAsideBrowserImport = 272,
++  kAsideNotification = 273,
++  kAsideOmnibox = 274,
++  kAsidePrefGetSet = 275,
++  kAsideLaunchExtension = 276,
+ 
+   // Add new entries at the end of the enum and be sure to update the
+   // "ExtensionPermission3" enum in

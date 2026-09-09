@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Aside remediation — late generic cosmetic delivery</title>
+<style>body{font:18px sans-serif;margin:2rem}.remediation-late-ad,.remediation-second-late-ad{padding:1rem;background:#fee;color:#900}#control{padding:1rem;background:#efe}</style>
+<h1>Late cosmetic lookup fixture</h1>
+<p>This page is intended for an isolated browser profile with custom rules <code>##.remediation-late-ad</code> and <code>##.remediation-second-late-ad</code>.</p>
+<p id="control">Control content stays visible.</p>
+<output id="result">Waiting for the first class to appear after eight seconds…</output>
+<script>
+window.remediationEvidence = { started: performance.now(), events: [] };
+function insert(label) {
+  const node = document.createElement('div');
+  node.className = label === 'first-late-ad' ? 'remediation-late-ad' : 'remediation-second-late-ad';
+  node.textContent = label;
+  node.id = label;
+  document.body.append(node);
+  setTimeout(() => {
+    const evidence = { label, elapsedMs: performance.now(), display: getComputedStyle(node).display,
+      controlDisplay: getComputedStyle(document.querySelector('#control')).display };
+    window.remediationEvidence.events.push(evidence);
+    document.querySelector('#result').textContent = JSON.stringify(window.remediationEvidence, null, 2);
+  }, 1500);
+}
+setTimeout(() => insert('first-late-ad'), 8000);
+setTimeout(() => insert('second-late-ad'), 18000);
+</script>
+</html>

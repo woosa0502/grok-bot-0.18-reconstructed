@@ -1,0 +1,5265 @@
+{
+  "status": "SOURCE_CHECKPOINT_NOT_PARITY_APPROVAL",
+  "capturedAt": "2026-09-09T00:10:34.111697+00:00",
+  "upstream": "https://chromium.googlesource.com/chromium/src.git",
+  "baseCommit": "cc5584af0df9786f00efdb71f666c6664f836c2d",
+  "localHead": "1d00f53b564d073e80d6c90be81fb1ac0f90327f",
+  "patch": {
+    "path": "chromium.patch",
+    "bytes": 5367512,
+    "sha256": "24add2b11d261fb9a2144fb849966bd0633238c27dafb474fb42414c765c4db3"
+  },
+  "buildArgs": {
+    "path": "args.gn",
+    "sha256": "c9602823c4663012270b9fb2ff0639e8cb3d45c0ad39fdd338cecad69589e6ed"
+  },
+  "fileCount": 748,
+  "files": [
+    {
+      "path": "chrome/app/generated_resources.grd",
+      "bytes": 1394983,
+      "sha256": "ea8edb68a886ecc396e3b31c9c11cbff8a91973d82d38b9878ec93decaac3623",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/app/settings_strings.grdp",
+      "bytes": 421661,
+      "sha256": "72c90dde0e73b874e0c66f74a22026087f5e22ef7bc8043ed783543479b1524c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/BUILD.gn",
+      "bytes": 205993,
+      "sha256": "f74254bcadbc88ccb9f163f3d2d45623fe194907d98e6a29f910931700aa7266",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/actor/ui/actor_overlay_web_view.cc",
+      "bytes": 6257,
+      "sha256": "5ae73c202ff0d6142a714b30644a2865177779c3178aba351394f4d062050d29",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/actor/ui/actor_overlay_web_view.h",
+      "bytes": 2718,
+      "sha256": "dd4242e17755808d98b4c2ef70c5ce462d3fcf63e94177ec687e75033d78e326",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/actor/ui/actor_overlay_web_view_unittest.cc",
+      "bytes": 10095,
+      "sha256": "14a818f276fbc8c38c60d28b34e27cde8d6fd51affdb0c11c4f4df64c9a33616",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/actor/ui/actor_ui_window_controller.cc",
+      "bytes": 15200,
+      "sha256": "a7c80dd621ffa05e51c9b0d8c6177950bc011604d717b7d36a57c9c816df3bf6",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/actor/ui/actor_ui_window_controller.h",
+      "bytes": 7201,
+      "sha256": "7d4fa68093c2ace2372160959046015fbdbcf7c21f25bf33d1e82dd2a9d4aa7b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/actor/ui/task_list_bubble/actor_task_list_bubble_controller.cc",
+      "bytes": 8836,
+      "sha256": "ecfb5ddaf53a82fe121e76d4c6becad868b150f00ee01d287eafd3dd19d642d5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/actor/ui/task_list_bubble/actor_task_list_bubble_controller.h",
+      "bytes": 2921,
+      "sha256": "d31c7d6672c64d00436b569be485b4bd3f69037880ab536460eff43307739e35",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/apps/app_service/metrics/website_metrics.cc",
+      "bytes": 27002,
+      "sha256": "417a3cadeacddaff5d80ce770140e9c78e3bb408f88984186a3685fa0dde2229",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/apps/app_service/metrics/website_metrics.h",
+      "bytes": 12704,
+      "sha256": "2d921a563a1cb85859d1fd9a7a5897561eb0f51c21a898bc6a729fdc87140fbd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/BUILD.gn",
+      "bytes": 3056,
+      "sha256": "adfd896d6c5eeeb20cdc6b6a6491932cdd43bc2b98fdb780e029cfd19d239ae5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_cosmetic_filter_host.cc",
+      "bytes": 4692,
+      "sha256": "6c73a7a36ada1e258ebfa605602bbd8a430fd616356b35c74e99d5a3c44b24a0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_cosmetic_filter_host.h",
+      "bytes": 2599,
+      "sha256": "115bb2b1d3490863dbda74bb69d0023f20945b619fd1935d2ec0a316bf34a31b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_cosmetic_request.cc",
+      "bytes": 394,
+      "sha256": "dc279c619e3986f3646a42723bdf001787379ead531c3b19dedb07600168cf49",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_cosmetic_request.h",
+      "bytes": 2458,
+      "sha256": "96104b9ac79b3cbbbef86b4a97bf72a19dedfc1a430c483d1812a17799939e51",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_engine.cc",
+      "bytes": 59994,
+      "sha256": "aa531d549567c73554d4d70a3b5ae0d2d221ea499bb4c1180cb79d9229c3bb7b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_engine.h",
+      "bytes": 11456,
+      "sha256": "e5182909a9d5f2b31180f42f816ac1c6378a3a779ec350eace486c02244e7f4b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_engine_tests.cc",
+      "bytes": 22473,
+      "sha256": "2991326dc1e0d7c8202f4166c654f8f09aa51153b477d992357446cefa2a233d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_navigation_throttle.cc",
+      "bytes": 7829,
+      "sha256": "9a6f361a6f4f72b8e48352603639684758dee5802716f89aeebd0c09d892ce93",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_navigation_throttle.h",
+      "bytes": 1482,
+      "sha256": "5f21ef4a421cfc27496e8fc5f0f87818070aa5848471c87f009cde31a8c919eb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_procedural.cc",
+      "bytes": 5490,
+      "sha256": "3c8d3359e70354991c36aa4405b16c3629ce33c5c855d068025c271cefdc5fc2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_procedural.h",
+      "bytes": 1569,
+      "sha256": "e7e49bf23819f26e9ffbf64a3ada6c88a73edb39811c83daee457b7dff2aac52",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.cc",
+      "bytes": 12451,
+      "sha256": "ca874eadee5047351838f4f6fa48a9dec179792dbd0bcab9b4fb11fc998abb17",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_proxying_url_loader_factory.h",
+      "bytes": 3157,
+      "sha256": "03dfea0d570f804ea3dbfe61ff32b373061d5aed0d17856ebe48a9c28800e18a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_redirect_resources.h",
+      "bytes": 89031,
+      "sha256": "31228cb5ca258842a8962420700958f2ee73142046874cc208121c88cea9e238",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_resources.h",
+      "bytes": 6253,
+      "sha256": "65fd928e052f7e17e7ff0327dc2f5855706977a7f98da16da5e35c25d447f216",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_rule_preprocessor.cc",
+      "bytes": 9033,
+      "sha256": "affb0656cece95bdd2554854d05b781ebfcc8884e6c74c9e81ca7bd8c9ec21ea",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_rule_preprocessor.h",
+      "bytes": 3792,
+      "sha256": "4e5e3638e6d6da13c90e6361b58e7f80c794d1462fe748abf9376498f08a04e4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_service.cc",
+      "bytes": 36849,
+      "sha256": "2308de7f542f3a7ba59b1dfceed3d810712418931049fcc5eae474dd8283ee57",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_service.h",
+      "bytes": 8291,
+      "sha256": "4c0078ca44f68e3e82d3f9ca1c0c3e8526bdc7abb6a4e97731a0a6d09171e1af",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_service_factory.cc",
+      "bytes": 1568,
+      "sha256": "a48265349c1402886064d32f82a264fa28fed35350eaf6f882ca2326d3bedb16",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_service_factory.h",
+      "bytes": 1103,
+      "sha256": "0ec7dc89eddbfaf955a2133ac56f15973e16bc5d88b74b3c960d2b44421448f0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_tab_helper.cc",
+      "bytes": 817,
+      "sha256": "d4809629f2e78a9984c587ae52dbafe54121383f6d28b87a0f202deea23fe6af",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/aside_adblock_tab_helper.h",
+      "bytes": 1191,
+      "sha256": "08fe50ba4c304b2b87c46dc2aa30f86b801a2f184e736a123146e6ff56a30c54",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/README.md",
+      "bytes": 966,
+      "sha256": "350f8e3247ab478b7691defb3a1a47ff62caeb8a57d36fbf15f80998950e5ec2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/generate_redirect_resources.py",
+      "bytes": 2059,
+      "sha256": "c0433d524ea0ee282323e10267d8380c33e811cd48d4550b35b9d00abef31b8f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/1x1.gif",
+      "bytes": 43,
+      "sha256": "afe0dcfca292a0fae8bce08a48c14d3e59c9d82c6052ab6d48a22ecc6c48f277",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/2x2.png",
+      "bytes": 68,
+      "sha256": "adfa0c7de03bc3bea3de80b4a4514881c8b6296568f43a5acd5cd7a16fffd1c9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/32x32.png",
+      "bytes": 83,
+      "sha256": "36e10c1f70cbc992f98a0e75950e29f3de9b7fd21becd41a3fcba3751c9423b9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/LICENSE.txt",
+      "bytes": 35126,
+      "sha256": "e73d33841f942fa73aa5a63d4a6399cc39a29564db1dbca0915485842fcb236d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/adthrive_abd.js",
+      "bytes": 139,
+      "sha256": "1a67bea76e55dc17057fae81f47ea478cd35e0c60aa101b57e76c73769931e35",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/amazon_ads.js",
+      "bytes": 2296,
+      "sha256": "41901805f575d9d06608682999cf588b12c318face2ed04e8566ec8cbec4c610",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/amazon_apstag.js",
+      "bytes": 1974,
+      "sha256": "cf3f5c41c90134ff7ee66a471875b1e076384d789aa3827990ea99f00ee40231",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/chartbeat.js",
+      "bytes": 1175,
+      "sha256": "5e6add14da36b213c093e77fae622f2624cc3ec1ed77ef0a7da934a69a62288d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/doubleclick_instream_ad_status.js",
+      "bytes": 29,
+      "sha256": "eed0dc1fdb5d97ed188ae16fd5e1024a5bb744af47340346be2146300a6c54b9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/empty",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/fingerprint2.js",
+      "bytes": 1829,
+      "sha256": "7552c3423619eb239d6042a91f8430cbe4f298b4de9c263954abbcda07ec9725",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/fingerprint3.js",
+      "bytes": 1492,
+      "sha256": "6fd5703f2bdd85932f18adc99f30d8736d2bf5f09b1dde6c129f4616259fc827",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/google-analytics_analytics.js",
+      "bytes": 3695,
+      "sha256": "6b4621868cac589a603fe1263aad242f67262ef971bdacaccc1a515cd0488466",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/google-analytics_cx_api.js",
+      "bytes": 1230,
+      "sha256": "b1bdb8c30c6744be3c68bba5de49df7a2f04d3d8b295f0a26ab1ade5af738139",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/google-analytics_ga.js",
+      "bytes": 4810,
+      "sha256": "f0546767675ac7eff724521236be831e8753a7b8c15aa1c792d8121cb5311094",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/google-ima.js",
+      "bytes": 14911,
+      "sha256": "4bf8e398a46c982cd72ec1723e03f58784624da2f41caeeefb78e1fad1d47535",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/googlesyndication_adsbygoogle.js",
+      "bytes": 4214,
+      "sha256": "89485b47856cfde614bae69671c2ca23ae0846f05a75c1eb9981f45e4e2a9c3a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/googletagservices_gpt.js",
+      "bytes": 5134,
+      "sha256": "7992fe36869090d43ceeb9a8d1867a6e60db7b70d69e95e6048a34a00fd33bcb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/hd-main.js",
+      "bytes": 2137,
+      "sha256": "49a25cfcbc2fafeda3d9051e380f3ca50eef4b195087494da7b74dd046a767d2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/manifest.json",
+      "bytes": 7060,
+      "sha256": "762699477cf3b2b1f65bc234cdb4b6a845d08bd88c021d78a896283acb3f7c8e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/nitropay_ads.js",
+      "bytes": 1109,
+      "sha256": "180962cfdf1e2f2c8b7c2b194eb6249130eb9a7ace4a58e9bd59bbf59c62633a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/nobab2.js",
+      "bytes": 1503,
+      "sha256": "3ee47f99116088a94e1c280d3cd6216a75513a9109a3876ed7926897ec7cfc96",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noeval-silent.js",
+      "bytes": 1046,
+      "sha256": "bcb710ed7e64295cc8fe98b8611978e0801ffdce65107d1cb9c318339a5644d6",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/nofab.js",
+      "bytes": 2604,
+      "sha256": "dd7684145ffe90180075aa4d98a7a457cbdc6b73295bea17c55bf230332cf056",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop-0.1s.mp3",
+      "bytes": 813,
+      "sha256": "fc84c6967318b8ade681bf82ca93e63ecd62e2a8430e1a6d2e12390e8017eaa8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop-1s.mp4",
+      "bytes": 3753,
+      "sha256": "a27edba0e34b2648a90a800ae94fdef3e39016d1b9bd6e54a31ede1f1cddfed0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop-vast2.xml",
+      "bytes": 28,
+      "sha256": "a8fb181a797b4e48bb5d239ab5030f33ed65ebf339e38a5131ce966331226cef",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop-vast3.xml",
+      "bytes": 28,
+      "sha256": "71a904ba726ae38a8aa08425bae824e9850452b5c41a182bdc526a139ba3a9bc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop-vmap1.xml",
+      "bytes": 86,
+      "sha256": "fcc40f36d86c8f7146d4b2f0c1273cc46282c2c236303dabc172dfacfdf86508",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop.css",
+      "bytes": 6,
+      "sha256": "cccc5e8a9a7ad608a04f242530345694bd7150bd73315513284142b6a39ba4b7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop.html",
+      "bytes": 82,
+      "sha256": "cee0f0272bae8618bb36b96eae44057ad7ad8325afc0096e2477713b146e1adc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop.js",
+      "bytes": 38,
+      "sha256": "5592bfa25de75c18ef0116cbb9990c122178b1efe5e076f1c45049a09d935a25",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop.json",
+      "bytes": 2,
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/noop.txt",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/outbrain-widget.js",
+      "bytes": 2072,
+      "sha256": "8a7f3135798b4818da50f7e8d77564144f1054e68399e426af7f145446f5b7b6",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/popads.js",
+      "bytes": 1601,
+      "sha256": "85700e488f782dde2eac664d8127399f7650832678188ecbde143e5482a0bf58",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/prebid-ads.js",
+      "bytes": 990,
+      "sha256": "4ef4348e32fffdfa739b160f77d0b96fc4c861c089cfae8458275e30436179b3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/redirect-resources.js",
+      "bytes": 5733,
+      "sha256": "258006b664024193e85bc8106736af9bac4b0906f6ee1e0a756921bd9ce0bc1c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/scorecardresearch_beacon.js",
+      "bytes": 1069,
+      "sha256": "c177360b3723b924a168fc72ed728f924fe72e40cfc0c1d3fb5237849c590946",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/aside_adblock/resources/ubol/sensors-analytics.js",
+      "bytes": 1106,
+      "sha256": "976b60cda987b64505d8faa361a371720dbb5a78daffb280cc2f18d7e5a40278",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/chrome_browser_interface_binders.cc",
+      "bytes": 25727,
+      "sha256": "2ca3e4d7aee350a3aba9e68bce36d7e01b8ef60c1486646fe01d8c91e71acf00",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/chrome_browser_interface_binders_webui.cc",
+      "bytes": 20273,
+      "sha256": "859ffe3420e2050817fd328dd8d265a9f04c750f82fd520c8bf3adbc161475e1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/chrome_content_browser_client.cc",
+      "bytes": 394383,
+      "sha256": "4e04e1e14de0f4a5c9e487f13706a54edcc0f9ff017b0e1dc66911bc9e2f8fd9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/chrome_content_browser_client_navigation_throttles.cc",
+      "bytes": 27228,
+      "sha256": "5ecc9994e868bf5efa3934877a035257d5e61e0e2caebac3ff6260286748f268",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/component_updater/BUILD.gn",
+      "bytes": 13381,
+      "sha256": "93247e2e232b340604df6f6e55d321e0d34dc96a7796920b7cc90364076ad1a5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/component_updater/aside_component_installer.cc",
+      "bytes": 11634,
+      "sha256": "6db4d4193ef5f4d88aadf57dc6334ef49706487321d83814a7b16551f82a01fb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/component_updater/aside_component_installer.h",
+      "bytes": 4024,
+      "sha256": "8295f8aad3be6b82f404704c45eb712b1e657fcf6efb0a145247d2c35bcc9bc3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/component_updater/aside_component_installer_unittest.cc",
+      "bytes": 12338,
+      "sha256": "653119a09ee1c9f15efe79e2c42e2a7b77a2b9379120bf2bc523e661f0df6097",
+      "mode": "100644",
+      "untrackedAtCapture": true
+    },
+    {
+      "path": "chrome/browser/component_updater/aside_component_update_service.cc",
+      "bytes": 34216,
+      "sha256": "88bb4cb6a02c6d944929aac6223238f90d0060d44a47da2e5db50dbfd457d0c1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/component_updater/aside_component_update_service.h",
+      "bytes": 5360,
+      "sha256": "92b627315ecf3d44b072ff7efbd607c4bcc03981fadfdeeee6f6a765b8f7181c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/component_updater/aside_component_update_service_helpers.cc",
+      "bytes": 5841,
+      "sha256": "8ebe5369015e7ba491b7fa29e383a7c82fe21a21a8d15601596129e482909b88",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/component_updater/aside_component_update_service_helpers.h",
+      "bytes": 1973,
+      "sha256": "711fd93f755ac094c46666bace7d3b7e85f668386efe0b5d0c9dff4c4b31b841",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/component_updater/registration.cc",
+      "bytes": 11182,
+      "sha256": "120417170417cb3e50fa823145f9529c3e238e13ed0380809e303607afef5f92",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/contextual_tasks/contextual_tasks_window_tracker_manager.cc",
+      "bytes": 12206,
+      "sha256": "a38a7afb73596eedcafcd4fa8d2a5f905444fdab1d07c3d1cbe8451fe815c822",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/contextual_tasks/contextual_tasks_window_tracker_manager.h",
+      "bytes": 4965,
+      "sha256": "8dc725fcb0b1db84c8bafdabb72e04cee846f0d82de1c27cb49c7a6186692c68",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/BUILD.gn",
+      "bytes": 22242,
+      "sha256": "ff819f7c7c8f8af0ff2244412da79ea1f17303116731d4d41682375ade9b0deb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/chrome_devtools_manager_delegate.cc",
+      "bytes": 21849,
+      "sha256": "22c51619033fa6550c097bb1e67200780c104bd9772e10ac984e7bf9582d2685",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/chrome_devtools_manager_delegate.h",
+      "bytes": 5174,
+      "sha256": "c9afe3ad930fde210475f866e7a3d30b02c1b9e9360ad16170a12899892943db",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/chrome_devtools_session.cc",
+      "bytes": 8581,
+      "sha256": "b38f69706d901759a4f2981df1fce0413de1b819c10f91de9021e256d18cad16",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/features.cc",
+      "bytes": 12103,
+      "sha256": "c32e5cf7cd0b28b97aa7372c3dd63bd9d3687df2142135a4e8f681c309ea5b2c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/features.h",
+      "bytes": 5762,
+      "sha256": "b1eeb41bc7d665f9c2e3f069bc846a2f031b6e7404d884a535c4627b9fb9ce24",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/inspector_protocol_config.json",
+      "bytes": 3304,
+      "sha256": "0edbd7922ebe48aa53ec35464c88265df966a72d5db14622512db5833e7e1599",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/protocol/browser_handler.cc",
+      "bytes": 17477,
+      "sha256": "d657cf12207df75e40fac49250fd16bcac3b3aa72a2897ab403d4ba7ebe85b3d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/protocol/browser_handler.h",
+      "bytes": 2896,
+      "sha256": "72c829489bb0441ef0a319dda2f4249620d118410122585aef8663fbb93cb831",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/remote_debugging_server.cc",
+      "bytes": 16028,
+      "sha256": "a55ebc96ba81717bef6c7ec616f96ce277675993f1811b9d4159fdc5383cbe84",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/secure_remote_debugging_credentials.cc",
+      "bytes": 8481,
+      "sha256": "34298a05d43970ea72834621e150152ed8b09e63aef49a9d2ac027be46ea1df2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/devtools/secure_remote_debugging_credentials.h",
+      "bytes": 4590,
+      "sha256": "5ed8b5b8635b0f194102bb10753c25a5fc442d0107e71a1641593d71af8bb44c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/enterprise/idle/idle_service.cc",
+      "bytes": 6030,
+      "sha256": "89b0ec8ce71c0ef36a32c3f0a2dc88b5b9db8ac180bb9267ca85f00190644ebf",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/enterprise/signin/managed_profile_creation_controller.cc",
+      "bytes": 20271,
+      "sha256": "5cb8c16e7c19b2481435861b3a66611ffa40159ebe1a1b08e0f69f8dd134332f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/enterprise/signin/managed_profile_creation_controller.h",
+      "bytes": 6135,
+      "sha256": "ef7fbeaf3365a075f51cd50cd5c4766abfa35a4bc74f0e0863a9dac20715312e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/enterprise/signin/profile_management_disclaimer_service.cc",
+      "bytes": 19523,
+      "sha256": "2312cc2901d334c0e2ae18e17ea0a80c63438be1221cf0b8bed38c53c5fddf88",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/enterprise/signin/profile_management_disclaimer_service.h",
+      "bytes": 7794,
+      "sha256": "54e2aaee453b38f09a349eb26ccc57e5e987f75f6958b97b19f6196fdb282232",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/BUILD.gn",
+      "bytes": 133439,
+      "sha256": "8aa83882719eb9df55197f02e4bd8d3c432be2c091547e034be6b14ecc3ab16f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/BUILD.gn",
+      "bytes": 12053,
+      "sha256": "20eb15f70b3d75da33519fe4db0fa6c2968039d73a2d89686734e4cea26d6f9c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_account/BUILD.gn",
+      "bytes": 659,
+      "sha256": "758394953205d6d10f2c20d5a77628d7598fb2f8941785b7d9fbefa55584caed",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_account/aside_account_api.cc",
+      "bytes": 8329,
+      "sha256": "b43e072a4297682611937f7223b3345252debe6dfc2d1376ebde425b5c3030fd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_account/aside_account_api.h",
+      "bytes": 1397,
+      "sha256": "49caa30bd9cd2181e20321726760ba43ecdb0c677b42d4149a30aba4a0e5f316",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_account/aside_profile_index.h",
+      "bytes": 1195,
+      "sha256": "38efefea129f287e72933e6e5af47da6786236974383d36db89a6995feba7961",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_browser_import/BUILD.gn",
+      "bytes": 1098,
+      "sha256": "ef47204d7cf0bf9d7322b40edb8d525938e80b52bc74bea92f37d8d8364ad698",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc",
+      "bytes": 17196,
+      "sha256": "c2237d15092f3aff56022fa2de0aeba257361f783a8a97a0e79ef456ac3c283f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.h",
+      "bytes": 2009,
+      "sha256": "1abfdf1bbe005734d882920993eb57e378763669301d9c6385006f89c982b11e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_browser_import/import_job.h",
+      "bytes": 1997,
+      "sha256": "2f809c5be3ef96413271849d99166291d8243930a735faed15acf803e96d29c1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_browser_import/import_job_unittest.cc",
+      "bytes": 1930,
+      "sha256": "2b7d7b92fdff9caf922ab1f3a89db449ed72df9564bb9d410573d7ef021e55a4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_browser_preferences/BUILD.gn",
+      "bytes": 1310,
+      "sha256": "3c8c286592f6f07fc030bd11bb6ab6fd2aeb3355040bc0cccc2bf960ed15bb02",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.cc",
+      "bytes": 32754,
+      "sha256": "86ea9e7812422d6d54f3b670588e598c512f9990ca17e8feace0a704ae558799",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.h",
+      "bytes": 10787,
+      "sha256": "1438bf333ac2eddab627c8385fc0aad219fe3a81ca7feabf85c0e42c3a86f745",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/BUILD.gn",
+      "bytes": 1774,
+      "sha256": "bdcff9cbe0ccbf0801547cc1465b9a7cf1c3b4d628d15f01eb27c983c89d468a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.cc",
+      "bytes": 9213,
+      "sha256": "738cbdeaba93faf747acf64649243e1370017b4fcb28de9694cc174c911cf286",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.h",
+      "bytes": 3694,
+      "sha256": "7c028db1e34706a3aec6ab43b3532c1e3111d43f39ae9020754841bb780fcca2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc",
+      "bytes": 13399,
+      "sha256": "4d1059674133a89a8a171408995749140981d7b5de4a16f4211d6322eb3adc48",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h",
+      "bytes": 3831,
+      "sha256": "e4ec04ae5e027aa2bc812f459d9520919eb4fdd0fc7caba982b32d974aa805c3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.cc",
+      "bytes": 1379,
+      "sha256": "1843d4cb2abff36a2fc05aab981a1e08cb82c0be8139557452b87ba11e8ad227",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.h",
+      "bytes": 1432,
+      "sha256": "bd4507c8d57baddfcd898d2458d705874717335cd6f4246c6f36e36a7a589f9c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_shortcut.cc",
+      "bytes": 4456,
+      "sha256": "b6c5330c90b95c35f6ea557a1c27ddeff9d857d32653eee3a208955dbce0fea6",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_shortcut.h",
+      "bytes": 2187,
+      "sha256": "5d224cb1567eae9c153337f67a394903d0ddb8a7459a7ffe48d19efce4736fd6",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.cc",
+      "bytes": 1447,
+      "sha256": "59b149def43b129c01b5e0879a5cd9ab50fa9c0f7f2ce2c05618500c959be176",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.h",
+      "bytes": 1343,
+      "sha256": "bab60b0a8e8d719fdf16755417521dacbbc94649eab54cb7ddf30fe4f1522c15",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_notification/BUILD.gn",
+      "bytes": 809,
+      "sha256": "2bd5f9b7e60eefc7a7c11302f93393b14c6da90513fa80bfe8ea8f3963581642",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_notification/aside_notification_api.cc",
+      "bytes": 5070,
+      "sha256": "bf27eb3839dbd9c2b3e23430279664cc30e8df4aa8271ed68f17b44450cedaf4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_notification/aside_notification_api.h",
+      "bytes": 1113,
+      "sha256": "d97b604854789a9ca8eb809234b75212c410b9c01eb5310af0437fcd7cb14305",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/BUILD.gn",
+      "bytes": 2698,
+      "sha256": "0c668e7d1bc7b9540cf6b0e6f866d7d7d87345a297bcfbd472e803b89b5895ba",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.cc",
+      "bytes": 40345,
+      "sha256": "669d00f39fddf87603b0a94434b9af43aa74acdc80ac7a72674cd6532ea3089b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.h",
+      "bytes": 8840,
+      "sha256": "295f936fb47ba1ed4e3508f23010bd5428f79d419e98e0af87cf7010e99286c5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.cc",
+      "bytes": 5515,
+      "sha256": "9e0d8a2555e23116a93d072927fc58d4452e82325a9ca65d404ce402437c16d7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.h",
+      "bytes": 2590,
+      "sha256": "18cc98298471a04845ccd18d3522d0e8d61f161fb69ceb52d3056e31b4c9280f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store_unittest.cc",
+      "bytes": 4905,
+      "sha256": "1675aa5dbff52362c8b360e4cc7b0e8070eaeec1c2fe1ff223b20342cea4826c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.cc",
+      "bytes": 2460,
+      "sha256": "2daa2db0e02de7dc0adcc40876d95f0f244c6bebe8dbc33395a8243f324730d1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.h",
+      "bytes": 1143,
+      "sha256": "4e1ba88c0f5d00ed6e302f03bd59502960b0909390098b57e471123c46abdd86",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils_unittest.cc",
+      "bytes": 7717,
+      "sha256": "ac5389c58027fb643fc2ac78dd7dd5086b466692a6338ee6a4c848f8eb050fa9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_searchbox_page.cc",
+      "bytes": 10609,
+      "sha256": "a905e286fe13a8a5df4ed330c50faf0fb429038956ab530d489f0896b9b27a96",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_searchbox_page.h",
+      "bytes": 4103,
+      "sha256": "39babc5796c1c82d2835f86e69cb0b467246a83067e7f14f30d883dc8a9478a8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.cc",
+      "bytes": 2575,
+      "sha256": "c1df0dc93028ce2b57e27804695876f496d54654876578c6725822edc890cbf1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.h",
+      "bytes": 1840,
+      "sha256": "c77b5ee8a2c5ddc86ae4c277984c3dcf2c7d7723e69b2328517cad14158ceff5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.cc",
+      "bytes": 1320,
+      "sha256": "c745f1508e2f15f2bbf1181431ad57ebdeeab838db294adef2ddf918ae10c3e4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.h",
+      "bytes": 1301,
+      "sha256": "0e251968689c71c1641874ef90b2a6ac669e0c4a60336f16c88c79c8d2492bd7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.cc",
+      "bytes": 10766,
+      "sha256": "4790897d3b765d9cc88378d7c1394dd46ed0e1542193920af3e5da0202d1bb98",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h",
+      "bytes": 4667,
+      "sha256": "527d768e7e1b67a9f029e12ed7940ff74fe0cffd7338d0f1052f91068e9bf196",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/tab_capture/tab_capture_api.cc",
+      "bytes": 13890,
+      "sha256": "c29cacb923ba568ed7e7450f364a2237c2f854257e53deab9e7bac77d80e0b40",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/tab_groups/tab_groups_api.cc",
+      "bytes": 18990,
+      "sha256": "828df162249803460fd9ca64ad8d5f70c987410a6d6c2bd3e0eec3c30aa73251",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/tabs/tabs_api.cc",
+      "bytes": 157464,
+      "sha256": "5cab8fdfea6ac4fd9f486ec9a9881e3d57d7cfabea6181e520cf985b50c41e49",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/tabs/tabs_event_router.cc",
+      "bytes": 27120,
+      "sha256": "6116ff58bc91300aebf7248613b390a6292dd1d2397a2e40dec09038af6c3024",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/tabs/tabs_event_router.h",
+      "bytes": 11140,
+      "sha256": "78e43154cd7b85d8d30ab3cf5e55734f195f0ccfe29dd2feec6a10f611134c0d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/tabs/tabs_event_router_platform_delegate_non_android.cc",
+      "bytes": 7090,
+      "sha256": "e2877832755c2ff6c2725c0d08a093e94707d05e0b323182e49f5b89a118b21d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/tabs/tabs_event_router_platform_delegate_non_android.h",
+      "bytes": 3215,
+      "sha256": "383453e78375377f43f17ed6d217099a7d8fd4942503b1699744b44cf939c38b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/webstore_private/webstore_private_api.cc",
+      "bytes": 69495,
+      "sha256": "0e5a329490a7e2d7f6cdd233f8b7029e5a83df030d1a34f5a07fbdcfa69d5175",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/api/webstore_private/webstore_private_api.h",
+      "bytes": 17229,
+      "sha256": "7bda937a519249b0aa5358ce6d1c35a808db2f3ae0a108c5778450fea7486ea6",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/chrome_extension_host_delegate.cc",
+      "bytes": 8470,
+      "sha256": "d850178e82e98e9edeb809ea6b618591f2e0de90a0c338ce1db713da46b6ba83",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/component_extensions_allowlist/allowlist.cc",
+      "bytes": 5805,
+      "sha256": "86bc13e83e4e2b92bd6e6ccb9907c4f44b381dcc896169c5776f6f520fdd9f87",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/component_loader.cc",
+      "bytes": 29214,
+      "sha256": "c00008893ddf95fbc20ca22cd86c7a59751f5d034a1a6ced9e536ac34887d223",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/component_loader.h",
+      "bytes": 10408,
+      "sha256": "e817b615e1a16c01cb7991e1e92b1f366c95db55e0a6db12357f47cb359301b5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/component_loader_unittest.cc",
+      "bytes": 20706,
+      "sha256": "32f336eeed7cbd6f657d020d154e775aa748171dc7dbc074de94d3367d982042",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/extension_browser_window_helper.cc",
+      "bytes": 6267,
+      "sha256": "4e73e89ca03744ec2e68a908b01dcfc33410f835f42e22c61ae6eab3c8e28191",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/extension_browser_window_helper.h",
+      "bytes": 2286,
+      "sha256": "c109e731ae6dfc9eb6dc2d6bd4a98675d3cf2f0194c22cdd337bb48237f9f0e7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/extension_keybinding_registry.cc",
+      "bytes": 17289,
+      "sha256": "f8e10d4e25ffab556f2475d47460524ca376ce9d80d7c1bd99434aff9cb9d7f0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/extensions/extension_keybinding_registry.h",
+      "bytes": 9326,
+      "sha256": "cbfe647450ded74aa963dd7f1f559aa1e812105da14e2e6419fbcb56f47904c2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/browser_ui/glic_actor_nudge_controller.cc",
+      "bytes": 9424,
+      "sha256": "e7420cf62ff0f010d46abc260d92f625249c3def4a76ceeaf867b013ff386505",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/browser_ui/glic_actor_nudge_controller.h",
+      "bytes": 3447,
+      "sha256": "bb48e1aef3e6827202a025a95ed2117307cf679c1d45c3027020767f5e490dae",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/browser_ui/glic_button_controller.cc",
+      "bytes": 5214,
+      "sha256": "16c44e2012d2faf8027e5e632f329af8aa0985997fd4fe2bba0842c3c75e519e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/browser_ui/glic_button_controller.h",
+      "bytes": 1815,
+      "sha256": "cf8a0cb7eeaba8415f6c6355b85f70573a3cbb79a458c8c252eae0b938445a3b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/browser_ui/glic_iph_controller.cc",
+      "bytes": 3783,
+      "sha256": "462999913271158e9c1965dba1d380c10e361075c2e0b4bd9e3452c0b68ae032",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/browser_ui/glic_iph_controller.h",
+      "bytes": 2498,
+      "sha256": "a484a385d67e255f0cefe1107e15e97f6f9fec3fa44fc3c6764eb58fe46333c1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/common/application_hotkey_delegate.cc",
+      "bytes": 5063,
+      "sha256": "2d6228c753a073e66e25e6e2e19cf1b5e36a32d27423ddbf5652418834de1fac",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/common/glic_tab_observer_impl.cc",
+      "bytes": 5629,
+      "sha256": "cd01806dae03a6d0023f2630180d0aaaf88066a45fabcd5d305123cf9cd4ee21",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/common/glic_tab_observer_impl.h",
+      "bytes": 2096,
+      "sha256": "a14722186c5a064cc0eafdab3dc8cd3ebfce2776e99bda18c2d91fdf98f2ebfb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/host/context/glic_focused_browser_manager_impl.cc",
+      "bytes": 11531,
+      "sha256": "4056a364cd3017a5717b6f0ea6f8ed89b427603874a13bbec4ccfc871d6dddd0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/host/context/glic_focused_browser_manager_impl.h",
+      "bytes": 6372,
+      "sha256": "bacf94b714c32627a413a05a0e778df7f508c792c365929f1e91382de52e0551",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/host/context/glic_sharing_utils.cc",
+      "bytes": 6425,
+      "sha256": "a8a31c32a8bcfa9c14870ee6932dfd5fc9c93b73901c723dcc078202cba908b5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/host/context/glic_sharing_utils.h",
+      "bytes": 4293,
+      "sha256": "cb9d45f57d73a7e114570e7e08cbe48907003b253ed6d4158bb26acf0b7ee4c6",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/host/glic_page_handler.cc",
+      "bytes": 87659,
+      "sha256": "2d88098c63e5416e873cf99a00fee35422a8d13b9f2351858223493d678e2584",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/service/glic_instance_impl.cc",
+      "bytes": 62176,
+      "sha256": "e5c2436e6ea82aff3edb51a66404322531e221b294b9207f35408bf8df673c7b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/service/glic_instance_impl.h",
+      "bytes": 19112,
+      "sha256": "82b53f29e65379a29fee4aab7b1a96a8a6a3ca5d3bc16b1430aaa4da1094af32",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/glic/widget/browser_conditions.cc",
+      "bytes": 10666,
+      "sha256": "38e59b1234d1a1aaacdd05bfe829c5b08632e1ccd23b6d1a46c71b23c4d5fef8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/importer/external_process_importer_client.cc",
+      "bytes": 8595,
+      "sha256": "38cc0bc251375598450cb730aee95923ee1a5586c587abbb248ad6d7305615fa",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/importer/external_process_importer_host.cc",
+      "bytes": 7195,
+      "sha256": "a6cf6fdad7158779e4a33d685e42286bb7841eb64f57165f22fa18bef2015daf",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/importer/external_process_importer_host.h",
+      "bytes": 6589,
+      "sha256": "0a25f9f16fbb9d73a5805160e24338e3b0d573b363f07e50dd7bdaca567e0de1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/importer/importer_progress_observer.h",
+      "bytes": 1408,
+      "sha256": "4095bf28f1586e9bb25cf22c26233b7486849671df57bee359af0360ff7c5323",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/notifications/BUILD.gn",
+      "bytes": 28047,
+      "sha256": "39b8bb8d7d7304a17a39534489db220eb5bcf0ac9ca3f8e52fd043dce3c51507",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/notifications/aside_inbox_delivery.cc",
+      "bytes": 12574,
+      "sha256": "a882f650b6a18ecf0bc36aa1eea5ac36f0101bfe684de9a85791e539751e15a2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/notifications/aside_inbox_delivery.h",
+      "bytes": 3904,
+      "sha256": "c78068f4ad97db31eacb92f91e35dd8f4639a8e6a6b14bb359db7ddba6f36847",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/notifications/aside_notification_sync_service_factory.cc",
+      "bytes": 1415,
+      "sha256": "9ebe9155b57204566bf86771ceebedb2055312905832b78232f7a2e99233ff88",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/notifications/aside_notification_sync_service_factory.h",
+      "bytes": 999,
+      "sha256": "f171db0d6b7948f2dc69d36e8ca14294c43e109566b4e19dd85bef6b7a5cc7fd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/notifications/platform_notification_service_impl.cc",
+      "bytes": 39136,
+      "sha256": "1292c40c3d5393ca6c0165e4c97cda20d2071fa51dedcefe18bbd034069ca103",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/picture_in_picture/BUILD.gn",
+      "bytes": 11496,
+      "sha256": "983482f15dd8e473bf66f913b6b87a399d87cd779d553b2a8818f6e4667be077",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/picture_in_picture/aside_auto_pip_policy.h",
+      "bytes": 719,
+      "sha256": "130cf9866a7cd71333b903f82f43847ca55b33ed3bc07df2367343a1eeb85af7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.cc",
+      "bytes": 42330,
+      "sha256": "6143095af5dc71a7c3b02568366e74283d7f368ccdb2d564b379b9378733367c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/prefs/BUILD.gn",
+      "bytes": 22038,
+      "sha256": "06d91691a1eb5825be03980c76bf7f19056be5f37bf4895debbb84804487cc0c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/prefs/browser_prefs.cc",
+      "bytes": 131149,
+      "sha256": "bf75b2aabf0fe13b73b594a8263581ac592a3e706e1b69455f62e99c10bd8834",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/BUILD.gn",
+      "bytes": 35491,
+      "sha256": "4d6fca84a906944d76d9779460821d847551d0db23a1c6a658723e1782113b80",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/aside_account_password_gate.cc",
+      "bytes": 8712,
+      "sha256": "3b4877770efd07b845784827d38411d98089f9ec8394ab64a88c09eca10959ab",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/aside_account_password_gate.h",
+      "bytes": 3150,
+      "sha256": "d2219bcc3dbf796995f808fa1d660a77612676109ef27206f17f97c2d617c387",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/aside_account_password_gate_factory.cc",
+      "bytes": 1683,
+      "sha256": "c3e5f27ea6621ee2893b1cfdde22c926df09f97bd52fd58ca448760c9ad934b0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/aside_account_password_gate_factory.h",
+      "bytes": 1305,
+      "sha256": "c46800a276fbf952d8d80086947cef21656427f92906462ad6e98e6bbc4594b4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc",
+      "bytes": 82548,
+      "sha256": "eade9cc498562737e3101b52241a3addf54a4ff5a342dcae2c0109da188423b0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/profile_activity_metrics_recorder.cc",
+      "bytes": 8034,
+      "sha256": "cb6e887e245c48732edd0cae4d597794d78ef2c1202e5d851b1254f30e35efd1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/profile_activity_metrics_recorder.h",
+      "bytes": 2915,
+      "sha256": "89a85879b1e3adcc70de0b57de3747441510125453fb911cb58585d9a3eba7a5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/profile_attributes_entry.cc",
+      "bytes": 39553,
+      "sha256": "2c5c5ba69065add15a77b4d859e7f7e63ab2f77e7794344aa8885433414375bd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/profile_attributes_entry.h",
+      "bytes": 19622,
+      "sha256": "fed135ab5c33537585f3b12aad6c28745bc7d47f06579a548be276f9410e3193",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/profile_manager.cc",
+      "bytes": 94226,
+      "sha256": "1a4c77d7a72b13a7d880bb342155d15a058f5648b680fb0c2657d1b6749e00f2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/profiles/profile_manager.h",
+      "bytes": 32677,
+      "sha256": "61d55dbe114bd1143f507b304b08169e677125f9f1ec666990a08c8696e6012b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/BUILD.gn",
+      "bytes": 15658,
+      "sha256": "fdc81e6840f764b06718fb800846423164c27498ada6d4b3e383d0d7ff312094",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_adblock/BUILD.gn",
+      "bytes": 588,
+      "sha256": "67334950ae11ddd932328059e136c92f11cceb945d24adfceddbc1cb54b2dfff",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_adblock/adblock_internals.css",
+      "bytes": 5632,
+      "sha256": "37d48f4cfd2ad8a9daa980c3e1eb99299b0c5c29f8a338251e133418673f57b8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_adblock/adblock_internals.html",
+      "bytes": 6424,
+      "sha256": "692b209bc7f09ad0eb47d792e76c21d154d54d5b5b7c143457e48bd76432da84",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_adblock/adblock_internals.js",
+      "bytes": 14521,
+      "sha256": "37af8cb422eb5618bd2ec8c8cc55296b08c675c65d0e4af6cdef35d092faf36f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_adblock/adblock_internals.mojom-webui.js",
+      "bytes": 18807,
+      "sha256": "f493407eaa25025da9a820d1d300abd3c89b5eedc2d6b8a95104e06204c54583",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/BUILD.gn",
+      "bytes": 1601,
+      "sha256": "d74c703e21980f01188e49d2be4fac1297eea9e8dce313ce9a4bc984e9acf234",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/app.js",
+      "bytes": 10789,
+      "sha256": "f4003a4c4b8950d69f05d6ad13d978e66879b659d2a784f0f7c5b88dc5f063f7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/icons/arc.svg",
+      "bytes": 5174,
+      "sha256": "84a6d1a89cf3a0ee5e21bfaa06e6a5be8c5be4d094a802b46313ce5d35648a89",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/icons/atlas.png",
+      "bytes": 49823,
+      "sha256": "591df6e51afde4abbe4782bda73a7feab965dd0329a89f9307f1ece71e8f5025",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/icons/check.svg",
+      "bytes": 550,
+      "sha256": "7e35373ad8f108b880943760f66e29f9d28c9e63fadaf1f69ec8a2c6d410437b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/icons/chrome.svg",
+      "bytes": 3160,
+      "sha256": "f5b26ca6c7df5f4be4afdcb8aa1c40678a354c8ab4330c5e0b5210e425051a34",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/icons/comet.png",
+      "bytes": 55001,
+      "sha256": "dc9f5ca2d349bb4a2a6854fec09ea0ec0c786cfbedc971b9d26a93037c9cad14",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/icons/dia.png",
+      "bytes": 21411,
+      "sha256": "8dee9bc5a6a3c4dd3bf1695bc344051361855d36e05a04bd16991f65aea9f07e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/icons/edge.svg",
+      "bytes": 6964,
+      "sha256": "72d464e40159f8ddc22921aaa55039b22b12fe5bc3f409c39fedd2462f0064c9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/icons/firefox.svg",
+      "bytes": 15268,
+      "sha256": "a187f77ffc7b6921173835cc43379aeac194ec3468f4ce14cfe13d30a0335953",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/icons/safari.png",
+      "bytes": 30863,
+      "sha256": "37fecad1934f187d54b5f922f2ad7bb030ec175a3e926588a4a6fa516168b6f3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/images/safari_import_guide.png",
+      "bytes": 721033,
+      "sha256": "e217d4e337f3c1a37c4751bfb5547b7d7d98f4abbd73636f6fd752f0c60a9582",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/aside_import_data/index.html",
+      "bytes": 14128,
+      "sha256": "9208d683589763a52ddf8110c27acf5f02fbf0324f101d8c5bc96082649da17f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/settings/people_page/people_page.html",
+      "bytes": 8245,
+      "sha256": "72da676c9bb3a276f8c12f76050907edd23f4b8a384e85d10a0ad3044304e2d8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/settings/people_page/people_page.ts",
+      "bytes": 18797,
+      "sha256": "2de85dc7776da23b0bf3d460d9b966c0464b41ee2fc7372a8cc75e220fc5560c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/resources/webui_browser/bookmarks/bookmarks.ts",
+      "bytes": 6743,
+      "sha256": "54a92bb37979f221a3f72ab663b3934206bd95bb3da320a0b22cc1a3770f0797",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.cc",
+      "bytes": 20023,
+      "sha256": "302d52530a156b7d9275a7d5bf08400d6bbdc5148dc3dd0fcaf347c30839fa51",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.h",
+      "bytes": 10309,
+      "sha256": "7f36e968396f84e8f0a0ab949cb74ceffc96bf8b2028fc144f6a11619f09b1af",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sessions/exit_type_service.cc",
+      "bytes": 9589,
+      "sha256": "bc18186fb96b35cf2d5061c2288047ca7aa3d92db2c740d3cd9439b5a961b590",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sessions/session_data_service.cc",
+      "bytes": 6501,
+      "sha256": "aee07ed8d242c0cd73b856365dc8f6dc3be078e09ae0a895b079028c9e66b388",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sessions/session_data_service.h",
+      "bytes": 3495,
+      "sha256": "3df86c4266cb37290195d46b6a34535ec0410db346738cf5547d5bc3633f573d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sessions/session_restore.cc",
+      "bytes": 69857,
+      "sha256": "b47e388b6fe3675d4e67c57caff101aea5809a60c1e9e2919418c5e464d4493c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sessions/session_restore.h",
+      "bytes": 7785,
+      "sha256": "f1623ea82b24991f3f8aecfa3d6e8f5d5e2817886e5b775ea188e110d31e791e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sessions/session_service.cc",
+      "bytes": 31960,
+      "sha256": "2075821befa4f7770b16457c84d15cf405f91f9712db57a559279d0548e210f3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sessions/session_service.h",
+      "bytes": 14259,
+      "sha256": "58c345b3dd0e6f6ccffd05c79b66b80b1bea625b466a11f5bdf6a4f0fa95eb4f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sessions/session_service_base.cc",
+      "bytes": 40023,
+      "sha256": "f24dd3e2911a4c759c09fb9a235a3ba196e5da670ee70aa040a648fa4690e0d2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sessions/session_service_base.h",
+      "bytes": 15709,
+      "sha256": "04c4c0680f2886aebd9514f54f1d2960c157cb8bc2aee9d7ed891443433cfe51",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/signin/BUILD.gn",
+      "bytes": 17510,
+      "sha256": "bb0f68e9e2e8aff32a99c40df8f1133397f9b270b7310b93c4f3dcf966d2fd11",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/signin/accounts_policy_manager.cc",
+      "bytes": 16743,
+      "sha256": "147cf15596cb42c049915b198b9658258fe513c74522e8ad0e16b23dee4c9c16",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/signin/aside_daemon_authorizer.cc",
+      "bytes": 8708,
+      "sha256": "b0f9acdabfd20d8f35a212a5abc37282e2c063715f4dd1e1ea571c1110640022",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/signin/aside_daemon_authorizer.h",
+      "bytes": 3095,
+      "sha256": "a5ccc085828d3ed19f48eefbe04fc25b30b68bbb17aec36c9ca1bbe99e8b6e15",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/signin/aside_profile_attributes_updater.cc",
+      "bytes": 9554,
+      "sha256": "503b87624c8e55bee117df3ed929efa29aa5c6160febb0583fcd6fced07df41e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/signin/aside_profile_attributes_updater.h",
+      "bytes": 2048,
+      "sha256": "0ce44d6b06c253ff82284948fa47be85f741d0a60fa0d20b96b130fa55a3e571",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/signin/aside_profile_attributes_updater_factory.cc",
+      "bytes": 1520,
+      "sha256": "e8de37aea7413a68c0925baf91747819d436286d416a1ce8aa1bce78cec1f06d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/signin/aside_profile_attributes_updater_factory.h",
+      "bytes": 1112,
+      "sha256": "02d8844d5d381f2dbec828dbe9e0b22015e2be223b62f154fb0e84458e07cbf2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/BUILD.gn",
+      "bytes": 15064,
+      "sha256": "e6c2d2481885e67d3bd37f1fe23caf316acedfe87ea1202346f5b20857996f4f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_sync_auth_manager.cc",
+      "bytes": 11157,
+      "sha256": "36c76547cdf35d8c6b74a485cac8f8a6ea8d9294719bcac68099340a3cea65b8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_sync_auth_manager.h",
+      "bytes": 3315,
+      "sha256": "b812db9ba092281687a67d95afd149518aac14cf6dcad676e1bc8f876141ba0f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_sync_auth_manager_factory.cc",
+      "bytes": 4057,
+      "sha256": "6057244ba9cc6da3ff0f33d100771b005691033fdbc778c4766dd9652cb42e84",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_sync_auth_manager_factory.h",
+      "bytes": 2252,
+      "sha256": "b4168f9c994b5521c941cd68837658deef2b632cca6f4acf3c3d0a0bd084aa11",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_sync_encryption_controller.cc",
+      "bytes": 9609,
+      "sha256": "cc68c3eab7f7f44568a267f899bd443b93ffc32adb9ddd09c114dea0bae9c152",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_sync_encryption_controller.h",
+      "bytes": 2947,
+      "sha256": "dca5da8e017b10f669eb89da384a60515046e056d55a1891376ddb696cae1b9c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_sync_refresh_watchdog.cc",
+      "bytes": 2834,
+      "sha256": "48e5c13f8cb8f28d779a30c6e911eb12e80dbbd11e3b97a2ace52205417f80fc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_sync_refresh_watchdog.h",
+      "bytes": 1841,
+      "sha256": "73e298b1a64762c7586a25facdd18f9e111a306f74684e22897ded735f45e4f6",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_website_storage_kinds.cc",
+      "bytes": 1622,
+      "sha256": "d7ff29cfcca0d9204e49363aa2e629fc72b2d02a83b84c662ef4f066727d3bfb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/aside_website_storage_kinds.h",
+      "bytes": 1730,
+      "sha256": "27730c9acc613ee7b831975ea7a212da80fbdf49e1dc457bedea356acc273227",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/sessions/browser_list_router_helper.cc",
+      "bytes": 2827,
+      "sha256": "05fb726d6095f170d84fccde2acb21d4699b4b8dfd99bcbdd066a01c97199266",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/sessions/browser_list_router_helper.h",
+      "bytes": 2232,
+      "sha256": "5fe8dbafe0f40ab12db261b80312e1fa251dc5fd618ac452620bff50bab014da",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/sync_service_factory_unittest.cc",
+      "bytes": 13330,
+      "sha256": "45d60e76bedf44680d74d5acc835baf14181d67f25e9574ee0ce833efae3bddd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/sync/test/integration/sync_test.cc",
+      "bytes": 55476,
+      "sha256": "6cba0b27eafcbeda491c5106b97bedf07902f9d97b1815654c9dc1f08b39eb7a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/BUILD.gn",
+      "bytes": 261999,
+      "sha256": "bfea13fc1363b904d211861ab538efae868341beffd8e033e9619ab3ada5f3a5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/accelerator_table.cc",
+      "bytes": 18847,
+      "sha256": "cf8de4dccc8893f87aaaeb6d9f3e9ce0fd5d3db7aeeca78890d1d29403a58de3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/actions/chrome_action_id.h",
+      "bytes": 31767,
+      "sha256": "6db2eb481667f83ec3cc88d0853a69b43b7ace8d996c07623c0bebf1f4530b53",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/ai_overlay_dialog/ai_overlay_dialog_controller.cc",
+      "bytes": 8122,
+      "sha256": "b1d8a3ce325c6f24ebd43232c70b38b0e1c74fc7bfbd0067b464197a2e789209",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/ai_overlay_dialog/ai_overlay_dialog_controller.h",
+      "bytes": 3006,
+      "sha256": "cdf7c0a0f639e85485cde70b6776d852fd2ea4eb5a7b4431b66a419a43e82946",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_agent_tabs.cc",
+      "bytes": 2495,
+      "sha256": "69b1c1859f46504656bc348093205670a7da642d132b8711b9f5998e319e5596",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_agent_tabs.h",
+      "bytes": 1345,
+      "sha256": "0fd5dae08ef620f3f7abc14f86d2109d6225f9bf1c633a4c3a67554eacdc3206",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_ai_tabs_metadata.cc",
+      "bytes": 3078,
+      "sha256": "45a14a2cd29a81a8e4f44dc791349eee8506dcbcde04a13434c5a2af2a5bb462",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_ai_tabs_metadata.h",
+      "bytes": 1877,
+      "sha256": "f5b335acd484ea1c8a68dc6c5c7c5b7a219121eb731beaa89ae6715988dcd1f0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_extension_bridge.cc",
+      "bytes": 5383,
+      "sha256": "20a4cff2b3490888b015a564cec527d9c5f99b7f4b8e44196b02bd1cd19856a8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_extension_bridge.h",
+      "bytes": 1830,
+      "sha256": "5380cc3489f49c953a0610d6e1a706c90e45a7a185cd7dee7de3aa28d7596e6f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_fonts.cc",
+      "bytes": 1344,
+      "sha256": "056d6b59f969ab247a39bd6df55e30f47a3ff1f46eeaea41cb1a1d69c730a63a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_fonts.h",
+      "bytes": 1091,
+      "sha256": "b701ce388ff2b427fc777152c131d9ea462470f7837ebe44ba21e355611fa2d7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_native_contracts_unittest.cc",
+      "bytes": 17272,
+      "sha256": "596fc67bed1065681a17f5abf94e347d8d42a8f1487f6cba3c691b03c29f52b0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_tasks_client.cc",
+      "bytes": 3650,
+      "sha256": "d682b7ccb3236229719e33146de910a7ee2de4e8c81b978e6e76ed6be26e05c5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/aside/aside_tasks_client.h",
+      "bytes": 2037,
+      "sha256": "ae5dc73641b39f94a53623776be1c3cc5ebc3209857cb99487502e58592db568",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/bookmarks/bookmark_bar_controller.cc",
+      "bytes": 15706,
+      "sha256": "63b8e39f572f5225ba0f92a37b19f1be49d60993ba32409a728e40933846204f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/bookmarks/bookmark_bar_controller.h",
+      "bytes": 4644,
+      "sha256": "955c1682acf7cefef91fb28c45fc7f9675592c2592abf81f0d675a6e8316749f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/bookmarks/bookmarks_service_feature.cc",
+      "bytes": 3064,
+      "sha256": "1750a7d0ac2cc35d556fc7da8c190476cf3ad1fe45e7b8b4dd77a61fe851c532",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/bookmarks/bookmarks_service_feature.h",
+      "bytes": 2379,
+      "sha256": "1bda9cb75a9d73e2333cd9324dd4e7ba3fc2c4ac230ae4e9bf145349740840fc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser.cc",
+      "bytes": 132115,
+      "sha256": "bdbf7518912e6faf3553684fd7abc46894a89dea637c9c8b3bbe541d887438df",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser.h",
+      "bytes": 57443,
+      "sha256": "ffadb276838faee17afe0dbb6a045cbe998d48ac71d7837e87623e9ed3658155",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_actions.cc",
+      "bytes": 170456,
+      "sha256": "d351c74fe3ed0dfc053080a254732cd1704aebb027a18ba617f83aa0ce23c217",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_command_controller.cc",
+      "bytes": 106148,
+      "sha256": "4df0fd633d25522435fa3ea939c6ab8c6227f6bbc9b4766b05d00ea9ab4a201a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_command_controller.h",
+      "bytes": 11575,
+      "sha256": "91b2629c93138248c48dbcb1f253a992ec93374236f009bc7e6409dd14d67511",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_commands.cc",
+      "bytes": 117772,
+      "sha256": "d916e04f4a7b6ad4cdee7217b65e0935b84971886a91368ad5f01a59b7ecd02a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_commands.h",
+      "bytes": 19179,
+      "sha256": "09c4e252612c7acca2e16af332156fd6c3b92a850cf922b013535e0a3a3d3839",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_instant_controller.cc",
+      "bytes": 4540,
+      "sha256": "0ff86dce7336d07f2d05dec28821b7192a84a8cf29a47649defc9f959110c061",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_instant_controller.h",
+      "bytes": 1716,
+      "sha256": "cf1779d12a1f7a0c1105b385dcf12bb64465574ca3e5b80d476af89d7bd6d005",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_live_tab_context.cc",
+      "bytes": 20098,
+      "sha256": "b0bb0ca951dcb1d18a4f2d21a302dfd1e1343615f55bb3b513122ffba48e41d9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_live_tab_context.h",
+      "bytes": 5721,
+      "sha256": "473d48070885318934f2dde4c05da0a5aab935bf48dfeefecfca8c236bf95261",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_manager_service.cc",
+      "bytes": 15481,
+      "sha256": "903a223b7a85adb932a2228e96aa69120a621c1bf147df9016d684df711002d8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_manager_service.h",
+      "bytes": 7415,
+      "sha256": "7f0bf6629105a3f141e2fa581379e527fc29deb85af50c466c49bd6ee944fd0b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_manager_service_browsertest.cc",
+      "bytes": 22009,
+      "sha256": "9e6e16e7bc993ef14bb43ae47fb023a3f97d19716ffff0ebb0f8100cd420a9d4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_select_file_dialog_controller.cc",
+      "bytes": 3700,
+      "sha256": "fe14fa755ff7af76fb90fab3f8def557b4cfa1aaab9f8e0636c8cc6525c327d0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_select_file_dialog_controller.h",
+      "bytes": 2012,
+      "sha256": "8e99e954fb797a0ea43696e2f7454767d1570cedf7883922f28409056b493a9e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_tab_menu_model_delegate.cc",
+      "bytes": 2461,
+      "sha256": "46ff65c4af803f5d76cecc8c61fc6fd5640bcf2364ec8150f8bbda3fd2f3e18b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_tab_menu_model_delegate.h",
+      "bytes": 1771,
+      "sha256": "cf19ebf700bf6373cf5d74198ed467a846b8aef6835de6c52ad24992ce47eb66",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_tab_strip_tracker.cc",
+      "bytes": 3465,
+      "sha256": "05c9304da62a4d8973ab463ca46d79eb827eb8629b70bb04d2333302bd381ca4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_tab_strip_tracker.h",
+      "bytes": 3832,
+      "sha256": "4fa877577cfaece2480f1775a8d26e6961f082ec39f8c2f33c8e034e1e723b7f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_unittest.cc",
+      "bytes": 33337,
+      "sha256": "9aadb83fd7fc05ed21f1e84ba8635983b4663766c02ceeb2729b2bee8d761af0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window/BUILD.gn",
+      "bytes": 3348,
+      "sha256": "7efcf7a0d5c8b5bb73a328cb3da3cc3a9e863c55627107ec5b6a5a2b575e0712",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window/internal/browser_window_features.cc",
+      "bytes": 67266,
+      "sha256": "80a819412586379775f83f7648f7d9b163c220f72d53a066a5a5a2760cc6634c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window/internal/global_browser_collection.cc",
+      "bytes": 4805,
+      "sha256": "9437761af4cb7cc120bfb3ee0e418a36e944305f90bcc66eb4720c9307576465",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window/internal/global_browser_collection_platform_delegate_non_android.cc",
+      "bytes": 1830,
+      "sha256": "5e3e9b58fe46053b88acdc4c3f0f802f5f3aa043e59c58844e3e2be64ff7fe5c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window/public/browser_collection_observer.cc",
+      "bytes": 366,
+      "sha256": "87447aba06f5475dc7b27ac78f0079cdac46bf5b763b503375d34435ddfbfaae",
+      "mode": "100644",
+      "untrackedAtCapture": true
+    },
+    {
+      "path": "chrome/browser/ui/browser_window/public/browser_collection_observer.h",
+      "bytes": 2045,
+      "sha256": "c3420287d55a07764d3a7e4e6a97628d6ead1fbc48ac84e320fa776654e50748",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window/public/browser_window_features.h",
+      "bytes": 29055,
+      "sha256": "30523ebb6a0f3240c7bd360038019d9732923694866d0b2d7b8be33d0144cc78",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window/public/global_browser_collection.h",
+      "bytes": 3637,
+      "sha256": "8bfc3364afd112d8bd13b1189473130484d27a9b7173b2971e9da6a997797dbd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window/public/global_browser_collection_platform_delegate.h",
+      "bytes": 2514,
+      "sha256": "45c28c5eaf8b27b6f01eb5c39f938135fa8a179c9905915fb1fd22de0ecd4ba5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window_theme_observer.cc",
+      "bytes": 1671,
+      "sha256": "7776b1f498b13907b66b937c2574b1ef6996a6ee320d8e05daec1c4e0bbd2c67",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/browser_window_theme_observer.h",
+      "bytes": 2341,
+      "sha256": "569ab7201bd77287abb7eb507ff681c845646df35fd6e6924c6cc73855f4f78f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/color/BUILD.gn",
+      "bytes": 3570,
+      "sha256": "d6438c926648aac9e4358f68eb0aab2ad754957f7c17e542dd64346b3db664ce",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/color/aside_color_mixer.cc",
+      "bytes": 10635,
+      "sha256": "e4f4a6163182c2441dbba5c3caa98f9958e12260ac52bbc2f4336d6d6a7ec1ac",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/color/aside_color_mixer.h",
+      "bytes": 1110,
+      "sha256": "175432b7aba2b2d4d1dc77802f8243109b6bac4e8e12b5b30b66716400cffbe3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/color/chrome_color_id.h",
+      "bytes": 62397,
+      "sha256": "41c659da98e0d0a44c9dc777463ffa21eef90d34a7f9d1a982490a042b07aa2d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/color/chrome_color_mixers.cc",
+      "bytes": 3496,
+      "sha256": "570e544d7086d9b7556538e5d0959154c3d3d61bbdfd05678ff93f134fcf63cc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/cookie_controls/cookie_controls_controller_unittest.cc",
+      "bytes": 57152,
+      "sha256": "91f48e1f5962805b0682fd24aafaf2cf6ae3995e30776871cccb08ce964d0d72",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/desktop_to_mobile_promos/ios_promo_controller.cc",
+      "bytes": 9013,
+      "sha256": "d2f109413418ca176fba2e527591cd9bed5dd932b86a8f944e0a571446a50aff",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/desktop_to_mobile_promos/ios_promo_controller.h",
+      "bytes": 2364,
+      "sha256": "b994b4ed1639f058cd843be162365919b7eea0c39b7d224cd24b96ec1ec7173f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/desktop_to_mobile_promos/ios_promo_trigger_service.cc",
+      "bytes": 7473,
+      "sha256": "d26d6fcad3823ddc0fe850fd0302cb3162d1bf764c3611fb455434e59825c043",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/desktop_to_mobile_promos/ios_promo_trigger_service.h",
+      "bytes": 4230,
+      "sha256": "4b382a0d352cd883ec8fa94507d01103353b4550d58e356607cc3826565dcd3e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/extensions/BUILD.gn",
+      "bytes": 13070,
+      "sha256": "55f47a91c6bde9d5055ea219e6af3a570b28faad30189b1314d50b96844e9977",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/extensions/aside_theme_install_blocked_dialog.cc",
+      "bytes": 1980,
+      "sha256": "523404dcf1927491f41c9553ec7bfd09690dca821a94595122118116afaccf58",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/extensions/extension_installed_watcher.cc",
+      "bytes": 3455,
+      "sha256": "9b0f4f1befcce2d6e024dd0b1e4a37d312271e5dc2bcdb06e06c97a3dbba0b36",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/extensions/extension_installed_watcher.h",
+      "bytes": 1993,
+      "sha256": "0c40d3c95f07fa3db945f088f9b79be7a38e84ec3c32a8a10d819b9a86652227",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/extensions/extension_installed_watcher_unittest.cc",
+      "bytes": 5811,
+      "sha256": "f2185fc7b2a676858e30ebd713313cbaced84530a71171d255ae6e970dad5c85",
+      "mode": "100644",
+      "untrackedAtCapture": true
+    },
+    {
+      "path": "chrome/browser/ui/extensions/extensions_dialogs.h",
+      "bytes": 9237,
+      "sha256": "d54165588b450d99eec5ee6117514fc9b1425eb114dd266086bd9d63e5ae545f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/omnibox/ai_mode_page_action_controller.cc",
+      "bytes": 17494,
+      "sha256": "2c2ddda65d1de9e9f88cb60aa34cd77ee325bfe60ba49b47d0a3c125abe9c46b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/omnibox/ai_mode_page_action_controller.h",
+      "bytes": 5398,
+      "sha256": "7d490707f5fd9f7a9c7629464f53d52ea0b9f9a8dd03361159cf69b8132c3cbe",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/page_info/chrome_page_info_delegate.cc",
+      "bytes": 21117,
+      "sha256": "10ee9187f105473810ab151e4de5a75779876196341c8e861a11772057d178c3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/search/instant_controller.cc",
+      "bytes": 3365,
+      "sha256": "5d906c4846b44cd67d45fa273aa84507a6bc91c5b49b8fe06fa308ceb172e819",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/search/instant_controller.h",
+      "bytes": 2203,
+      "sha256": "9fe4c11eee0a16f756a36513329e12dc4a39290e6c73b5b9a25011fd40a3de36",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/sessions/session_service_browser_helper.cc",
+      "bytes": 13397,
+      "sha256": "2b94b38f66f7f958a90f3609fc2e4763180371c082bd7b81b5ac808179ae65d4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/sessions/session_service_browser_helper.h",
+      "bytes": 3148,
+      "sha256": "360a8ffd8d7333c251dfb2a43f14a2bb6b4a70cb9ce255bc3920fb951c71a383",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/signin/signin_view_controller.cc",
+      "bytes": 42840,
+      "sha256": "5a05737c7340b63d9acff664c7e5a7bc6bd1e4aa91c52eddc9a7c115762e7b02",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/signin/signin_view_controller.h",
+      "bytes": 14389,
+      "sha256": "146b5945a5e5f53928aa2a5a149a3a1e242f00a11d166b56ac586d7cb0655bec",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tab_helpers.cc",
+      "bytes": 41157,
+      "sha256": "85d4df5798bde46df4c5174536a1f6a5f15a48ef6ff3784e1870d2ce57270d15",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/features.cc",
+      "bytes": 4870,
+      "sha256": "66003ff9f47d147a863b89fc01913edb65a90955d1dbf23c1e43e565fd65b8a9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/pinned_tab_service.cc",
+      "bytes": 8193,
+      "sha256": "8f11cdeb68a2b9a4ed0f7407d69194acfd822fe03844fe8c2b24ddfb23a0ac15",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/pinned_tab_service.h",
+      "bytes": 4384,
+      "sha256": "9eccce54e80b363dbe583740a103dabee18743bda94af5e202aaf47aeb0fafc8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/projects/projects_panel_state_controller.cc",
+      "bytes": 5946,
+      "sha256": "4ef9b4d304c237a919695c495f87770ea83d91b7f95b39370d9e8665bce0c828",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/projects/projects_panel_state_controller.h",
+      "bytes": 3892,
+      "sha256": "413a852f43dbb638b77a0c802ffb6679751f772c215210b66d6a325af478bf94",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_model_listener.cc",
+      "bytes": 14031,
+      "sha256": "222494e20e39be4308cd9d91780798b2544a6954568333fde252b5b7822fc65b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_model_listener.h",
+      "bytes": 6404,
+      "sha256": "274dc0fd5dc98e1e5ebb0e99fd961f696c40091756129cd90d5a5b88fe83af1e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/saved_tab_groups/session_service_tab_group_sync_observer.cc",
+      "bytes": 3905,
+      "sha256": "c05318402e7e733a16e69fefa0a9f03e18eec9b6a8f35d4c137cf76477f9afe7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/saved_tab_groups/session_service_tab_group_sync_observer.h",
+      "bytes": 3336,
+      "sha256": "58ff9e7a1cd93e36c6f08b236f9699617dba68688fd9ad818b54b4a13b04c5f1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.cc",
+      "bytes": 21613,
+      "sha256": "3142bf1778150420b0c949e490a4cf1b9fa8551fe55860eb450a909ebe5ccfef",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.h",
+      "bytes": 6165,
+      "sha256": "b436a4464bdb53b3440d1d1f1bf218c9cac71825be826a7597e670d358f68252",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller_unittest.cc",
+      "bytes": 5596,
+      "sha256": "79a63cb4248e9d03b583e1467a166607f87596aea09dc3097b1e1a2b625c73ad",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_menu_model.cc",
+      "bytes": 28510,
+      "sha256": "b118e91e9a8f925348f43489210bc7b1345ed861ad5a9d7e59be41c4f99dbe5d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_menu_model_delegate.h",
+      "bytes": 1707,
+      "sha256": "16f05bc845fb534bd0b5c455339d81949819c4729e185ee876ee75e5ff850336",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl/browser_tab_strip_service_tracker.cc",
+      "bytes": 3102,
+      "sha256": "2b6a02646e52aab1094235dcc2bcaa93ad84db986788497e6cdef59074fca414",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl/browser_tab_strip_service_tracker.h",
+      "bytes": 3054,
+      "sha256": "02bd32bb5a542713a15ccf85d1e68ae509c0524ddba2bd666f7d1226f43b53eb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_strip_model.cc",
+      "bytes": 206658,
+      "sha256": "6b78833d3e959fe9b403a797ad1fb9d68d24c883ce0f97b6d3f6e48944da08b0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_strip_model.h",
+      "bytes": 68158,
+      "sha256": "238c8509ec5685451c6f9ea22790adcce6f62613a9958a80f101aa8ad4f1d0da",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/tab_strip_prefs.cc",
+      "bytes": 3815,
+      "sha256": "b89438dddcdb8414354a3cd8d6d7860b379a7901635641867bb05c0d8f819d24",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.cc",
+      "bytes": 17759,
+      "sha256": "de6e6624be0cbca012a1b67ad187d997b56015a8b4235ec1065236cff7a4ffd3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h",
+      "bytes": 7767,
+      "sha256": "4463d7ad957ac783d95229a7dc6e781a6414fd905f744e00b9abe1ff5764a65e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/toolbar/app_menu_icon_controller.cc",
+      "bytes": 8315,
+      "sha256": "d0eec49925d26679cefbd20a879f727bb8e30143352cce2b65be1486cd2dc904",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/toolbar/app_menu_icon_controller.h",
+      "bytes": 3783,
+      "sha256": "c1eb8d3c111df7d4ba9d2635bd52d595a1016ae5c7f2996cb721e0c6ea29822a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.cc",
+      "bytes": 11006,
+      "sha256": "abbf56ee9b65c2db66b679358f616a1b7e9b6be4781b29862e77c79a96041e84",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/toolbar/toolbar_actions_model.cc",
+      "bytes": 29078,
+      "sha256": "54303b373c5b72a1dba33e692a91fcf0b3a25d49a1202170984c490e21fdf521",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/toolbar/toolbar_actions_model.h",
+      "bytes": 11004,
+      "sha256": "ffc8cadddc605f995068510b2d36bd9fe1046f08026c12103ac83b1c702bbfb8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/toolbar/toolbar_actions_model_unittest.cc",
+      "bytes": 60430,
+      "sha256": "cf1c058638e2544c80e2b349f28d326c9b311ab853aefdbd5764d3ca9d091fb4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/unload_controller.cc",
+      "bytes": 25351,
+      "sha256": "11694f9ba807238bfcf43c283c2540d1cbe66ac758db8d57998baf1f08e0ed77",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/unload_controller.h",
+      "bytes": 10496,
+      "sha256": "33c30851b407ee83369469504a548737094e21c7486a4113ce1f9154724eac8c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/BUILD.gn",
+      "bytes": 2712,
+      "sha256": "ed85dae849d3a90c6798208c377c14e200bff18aa36c561219406756018df9f9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/aside_text_button.cc",
+      "bytes": 963,
+      "sha256": "85addb32bb63878c1a3583ba7428c3f0d9ef8acc509a15ba81d2ae337d622f3b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/aside_text_button.h",
+      "bytes": 1153,
+      "sha256": "3877f0da2b0798b7a61640b0848840e44927ff0eee906101bdac96c33fd79e34",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/BUILD.gn",
+      "bytes": 943,
+      "sha256": "1a778d54b3daaad8fd2008bbf83ecffa2f0a963fd3c302f49029bf891120c0a0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-Black.ttf",
+      "bytes": 130416,
+      "sha256": "08b2be4844533ea221b3b830cedd1cc7f2c327fe07ec539f2bc9cdb1aa5497ad",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-BlackItalic.ttf",
+      "bytes": 131532,
+      "sha256": "d948c7768ae49ec5a7e310f5eb761d70d4cae2e4c948eb19c16ef099f70d145a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-Bold.ttf",
+      "bytes": 128724,
+      "sha256": "dfdc2884902716223465a2815ef4599d84df0a155078433b863b19fcb2c7f820",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-BoldItalic.ttf",
+      "bytes": 130400,
+      "sha256": "7cac872143d8f0c1b39fbe41ee65d2d78617a4c3689f7ad2663d9d2c7d5c42e7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-ExtraBold.ttf",
+      "bytes": 129584,
+      "sha256": "3535acfc7bab731c3cb5af5cf585c46b8635a6a6d3f796ecaec030311e61c014",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-ExtraBoldItalic.ttf",
+      "bytes": 131304,
+      "sha256": "660bf7027d3d737cc40f4f0420acb9451955cf5ca798e20075fe500bc3b46832",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-ExtraLight.ttf",
+      "bytes": 125264,
+      "sha256": "34a0b3180f30453e79c7a66e890f5ad9ffd2b6cc15586ad0aa4fa629c377c8e0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-ExtraLightItalic.ttf",
+      "bytes": 127524,
+      "sha256": "25f7af6a141f418bc112011ea86bb5153beb8ebcd276e1d127440e48a44d8ea1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-Italic.ttf",
+      "bytes": 128088,
+      "sha256": "dc92feb04b3e145e3baf5d9549cbf5880c6ee8704839d22df08600db7104e140",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-Light.ttf",
+      "bytes": 125372,
+      "sha256": "466756d2a4743725f322da6521e4254a9cc70b4af9a7c563d8253bbc40ad0fad",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-LightItalic.ttf",
+      "bytes": 127296,
+      "sha256": "ab05659efea333de79f59780f5330e16fda966f8759056d4afe720d7c6cf252d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-Medium.ttf",
+      "bytes": 127568,
+      "sha256": "0df231732ab7454ba3315d2878e145080d7f4ee92827a8d469bdd66e459ee48b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-MediumItalic.ttf",
+      "bytes": 129712,
+      "sha256": "898e04c77982384dccbce4d8b063408a2be9867046e8f610153ed374bf15e7d8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-Regular.ttf",
+      "bytes": 125956,
+      "sha256": "bde046ddd9f20be35b0bd56cc79eb752b967fb6661a3fe76cb067bb09f871d76",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-SemiBold.ttf",
+      "bytes": 127776,
+      "sha256": "097409e9fabf676be0764b47297c2cdab3750e84dc0f575298c7fbd45f3b3819",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-SemiBoldItalic.ttf",
+      "bytes": 130636,
+      "sha256": "00f13955d326e3c3da234d93d7a3acf3d029674201cdf8206c7d1dcba10c1390",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-Thin.ttf",
+      "bytes": 124308,
+      "sha256": "e213c93d35f89e268d31187498632e4edf46f48b0fd711eaf5717225e9f3413f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/fonts/Geist-ThinItalic.ttf",
+      "bytes": 126628,
+      "sha256": "20f5916eacab8c8ea5bfc3fc0cb6bc97bc723de5b7b7054dbfb911d73cac37db",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/BUILD.gn",
+      "bytes": 4887,
+      "sha256": "66568572bd427725e81216840492e9bef33d0d5893e76f05372bbf7c3b570b14",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_account_add_chrome_refresh.icon",
+      "bytes": 1926,
+      "sha256": "e585180f07b5f7e175084e99fc30f833dda7e93590709dafb6b2411dfb9c42d3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_account_manage_chrome_refresh.icon",
+      "bytes": 2971,
+      "sha256": "a0f5837e04e76cc5b3f49ec871372884a1dcecac226b069212b67be79f97b9c8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_add.icon",
+      "bytes": 1372,
+      "sha256": "9b7a39fd0f7506d2c5868c2d6e1c36469faf27a58ced89d4ce673423a93d95a0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_add_chrome_refresh.icon",
+      "bytes": 773,
+      "sha256": "2ebfc29472bacc8931c82632a2c4cf0bea7d87808cba6d835e5025097578f36d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_archive1_stroke.icon",
+      "bytes": 2106,
+      "sha256": "c09a7c513241068454c1f8bafebe77e7de89c316cbcd68843ef7cc4a957df7ce",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_arrow_down_stroke.icon",
+      "bytes": 750,
+      "sha256": "0f254673020c78dd7e037eaf8f2d8593d067afe515918fbb99e76e8d039b91b1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_atom_solid.icon",
+      "bytes": 4664,
+      "sha256": "8f058eba779da75a4d0ae2cd888f79e1ccc3945afe0539b0af45a80d97fad694",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_back_arrow_chrome_refresh.icon",
+      "bytes": 1145,
+      "sha256": "0126ec32317a5f3392c930c95cc59bb82a4adf4bccd7d327b6ca4cdfcaa1c223",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_banknote2_solid.icon",
+      "bytes": 1633,
+      "sha256": "710f4e77df9c8f88939fe12114f19c31ed0fadd3328872985a84ca8b9384ccee",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_bell2_solid.icon",
+      "bytes": 1238,
+      "sha256": "7dee689e8c375ee86aa1642e7fc9836d23b0908dbcce1f01bd0e2b7f5107b7d9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_book_solid.icon",
+      "bytes": 1662,
+      "sha256": "8180c0463cfc297811877498ce0cec7a3c6f059d27f89d9bfcec614484573715",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_bookmark_folder.icon",
+      "bytes": 989,
+      "sha256": "20a05cd984f500a29416d5afb72ddb92351ea58da0aa67145791eb9c5cfd8467",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_bookmark_shelf.icon",
+      "bytes": 680,
+      "sha256": "42f5dd8d38f914dffbf32a2c7e7de028cd7c182137856e37587249cb86ea3907",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_bookmark_solid.icon",
+      "bytes": 750,
+      "sha256": "dba346381a00022501894a36c75ada3cd0061ab5d5cf191e7d9c37935e443367",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_bookmarks_lists_menu.icon",
+      "bytes": 922,
+      "sha256": "8d85b6182974b6103c47eba0b2b0f59f5334f8a0985bf611ba69b313b5727df5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_bookmarks_side_panel_refresh.icon",
+      "bytes": 933,
+      "sha256": "9eb231dcb95563d6c7a1e8e20526587b96aa5c7ba9f163b5b24f2b5d786bbffc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_brush_solid.icon",
+      "bytes": 2068,
+      "sha256": "b60c8e0dfe29334f6879544cb8e1d8be80f1557a6f3eb1cc46bee8b14a6b5aab",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_bubble3_solid.icon",
+      "bytes": 1018,
+      "sha256": "df8f14711dd28276d45b44bef8861eaefea42985c4c2d43f141580e755f003f2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_camera2_solid.icon",
+      "bytes": 1022,
+      "sha256": "182f85265374dda9c1890fef8e113795f540d3e77ab29618bdbbf94cf4d37d46",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_chart1_solid.icon",
+      "bytes": 1955,
+      "sha256": "18d100c3d6fbffe3cae61aa23771b1e6f9649ecdf93c8e0ea628bbff4b569743",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_check_mark.icon",
+      "bytes": 627,
+      "sha256": "1e09592a3d2a470ff4d20a2c86d33f596f62395175bcb76aaacca04d18be1ee1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_chevron_right_medium_stroke.icon",
+      "bytes": 638,
+      "sha256": "e0f995eb64403172a4cb002273d2a0147c8e7383d6f6708e22461584fafbd0ec",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_circle_half_fill_stroke.icon",
+      "bytes": 873,
+      "sha256": "f44567893a4efe28c424def8d3fed55049b519d31acb1013ab19bb2ae1b08752",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_circle_x_solid.icon",
+      "bytes": 1107,
+      "sha256": "7e472eeb7de456a05f39f02dfdef6fa478a503689578d541aeb6d917c257df46",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_clock3_o_clock_solid.icon",
+      "bytes": 991,
+      "sha256": "053baa8bd0c488cd22242f9a56826f70fd6603a96d44a87cbac12d0c6872125b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_close_chrome_refresh.icon",
+      "bytes": 823,
+      "sha256": "af6d436d1d77451dd195873f967e40ca41c30992dbe8e247814659eb4ea1fabe",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_cloud2_solid.icon",
+      "bytes": 1045,
+      "sha256": "af699c3ad159fd1b5b66dc219f9f29d17d22291a2f7b2ac5f02ec7ceb4c0be05",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_code_large_stroke.icon",
+      "bytes": 1025,
+      "sha256": "2a4582b0daa4379cf0af7b5308cbf183ef800eaa7f16126428e1f04fe632f5be",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_color_palette2_solid.icon",
+      "bytes": 1970,
+      "sha256": "e20b0f14bf006186474ca6402fe7fcd4aad9c5990f7b92fb9cad083bca1abece",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_console_solid.icon",
+      "bytes": 1341,
+      "sha256": "54a17f304a8377a544b65a098a3caecd096b2dd6daf43fa2e85adc43665fa4c1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_cookies_stroke.icon",
+      "bytes": 1380,
+      "sha256": "d8fe30e672a11c5c67e7d46a3217c1fccbca086a2e5f2b1a53e575ffe0e9077a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_cpu_chip01.icon",
+      "bytes": 1843,
+      "sha256": "3fa405e6ce2305f99295422be6ad5f6c33791ac9f9065e070bca8d970c88329e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_create_new_tab_group.icon",
+      "bytes": 1303,
+      "sha256": "31bca11ca2f394ba87ffe57f581e6e050b480e8af70acf24d43ec0334e589803",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_credit_card_chrome_refresh.icon",
+      "bytes": 954,
+      "sha256": "9047960c60e4bcf5ea6488feaabbdde4c216011be058fa1ed7faa23edb98101a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_cursor1_solid.icon",
+      "bytes": 674,
+      "sha256": "c893b2e199074b60a6e3fd908932c9d1be8e3eac6c672d2012b1a2fd81db7b7e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_developer_tools.icon",
+      "bytes": 1423,
+      "sha256": "21ccf0f841ecf2fdc530667a5d79674a348d60a171283d28fc84977509b714ac",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_diamond_solid.icon",
+      "bytes": 1183,
+      "sha256": "2f65494dcf2b1e5b29a29ade74d531505ac10b7c56d2a69a292613396bfe3fdd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_dot_grid1x3_horizontal_stroke.icon",
+      "bytes": 922,
+      "sha256": "0670495b8f1ecc62fe42e1118faf24521ca2457bd953e97b1a5171af3c554311",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_download_in_progress_chrome_refresh.icon",
+      "bytes": 1064,
+      "sha256": "01a9f1711121b6707f8eb5eb5f12b662be98332df064fc444f1d40b0fa9bbe0a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_download_menu.icon",
+      "bytes": 1041,
+      "sha256": "a725eda9e09593c401dc6527be2d76831f2699b27e843d55e4b498cee66cdffb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_download_toolbar_button_chrome_refresh.icon",
+      "bytes": 1067,
+      "sha256": "18742e2f7cb2d4eaa6faf57d70440c2dfc23c5494c3950f3aabba0b77164bfb7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_edit_chrome_refresh.icon",
+      "bytes": 976,
+      "sha256": "ee2a44ebb0b2716dfa63e43d03adb4456e69660253aed44b0974f9bcd006faae",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_edit_thin_stroke.icon",
+      "bytes": 2627,
+      "sha256": "1232181eff30a03e9253ea36efebb97f72710c3b74b125afbf1dc3b59379dca5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_email2_solid.icon",
+      "bytes": 949,
+      "sha256": "cfd0b9c3f49451146eab2e1797d57e01b1224085056842278bf66e8a82e7899b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_emoji_add_reaction_stroke.icon",
+      "bytes": 3648,
+      "sha256": "85757f7cc18a230d49ddef7afcc5632130ab8c5ce803781c113dceb5cdf2cd23",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_emoji_smile_solid.icon",
+      "bytes": 2256,
+      "sha256": "fcebb29ea8d2bbeaef2400452d9f1f307f366bd33c3a38a2b2e444eba107472b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_exclamation_circle_stroke.icon",
+      "bytes": 967,
+      "sha256": "3836ef682b6d56e7da72ddb37fcda39da37ccd5db276e7a513003d22beca5415",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_exclamation_triangle_solid.icon",
+      "bytes": 989,
+      "sha256": "8ad04d7c145d647c8c24702afbfac8a2888ff8565e25ae61188bd7672766b0f2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_expand_less.icon",
+      "bytes": 715,
+      "sha256": "faa00961cdef155613ce154ec28f940679166d3c220eda7b4ec2fb9d9726155a",
+      "mode": "100644",
+      "untrackedAtCapture": true
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_expand_more.icon",
+      "bytes": 625,
+      "sha256": "93efa6d93616973b86ebb91ad385906c575e7747f955667d33d19a6ac8ed3064",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_extension_chrome_refresh.icon",
+      "bytes": 2912,
+      "sha256": "b4d218f9fad7eeb5e9797928c6063ec73f5d39b8f2df4481bfeb815b6d6eddc9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_fire3_solid.icon",
+      "bytes": 1257,
+      "sha256": "61abdb44d2e4eb80616c4abc584f1b6a54b0782229fee45ffd87a25450ab799e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_flag2_solid.icon",
+      "bytes": 1156,
+      "sha256": "97e7c5dbd2acf10ab723c847cb48521affd709b1bedd3bd65d72b6daeb413acc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_folder1_solid.icon",
+      "bytes": 769,
+      "sha256": "39d129e18273c56272bd9de90cd2d4f13369fecb5745a9b7c435a7ff3a38836a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_form_circle_solid.icon",
+      "bytes": 568,
+      "sha256": "ef863aaff763f2bde263711fefa217ddbe3a06c1822ecf33471a8f2128f9ee20",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_form_diamond_solid.icon",
+      "bytes": 674,
+      "sha256": "021c51f4ccb50fd718738bb4c215f8a3cd59bb1117b0b39ddab0d0bb7c6fc3c4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_form_flower_solid.icon",
+      "bytes": 3522,
+      "sha256": "0d3d7a91b572000ddf41f3efdd507193b32e489790b3b6c2ea9f2d1416a234ef",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_form_square_solid.icon",
+      "bytes": 608,
+      "sha256": "9b6b160182575bd53ecaff1f6221eef1b2e24a464ba5cfbafc1bcce9df778943",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_forward_arrow_chrome_refresh.icon",
+      "bytes": 1119,
+      "sha256": "ffca37dfe6c115f3f22a26b0935e9589e6d33bd0e05ed0105e8d8ab4960e68d1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_globe.icon",
+      "bytes": 2094,
+      "sha256": "b1374e89490cd9a75219c1ae2145d03ae58cdb46df3b695540080f4905484a03",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_headphones_solid.icon",
+      "bytes": 1002,
+      "sha256": "31c2c31d69572b0511cce7bd976a7b48128e40c8d8c4fe501ed9a0218c38c42e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_heart_solid.icon",
+      "bytes": 1462,
+      "sha256": "aee22d2aa85cb50a1fed6f9046946f89935ef22b9ff1b0918a032ab26f6aa2e1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_history.icon",
+      "bytes": 1462,
+      "sha256": "2a869a0fb3d3b647690a465ddfbae7ef32d6b6bf601e39e49931a9b0806390fe",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_home.icon",
+      "bytes": 2829,
+      "sha256": "6e4510017b92434859e4bfd261360a33f7f4cb7d3f5a62b6ac90f9ce7f801c49",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_hourglass_solid.icon",
+      "bytes": 1817,
+      "sha256": "c4e2509418dd94bd92328a934da4673668d3c69cad58f7fc5e06de49edaf4e3c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_incognito_refresh_menu.icon",
+      "bytes": 1980,
+      "sha256": "b61e6c931b4e72b1b34d19c03ed0009b752e1f8582d791d4fe5be49e994d005b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_key2stroke.icon",
+      "bytes": 1921,
+      "sha256": "d73d9e0be8503455021eb1cb1729b77043197ec4896a17799d8063799996a906",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_location_off_chrome_refresh.icon",
+      "bytes": 1858,
+      "sha256": "ceb871734dfc8fbbe2fffd672f909fb3df8690103e396e3f92501fc31862d5f2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_location_on_chrome_refresh.icon",
+      "bytes": 1568,
+      "sha256": "c6def145dde8a16ab212bde27250482270dba6540a596dd7ba0fe6a0a0c08fb5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_lock_solid.icon",
+      "bytes": 1343,
+      "sha256": "ff61b77e227a65dc59a5be5cbf7ed9cb6105925241b1a9ace3d8a34d7c56ff7d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_lock_stroke.icon",
+      "bytes": 1377,
+      "sha256": "e6ff93ecee61fa2ee1e258ee59853cd4faad6f4950b148a1059b4e6c874afadb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_magic_book_solid.icon",
+      "bytes": 2385,
+      "sha256": "3b3ce24f88b1b0ce84d32e31471b4c836283d7ce19024088b82cd276a8dc6c86",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_magic_wand2_solid.icon",
+      "bytes": 3264,
+      "sha256": "643e78d75a5e7d137c0a68fd9e9dbab2c1d285511f1359e6403788bfbd2a597a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_magnifying_glass_stroke.icon",
+      "bytes": 930,
+      "sha256": "e6381d4b3909894c892f4536c2e23b3d42736e1df815232bffa6b4749ef7adb9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_map_pin_solid.icon",
+      "bytes": 1030,
+      "sha256": "15cf7c1e42963c3d8aa930e4f38b6c60186db2dabe688a80ec70abc25d2b3590",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_mic_chrome_refresh.icon",
+      "bytes": 1403,
+      "sha256": "ec46f5d329a709a3586d0890a0e7f93a76de8b9e3755a335ad20a4d566e37ecc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_mic_off_chrome_refresh.icon",
+      "bytes": 1833,
+      "sha256": "d482cab4b56c435ab6968b1942f26d3f3e8481a5aded40f1723505b94909b07d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_moon_solid.icon",
+      "bytes": 949,
+      "sha256": "f254110797aae86cdddbe9c93dcf6910d4b632d44bd7bc9dc72ee5517d65d9b2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_new_tab_refresh.icon",
+      "bytes": 1594,
+      "sha256": "eda58495bea4e6a7f8bf567447c0c9b2c61212f47b88246a8dc7e9625dceda14",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_new_window.icon",
+      "bytes": 1574,
+      "sha256": "a4e83d2adf28296d5b7214f1968197aa37284292e619f126b00a37cf9d7b4ee1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_notifications_chrome_refresh.icon",
+      "bytes": 1568,
+      "sha256": "cc43be2de5eb578f1ebd01cf99606565bdfacf54bd4438fe2fb3a203944ab93b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_notifications_off_chrome_refresh.icon",
+      "bytes": 1734,
+      "sha256": "a59c5e72a13c731a506ee72507526d5d4e48799dfe681203bd87172d48771a3f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_official_brand_slime_solid.icon",
+      "bytes": 1491,
+      "sha256": "c4624ba68254f28bcca755360a9b3c7607673a2c184d91ff9f2f7325444ed358",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_password_manager.icon",
+      "bytes": 1909,
+      "sha256": "702c3d2ce9d48fd320f71f32411925a0a6de725356e4936af56d9acecdc81c90",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_pencil2_solid.icon",
+      "bytes": 984,
+      "sha256": "ed2d8403bac951ce3ea298ea2d8a6c8fbbc356145859fa19fb40d238acc54c6f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_performance.icon",
+      "bytes": 1098,
+      "sha256": "a724d53c2c979ac49a26075ca3e18f5f83e0ca101950c25be19327a1f38909c5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_pin_remove.icon",
+      "bytes": 1551,
+      "sha256": "12dfa6f24eaabb34f4c7468f605844cad4ac8d9f09521d2d8516d6ecf3e12889",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_pin_solid.icon",
+      "bytes": 1062,
+      "sha256": "575fac8fa407db951d4472edd890757a0da27248c34290d6c54454184780d9fd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_pin_stroke.icon",
+      "bytes": 1332,
+      "sha256": "dd9bdd8706db597ad9c5d9472908c2cd5d34d57276fba9064f738ab8e3e7305e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_printer_stroke.icon",
+      "bytes": 2058,
+      "sha256": "d5f1cbfdbca2bec5a00f9a24f779ea7e08125d5e5dfd203963dda2f3d1d1a2bf",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_reload_chrome_refresh.icon",
+      "bytes": 2739,
+      "sha256": "52cc998ded8893983d455b4786c2d504f12a7e5e3c131715b3ce28663e430546",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_rocket_solid.icon",
+      "bytes": 1639,
+      "sha256": "4bf66163261d562bc82e6709a06c9837954767319cdc231f82bde4358d556a90",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_search_sm.icon",
+      "bytes": 511,
+      "sha256": "7809858bf592f2e67cc25dbcac88294954a127a58a6e2c379adaa933b1ab2c46",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_secure_page_info_chrome_refresh.icon",
+      "bytes": 772,
+      "sha256": "a59bb7512f892ce60d875bbb13a4eb4f7039cf5c45611d156e76313373b31433",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_settings_chrome_refresh.icon",
+      "bytes": 4215,
+      "sha256": "950b59cf82f9a594bb697a6b958b669425797c1b629141157bbd4726f5702c83",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_settings_menu.icon",
+      "bytes": 4165,
+      "sha256": "9bcc5f42c74bedcfd020ac0b631e3eec23944e1cbfdd9011c1163a5da5fca136",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_settings_slider_hor_stroke.icon",
+      "bytes": 1631,
+      "sha256": "657e39073172bbc5899ea6bfa8726ea8f85160d917461b400e44fb2c2aec3fbe",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_sf_symbol_search_square.icon",
+      "bytes": 2472,
+      "sha256": "6cca1e06ff2b1ff7f114015ce59d990c4293ad551e6c33f06f7ee25b2fa82e5f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_sf_symbol_sidebar.icon",
+      "bytes": 2865,
+      "sha256": "2c2defe1bc0b417f6e6ff151d0acca315dbdb5d1cfa4b7db1db9bebbadfe6ee9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_shopping_bag4_solid.icon",
+      "bytes": 876,
+      "sha256": "57b4a9db441ca9bc796990217108d40a6c1d08ab5c022db36f6cdb42ef1a96f1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_sparkles_two2solid.icon",
+      "bytes": 1787,
+      "sha256": "bd21390a350e001fd528e0b50a080e2e1db9a17469aeebad5184b75580a06d3f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_square_arrow_top_right_solid.icon",
+      "bytes": 2677,
+      "sha256": "dbdad25edc727527d9b38a742f519b9dfa4bd9ca676eea63ec26fafd6bebacbf",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_star_solid.icon",
+      "bytes": 1234,
+      "sha256": "f5a51af5351727bf6f64624773a92333a895c5fa5f7ad07d2498a4461ea99318",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_submenu_arrow_chrome_refresh.icon",
+      "bytes": 639,
+      "sha256": "f58733475c9aa0555f4091a4184dc95e4f9353e402c4548be92d4a7a6e1046ed",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_suitcase_solid.icon",
+      "bytes": 1830,
+      "sha256": "2a74df8d3310d76a4c6f6660126a549abf42e1e37584cf894f1f50b89c8a51fc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_sun_solid.icon",
+      "bytes": 3568,
+      "sha256": "71b59b90ed9e150d6802fbaa1cfe0da322f73568dc953b6c42341ddcc88223e1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_symbol.icon",
+      "bytes": 3536,
+      "sha256": "49bfc79deb28860726616d5cfa2b3cd413603f2d1965ec048c5d269c8ee13fb7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_tag_solid.icon",
+      "bytes": 1020,
+      "sha256": "d4858973cafe4dfa25b7573bd0c21898a7208b1ce5a763fef1a9b5f39f847a22",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_task_manager.icon",
+      "bytes": 1444,
+      "sha256": "8290bed1ae54298abd04ad10bf8ece488140dac0f1c30c6f516799334a385cec",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_telescope_solid.icon",
+      "bytes": 1664,
+      "sha256": "3f2e369b6cac6555b8a223f9e9c4dc3897e35dc06b4cfc5ddf2260aff5cec9ce",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_thumbs_up_solid.icon",
+      "bytes": 976,
+      "sha256": "e6b38b3dfe208490003d41780fac88e4f859512d8aeb46adedcc67efd2f20cac",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_ticket_solid.icon",
+      "bytes": 2109,
+      "sha256": "fb744d25f4461e9759bebaa1890b2e0f3ea1a752d74c23837bc91594e124b163",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_trophy_solid.icon",
+      "bytes": 1740,
+      "sha256": "862c286f3af2e3bff86313d3779e65254f41e3190f9bb6c50a0312da6ceaa49c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_user_account_avatar.icon",
+      "bytes": 1579,
+      "sha256": "a5c3d4437ad21d50fa2ffc8005a0451cde3c2596159ab6b9ea557a275bf574d4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_videocam_chrome_refresh.icon",
+      "bytes": 1849,
+      "sha256": "90e57c46c0701591d0055a0ccf907793f6a13f6ebffbe2c1c96d370c89c7f9c9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_videocam_off_chrome_refresh.icon",
+      "bytes": 2008,
+      "sha256": "ee02508e79b16b75640d237f487577c4f2afee6f899667bcbcaee0c742d8f3d9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_window_sparkle_stroke.icon",
+      "bytes": 2859,
+      "sha256": "1b49483420b18c881454a7fdf71abd6e86a44e6127fd487ebf1c24f3cecb42ba",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_write2_solid.icon",
+      "bytes": 1542,
+      "sha256": "f82eb36895f153e9c9f936f426ef25a74eaec9f25e28790c53c58287e9b8530b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_zap_solid.icon",
+      "bytes": 697,
+      "sha256": "63c1bee5d7b3543dad1668bbd5102aaa02d8b596e3e4fa1bb16f88a411e7a36b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/aside_zoom_in_stroke.icon",
+      "bytes": 1453,
+      "sha256": "6977bf9dcc4227c201bce2526ccf0dfdb04a350eff25ff7407d4a47a4bb9961f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/vector_icons.cc.template",
+      "bytes": 532,
+      "sha256": "4d22114c74a211c21082ba128a2c19aa084fede412767d7375d5c1d9b681136c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/aside/icons/vector_icons.h.template",
+      "bytes": 611,
+      "sha256": "bd01461c867dbfa5eee77a5e51992df06bf32a0bb0c2da2a0b9e27a406cf1cda",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/bookmarks/bookmark_page_action_controller.cc",
+      "bytes": 6670,
+      "sha256": "cd0d5e9bbf90592e4c8d43e973d357dc83c7590aec648a7f5cd9000676703fd4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/data_sharing/data_sharing_bubble_controller.cc",
+      "bytes": 12168,
+      "sha256": "c2d023d524861626f8385f73435ee2b8156f59f2d3a466d67dca8f45fa47c56f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/data_sharing/data_sharing_bubble_controller.h",
+      "bytes": 5320,
+      "sha256": "1ad7739889513eac2cc5a5d06930d7b3a0e86017c6be6e408546ad5132323e38",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/data_sharing/data_sharing_bubble_controller_unittest.cc",
+      "bytes": 6273,
+      "sha256": "9cd5c0f2fab3c0f928b168c18246fa10cd446d108e6c4abce0fc7fc6d7f90a02",
+      "mode": "100644",
+      "untrackedAtCapture": true
+    },
+    {
+      "path": "chrome/browser/ui/views/desktop_capture/desktop_media_tab_list.cc",
+      "bytes": 19815,
+      "sha256": "ee2d97a61425517da9503d4c481321bb8fb32fa367b7d569102f3d6d9a8dce3f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/desktop_capture/desktop_media_tab_list.h",
+      "bytes": 4234,
+      "sha256": "f122a9b8d73ce70854788fe24cea568493c5aa323a3b171a56216e9a478e2f7f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc",
+      "bytes": 45846,
+      "sha256": "e86b110f46da8063f290f75d2dc4a60ef4769016b698ed0217f55ec946129697",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.h",
+      "bytes": 12923,
+      "sha256": "aabef1724f48d13c011bd34aab059a68fc8bf8f48aed792130f136fa4a26df52",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/extensions/extension_keybinding_registry_views.cc",
+      "bytes": 4046,
+      "sha256": "8a42538450554e7879ce5efb12c94f393bd53fe481db6de8fb9de1faf5669c75",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/extensions/extension_keybinding_registry_views.h",
+      "bytes": 2903,
+      "sha256": "ffe0f9a883e67948e9ddc8577e955ce46567327c03006a1342979b7686b6af3a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_agent_control_banner.cc",
+      "bytes": 4223,
+      "sha256": "ddee7293a9f44ebd0e2e3818a5437202ef7dc747d53864e27dcf7c14a057bd56",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_agent_control_banner.h",
+      "bytes": 2489,
+      "sha256": "dbb8a9eb19ec9e33a7674857a1060ce7b3cd0d19fe6f9e11c3c9e709201af165",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_bookmark_correctness_browsertest.cc",
+      "bytes": 17649,
+      "sha256": "996798667b9993adc05a2e690e4cbcecdf69d012d4cbce07152bf7caa5b77d0c",
+      "mode": "100644",
+      "untrackedAtCapture": true
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_bookmark_dialogs.cc",
+      "bytes": 13457,
+      "sha256": "c0362b36151e3b5ead5f6aba237c7f42913cd235cc09272b2a65f644e6bd13e9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_bookmark_dialogs.h",
+      "bytes": 2374,
+      "sha256": "0ebebf1ce3c0a3d7fb7b5d27814d63ae0b2633b6fadfdad3c52f02df680a263c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_bookmark_tab_representation.cc",
+      "bytes": 5342,
+      "sha256": "f63286358352cab262960f88b67b6a660016a5861f072ac385ca0249a230b1da",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_bookmark_tab_representation.h",
+      "bytes": 4115,
+      "sha256": "7d053b3d0506082e1737e864d2f996d894465b463aa6bf9d7540e786667b8558",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_bookmarks_section_view.cc",
+      "bytes": 39921,
+      "sha256": "cb9dc014d23ea7b5fd52899e1f7d768e7dbb050d3c8f70ed157c9be6e97a3279",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_bookmarks_section_view.h",
+      "bytes": 9779,
+      "sha256": "1387433eb468c6f215d82a73674304fef0fc95522de23e82a58908d1b66995c9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_pinned_entries_view.cc",
+      "bytes": 15244,
+      "sha256": "f2aea62236e519cd283bd500cf309648d3a9ad7a3f4e89e80edfa1a0f01e1aa0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_pinned_entries_view.h",
+      "bytes": 5711,
+      "sha256": "6692b66921d7ea5c35c9b2827e4e95f34e159d9307a3ebfa18fa1b357acdf6ff",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_profile_footer_view.cc",
+      "bytes": 6601,
+      "sha256": "d8420e927e4fa393883014d380d3d3636d17716ca3647aea24a1149cb927e674",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_profile_footer_view.h",
+      "bytes": 1837,
+      "sha256": "ba8a195d94c3a2bf3859a95d5b372210c0537fe63e717aa0fb26a02ecf3c4a28",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_tab_search_bubble.cc",
+      "bytes": 4570,
+      "sha256": "f811d1de73986b52fdca6063066d8c2b249881c332800554e4991bf8d3ae4747",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_tab_search_bubble.h",
+      "bytes": 1802,
+      "sha256": "81abd37c6ecf6f2a173daa5a4607859fff2cfd0cae4ccb49e577829be3382c0d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_tab_switcher.cc",
+      "bytes": 7599,
+      "sha256": "a3547da57989d90e20d31d4b375fcee8a125e84a3f1ccf2479461403ace741cb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_tab_switcher.h",
+      "bytes": 2418,
+      "sha256": "8b47321980104bc6a37715f60c74938a89e14bbce5280bd34985c178ea7d4df0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_tab_switcher_view.cc",
+      "bytes": 5431,
+      "sha256": "cf4a3c23bd01ade6cc26ccf7826d83894316ca583644557aab2071b1dc9f77c8",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_tab_switcher_view.h",
+      "bytes": 2397,
+      "sha256": "1e089f1996ef34be128eadaff66952177b3712503e4f8adf7da39d85d21ef67b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_task_views.cc",
+      "bytes": 13542,
+      "sha256": "ddbeefcf62c6111928e28a626e738ee1077f4ad91cc3b637cd62e3cfb47abea1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_task_views.h",
+      "bytes": 2631,
+      "sha256": "dd8d351306a3a5ea82fa9d07b31710fe227380ec5f30d7de1613afc9a4a67ec1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_toolbar_collapse_hover_monitor.cc",
+      "bytes": 2472,
+      "sha256": "1f3efac4802c7602a2b6e77991d50e4422c031a9550505459ef3aa0e34b51faa",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_toolbar_collapse_hover_monitor.h",
+      "bytes": 3803,
+      "sha256": "871ec21fbe2533e1c624c1ad88a6e10297f9888e2d2660876bd2d7e6ca8c3175",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.cc",
+      "bytes": 41953,
+      "sha256": "aae48129e47f28c776d192032e37a99caadc553a1d7dd77a3bdc017b87c88b74",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.h",
+      "bytes": 5788,
+      "sha256": "fe8d38269ad8d837916068081d80fbc9e0e5399d17c620a5b1b7dc54944a6a84",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/browser_view.cc",
+      "bytes": 236262,
+      "sha256": "493cf85351ca246f0583e0e6d48e9b1ebefef9c97eecd0897fec7c47648dd252",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/browser_view.h",
+      "bytes": 60265,
+      "sha256": "ab5814d4e0749ed8014d8429172fcca24bbc5e9c077f47a3f3db8243729fb56e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/contents_container_view.cc",
+      "bytes": 33816,
+      "sha256": "386e20b4a522985cf552dffb35d1b46570e906829e0ff85da45f99393c226311",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/contents_container_view.h",
+      "bytes": 11684,
+      "sha256": "c89ff5f7a7f3c305619011fbd107337da579318c04e0528cf5af60efea2b511d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/contents_web_view.cc",
+      "bytes": 12305,
+      "sha256": "529e26f5599c061fa19e81e0c9ef1804e5f48b9188357f2cb1fe2431e8b5d6ea",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/contents_web_view.h",
+      "bytes": 4701,
+      "sha256": "0fa89469b9ec9e7c24ff53954ec81e7bdea6a23341570d8a9151b0176777cfdd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.cc",
+      "bytes": 29510,
+      "sha256": "60d7b6ed39bbb01b1b6d82716ce88628e3804e4e59bd7d2d7d797517f0483df0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.h",
+      "bytes": 6291,
+      "sha256": "aae78539400b78f610bbffecf9b6af9b18091957317f17a12a0ade4dcb015d82",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/layout/browser_view_layout.h",
+      "bytes": 7588,
+      "sha256": "b0d56b6b92ad130090115940cf94d8c425b216adbd66bd8c1cd3769516fc1ec4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.cc",
+      "bytes": 76397,
+      "sha256": "bc490513e5fe6dec348e3859960c7e1cc9c47e72a64b5ed189c5f7eb31a6c860",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/multi_contents_view.cc",
+      "bytes": 40079,
+      "sha256": "6c8b5a291f648d8b7f0aaa33fb32aa8de53a22aa2547a3575d26fc359b55ebd7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/multi_contents_view.h",
+      "bytes": 18156,
+      "sha256": "4a45f8723aa087bf79d813c84e7a7c2b579b9d57546ae409ce4c606a5776f6ea",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.cc",
+      "bytes": 27147,
+      "sha256": "479a3e5acfebd3b11ebb7db5abaed428b6324517fb39c1f326a6728f09eeacde",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.h",
+      "bytes": 8848,
+      "sha256": "8c41d4810433540ffaccc431df16ef7f4361f3012e069adee59e8ed8fd4c8fa0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/top_container_loading_bar.cc",
+      "bytes": 3574,
+      "sha256": "383977ed00bdb9829e1d5229b6019fb89facb2499b3cfeb5f37a0515b638df3c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/top_container_loading_bar.h",
+      "bytes": 2362,
+      "sha256": "129f352d9e39d9ecfe3208e23d013bff89f8427191cc08cbeabca71174c82f74",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/top_container_view.cc",
+      "bytes": 5515,
+      "sha256": "558604e15b3910bce32e9022fb40b2bcf5eebf59b2df9c0a95b4717af874ed3b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/top_container_view.h",
+      "bytes": 1753,
+      "sha256": "3515649868bbb3ebaaa92c587008430de5fb1ac767bebcb89e121a6e0ce95e44",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc",
+      "bytes": 60121,
+      "sha256": "7ad31bd2c725b9d4ad1cf530eb7333f0073ce18013e1f2a33711b79da1f1456a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h",
+      "bytes": 15843,
+      "sha256": "0d1d05d4e27bc0a2769f52e2edf326342e0a77c1147c4e8515c45bcc067a642d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/global_media_controls/media_dialog_view.cc",
+      "bytes": 28171,
+      "sha256": "de7c2ae922fa63ae353aa505364634f6a4c78ce1a44d494da6e3a586f4acb720",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/global_media_controls/media_dialog_view.h",
+      "bytes": 7682,
+      "sha256": "cced429de750167bca6270132d5c76a17a43a9bf0a569df8a172dcef46fb46a4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/global_media_controls/media_toolbar_button_view.cc",
+      "bytes": 7472,
+      "sha256": "a9f0628ba9d82155828ff72f5ce77d6888f52c9884266be9662c8ab449ca7dca",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/global_media_controls/media_toolbar_button_view.h",
+      "bytes": 2397,
+      "sha256": "2a94f3e33a78c64228f7c54381422dee10a0855a6cd54581f3fd7ff393389c56",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_bubble_coordinator.cc",
+      "bytes": 4581,
+      "sha256": "c762f859604075d31724bb354fa68a00d57c7f828e437a9a40d042a285400f62",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_bubble_coordinator.h",
+      "bytes": 3066,
+      "sha256": "6d38eac47421092df31e15d7b98e6cac60ba543457dcba3db12c757584a0ea30",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_icon_view_unittest.cc",
+      "bytes": 11391,
+      "sha256": "5698717201d4a6fd37fa76df1b0a93595c9c6568ff9e55a29d1e54d553aef0e3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/location_bar/location_bar_view.cc",
+      "bytes": 114458,
+      "sha256": "79aa6705c090ae7a213cdd1ab14e8401e77485898eb65451c3e555d73746c3d0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/location_bar/location_bar_view.h",
+      "bytes": 29817,
+      "sha256": "deb481bfc129dbab24b475d8a2b5fd663c96f3772255f997729a102119bc0343",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/location_bar/omnibox_popup_file_selector.cc",
+      "bytes": 14809,
+      "sha256": "dc50d241123987e77819401086db2cf403b3405117cd3c689e155c5090aa6d22",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/new_tab_footer/footer_controller.cc",
+      "bytes": 9124,
+      "sha256": "46187c354f9a6178608d496484ad9f5241ce1aa53fc95a991d86c896dfd0d177",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/new_tab_footer/footer_controller.h",
+      "bytes": 3793,
+      "sha256": "b232da7b3b587be3d55e470d3c57b3c828b610a8e1dfb69e9c59ffd25696f9ad",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/new_tab_footer/footer_web_view.cc",
+      "bytes": 4121,
+      "sha256": "4ccc15d00b0df90da1488a2ed98d59af45bc2082285dcaf8099e86ffd555ec11",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/new_tab_footer/footer_web_view.h",
+      "bytes": 2759,
+      "sha256": "a584134dd83ce9690eeca8b9fae995aaa040e0022734daf5e3b3658d4cab7add",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/page_info/BUILD.gn",
+      "bytes": 1728,
+      "sha256": "92fe6ee8129e1fe88800655d46bbfc536a337a541c7b27968109ed264e97bfe2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/page_info/page_info_reload_bubble_view.cc",
+      "bytes": 4692,
+      "sha256": "25944aa9ab17fbe3c4f0951b8bd0f474c9ba091ec5fc3c588c2205e6f3b1188c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/page_info/page_info_reload_bubble_view.h",
+      "bytes": 2599,
+      "sha256": "9bb429b7665f2b8f031cb7badd0f6a3bbff3b4776280cd6caa0b25ab9d4df66a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/permissions/permission_prompt_bubble_one_origin_view.cc",
+      "bytes": 14228,
+      "sha256": "7befbb48f32120de74aeb999bb64616197ce4a8616dfe145c6391208b2a7153c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/profiles/aside_profile_menu_view.cc",
+      "bytes": 52408,
+      "sha256": "9c68b3272b35b938e611a40eb40d9b13c41a62a7804e8b7ee6d28e316a2a0401",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/profiles/aside_profile_menu_view.h",
+      "bytes": 4388,
+      "sha256": "c4dcb713f90d444b38be0a1f8bb4ae64827c024d090b29b66f71c303bf4f857e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/profiles/profile_menu_coordinator.cc",
+      "bytes": 6645,
+      "sha256": "51bab1b8871aaa630a4e083566c6cf6b6377d54e31f14f11dd473301852e17c3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/profiles/profile_menu_coordinator.h",
+      "bytes": 2325,
+      "sha256": "33740f26d6f21ecd2e5e649e1f3ba98fa8a39bca93504acbae8012e7f99ec8d3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/profiles/profile_monogram_avatar_view.cc",
+      "bytes": 6233,
+      "sha256": "399171ea8a2d4745482556491e1caabff3bf67766de68f9c79eecb502ab2e707",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/profiles/profile_monogram_avatar_view.h",
+      "bytes": 2577,
+      "sha256": "e50933e83a6c8a92dbe31a25bdc4d9bebcfc3ff4fdb8ff6e79b38ca2b3218544",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_coordinator.cc",
+      "bytes": 7725,
+      "sha256": "93f15d24f27838e3d4f016b2c2ed0691611dbd32678aea1c865d9c61f4920147",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_coordinator.h",
+      "bytes": 2371,
+      "sha256": "80b50c81f9d7f9685d3d2afc4c1b28e4d8cee0caad5a5865abb8815a96ffac7b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/side_panel/reading_list/reading_list_side_panel_coordinator.cc",
+      "bytes": 2530,
+      "sha256": "5901d506422979961259794a3e1310f0da209299141a6221d1390d2f31d8d5f6",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/side_panel/reading_list/reading_list_side_panel_coordinator.h",
+      "bytes": 1678,
+      "sha256": "eacce4638887e2bf85d328d925663bb2dc89dbafce4df1182db581df530aaed9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/side_panel/reading_list/reading_list_side_panel_coordinator_unittest.cc",
+      "bytes": 3829,
+      "sha256": "2167ed39fbd4a5f819e35bf17fa723447701b19b8216a41788a2af949f77a5ca",
+      "mode": "100644",
+      "untrackedAtCapture": true
+    },
+    {
+      "path": "chrome/browser/ui/views/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_coordinator.cc",
+      "bytes": 4062,
+      "sha256": "e0692f25821ff6d0e861683d3f42a62946fb315a3a2785b31c4c85006179c655",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_coordinator.h",
+      "bytes": 1593,
+      "sha256": "d9dd0d3741c4421f869ab636d96a5165d7337e3f4efc390a112fef723d0a6e27",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/status_bubble_views.cc",
+      "bytes": 40081,
+      "sha256": "408a77b04f46809e6e6b39ea8fd543ac5e055b052356b0e3779c506dded35f57",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tab_search_bubble_host.cc",
+      "bytes": 10948,
+      "sha256": "2ca47f1707239709c753103012e11a4dbfcde1e68d5b6c43cd7ac28badbe1e98",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/aside_agent_tabs_button.cc",
+      "bytes": 12304,
+      "sha256": "77f5a8741c9521f37ad66ae0600b8aff2533120210a5ff8fbee921a668df8a9e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/aside_agent_tabs_button.h",
+      "bytes": 3194,
+      "sha256": "353d3b4aa2dfbafbb9019bfdbf3fca9fb7b0c87d47a15de3b6fdc023e09ac6ec",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/aside_update_badge_button.cc",
+      "bytes": 2812,
+      "sha256": "17dc8351af12c343ecf4cd239a8de3f64f83d20f7ba1158fe259cf0a71557d45",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/aside_update_badge_button.h",
+      "bytes": 1260,
+      "sha256": "6ebedb3e0eeb89f0968586d8cf9f65b7a3d85420015b744d64aa00ecd2399804",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/BUILD.gn",
+      "bytes": 6363,
+      "sha256": "f2dd3b4baab1ad1f0761c15d0d713f87f6697a8b3ce25239fce0afdbd9d537ed",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/dragged_tabs_container.cc",
+      "bytes": 26412,
+      "sha256": "de4b03b28654df7ec95ccb4b187b33f5c13e90a4831d6814d959b6fda0b3fc0e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/pinned_tab_container_view.cc",
+      "bytes": 13633,
+      "sha256": "e352a3c0bdb9d2c989d1b40115ed694a16ddd73426a6274345317e1b4e42564e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/split_tab_view.cc",
+      "bytes": 11723,
+      "sha256": "10a72d438cf49ce78ee14836cf0c74313f9820bda4499014634c4cdae17ec319",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.cc",
+      "bytes": 2209,
+      "sha256": "8decb85490b3026a46e081f38c2ba88439407904e5c440de8d6e8185fa193097",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.h",
+      "bytes": 1554,
+      "sha256": "772569dbdbbc676abc00e0d8e8ea0b93b296e27576d915c8deea95b6a80b3a9c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/tab_group_header_view.cc",
+      "bytes": 26494,
+      "sha256": "20ec9799009338d9c9d7f6f0fa835c85e56343dc942471d383bae742173299cd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/tab_group_header_view.h",
+      "bytes": 6672,
+      "sha256": "947203b1c9918519271700ce103939b33e0522cd8b72d47612b050d73754b788",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/tab_strip_utils.cc",
+      "bytes": 2203,
+      "sha256": "8191be5edebca84d9c21f1f784f63ab3b2e81779a3cfc94c3274dda5416eaf43",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/tab_strip_view.cc",
+      "bytes": 26094,
+      "sha256": "45b5e3cca0ee58a6cdb22b6f6eb28ec6b122e4a3ea73b49f47f3d8e1cc2974d9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/tab_strip_view.h",
+      "bytes": 4884,
+      "sha256": "f6c479dd3d7b239eb70d265579fde4bab0cb95b712dd07d9c8d3a24e46db534b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/common/tab_view.cc",
+      "bytes": 43516,
+      "sha256": "7fe80186d7267d3d5efe2713e66a9166831dc7afb3a7132a81f4596a188af184",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/dragging/BUILD.gn",
+      "bytes": 299,
+      "sha256": "9b22a65b9fafc321e41b2767819efc335b9cd37946d49c9162451e7204ef2967",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/dragging/tab_drag_controller.cc",
+      "bytes": 120490,
+      "sha256": "b515c8c6fcb5c1c4c050c884af280a165f0d36883db8dbcb1893017a9f546642",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/dragging/tab_drag_controller.h",
+      "bytes": 30960,
+      "sha256": "f4f931c06ed450caca27795991ddf652d5bc7451c5f728306de770d3b71bf7e4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/dragging/tab_drag_target.cc",
+      "bytes": 363,
+      "sha256": "c162ed9115b043db5d522c8cc3df9a0393ff608b7a98fbd606423f8200ec65a0",
+      "mode": "100644",
+      "untrackedAtCapture": true
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/dragging/tab_drag_target.h",
+      "bytes": 3401,
+      "sha256": "3c441fb1935d4f5ead4106411f6e476fbc5428a744fb7ec489a0960ff794b2f7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.cc",
+      "bytes": 34207,
+      "sha256": "3e43ec0d48b2d83176a16ac3e396ab88e6bc55210372984267eb94a087dc4fc9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/BUILD.gn",
+      "bytes": 18100,
+      "sha256": "0a2d88affe70a7a379d2b1d7fadaa507f80759afa35d8b25756789a8a8276a2b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/pinned_toolbar_actions_container.cc",
+      "bytes": 33769,
+      "sha256": "a795b3c5d19fb8d618f1eaf7acef6574a0d8b0dcbfca14c3ed1119f5410b4a4a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/pinned_toolbar_actions_container.h",
+      "bytes": 8355,
+      "sha256": "4722bb79650717ae41a1eb0462c5a0647fb14a12000f79eda7ad5d10d08f06bf",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/reload_button.cc",
+      "bytes": 18136,
+      "sha256": "56ea8d2e41c2f7b1fad9d24cfad34851e9ac3d6b7f5d9a54479ebfdc408c5685",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/reload_button.h",
+      "bytes": 6252,
+      "sha256": "69d9596d0ad5c958c38497e683a82d327593bf61b49652443acf6619901adda1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/toolbar_action_hover_card_controller.cc",
+      "bytes": 18746,
+      "sha256": "17e6c25091196660b85c4a84eaaeabd1ff46b3ccb66958db7a82d591caf7fe8f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/toolbar_action_view.cc",
+      "bytes": 14382,
+      "sha256": "2c97a213ea818b3ba27c59cfbd83d8f5cdf79264a4a05428c274e629ccc796dc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/toolbar_controller.cc",
+      "bytes": 41935,
+      "sha256": "89ec2f77d1698e9504687230241f336223791a6ff144273d459bf2db7e983b25",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/toolbar_view.cc",
+      "bytes": 84876,
+      "sha256": "1cf269d00d386a70eabe501422438d28e7718cf227afe10f1a86b6fc23b77489",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/views/toolbar/toolbar_view.h",
+      "bytes": 18868,
+      "sha256": "b1e933d0ed087035afd76d8a860c7a71347614a03c2ab3a6374563979b24c38c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/BUILD.gn",
+      "bytes": 20161,
+      "sha256": "9c06417cad511b33df0c0335a770dd60c777c0bb23e59caa0ca10a544da5f945",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_adblock/BUILD.gn",
+      "bytes": 756,
+      "sha256": "0b5c3366db79d762737187b01d02696830169ca01b58b747926b44f19d53dad1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_adblock/adblock_internals.mojom",
+      "bytes": 1647,
+      "sha256": "018abb4a0998ce9304a2c617f0fcf1666acc569c22e92d1ad7884a8377c48d0b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.cc",
+      "bytes": 8917,
+      "sha256": "2bccdee65eba00b551bfbf0931aac6fca3b19771b2e8ee0b6f58c109c7857c0f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_adblock/aside_adblock_internals_ui.h",
+      "bytes": 3052,
+      "sha256": "745f4d846a67363c9da2b26b5da8c9509a77b2470b897d2f8c380d5e61d6d701",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_import_data/BUILD.gn",
+      "bytes": 1163,
+      "sha256": "a182cde95e57b69d716b747cebb670b8fb4267f1d69accc7c99daf3bcb5aac19",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_import_data/aside_import_data_session.cc",
+      "bytes": 2449,
+      "sha256": "a2005c73e62b3ec67a5a4a894f31c8523fc422478579f443909a88277a191811",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_import_data/aside_import_data_session.h",
+      "bytes": 2903,
+      "sha256": "e418fd37d194d87f69fe881ed43d340062a4ca511cf4ce6efc0a51c5498c5d3b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.cc",
+      "bytes": 25800,
+      "sha256": "59d0aad138422e7faa02045da4048bb588950f838f9e641c42d6c2fd0bd71609",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.h",
+      "bytes": 1544,
+      "sha256": "14f42521e1745aa6b25639e20b5db665274e3a266c5958be41413cb78f096164",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/BUILD.gn",
+      "bytes": 1413,
+      "sha256": "0cc91d868bc3b976667dd13de54aadca0116a4b7e5e0a996dc94a1dfb52cda62",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/aside_importer_unittest.cc",
+      "bytes": 8136,
+      "sha256": "a29db2d2da1e4acc5979ac9674e6fa6a38679a85c7220bebed08a97b0f19cdd4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/chromium_profile_migrator.cc",
+      "bytes": 20172,
+      "sha256": "ffaad0ecfaa84e097de0c4a0b2f6e933bd030a7e2bdd49e49851e4eca1a5a233",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/chromium_profile_migrator.h",
+      "bytes": 4282,
+      "sha256": "04276d06e033eb03d208e0686aa76d42ee7afb032e9c270bd713bb3e92b4d87e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/firefox_cookie_importer.cc",
+      "bytes": 7033,
+      "sha256": "9b8244fda175b5347597dbced54a09baf644b9bc4822d6a778f796638e512e0f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/firefox_cookie_importer.h",
+      "bytes": 1943,
+      "sha256": "3491705233921f065f8bdc98a60a262e0586300d12aa7629842ffcf88558fac4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/firefox_profile_importer.cc",
+      "bytes": 3913,
+      "sha256": "dbc531c67b8ebedff42c9add106a0101ee3df721acb897ecb415cdf73a7a24ce",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/firefox_profile_importer.h",
+      "bytes": 1913,
+      "sha256": "c4da6f75f1faf328f9065e2bfee524ac63ebb107c94f533d69e6e2ad5f2818f4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/safari_archive.cc",
+      "bytes": 5593,
+      "sha256": "c8a178d0c5e8493d02506e7ed6a60493155bf0e39d2dece2ff8e7a4818c7c733",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/aside_importer/safari_archive.h",
+      "bytes": 2140,
+      "sha256": "2b0cbda6653e86ab5aa224f6fcc1471800cf6b2ea8a8c2d3d103d5b78b8105c5",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/chrome_web_ui_configs.cc",
+      "bytes": 27993,
+      "sha256": "8f7d45a3b5bfb705c386921fc84ed65643b9da2b143d4d120e07b61cd1505733",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/cr_components/searchbox/BUILD.gn",
+      "bytes": 4108,
+      "sha256": "403bf755b27af41b06b2c9147d7a5198ad5209f3060260fe16c486f17c388e1f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/cr_components/searchbox/aside_searchbox_page_mirror.cc",
+      "bytes": 1088,
+      "sha256": "3df965cd474d6d62a065432a2a30850cd3656d388ea1d42217b03df99d287030",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/cr_components/searchbox/aside_searchbox_page_mirror.h",
+      "bytes": 2453,
+      "sha256": "6776a040d3903b6c59265324a77e3a07c180b5fbb177bbdcb904482e201969fe",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.cc",
+      "bytes": 75136,
+      "sha256": "d2dc286324b8ccadf2d583c01239043010075b5c1e46a78f7b926231b740e0dd",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/new_tab_footer/new_tab_footer_handler_unittest.cc",
+      "bytes": 32377,
+      "sha256": "64bf80caa3ab2f756941f15587e5f70d2f014bc7146ee8971e40b268a5c2bda9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/new_tab_footer/new_tab_footer_helper.cc",
+      "bytes": 2256,
+      "sha256": "78667cd390f4f96e2a0606333901741fb96e69cecb2e77e6ce6ec0a6a1fd9622",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc",
+      "bytes": 235371,
+      "sha256": "5154d7ffef5fd88625abde9979d4f17bef39c77d90b8a8278eb3b9bd0cc91bef",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/chrome_paks.gni",
+      "bytes": 34381,
+      "sha256": "9c16bcb93ce3082c90eb43d812e0f4a564e4c86408984542ad1c96b348a2208e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/aside_adblock/BUILD.gn",
+      "bytes": 370,
+      "sha256": "1763376c3175f459d3df871e6947e11115838a6b59dfe1de54b2a02471b15299",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/aside_adblock/aside_adblock.mojom",
+      "bytes": 1295,
+      "sha256": "61e26efbdbe818257758605431c717a5ae7f8742e975810431ab05577ecee068",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/aside_adblock/aside_adblock_readiness.h",
+      "bytes": 947,
+      "sha256": "b12057815d665790c975885c0c6142d624f2ebbadad806191e7f217eeb4dcf60",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/api/_api_features.json",
+      "bytes": 37078,
+      "sha256": "7850137b2a707b5f5716b67f045c6015316475e0538baa3e2724b4a8bb39c767",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/api/_permission_features.json",
+      "bytes": 46148,
+      "sha256": "0bdd79cb4acb8a5cab17ff4cf4f0f53ed6b6cf50bc9204971fa3ade615b46486",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/api/api_sources.gni",
+      "bytes": 5573,
+      "sha256": "ad602ce5e7a600e0c369e2debf4226ac96577dab49cf85491df713270a954754",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/api/aside_account.json",
+      "bytes": 1813,
+      "sha256": "fc561ae7352da600668f267f30107e481e2b15877a7e9243dbb3bd5cf83e82e1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/api/aside_browser_import.json",
+      "bytes": 2317,
+      "sha256": "5eb1e8a25d7c56d6529f6ed5da88697393ab3ced1bcd8c180994a137a0f7437d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/api/aside_browser_preferences.json",
+      "bytes": 9641,
+      "sha256": "161e99d2970611105280e3f02c17febf4d368b5d2f61177cea0def4a859012d1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/api/aside_mini_popup.json",
+      "bytes": 3792,
+      "sha256": "26ffb40490786e01830e45c3e41637b3c49c6c34db37230b2d090e5eb9e1731d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/api/aside_notification.json",
+      "bytes": 1069,
+      "sha256": "a8e62c45060f48f24e2fdb813f6f8324f03ac344405d1ede044afdb786d757b7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/api/aside_omnibox.json",
+      "bytes": 17907,
+      "sha256": "38356f98ccb6b606a48be0aeb37e755168c94ee5d42d0fdf7ee749e5519f0090",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/permissions/chrome_api_permissions.cc",
+      "bytes": 13635,
+      "sha256": "0d6d147eaaf45cd9037671bf6c7cca0affdd2b4c590200493b3715aabb18fcee",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/common/extensions/permissions/chrome_permission_message_rules.cc",
+      "bytes": 33237,
+      "sha256": "4a6651512b444ad9ea509b009f225d2b1f9961aebb6e58d61ae00a623d521f31",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/renderer/BUILD.gn",
+      "bytes": 14754,
+      "sha256": "e506df1ce932c8eb196926657c5fe844acc76e83179b94eeeaa2c6e0c93f456d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/renderer/aside_adblock/aside_adblock_cosmetic_script.h",
+      "bytes": 16109,
+      "sha256": "f17ca6a36012526d7c25eedf7610cbf47cb9cb148e6f6102395b3a4a1c5546dc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/renderer/aside_adblock/aside_adblock_render_frame_observer.cc",
+      "bytes": 11356,
+      "sha256": "e473c6e29b0d2a41e511fe1adab38f4f0435ec0e1c0cf3fe4cd099c47f393b3e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/renderer/aside_adblock/aside_adblock_render_frame_observer.h",
+      "bytes": 3884,
+      "sha256": "9732dd93a9d56699015631eb150f226d5a88aede9d57b1417092f019c72cf408",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/renderer/chrome_content_renderer_client.cc",
+      "bytes": 68402,
+      "sha256": "428f219f62344a98c1c0f1e445bf0100a74d0a9df8d3733124c8391d37f3d9d7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "chrome/test/BUILD.gn",
+      "bytes": 515613,
+      "sha256": "f23312426ef3e1074df2e835736ffb0f9885d2964e8b6df1a57c49ec41d3f6ff",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/bookmarks/bookmarks_api.mojom",
+      "bytes": 4239,
+      "sha256": "cb6fc814842d14a752654406db060427efcf23fba0c079a1ec437e741fd44c0b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/bookmarks/bookmarks_service.h",
+      "bytes": 978,
+      "sha256": "f44dc151de24b1117a7172b8958543c0f448bf3eb8e479114e56d26e6bffb79b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/bookmarks/bookmarks_service_impl.cc",
+      "bytes": 13974,
+      "sha256": "407f024f661066b40bfd96e2e05e37f17035237e46006d830dfc5ec014a1c7c0",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/bookmarks/bookmarks_service_impl.h",
+      "bytes": 3587,
+      "sha256": "b43cc46c89dade932b767e3a7e5435ad21a93bb76e9d1baa3447c206e1bd241a",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/bookmarks/bookmarks_service_impl_unittest.cc",
+      "bytes": 37054,
+      "sha256": "fa90e16127fbb71231f51f7e7cb5ce7f7b617bdcc86383e8cc09bf9164b2a139",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/tab_strip/BUILD.gn",
+      "bytes": 4744,
+      "sha256": "c1e8672df2b8ebb7214f564d113b2cc0fdab00ec4d61c1f07a6bfd0c18ba7570",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/tab_strip/aggregation/tab_strip_service_aggregator.cc",
+      "bytes": 2150,
+      "sha256": "38075e1b7677e879520f9f1cbe76c208eeb53dfd581fa1e542684b93775dcda4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/tab_strip/aggregation/tab_strip_service_aggregator.h",
+      "bytes": 1889,
+      "sha256": "c5c5f7f5034ec6b872a0274111b172742d3534db3875e2c10d743d10e70464ec",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/tab_strip/aggregation/tab_strip_service_aggregator_unittest.cc",
+      "bytes": 5561,
+      "sha256": "4fbe6ad7e44828af685363624bdd1e7baea67f1d468f2041a8c8b435d7fbf38e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/browser_apis/tab_strip/tab_strip_service.cc",
+      "bytes": 352,
+      "sha256": "ebff91dd70538bd9894168cc9c99810bfe0235a55550cc1783569345f9baa866",
+      "mode": "100644",
+      "untrackedAtCapture": true
+    },
+    {
+      "path": "components/browser_apis/tab_strip/tab_strip_service.h",
+      "bytes": 2092,
+      "sha256": "f18b7e52f8815c16edbd807d53e10fd2136adb30a3907a351527bfc5bdf5f9eb",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/component_updater/component_updater_service.h",
+      "bytes": 10799,
+      "sha256": "28fbf25a1ebeba7bab72bb2321b9df106dc7d3ce4a61987b552c0b187f644aef",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/content_settings/browser/ui/cookie_controls_controller.cc",
+      "bytes": 24978,
+      "sha256": "4b0a79f6d446fe496a30754d5f0d558b3da6edab870f8282617dc760396da411",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/content_settings/browser/ui/cookie_controls_controller.h",
+      "bytes": 7408,
+      "sha256": "36ef8497f240fc69a005ec8951849c86cac3f70e5cad6870e70c2aa623449461",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/crx_file/crx_verifier.cc",
+      "bytes": 12474,
+      "sha256": "4c0076447be259cf457938ae8278c604f98a28fbfb3c36e139cd6a5ebf23cead",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/subresource_filter/tools/BUILD.gn",
+      "bytes": 3075,
+      "sha256": "b662a056a7145bcd89b79c16e105b98b3f619e9bf2af0a9b3beedb71a8690425",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/subresource_filter/tools/aside_rule_classifier_main.cc",
+      "bytes": 11127,
+      "sha256": "ed05733c388754c66249fa809acb5c6188e14aa11b9ccac64cab595f95c51291",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/base/data_type.cc",
+      "bytes": 80282,
+      "sha256": "717d7bb7dc6bd339926405f8ffac52c967da770458bcc93678402dfdd8ccf1bc",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/base/data_type.h",
+      "bytes": 17143,
+      "sha256": "1e70f17253d903d024d589d16b4c38e0f1b705450c6167f4283ed58fd5834b57",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/base/sync_util.cc",
+      "bytes": 3448,
+      "sha256": "26c4cf0edfe50a618d800de03438be68ba7890c58ed48d7b9ae4a21ff3baaca1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/base/sync_util.h",
+      "bytes": 1736,
+      "sha256": "07cfbec3e1a7d6994ff3b4c62fd03789f808e6f90a6fd9102a4cc1491b2d3933",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/base/user_selectable_type.cc",
+      "bytes": 14599,
+      "sha256": "aa518e5d9dd140d070206feca0c24b07d95df076da3a6d03e966ed5a77c0aa70",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/engine/cycle/data_type_tracker.cc",
+      "bytes": 15238,
+      "sha256": "9597c35d381da0ee5c6319b41831aadcd121f2661ca9d96579c8d967af22981d",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/protocol/aside_website_storage_specifics.proto",
+      "bytes": 1694,
+      "sha256": "bf4d91d4f2f1fe4f552f6084e319bdf453b25861ec176cfdd9ca871e64927c9e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/protocol/entity_specifics.proto",
+      "bytes": 11170,
+      "sha256": "e5901e551b1d1c14e0924349d5efdfd1869028c2caea69a03e456d7a90e76c0e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/protocol/proto_value_conversions_unittest.cc",
+      "bytes": 23827,
+      "sha256": "7318281373ec3aa1c8878f58a092fd6206ee9a21514871d1f59f9066d6e75f7c",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/protocol/proto_visitors.h",
+      "bytes": 67068,
+      "sha256": "263c12f7238084ee769c63f5c1e1705ad3105b56c136671e835fb9c5df950861",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "components/sync/protocol/protocol_sources.gni",
+      "bytes": 3250,
+      "sha256": "0a06ba86740e82a618e22bab8f0bb1138c3abc8634d820485c800e4f0c96c925",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/browser/devtools/devtools_agent_host_impl.cc",
+      "bytes": 23606,
+      "sha256": "2fe5f865781ff02faf0da532a76b4f1d4f6f54e46a93f6ee24d33c9dbb92ac26",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/browser/devtools/devtools_agent_host_impl.h",
+      "bytes": 7624,
+      "sha256": "d68adfd198a15ed2041c64f36609c71a1cdfd41eccef7058bfb90acbf9708cd9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/browser/devtools/devtools_agent_host_impl_unittest.cc",
+      "bytes": 11829,
+      "sha256": "f437a9e4f72fbe9105c6ace7e8c2c1932e88247f8e386b51c833a295e2c64033",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/browser/devtools/devtools_http_handler.cc",
+      "bytes": 46214,
+      "sha256": "8a46e252d53bcf2c5b36e8c7426d5b67d21f2bd0c74436c847dd6348b83ace9e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/browser/devtools/devtools_http_handler.h",
+      "bytes": 5870,
+      "sha256": "8704ceec9d444f2438a0723cd2d402e3c710a7552b2ae7cfc64e1b18eaedbc18",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/browser/devtools/protocol/devtools_download_manager_delegate.cc",
+      "bytes": 7450,
+      "sha256": "98006690b0e176a2a4a8f568ee6a663cee47d8c6f63c0d5acb16fc23da87a1ed",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/browser/devtools/protocol/devtools_download_manager_delegate.h",
+      "bytes": 4370,
+      "sha256": "2dd70962e22092b7bd0f4af8739491fb8d154ee9898034ad1d7d4578ebfe39c7",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/browser/devtools/protocol/target_handler.cc",
+      "bytes": 63292,
+      "sha256": "32995dcc9bd6aef8288c3e4ea1adfeeae14476ede144f9cb2caee192531ec65e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/public/browser/devtools_agent_host.h",
+      "bytes": 11076,
+      "sha256": "7369de2a9b4d798b0e35e610dd68cfaa94920d926c9aec08df6b9e8713754b49",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/public/browser/devtools_agent_host_client.cc",
+      "bytes": 1678,
+      "sha256": "0ff873870cb945de19ca41ea5bbc39b66b465e3b6eeea4ec27d47650035e82f3",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/public/browser/devtools_agent_host_client.h",
+      "bytes": 3731,
+      "sha256": "43200d281f7a5db4f302ed825addfbd40a44cddc04a154b3cd5f518c6ed69a42",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/public/browser/devtools_agent_host_observer.cc",
+      "bytes": 1251,
+      "sha256": "b2ea92b94a023b518ce0dccbf14eabde57ebfb24520b4e33fafc5ce509c67605",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/public/browser/devtools_agent_host_observer.h",
+      "bytes": 2177,
+      "sha256": "c45ee1ddf062035cb446d32090fd7cdbe0a731721918233c653f036638196b9b",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/public/browser/devtools_manager_delegate.cc",
+      "bytes": 4025,
+      "sha256": "bbc751954a8731be999d54674f89c79f3da36a8722fd868a8e3b39e0bd5514b1",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "content/public/browser/devtools_manager_delegate.h",
+      "bytes": 8316,
+      "sha256": "e2e11e205d2ea635301401f35d92e3e263d09cf0b0919be8ae7267f19d884970",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "extensions/browser/extension_event_histogram_value.h",
+      "bytes": 27518,
+      "sha256": "b4719449fcc3d1544a0337fb12b71e8e660f506e3cb31c95dd8658e3a77923b2",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "extensions/browser/extension_function_histogram_value.h",
+      "bytes": 93673,
+      "sha256": "e37c636b528539387cdd828a55eb6458df086861dad19f479a3ad23b7735e351",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "extensions/common/mojom/api_permission_id.mojom",
+      "bytes": 9150,
+      "sha256": "5fbe37dd9f1cf76f3eebf5cb9c61f2e15c5f2378994d8628f942660c24021e19",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "ios/chrome/browser/sync/model/sync_service_factory_unittest.mm",
+      "bytes": 6714,
+      "sha256": "df37394605a219270ea77e284db6170be20e89cbf86f007483aa45839fe87afa",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "third_party/blink/public/devtools_protocol/domains/Browser.pdl",
+      "bytes": 12506,
+      "sha256": "c6fb1f1d12580c9874bba08e136bc12ed90f44c956cd7eefc28c6a220c27599e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "tools/gritsettings/resource_ids.spec",
+      "bytes": 69693,
+      "sha256": "d3bdfb2ed625e1e0c154a470a80d43f992a5b069f59950c420a44c0f84b76bbe",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "tools/metrics/histograms/metadata/extensions/enums.xml",
+      "bytes": 214286,
+      "sha256": "090122053c248ff3fc0be223ba1538ddc0c465f3f3f0622854cb254ef1588280",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "tools/metrics/histograms/metadata/sql/histograms.xml",
+      "bytes": 16123,
+      "sha256": "4a6e63d2a599380228b0aa4159ed4fd61c327f532cb75b21522e12fe1ee2921e",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "tools/metrics/histograms/metadata/sync/enums.xml",
+      "bytes": 95924,
+      "sha256": "406ad779a59ff0f1a3f46cb2fff75eac23a61e44838715aa4ba77804f4747cd4",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "tools/metrics/histograms/metadata/sync/histograms.xml",
+      "bytes": 135645,
+      "sha256": "26cb018a417bec2a3bff72c03cfd9a8f739f4983136f1d58371045625e89ef5f",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    },
+    {
+      "path": "ui/views/bubble/bubble_dialog_delegate_view.h",
+      "bytes": 41300,
+      "sha256": "3a7609f5cbdb2ae897860c522db3427d9d3fb722adc2d4affe302234fdc1bfc9",
+      "mode": "100644",
+      "untrackedAtCapture": false
+    }
+  ],
+  "excluded": {
+    "untrackedBuildHandoff": [
+      "ASIDE-BUILD-RESUME.md"
+    ],
+    "untrackedThirdPartyFiles": 9461,
+    "generatedDirectories": [
+      "out"
+    ],
+    "runtimeData": "profiles, credentials, logs, binaries and caches are not source inputs"
+  }
+}

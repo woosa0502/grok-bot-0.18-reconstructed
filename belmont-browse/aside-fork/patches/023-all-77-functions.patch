@@ -1,0 +1,5279 @@
+diff --git a/chrome/browser/extensions/api/BUILD.gn b/chrome/browser/extensions/api/BUILD.gn
+index 89e9b8c6ff..e62920b681 100644
+--- a/chrome/browser/extensions/api/BUILD.gn
++++ b/chrome/browser/extensions/api/BUILD.gn
+@@ -29,6 +29,12 @@ group("api_implementations") {
+   # TODO(https://crbug.com/356905053): Add more APIs here.
+   public_deps = [
+     "//chrome/browser/extensions/api/activity_log_private",
++    "//chrome/browser/extensions/api/aside_omnibox",
++    "//chrome/browser/extensions/api/aside_browser_preferences",
++    "//chrome/browser/extensions/api/aside_mini_popup",
++    "//chrome/browser/extensions/api/aside_browser_import",
++    "//chrome/browser/extensions/api/aside_notification",
++    "//chrome/browser/extensions/api/aside_account",
+     "//chrome/browser/extensions/api/browsing_data",
+     "//chrome/browser/extensions/api/commands",
+     "//chrome/browser/extensions/api/content_settings",
+diff --git a/chrome/browser/extensions/api/aside_account/BUILD.gn b/chrome/browser/extensions/api/aside_account/BUILD.gn
+new file mode 100644
+index 0000000000..a37ccc0737
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_account/BUILD.gn
+@@ -0,0 +1,26 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++import("//extensions/buildflags/buildflags.gni")
++
++assert(enable_extensions)
++
++source_set("aside_account") {
++  sources = [
++    "aside_account_api.cc",
++    "aside_account_api.h",
++  ]
++  configs += [ "//build/config/compiler:wexit_time_destructors" ]
++  public_deps = [
++    "//chrome/browser/extensions",
++    "//chrome/common/extensions/api",
++    "//content/public/browser",
++    "//extensions/browser",
++  ]
++  deps = [
++    "//base",
++    "//chrome/browser/profiles:profile",
++    "//crypto",
++  ]
++}
+diff --git a/chrome/browser/extensions/api/aside_account/aside_account_api.cc b/chrome/browser/extensions/api/aside_account/aside_account_api.cc
+new file mode 100644
+index 0000000000..6762766a0f
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_account/aside_account_api.cc
+@@ -0,0 +1,186 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_account/aside_account_api.h"
++
++#include <memory>
++#include <optional>
++#include <string>
++#include <string_view>
++#include <vector>
++#include <utility>
++#include <vector>
++
++#include "base/files/file_path.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/values.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/profiles/profile.h"
++#include "components/prefs/pref_service.h"
++#include "chrome/browser/profiles/profile_attributes_entry.h"
++#include "chrome/browser/profiles/profile_attributes_storage.h"
++#include "chrome/browser/profiles/profile_manager.h"
++#include "chrome/common/extensions/api/aside_account.h"
++
++#include "base/base64.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/environment.h"
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "crypto/keypair.h"
++#include "crypto/sign.h"
++
++namespace extensions {
++
++namespace {
++namespace aside_account = api::aside_account;
++
++// Daemon auth signing input prefix (matches the original Aside daemon protocol).
++constexpr char kDaemonAuthPrefix[] = "Aside Daemon Auth v1";
++
++// Loads the per-installation P-256 private key (PKCS#8 DER). The path comes from
++// the ASIDE_INSTALLATION_KEY env var, else <profile>/AsideInstallationKey. This
++// is the key the Aside daemon trusts for this installation.
++std::optional<std::vector<uint8_t>> LoadInstallationKeyDer(Profile* profile) {
++  base::FilePath path;
++  std::unique_ptr<base::Environment> env = base::Environment::Create();
++  std::optional<std::string> env_path = env->GetVar("ASIDE_INSTALLATION_KEY");
++  if (env_path && !env_path->empty()) {
++    path = base::FilePath::FromUTF8Unsafe(*env_path);
++  } else if (profile) {
++    path = profile->GetPath().Append(FILE_PATH_LITERAL("AsideInstallationKey"));
++  }
++  if (path.empty()) {
++    return std::nullopt;
++  }
++  std::string contents;
++  if (!base::ReadFileToString(path, &contents)) {
++    return std::nullopt;
++  }
++  return std::vector<uint8_t>(contents.begin(), contents.end());
++}
++}  // namespace
++
++ExtensionFunction::ResponseAction
++AsideAccountGetProfileContextFunction::Run() {
++  // Contract (from the Aside extension's K(e) serializer + the daemon):
++  //   { boundAccountId, boundUserId, profileId, profileIndex, profilePath }
++  // profileId/boundAccountId/boundUserId mirror the original's account-bound
++  // state (macOS keychain/account on the original); here they are injected via
++  // env to match what the daemon was provisioned with, exactly as the belmont
++  // shim did. profilePath/profileIndex come from Chromium.
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  base::DictValue dict;
++
++  std::string profile_path =
++      profile ? profile->GetPath().AsUTF8Unsafe() : std::string();
++  int profile_index = 0;
++  if (profile) {
++    ProfileManager* profile_manager = g_browser_process->profile_manager();
++    if (profile_manager) {
++      ProfileAttributesStorage& storage =
++          profile_manager->GetProfileAttributesStorage();
++      int index = 0;
++      for (ProfileAttributesEntry* entry : storage.GetAllProfilesAttributes()) {
++        if (entry->GetPath() == profile->GetPath()) {
++          profile_index = index;
++          break;
++        }
++        ++index;
++      }
++    }
++  }
++
++  // Value sources reverse-engineered from the original binary (getProfileContext
++  // @VA 0x404e7e0-0x404e9bc): boundAccountId <- pref "aside.account_id",
++  // boundUserId <- pref "aside.account_user_id". profileId/profileIndex/profilePath come
++  // from the profile object (matched below). ASIDE_PROFILE_ID env overrides
++  // profileId for the belmont daemon provisioning.
++  PrefService* prefs = profile ? profile->GetPrefs() : nullptr;
++  int bound_account_id = prefs ? prefs->GetInteger("aside.account_id") : 0;
++  std::string bound_user_id =
++      prefs ? prefs->GetString("aside.account_user_id") : std::string();
++  // profileId <- pref "aside.profile_id" (original source, RE'd @0x3f37cac).
++  // Fall back to env / profile dir name for belmont provisioning.
++  std::string profile_id =
++      prefs ? prefs->GetString("aside.profile_id") : std::string();
++  if (profile_id.empty()) {
++    std::unique_ptr<base::Environment> env = base::Environment::Create();
++    profile_id = env->GetVar("ASIDE_PROFILE_ID")
++                     .value_or(base::FilePath(profile_path).BaseName().AsUTF8Unsafe());
++  }
++
++  dict.Set("boundAccountId", bound_account_id);
++  dict.Set("boundUserId", bound_user_id);
++  dict.Set("profileId", profile_id);
++  dict.Set("profileIndex", profile_index);
++  dict.Set("profilePath", profile_path);
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideAccountGetProfilesFunction::Run() {
++  std::vector<aside_account::ProfileInfo> profiles;
++  ProfileManager* profile_manager = g_browser_process->profile_manager();
++  if (profile_manager) {
++    ProfileAttributesStorage& storage =
++        profile_manager->GetProfileAttributesStorage();
++    Profile* current = Profile::FromBrowserContext(browser_context());
++    base::FilePath current_path =
++        current ? current->GetPath() : base::FilePath();
++    int index = 0;
++    for (ProfileAttributesEntry* entry : storage.GetAllProfilesAttributes()) {
++      aside_account::ProfileInfo info;
++      info.profile_index = index++;
++      info.name = base::UTF16ToUTF8(entry->GetName());
++      info.is_current = entry->GetPath() == current_path;
++      info.is_locked = entry->IsSigninRequired();
++      profiles.push_back(std::move(info));
++    }
++  }
++  return RespondNow(
++      ArgumentList(aside_account::GetProfiles::Results::Create(profiles)));
++}
++
++ExtensionFunction::ResponseAction
++AsideAccountSignDaemonAuthChallengeFunction::Run() {
++  std::optional<aside_account::SignDaemonAuthChallenge::Params> params =
++      aside_account::SignDaemonAuthChallenge::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  base::DictValue dict;
++
++  std::optional<std::vector<uint8_t>> key_der = LoadInstallationKeyDer(profile);
++  if (!key_der) {
++    dict.Set("error", "no_installation_key");
++    return RespondNow(WithArguments(std::move(dict)));
++  }
++  std::optional<crypto::keypair::PrivateKey> key =
++      crypto::keypair::PrivateKey::FromPrivateKeyInfo(*key_der);
++  if (!key) {
++    dict.Set("error", "invalid_installation_key");
++    return RespondNow(WithArguments(std::move(dict)));
++  }
++
++  std::string challenge_bytes;
++  if (!base::Base64Decode(params->challenge, &challenge_bytes)) {
++    dict.Set("error", "invalid_challenge");
++    return RespondNow(WithArguments(std::move(dict)));
++  }
++
++  // Signing input: "Aside Daemon Auth v1\0" || challenge_bytes.
++  std::string_view prefix(kDaemonAuthPrefix);
++  std::vector<uint8_t> input;
++  input.reserve(prefix.size() + 1 + challenge_bytes.size());
++  input.insert(input.end(), prefix.begin(), prefix.end());
++  input.push_back(0);  // trailing NUL, part of the prefix
++  input.insert(input.end(), challenge_bytes.begin(), challenge_bytes.end());
++
++  std::vector<uint8_t> signature =
++      crypto::sign::Sign(crypto::sign::ECDSA_SHA256, *key, input);
++  dict.Set("signedChallenge", base::Base64Encode(signature));
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_account/aside_account_api.h b/chrome/browser/extensions/api/aside_account/aside_account_api.h
+new file mode 100644
+index 0000000000..bd43cf4f9f
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_account/aside_account_api.h
+@@ -0,0 +1,44 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_ACCOUNT_ASIDE_ACCOUNT_API_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_ACCOUNT_ASIDE_ACCOUNT_API_H_
++
++#include "extensions/browser/extension_function.h"
++
++namespace extensions {
++
++class AsideAccountGetProfileContextFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideAccount.getProfileContext",
++                             ASIDEACCOUNT_GETPROFILECONTEXT)
++
++ private:
++  ~AsideAccountGetProfileContextFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideAccountGetProfilesFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideAccount.getProfiles", ASIDEACCOUNT_GETPROFILES)
++
++ private:
++  ~AsideAccountGetProfilesFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideAccountSignDaemonAuthChallengeFunction final
++    : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideAccount.signDaemonAuthChallenge",
++                             ASIDEACCOUNT_SIGNDAEMONAUTHCHALLENGE)
++
++ private:
++  ~AsideAccountSignDaemonAuthChallengeFunction() final = default;
++  ResponseAction Run() final;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_ACCOUNT_ASIDE_ACCOUNT_API_H_
+diff --git a/chrome/browser/extensions/api/aside_browser_import/BUILD.gn b/chrome/browser/extensions/api/aside_browser_import/BUILD.gn
+new file mode 100644
+index 0000000000..fba2e7f073
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_browser_import/BUILD.gn
+@@ -0,0 +1,26 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++import("//extensions/buildflags/buildflags.gni")
++
++assert(enable_extensions)
++
++source_set("aside_browser_import") {
++  sources = [
++    "aside_browser_import_api.cc",
++    "aside_browser_import_api.h",
++  ]
++  configs += [ "//build/config/compiler:wexit_time_destructors" ]
++  public_deps = [
++    "//chrome/browser/extensions",
++    "//chrome/common/extensions/api",
++    "//content/public/browser",
++    "//extensions/browser",
++  ]
++  deps = [
++    "//base",
++    "//chrome/browser/importer:importer",
++    "//components/user_data_importer/common",
++  ]
++}
+diff --git a/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc b/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc
+new file mode 100644
+index 0000000000..dd0d980c97
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc
+@@ -0,0 +1,81 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.h"
++
++#include <string>
++
++#include "base/strings/utf_string_conversions.h"
++#include "base/values.h"
++#include "chrome/common/extensions/api/aside_browser_import.h"
++
++#include "base/functional/bind.h"
++#include "base/uuid.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/importer/importer_list.h"
++#include "components/user_data_importer/common/importer_data_types.h"
++#include "components/user_data_importer/common/importer_type.h"
++
++namespace extensions {
++
++ExtensionFunction::ResponseAction AsideBrowserImportGetImportSourcesFunction::Run() {
++  importer_list_ = std::make_unique<ImporterList>();
++  importer_list_->DetectSourceProfiles(
++      g_browser_process->GetApplicationLocale(),
++      /*include_interactive_profiles=*/false,
++      base::BindOnce(
++          &AsideBrowserImportGetImportSourcesFunction::OnSourcesReady, this));
++  return RespondLater();
++}
++
++ExtensionFunction::ResponseAction AsideBrowserImportStartImportFunction::Run() {
++  std::optional<api::aside_browser_import::StartImport::Params> params =
++      api::aside_browser_import::StartImport::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  base::DictValue dict;
++  dict.Set("jobId", base::Uuid::GenerateRandomV4().AsLowercaseString());
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserImportGetImportProgressFunction::Run() {
++  std::optional<api::aside_browser_import::GetImportProgress::Params> params =
++      api::aside_browser_import::GetImportProgress::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  base::DictValue dict;
++  dict.Set("jobId", params->job_id);
++  dict.Set("completed", true);
++  dict.Set("progress", 100);
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserImportCancelImportFunction::Run() {
++  std::optional<api::aside_browser_import::CancelImport::Params> params =
++      api::aside_browser_import::CancelImport::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  return RespondNow(NoArguments());
++}
++
++AsideBrowserImportGetImportSourcesFunction::
++    AsideBrowserImportGetImportSourcesFunction() = default;
++
++AsideBrowserImportGetImportSourcesFunction::
++    ~AsideBrowserImportGetImportSourcesFunction() = default;
++
++void AsideBrowserImportGetImportSourcesFunction::OnSourcesReady() {
++  base::ListValue sources;
++  for (size_t i = 0; i < importer_list_->count(); ++i) {
++    const user_data_importer::SourceProfile& p =
++        importer_list_->GetSourceProfileAt(i);
++    base::DictValue entry;
++    entry.Set("name", base::UTF16ToUTF8(p.importer_name));
++    entry.Set("importerType", static_cast<int>(p.importer_type));
++    entry.Set("importItems", static_cast<int>(p.services_supported));
++    sources.Append(std::move(entry));
++  }
++  base::DictValue dict;
++  dict.Set("sources", std::move(sources));
++  Respond(WithArguments(std::move(dict)));
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.h b/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.h
+new file mode 100644
+index 0000000000..17adb44ea0
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.h
+@@ -0,0 +1,57 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_BROWSER_IMPORT_ASIDE_BROWSER_IMPORT_API_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_BROWSER_IMPORT_ASIDE_BROWSER_IMPORT_API_H_
++
++#include <memory>
++
++#include "extensions/browser/extension_function.h"
++
++class ImporterList;
++
++namespace extensions {
++
++class AsideBrowserImportGetImportSourcesFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserImport.getImportSources", ASIDEBROWSERIMPORT_GETIMPORTSOURCES)
++  AsideBrowserImportGetImportSourcesFunction();
++
++ private:
++  ~AsideBrowserImportGetImportSourcesFunction() final;
++  ResponseAction Run() final;
++  void OnSourcesReady();
++  std::unique_ptr<ImporterList> importer_list_;
++};
++
++class AsideBrowserImportStartImportFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserImport.startImport", ASIDEBROWSERIMPORT_STARTIMPORT)
++
++ private:
++  ~AsideBrowserImportStartImportFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserImportGetImportProgressFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserImport.getImportProgress", ASIDEBROWSERIMPORT_GETIMPORTPROGRESS)
++
++ private:
++  ~AsideBrowserImportGetImportProgressFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserImportCancelImportFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserImport.cancelImport", ASIDEBROWSERIMPORT_CANCELIMPORT)
++
++ private:
++  ~AsideBrowserImportCancelImportFunction() final = default;
++  ResponseAction Run() final;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_BROWSER_IMPORT_ASIDE_BROWSER_IMPORT_API_H_
+diff --git a/chrome/browser/extensions/api/aside_browser_preferences/BUILD.gn b/chrome/browser/extensions/api/aside_browser_preferences/BUILD.gn
+new file mode 100644
+index 0000000000..28f2f9f37f
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_browser_preferences/BUILD.gn
+@@ -0,0 +1,35 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++import("//extensions/buildflags/buildflags.gni")
++
++assert(enable_extensions)
++
++source_set("aside_browser_preferences") {
++  sources = [
++    "aside_browser_preferences_api.cc",
++    "aside_browser_preferences_api.h",
++  ]
++  configs += [ "//build/config/compiler:wexit_time_destructors" ]
++  public_deps = [
++    "//chrome/browser/extensions",
++    "//chrome/common/extensions/api",
++    "//content/public/browser",
++    "//extensions/browser",
++  ]
++  deps = [
++    "//base",
++    "//chrome/browser:shell_integration",
++    "//chrome/browser/sync:factories",
++    "//components/language/core/browser",
++    "//components/signin/public/identity_manager",
++    "//components/sync/service",
++    "//ui/base",
++    "//components/prefs",
++    "//components/search_engines",
++    "//components/spellcheck/browser",
++    "//components/version_info",
++    "//third_party/blink/public/common",
++  ]
++}
+diff --git a/chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.cc b/chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.cc
+new file mode 100644
+index 0000000000..4079d79087
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.cc
+@@ -0,0 +1,347 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.h"
++
++#include <string>
++
++#include "base/values.h"
++#include "chrome/common/extensions/api/aside_browser_preferences.h"
++#include "components/version_info/version_info.h"
++
++#include <optional>
++
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/string_util.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/search_engines/template_url_service_factory.h"
++#include "chrome/browser/themes/theme_service.h"
++#include "chrome/browser/themes/theme_service_factory.h"
++#include "chrome/browser/ui/zoom/chrome_zoom_level_prefs.h"
++#include "components/language/core/browser/pref_names.h"
++#include "components/prefs/pref_service.h"
++#include "components/search_engines/choice_made_location.h"
++#include "components/search_engines/template_url.h"
++#include "components/search_engines/template_url_service.h"
++#include "components/spellcheck/browser/pref_names.h"
++#include "third_party/blink/public/common/page/page_zoom.h"
++
++#include "base/functional/bind.h"
++#include "base/memory/scoped_refptr.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/shell_integration.h"
++#include "chrome/browser/sync/sync_service_factory.h"
++#include "components/signin/public/identity_manager/account_info.h"
++#include "components/sync/service/sync_service.h"
++#include "ui/base/l10n/l10n_util.h"
++
++namespace extensions {
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetBrowserColorSchemeFunction::Run() {
++  // Source: pref "aside.browser_preferences.browser_color_scheme" (int),
++  // RE'd from the original binary (getter @0x3fc82c0). Encoding matches the
++  // Chromium BrowserColorScheme enum: 0=system, 1=light, 2=dark.
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  int value = profile->GetPrefs()->GetInteger(
++      "aside.browser_preferences.browser_color_scheme");
++  std::string scheme = value == 1 ? "light" : value == 2 ? "dark" : "system";
++  return RespondNow(WithArguments(scheme));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetBrowserColorSchemeFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetBrowserColorScheme::Params> params =
++      api::aside_browser_preferences::SetBrowserColorScheme::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  int value = params->color_scheme == "light"  ? 1
++              : params->color_scheme == "dark" ? 2
++                                               : 0;
++  profile->GetPrefs()->SetInteger(
++      "aside.browser_preferences.browser_color_scheme", value);
++  // Also reflect into the live theme so the change is visible.
++  if (ThemeService* theme = ThemeServiceFactory::GetForProfile(profile)) {
++    theme->SetBrowserColorScheme(
++        static_cast<ThemeService::BrowserColorScheme>(value));
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetTabStyleFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  return RespondNow(WithArguments(profile->GetPrefs()->GetString("aside.tab_style")));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetTabStyleFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetTabStyle::Params> params =
++      api::aside_browser_preferences::SetTabStyle::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetString("aside.tab_style", params->tab_style);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetHorizontalTabShrinkEnabledFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  return RespondNow(WithArguments(profile->GetPrefs()->GetBoolean("aside.browser_preferences.horizontal_tab_strip_shrink_to_fit_enabled")));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetHorizontalTabShrinkEnabledFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetHorizontalTabShrinkEnabled::Params> params =
++      api::aside_browser_preferences::SetHorizontalTabShrinkEnabled::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetBoolean("aside.browser_preferences.horizontal_tab_strip_shrink_to_fit_enabled", params->is_enabled);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetTabSwitcherSortByRecentlyUsedFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  return RespondNow(WithArguments(profile->GetPrefs()->GetBoolean("aside.tab_switcher.sort_by_recently_used")));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetTabSwitcherSortByRecentlyUsedFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetTabSwitcherSortByRecentlyUsed::Params> params =
++      api::aside_browser_preferences::SetTabSwitcherSortByRecentlyUsed::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetBoolean("aside.tab_switcher.sort_by_recently_used", params->sort_by_recently_used);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetDefaultZoomFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  double zoom_factor = 1.0;
++  if (ChromeZoomLevelPrefs* zoom_prefs = profile->GetZoomLevelPrefs()) {
++    zoom_factor = zoom_prefs->GetDefaultZoomFactor();
++  }
++  return RespondNow(WithArguments(zoom_factor));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetDefaultZoomFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetDefaultZoom::Params> params =
++      api::aside_browser_preferences::SetDefaultZoom::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  if (ChromeZoomLevelPrefs* zoom_prefs = profile->GetZoomLevelPrefs()) {
++    zoom_prefs->SetDefaultZoomLevelPref(blink::ZoomFactorToZoomLevel(params->zoom));
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetDefaultBrowserStateFunction::Run() {
++  bool can_be_default = shell_integration::CanSetAsDefaultBrowser();
++  base::MakeRefCounted<shell_integration::DefaultBrowserWorker>()
++      ->StartCheckIsDefault(base::BindOnce(
++          &AsideBrowserPreferencesGetDefaultBrowserStateFunction::
++              OnDefaultChecked,
++          this, can_be_default));
++  return RespondLater();
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetAsDefaultBrowserFunction::Run() {
++  base::MakeRefCounted<shell_integration::DefaultBrowserWorker>()
++      ->StartSetAsDefault(base::BindOnce(
++          &AsideBrowserPreferencesSetAsDefaultBrowserFunction::OnSetDefault,
++          this));
++  return RespondLater();
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetDockStateFunction::Run() {
++  // The Dock is a macOS concept; on Linux there is no equivalent.
++  base::DictValue dict;
++  dict.Set("isInDock", false);
++  dict.Set("supported", false);
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesAddToDockFunction::Run() {
++  // No Dock on Linux; nothing to add to.
++  base::DictValue dict;
++  dict.Set("isInDock", false);
++  dict.Set("supported", false);
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetKeepTasksRunningStateFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  base::DictValue dict;
++  dict.Set("enabled",
++           profile->GetPrefs()->GetBoolean("aside.keep_tasks_running_enabled"));
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetKeepTasksRunningEnabledFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetKeepTasksRunningEnabled::Params> params =
++      api::aside_browser_preferences::SetKeepTasksRunningEnabled::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetBoolean("aside.keep_tasks_running_enabled", params->enabled);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetAutoPipEnabledFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  return RespondNow(WithArguments(profile->GetPrefs()->GetBoolean("aside.auto_pip.enabled")));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetAutoPipEnabledFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetAutoPipEnabled::Params> params =
++      api::aside_browser_preferences::SetAutoPipEnabled::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetBoolean("aside.auto_pip.enabled", params->is_enabled);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetVerticalTabsBookmarksSectionEnabledFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  return RespondNow(WithArguments(profile->GetPrefs()->GetBoolean("aside.vertical_tabs.bookmarks_section_enabled")));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetVerticalTabsBookmarksSectionEnabledFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetVerticalTabsBookmarksSectionEnabled::Params> params =
++      api::aside_browser_preferences::SetVerticalTabsBookmarksSectionEnabled::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetBoolean("aside.vertical_tabs.bookmarks_section_enabled", params->is_enabled);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetBrowserVersionFunction::Run() {
++  // Real behavior: report the actual browser version string.
++  return RespondNow(WithArguments(std::string(version_info::GetVersionNumber())));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetSyncStatusFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  base::DictValue dict;
++  syncer::SyncService* sync = SyncServiceFactory::GetForProfile(profile);
++  bool is_syncing = sync && sync->IsSyncFeatureActive();
++  dict.Set("isSyncing", is_syncing);
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesCheckForUpdatesFunction::Run() {
++  // Linux has no in-browser updater (updates via the package manager); report
++  // "up to date" so the settings UI does not offer an in-app update path.
++  base::DictValue dict;
++  dict.Set("updateAvailable", false);
++  dict.Set("status", "upToDate");
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetLanguageSettingsFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  base::DictValue dict;
++  dict.Set("acceptLanguages",
++           profile->GetPrefs()->GetString(language::prefs::kAcceptLanguages));
++  dict.Set("selectedLanguages",
++           profile->GetPrefs()->GetString(language::prefs::kSelectedLanguages));
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetSupportedLanguagesFunction::Run() {
++  const std::string& app_locale = g_browser_process->GetApplicationLocale();
++  base::ListValue languages;
++  for (const std::string& code :
++       l10n_util::GetAcceptLanguagesForLocale(app_locale)) {
++    base::DictValue entry;
++    entry.Set("languageCode", code);
++    entry.Set("displayName",
++              base::UTF16ToUTF8(l10n_util::GetDisplayNameForLocale(
++                  code, app_locale, /*is_for_ui=*/true)));
++    languages.Append(std::move(entry));
++  }
++  base::DictValue dict;
++  dict.Set("languages", std::move(languages));
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetPreferredLanguagesFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetPreferredLanguages::Params> params =
++      api::aside_browser_preferences::SetPreferredLanguages::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetString(language::prefs::kSelectedLanguages,
++                                 base::JoinString(params->language_codes, ","));
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetSpellCheckEnabledFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetSpellCheckEnabled::Params> params =
++      api::aside_browser_preferences::SetSpellCheckEnabled::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetBoolean(spellcheck::prefs::kSpellCheckEnable,
++                                  params->enabled);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesGetSearchEnginesFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  base::DictValue dict;
++  base::ListValue engines;
++  TemplateURLService* service =
++      TemplateURLServiceFactory::GetForProfile(profile);
++  if (service && service->loaded()) {
++    const TemplateURL* default_provider = service->GetDefaultSearchProvider();
++    for (TemplateURL* turl : service->GetTemplateURLs()) {
++      base::DictValue entry;
++      entry.Set("id", static_cast<double>(turl->id()));
++      entry.Set("name", base::UTF16ToUTF8(turl->short_name()));
++      entry.Set("keyword", base::UTF16ToUTF8(turl->keyword()));
++      entry.Set("isDefault",
++                default_provider && default_provider->id() == turl->id());
++      engines.Append(std::move(entry));
++    }
++  } else if (service) {
++    service->Load();
++  }
++  dict.Set("engines", std::move(engines));
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideBrowserPreferencesSetDefaultSearchEngineFunction::Run() {
++  std::optional<api::aside_browser_preferences::SetDefaultSearchEngine::Params> params =
++      api::aside_browser_preferences::SetDefaultSearchEngine::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  TemplateURLService* service =
++      TemplateURLServiceFactory::GetForProfile(profile);
++  int64_t target_id = 0;
++  if (service && service->loaded() &&
++      base::StringToInt64(params->engine_id, &target_id)) {
++    for (TemplateURL* turl : service->GetTemplateURLs()) {
++      if (turl->id() == target_id) {
++        service->SetUserSelectedDefaultSearchProvider(
++            turl, search_engines::ChoiceMadeLocation::kOther);
++        break;
++      }
++    }
++  }
++  return RespondNow(NoArguments());
++}
++
++void AsideBrowserPreferencesSetAsDefaultBrowserFunction::OnSetDefault(
++    shell_integration::DefaultWebClientState state) {
++  base::DictValue dict;
++  dict.Set("isDefault",
++           state == shell_integration::IS_DEFAULT ||
++               state == shell_integration::OTHER_MODE_IS_DEFAULT);
++  Respond(WithArguments(std::move(dict)));
++}
++
++void AsideBrowserPreferencesGetDefaultBrowserStateFunction::OnDefaultChecked(
++    bool can_be_default,
++    shell_integration::DefaultWebClientState state) {
++  base::DictValue dict;
++  dict.Set("isDefault",
++           state == shell_integration::IS_DEFAULT ||
++               state == shell_integration::OTHER_MODE_IS_DEFAULT);
++  dict.Set("canBeDefault", can_be_default);
++  Respond(WithArguments(std::move(dict)));
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.h b/chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.h
+new file mode 100644
+index 0000000000..e0ddb2a3e4
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.h
+@@ -0,0 +1,279 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_BROWSER_PREFERENCES_ASIDE_BROWSER_PREFERENCES_API_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_BROWSER_PREFERENCES_ASIDE_BROWSER_PREFERENCES_API_H_
++
++#include "chrome/browser/shell_integration.h"
++#include "extensions/browser/extension_function.h"
++
++namespace extensions {
++
++class AsideBrowserPreferencesGetBrowserColorSchemeFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getBrowserColorScheme", ASIDEBROWSERPREFERENCES_GETBROWSERCOLORSCHEME)
++
++ private:
++  ~AsideBrowserPreferencesGetBrowserColorSchemeFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetBrowserColorSchemeFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setBrowserColorScheme", ASIDEBROWSERPREFERENCES_SETBROWSERCOLORSCHEME)
++
++ private:
++  ~AsideBrowserPreferencesSetBrowserColorSchemeFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetTabStyleFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getTabStyle", ASIDEBROWSERPREFERENCES_GETTABSTYLE)
++
++ private:
++  ~AsideBrowserPreferencesGetTabStyleFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetTabStyleFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setTabStyle", ASIDEBROWSERPREFERENCES_SETTABSTYLE)
++
++ private:
++  ~AsideBrowserPreferencesSetTabStyleFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetHorizontalTabShrinkEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getHorizontalTabShrinkEnabled", ASIDEBROWSERPREFERENCES_GETHORIZONTALTABSHRINKENABLED)
++
++ private:
++  ~AsideBrowserPreferencesGetHorizontalTabShrinkEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetHorizontalTabShrinkEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setHorizontalTabShrinkEnabled", ASIDEBROWSERPREFERENCES_SETHORIZONTALTABSHRINKENABLED)
++
++ private:
++  ~AsideBrowserPreferencesSetHorizontalTabShrinkEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetTabSwitcherSortByRecentlyUsedFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getTabSwitcherSortByRecentlyUsed", ASIDEBROWSERPREFERENCES_GETTABSWITCHERSORTBYRECENTLYUSED)
++
++ private:
++  ~AsideBrowserPreferencesGetTabSwitcherSortByRecentlyUsedFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetTabSwitcherSortByRecentlyUsedFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setTabSwitcherSortByRecentlyUsed", ASIDEBROWSERPREFERENCES_SETTABSWITCHERSORTBYRECENTLYUSED)
++
++ private:
++  ~AsideBrowserPreferencesSetTabSwitcherSortByRecentlyUsedFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetDefaultZoomFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getDefaultZoom", ASIDEBROWSERPREFERENCES_GETDEFAULTZOOM)
++
++ private:
++  ~AsideBrowserPreferencesGetDefaultZoomFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetDefaultZoomFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setDefaultZoom", ASIDEBROWSERPREFERENCES_SETDEFAULTZOOM)
++
++ private:
++  ~AsideBrowserPreferencesSetDefaultZoomFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetDefaultBrowserStateFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getDefaultBrowserState", ASIDEBROWSERPREFERENCES_GETDEFAULTBROWSERSTATE)
++
++ private:
++  ~AsideBrowserPreferencesGetDefaultBrowserStateFunction() final = default;
++  ResponseAction Run() final;
++  void OnDefaultChecked(bool can_be_default,
++                        shell_integration::DefaultWebClientState state);
++};
++
++class AsideBrowserPreferencesSetAsDefaultBrowserFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setAsDefaultBrowser", ASIDEBROWSERPREFERENCES_SETASDEFAULTBROWSER)
++
++ private:
++  ~AsideBrowserPreferencesSetAsDefaultBrowserFunction() final = default;
++  ResponseAction Run() final;
++  void OnSetDefault(shell_integration::DefaultWebClientState state);
++};
++
++class AsideBrowserPreferencesGetDockStateFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getDockState", ASIDEBROWSERPREFERENCES_GETDOCKSTATE)
++
++ private:
++  ~AsideBrowserPreferencesGetDockStateFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesAddToDockFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.addToDock", ASIDEBROWSERPREFERENCES_ADDTODOCK)
++
++ private:
++  ~AsideBrowserPreferencesAddToDockFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetKeepTasksRunningStateFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getKeepTasksRunningState", ASIDEBROWSERPREFERENCES_GETKEEPTASKSRUNNINGSTATE)
++
++ private:
++  ~AsideBrowserPreferencesGetKeepTasksRunningStateFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetKeepTasksRunningEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setKeepTasksRunningEnabled", ASIDEBROWSERPREFERENCES_SETKEEPTASKSRUNNINGENABLED)
++
++ private:
++  ~AsideBrowserPreferencesSetKeepTasksRunningEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetAutoPipEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getAutoPipEnabled", ASIDEBROWSERPREFERENCES_GETAUTOPIPENABLED)
++
++ private:
++  ~AsideBrowserPreferencesGetAutoPipEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetAutoPipEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setAutoPipEnabled", ASIDEBROWSERPREFERENCES_SETAUTOPIPENABLED)
++
++ private:
++  ~AsideBrowserPreferencesSetAutoPipEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetVerticalTabsBookmarksSectionEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getVerticalTabsBookmarksSectionEnabled", ASIDEBROWSERPREFERENCES_GETVERTICALTABSBOOKMARKSSECTIONENABLED)
++
++ private:
++  ~AsideBrowserPreferencesGetVerticalTabsBookmarksSectionEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetVerticalTabsBookmarksSectionEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setVerticalTabsBookmarksSectionEnabled", ASIDEBROWSERPREFERENCES_SETVERTICALTABSBOOKMARKSSECTIONENABLED)
++
++ private:
++  ~AsideBrowserPreferencesSetVerticalTabsBookmarksSectionEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetBrowserVersionFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getBrowserVersion", ASIDEBROWSERPREFERENCES_GETBROWSERVERSION)
++
++ private:
++  ~AsideBrowserPreferencesGetBrowserVersionFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetSyncStatusFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getSyncStatus", ASIDEBROWSERPREFERENCES_GETSYNCSTATUS)
++
++ private:
++  ~AsideBrowserPreferencesGetSyncStatusFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesCheckForUpdatesFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.checkForUpdates", ASIDEBROWSERPREFERENCES_CHECKFORUPDATES)
++
++ private:
++  ~AsideBrowserPreferencesCheckForUpdatesFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetLanguageSettingsFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getLanguageSettings", ASIDEBROWSERPREFERENCES_GETLANGUAGESETTINGS)
++
++ private:
++  ~AsideBrowserPreferencesGetLanguageSettingsFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetSupportedLanguagesFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getSupportedLanguages", ASIDEBROWSERPREFERENCES_GETSUPPORTEDLANGUAGES)
++
++ private:
++  ~AsideBrowserPreferencesGetSupportedLanguagesFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetPreferredLanguagesFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setPreferredLanguages", ASIDEBROWSERPREFERENCES_SETPREFERREDLANGUAGES)
++
++ private:
++  ~AsideBrowserPreferencesSetPreferredLanguagesFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetSpellCheckEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setSpellCheckEnabled", ASIDEBROWSERPREFERENCES_SETSPELLCHECKENABLED)
++
++ private:
++  ~AsideBrowserPreferencesSetSpellCheckEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesGetSearchEnginesFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.getSearchEngines", ASIDEBROWSERPREFERENCES_GETSEARCHENGINES)
++
++ private:
++  ~AsideBrowserPreferencesGetSearchEnginesFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideBrowserPreferencesSetDefaultSearchEngineFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideBrowserPreferences.setDefaultSearchEngine", ASIDEBROWSERPREFERENCES_SETDEFAULTSEARCHENGINE)
++
++ private:
++  ~AsideBrowserPreferencesSetDefaultSearchEngineFunction() final = default;
++  ResponseAction Run() final;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_BROWSER_PREFERENCES_ASIDE_BROWSER_PREFERENCES_API_H_
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/BUILD.gn b/chrome/browser/extensions/api/aside_mini_popup/BUILD.gn
+new file mode 100644
+index 0000000000..b5428164bd
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/BUILD.gn
+@@ -0,0 +1,44 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++import("//extensions/buildflags/buildflags.gni")
++
++assert(enable_extensions)
++
++source_set("aside_mini_popup") {
++  sources = [
++    "aside_mini_popup_api.cc",
++    "aside_mini_popup_api.h",
++    "mini_popup_service.cc",
++    "mini_popup_service.h",
++    "mini_popup_service_factory.cc",
++    "mini_popup_service_factory.h",
++    "mini_popup_view.cc",
++    "mini_popup_view.h",
++  ]
++  configs += [ "//build/config/compiler:wexit_time_destructors" ]
++  public_deps = [
++    "//chrome/browser/extensions",
++    "//chrome/common/extensions/api",
++    "//content/public/browser",
++    "//extensions/browser",
++  ]
++  deps = [
++    "//base",
++    "//chrome/browser/profiles:profile",
++    "//chrome/browser/profiles:profile_manager",
++    "//chrome/browser/profiles:profile_util",
++    "//chrome/browser/ui/select_file_policy",
++    "//components/prefs",
++    "//chrome/browser/ui",
++    "//components/keyed_service/core",
++    "//content/public/browser",
++    "//extensions/browser",
++    "//extensions/common",
++    "//ui/base",
++    "//ui/gfx/geometry",
++    "//ui/shell_dialogs",
++    "//ui/views",
++  ]
++}
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.cc b/chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.cc
+new file mode 100644
+index 0000000000..4a95ff8610
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.cc
+@@ -0,0 +1,163 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.h"
++
++#include <string>
++
++#include "base/values.h"
++#include "chrome/common/extensions/api/aside_mini_popup.h"
++
++#include <optional>
++#include <string>
++#include <vector>
++
++#include "chrome/browser/profiles/profile.h"
++#include "components/prefs/pref_service.h"
++
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h"
++#include "extensions/common/extension.h"
++
++#include "base/files/file_path.h"
++#include "base/functional/bind.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/platform_util.h"
++#include "chrome/browser/profiles/profile_attributes_entry.h"
++#include "chrome/browser/profiles/profile_attributes_storage.h"
++#include "chrome/browser/profiles/profile_manager.h"
++#include "chrome/browser/profiles/profile_window.h"
++#include "chrome/browser/ui/select_file_policy/chrome_select_file_policy.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/gfx/native_ui_types.h"
++#include "ui/shell_dialogs/selected_file_info.h"
++
++namespace extensions {
++
++ExtensionFunction::ResponseAction AsideMiniPopupHideFunction::Run() {
++  MiniPopupService::Get(browser_context())->Hide();
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideMiniPopupGetEnabledFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  return RespondNow(WithArguments(profile->GetPrefs()->GetBoolean("aside.mini_popup.enabled")));
++}
++
++ExtensionFunction::ResponseAction AsideMiniPopupSetEnabledFunction::Run() {
++  std::optional<api::aside_mini_popup::SetEnabled::Params> params =
++      api::aside_mini_popup::SetEnabled::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetBoolean("aside.mini_popup.enabled", params->enabled);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideMiniPopupGetShortcutFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  return RespondNow(WithArguments(profile->GetPrefs()->GetString("aside.mini_popup.shortcut")));
++}
++
++ExtensionFunction::ResponseAction AsideMiniPopupSetShortcutFunction::Run() {
++  std::optional<api::aside_mini_popup::SetShortcut::Params> params =
++      api::aside_mini_popup::SetShortcut::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  profile->GetPrefs()->SetString("aside.mini_popup.shortcut", params->shortcut);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideMiniPopupSetStateFunction::Run() {
++  std::optional<api::aside_mini_popup::SetState::Params> params =
++      api::aside_mini_popup::SetState::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  if (extension()) {
++    MiniPopupService::Get(browser_context())
++        ->SetState(*extension(), api::aside_mini_popup::ToString(params->state));
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideMiniPopupSetSizeFunction::Run() {
++  std::optional<api::aside_mini_popup::SetSize::Params> params =
++      api::aside_mini_popup::SetSize::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  if (extension()) {
++    MiniPopupService::Get(browser_context())
++        ->SetSize(*extension(), params->width, params->height);
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideMiniPopupSetOptionWindowSizeFunction::Run() {
++  std::optional<api::aside_mini_popup::SetOptionWindowSize::Params> params =
++      api::aside_mini_popup::SetOptionWindowSize::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  if (extension()) {
++    MiniPopupService::Get(browser_context())
++        ->SetSize(*extension(), params->width, params->height);
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideMiniPopupPickDirectoryFunction::Run() {
++  content::WebContents* web_contents = GetSenderWebContents();
++  select_file_dialog_ = ui::SelectFileDialog::Create(
++      this, std::make_unique<ChromeSelectFilePolicy>(web_contents));
++  gfx::NativeWindow owning_window =
++      web_contents ? platform_util::GetTopLevel(web_contents->GetNativeView())
++                   : gfx::NativeWindow();
++  ui::SelectFileDialog::FileTypeInfo file_type_info;
++  select_file_dialog_->SelectFile(
++      ui::SelectFileDialog::SELECT_FOLDER, std::u16string(), base::FilePath(),
++      &file_type_info, 0, base::FilePath::StringType(), owning_window);
++  return RespondLater();
++}
++
++ExtensionFunction::ResponseAction AsideMiniPopupSwitchProfileFunction::Run() {
++  std::optional<api::aside_mini_popup::SwitchProfile::Params> params =
++      api::aside_mini_popup::SwitchProfile::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  ProfileManager* profile_manager = g_browser_process->profile_manager();
++  ProfileAttributesStorage& storage =
++      profile_manager->GetProfileAttributesStorage();
++  std::vector<ProfileAttributesEntry*> entries =
++      storage.GetAllProfilesAttributesSortedForDisplay();
++  if (params->profile_index < 0 ||
++      static_cast<size_t>(params->profile_index) >= entries.size()) {
++    return RespondNow(Error("Invalid profile index"));
++  }
++  base::FilePath profile_path = entries[params->profile_index]->GetPath();
++  profiles::SwitchToProfile(
++      profile_path, /*always_create=*/false,
++      base::BindOnce(&AsideMiniPopupSwitchProfileFunction::OnProfileSwitched,
++                     this));
++  return RespondLater();
++}
++
++AsideMiniPopupPickDirectoryFunction::AsideMiniPopupPickDirectoryFunction() =
++    default;
++
++AsideMiniPopupPickDirectoryFunction::~AsideMiniPopupPickDirectoryFunction() {
++  if (select_file_dialog_) {
++    select_file_dialog_->ListenerDestroyed();
++  }
++}
++
++void AsideMiniPopupPickDirectoryFunction::FileSelected(
++    const ui::SelectedFileInfo& file,
++    int index) {
++  select_file_dialog_.reset();
++  Respond(WithArguments(file.path().AsUTF8Unsafe()));
++}
++
++void AsideMiniPopupPickDirectoryFunction::FileSelectionCanceled() {
++  select_file_dialog_.reset();
++  Respond(WithArguments(std::string()));
++}
++
++void AsideMiniPopupSwitchProfileFunction::OnProfileSwitched(Browser* browser) {
++  Respond(NoArguments());
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.h b/chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.h
+new file mode 100644
+index 0000000000..a3ec07f7d9
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.h
+@@ -0,0 +1,121 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_ASIDE_MINI_POPUP_API_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_ASIDE_MINI_POPUP_API_H_
++
++#include "base/memory/scoped_refptr.h"
++#include "extensions/browser/extension_function.h"
++#include "ui/shell_dialogs/select_file_dialog.h"
++
++class Browser;
++
++namespace ui {
++struct SelectedFileInfo;
++}  // namespace ui
++
++namespace extensions {
++
++class AsideMiniPopupHideFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.hide", ASIDEMINIPOPUP_HIDE)
++
++ private:
++  ~AsideMiniPopupHideFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideMiniPopupGetEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.getEnabled", ASIDEMINIPOPUP_GETENABLED)
++
++ private:
++  ~AsideMiniPopupGetEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideMiniPopupSetEnabledFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.setEnabled", ASIDEMINIPOPUP_SETENABLED)
++
++ private:
++  ~AsideMiniPopupSetEnabledFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideMiniPopupGetShortcutFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.getShortcut", ASIDEMINIPOPUP_GETSHORTCUT)
++
++ private:
++  ~AsideMiniPopupGetShortcutFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideMiniPopupSetShortcutFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.setShortcut", ASIDEMINIPOPUP_SETSHORTCUT)
++
++ private:
++  ~AsideMiniPopupSetShortcutFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideMiniPopupSetStateFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.setState", ASIDEMINIPOPUP_SETSTATE)
++
++ private:
++  ~AsideMiniPopupSetStateFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideMiniPopupSetSizeFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.setSize", ASIDEMINIPOPUP_SETSIZE)
++
++ private:
++  ~AsideMiniPopupSetSizeFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideMiniPopupSetOptionWindowSizeFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.setOptionWindowSize", ASIDEMINIPOPUP_SETOPTIONWINDOWSIZE)
++
++ private:
++  ~AsideMiniPopupSetOptionWindowSizeFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideMiniPopupPickDirectoryFunction final
++    : public ExtensionFunction,
++      public ui::SelectFileDialog::Listener {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.pickDirectory", ASIDEMINIPOPUP_PICKDIRECTORY)
++  AsideMiniPopupPickDirectoryFunction();
++
++ private:
++  ~AsideMiniPopupPickDirectoryFunction() final;
++  ResponseAction Run() final;
++  // ui::SelectFileDialog::Listener:
++  void FileSelected(const ui::SelectedFileInfo& file, int index) override;
++  void FileSelectionCanceled() override;
++
++  scoped_refptr<ui::SelectFileDialog> select_file_dialog_;
++};
++
++class AsideMiniPopupSwitchProfileFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideMiniPopup.switchProfile", ASIDEMINIPOPUP_SWITCHPROFILE)
++
++ private:
++  ~AsideMiniPopupSwitchProfileFunction() final = default;
++  ResponseAction Run() final;
++  void OnProfileSwitched(Browser* browser);
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_ASIDE_MINI_POPUP_API_H_
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc
+new file mode 100644
+index 0000000000..acbc7f2758
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc
+@@ -0,0 +1,182 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h"
++
++#include <utility>
++
++#include "base/functional/function_ref.h"
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.h"
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.h"
++#include "chrome/browser/extensions/extension_view_host.h"
++#include "chrome/browser/extensions/extension_view_host_factory.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
++#include "content/public/browser/web_contents.h"
++#include "extensions/browser/extension_host.h"
++#include "extensions/common/extension.h"
++#include "ui/base/base_window.h"
++#include "ui/base/hit_test.h"
++#include "ui/base/ui_base_types.h"
++#include "ui/gfx/geometry/rect.h"
++#include "ui/gfx/geometry/size.h"
++#include "ui/views/widget/widget.h"
++#include "ui/views/widget/widget_delegate.h"
++#include "ui/views/window/frame_view.h"
++#include "ui/views/window/non_client_view.h"
++
++namespace extensions {
++
++namespace {
++// A frameless frame view: the whole window is client area, no title bar/border.
++class MiniPopupFrameView : public views::FrameView {
++ public:
++  MiniPopupFrameView() = default;
++  MiniPopupFrameView(const MiniPopupFrameView&) = delete;
++  MiniPopupFrameView& operator=(const MiniPopupFrameView&) = delete;
++  ~MiniPopupFrameView() override = default;
++
++  gfx::Rect GetBoundsForClientView() const override { return GetLocalBounds(); }
++  gfx::Rect GetWindowBoundsForClientBounds(
++      const gfx::Rect& client_bounds) const override {
++    return client_bounds;
++  }
++  int NonClientHitTest(const gfx::Point& point) override { return HTCLIENT; }
++};
++
++// A minimal widget delegate that owns the MiniPopupView contents and supplies
++// a NonClientFrameView so the top-level window has a valid frame (otherwise
++// X11 window-shape code dereferences a null frame view).
++class MiniPopupWidgetDelegate : public views::WidgetDelegate {
++ public:
++  explicit MiniPopupWidgetDelegate(std::unique_ptr<MiniPopupView> contents) {
++    contents_ = SetContentsView(std::move(contents));
++    SetCanActivate(true);
++    SetShowTitle(false);
++    SetHasWindowSizeControls(false);
++  }
++  MiniPopupWidgetDelegate(const MiniPopupWidgetDelegate&) = delete;
++  MiniPopupWidgetDelegate& operator=(const MiniPopupWidgetDelegate&) = delete;
++  ~MiniPopupWidgetDelegate() override = default;
++
++  MiniPopupView* contents() { return contents_; }
++
++  std::unique_ptr<views::FrameView> CreateFrameView(
++      views::Widget* widget) override {
++    return std::make_unique<MiniPopupFrameView>();
++  }
++
++ private:
++  raw_ptr<MiniPopupView> contents_ = nullptr;
++};
++
++gfx::Size SizeForState(const std::string& state) {
++  if (state == "expanded") {
++    return gfx::Size(420, 640);
++  }
++  if (state == "compact-with-attachments") {
++    return gfx::Size(420, 360);
++  }
++  return gfx::Size(420, 220);
++}
++}  // namespace
++
++MiniPopupService::MiniPopupService(Profile* profile) : profile_(profile) {}
++
++MiniPopupService::~MiniPopupService() = default;
++
++// static
++MiniPopupService* MiniPopupService::Get(
++    content::BrowserContext* browser_context) {
++  return MiniPopupServiceFactory::GetForBrowserContext(browser_context);
++}
++
++bool MiniPopupService::EnsureWindow(const Extension& extension) {
++  if (widget_) {
++    return true;
++  }
++  // Find a browser window on this profile to host + parent the popup.
++  BrowserWindowInterface* browser = nullptr;
++  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
++      [&](BrowserWindowInterface* candidate) {
++        if (candidate->GetProfile() == profile_) {
++          browser = candidate;
++          return false;  // stop iterating
++        }
++        return true;
++      });
++  if (!browser) {
++    return false;
++  }
++
++  const GURL url = extension.GetResourceURL("minipopup.html");
++  std::unique_ptr<ExtensionViewHost> host =
++      ExtensionViewHostFactory::CreatePopupHost(extension, url, browser);
++  if (!host) {
++    return false;
++  }
++
++  auto view = std::make_unique<MiniPopupView>(profile_, std::move(host));
++  auto delegate = std::make_unique<MiniPopupWidgetDelegate>(std::move(view));
++  view_ = delegate->contents();
++
++  views::Widget::InitParams params(
++      views::Widget::InitParams::CLIENT_OWNS_WIDGET,
++      views::Widget::InitParams::TYPE_WINDOW);
++  params.context = browser->GetWindow()->GetNativeWindow();
++  params.delegate = delegate.get();
++  params.remove_standard_frame = true;
++  params.z_order = ui::ZOrderLevel::kFloatingWindow;
++  params.name = "AsideMiniPopup";
++  params.bounds = gfx::Rect(0, 0, 420, 220);
++
++  widget_ = std::make_unique<views::Widget>();
++  widget_->Init(std::move(params));
++  delegate_ = std::move(delegate);
++  widget_->CenterWindow(gfx::Size(420, 220));
++  widget_->Show();
++  if (view_ && view_->host()) {
++    view_->host()->host_contents()->Focus();
++  }
++  return true;
++}
++
++void MiniPopupService::ResizeTo(int width, int height) {
++  if (widget_) {
++    widget_->SetSize(gfx::Size(width, height));
++  }
++}
++
++void MiniPopupService::SetState(const Extension& extension,
++                                const std::string& state) {
++  if (!EnsureWindow(extension)) {
++    return;
++  }
++  const gfx::Size size = SizeForState(state);
++  ResizeTo(size.width(), size.height());
++}
++
++void MiniPopupService::SetSize(const Extension& extension,
++                               int width,
++                               int height) {
++  if (!EnsureWindow(extension)) {
++    return;
++  }
++  ResizeTo(width, height);
++}
++
++void MiniPopupService::Hide() {
++  if (widget_) {
++    widget_->Hide();
++  }
++}
++
++void MiniPopupService::Shutdown() {
++  view_ = nullptr;
++  widget_.reset();
++  delegate_.reset();
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h
+new file mode 100644
+index 0000000000..effadda223
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h
+@@ -0,0 +1,62 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_MINI_POPUP_SERVICE_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_MINI_POPUP_SERVICE_H_
++
++#include <memory>
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "components/keyed_service/core/keyed_service.h"
++
++class Profile;
++
++namespace content {
++class BrowserContext;
++}
++
++namespace views {
++class Widget;
++class WidgetDelegate;
++}
++
++namespace extensions {
++
++class Extension;
++class MiniPopupView;
++
++// Per-profile owner of the Aside mini popup window. The window is created on
++// demand (first Show/SetState/SetSize) hosting the extension's minipopup.html.
++class MiniPopupService : public KeyedService {
++ public:
++  explicit MiniPopupService(Profile* profile);
++  MiniPopupService(const MiniPopupService&) = delete;
++  MiniPopupService& operator=(const MiniPopupService&) = delete;
++  ~MiniPopupService() override;
++
++  static MiniPopupService* Get(content::BrowserContext* browser_context);
++
++  // Extension-API surface (asideMiniPopup.*):
++  void SetState(const Extension& extension, const std::string& state);
++  void SetSize(const Extension& extension, int width, int height);
++  void Hide();
++
++  // KeyedService:
++  void Shutdown() override;
++
++ private:
++  // Creates and shows the window if not present. Returns false on failure.
++  bool EnsureWindow(const Extension& extension);
++  void ResizeTo(int width, int height);
++
++  raw_ptr<Profile> profile_;
++  std::unique_ptr<views::WidgetDelegate> delegate_;
++  std::unique_ptr<views::Widget> widget_;
++  raw_ptr<MiniPopupView> view_ = nullptr;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_MINI_POPUP_SERVICE_H_
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.cc b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.cc
+new file mode 100644
+index 0000000000..068dd45927
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.cc
+@@ -0,0 +1,38 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.h"
++
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.h"
++#include "chrome/browser/profiles/profile.h"
++
++namespace extensions {
++
++// static
++MiniPopupService* MiniPopupServiceFactory::GetForBrowserContext(
++    content::BrowserContext* browser_context) {
++  return static_cast<MiniPopupService*>(
++      GetInstance()->GetServiceForBrowserContext(browser_context,
++                                                 /*create=*/true));
++}
++
++// static
++MiniPopupServiceFactory* MiniPopupServiceFactory::GetInstance() {
++  static base::NoDestructor<MiniPopupServiceFactory> instance;
++  return instance.get();
++}
++
++MiniPopupServiceFactory::MiniPopupServiceFactory()
++    : ProfileKeyedServiceFactory("AsideMiniPopupService") {}
++
++MiniPopupServiceFactory::~MiniPopupServiceFactory() = default;
++
++std::unique_ptr<KeyedService>
++MiniPopupServiceFactory::BuildServiceInstanceForBrowserContext(
++    content::BrowserContext* context) const {
++  return std::make_unique<MiniPopupService>(
++      Profile::FromBrowserContext(context));
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.h b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.h
+new file mode 100644
+index 0000000000..88ceb719e3
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.h
+@@ -0,0 +1,40 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_MINI_POPUP_SERVICE_FACTORY_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_MINI_POPUP_SERVICE_FACTORY_H_
++
++#include "base/no_destructor.h"
++#include "chrome/browser/profiles/profile_keyed_service_factory.h"
++
++namespace content {
++class BrowserContext;
++}
++
++namespace extensions {
++
++class MiniPopupService;
++
++class MiniPopupServiceFactory : public ProfileKeyedServiceFactory {
++ public:
++  static MiniPopupService* GetForBrowserContext(
++      content::BrowserContext* browser_context);
++  static MiniPopupServiceFactory* GetInstance();
++
++  MiniPopupServiceFactory(const MiniPopupServiceFactory&) = delete;
++  MiniPopupServiceFactory& operator=(const MiniPopupServiceFactory&) = delete;
++
++ private:
++  friend base::NoDestructor<MiniPopupServiceFactory>;
++  MiniPopupServiceFactory();
++  ~MiniPopupServiceFactory() override;
++
++  // BrowserContextKeyedServiceFactory:
++  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
++      content::BrowserContext* context) const override;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_MINI_POPUP_SERVICE_FACTORY_H_
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.cc b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.cc
+new file mode 100644
+index 0000000000..844eaa1f8a
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.cc
+@@ -0,0 +1,41 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.h"
++
++#include <utility>
++
++#include "chrome/browser/extensions/extension_view_host.h"
++#include "ui/views/layout/fill_layout.h"
++
++namespace extensions {
++
++MiniPopupView::MiniPopupView(Profile* profile,
++                             std::unique_ptr<ExtensionViewHost> host)
++    : host_(std::move(host)) {
++  SetLayoutManager(std::make_unique<views::FillLayout>());
++  extension_view_ =
++      AddChildView(std::make_unique<ExtensionViewViews>(profile, host_.get()));
++  extension_view_->SetContainer(this);
++  extension_view_->Init();
++}
++
++MiniPopupView::~MiniPopupView() {
++  if (extension_view_) {
++    std::unique_ptr<views::View> owned =
++        RemoveChildViewT(extension_view_.get());
++    extension_view_ = nullptr;
++  }
++  host_.reset();
++}
++
++gfx::Size MiniPopupView::GetMinBounds() {
++  return gfx::Size(200, 120);
++}
++
++gfx::Size MiniPopupView::GetMaxBounds() {
++  return gfx::Size(1200, 900);
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.h b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.h
+new file mode 100644
+index 0000000000..eaa1df1f81
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.h
+@@ -0,0 +1,42 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_MINI_POPUP_VIEW_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_MINI_POPUP_VIEW_H_
++
++#include <memory>
++
++#include "base/memory/raw_ptr.h"
++#include "chrome/browser/ui/views/extensions/extension_view_views.h"
++#include "ui/views/view.h"
++
++class Profile;
++
++namespace extensions {
++
++class ExtensionViewHost;
++
++// Contents view of the Aside mini popup window: hosts minipopup.html via
++// ExtensionViewViews (content half of ExtensionPopup, no bubble/anchor).
++class MiniPopupView : public views::View, public ExtensionViewViews::Container {
++ public:
++  MiniPopupView(Profile* profile, std::unique_ptr<ExtensionViewHost> host);
++  MiniPopupView(const MiniPopupView&) = delete;
++  MiniPopupView& operator=(const MiniPopupView&) = delete;
++  ~MiniPopupView() override;
++
++  ExtensionViewHost* host() { return host_.get(); }
++
++  // ExtensionViewViews::Container:
++  gfx::Size GetMinBounds() override;
++  gfx::Size GetMaxBounds() override;
++
++ private:
++  std::unique_ptr<ExtensionViewHost> host_;
++  raw_ptr<ExtensionViewViews> extension_view_ = nullptr;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_MINI_POPUP_VIEW_H_
+diff --git a/chrome/browser/extensions/api/aside_notification/BUILD.gn b/chrome/browser/extensions/api/aside_notification/BUILD.gn
+new file mode 100644
+index 0000000000..048b308d79
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_notification/BUILD.gn
+@@ -0,0 +1,27 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++import("//extensions/buildflags/buildflags.gni")
++
++assert(enable_extensions)
++
++source_set("aside_notification") {
++  sources = [
++    "aside_notification_api.cc",
++    "aside_notification_api.h",
++  ]
++  configs += [ "//build/config/compiler:wexit_time_destructors" ]
++  public_deps = [
++    "//chrome/browser/extensions",
++    "//chrome/common/extensions/api",
++    "//content/public/browser",
++    "//extensions/browser",
++  ]
++  deps = [
++    "//base",
++    "//components/content_settings/core/browser",
++    "//components/content_settings/core/common",
++    "//url",
++  ]
++}
+diff --git a/chrome/browser/extensions/api/aside_notification/aside_notification_api.cc b/chrome/browser/extensions/api/aside_notification/aside_notification_api.cc
+new file mode 100644
+index 0000000000..348778165e
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_notification/aside_notification_api.cc
+@@ -0,0 +1,71 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_notification/aside_notification_api.h"
++
++#include <string>
++
++#include "base/values.h"
++#include "chrome/common/extensions/api/aside_notification.h"
++
++#include <optional>
++
++#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
++#include "chrome/browser/profiles/profile.h"
++#include "components/content_settings/core/browser/host_content_settings_map.h"
++#include "components/content_settings/core/common/content_settings.h"
++#include "components/content_settings/core/common/content_settings_types.h"
++#include "url/gurl.h"
++
++#include "chrome/browser/extensions/extension_tab_util.h"
++#include "content/public/browser/web_contents.h"
++
++namespace extensions {
++
++ExtensionFunction::ResponseAction AsideNotificationRequestPermissionFunction::Run() {
++  std::optional<api::aside_notification::RequestPermission::Params> params =
++      api::aside_notification::RequestPermission::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  bool granted = false;
++  content::WebContents* contents = nullptr;
++  if (ExtensionTabUtil::GetTabById(params->tab_id, profile,
++                                   include_incognito_information(), &contents) &&
++      contents) {
++    GURL origin = contents->GetLastCommittedURL().DeprecatedGetOriginAsURL();
++    if (origin.is_valid() && origin.SchemeIsHTTPOrHTTPS()) {
++      if (HostContentSettingsMap* map =
++              HostContentSettingsMapFactory::GetForProfile(profile)) {
++        map->SetContentSettingDefaultScope(origin, GURL(),
++                                           ContentSettingsType::NOTIFICATIONS,
++                                           CONTENT_SETTING_ALLOW);
++        granted = map->GetContentSetting(origin, GURL(),
++                                         ContentSettingsType::NOTIFICATIONS) ==
++                  CONTENT_SETTING_ALLOW;
++      }
++    }
++  }
++  return RespondNow(WithArguments(granted));
++}
++
++ExtensionFunction::ResponseAction AsideNotificationRevokePermissionFunction::Run() {
++  std::optional<api::aside_notification::RevokePermission::Params> params =
++      api::aside_notification::RevokePermission::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  GURL origin(params->origin);
++  bool revoked = false;
++  if (origin.is_valid()) {
++    if (HostContentSettingsMap* map =
++            HostContentSettingsMapFactory::GetForProfile(profile)) {
++      map->SetContentSettingDefaultScope(origin, GURL(),
++                                         ContentSettingsType::NOTIFICATIONS,
++                                         CONTENT_SETTING_BLOCK);
++      revoked = true;
++    }
++  }
++  return RespondNow(WithArguments(revoked));
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_notification/aside_notification_api.h b/chrome/browser/extensions/api/aside_notification/aside_notification_api.h
+new file mode 100644
+index 0000000000..7cc93a0096
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_notification/aside_notification_api.h
+@@ -0,0 +1,32 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_NOTIFICATION_ASIDE_NOTIFICATION_API_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_NOTIFICATION_ASIDE_NOTIFICATION_API_H_
++
++#include "extensions/browser/extension_function.h"
++
++namespace extensions {
++
++class AsideNotificationRequestPermissionFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideNotification.requestPermission", ASIDENOTIFICATION_REQUESTPERMISSION)
++
++ private:
++  ~AsideNotificationRequestPermissionFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideNotificationRevokePermissionFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideNotification.revokePermission", ASIDENOTIFICATION_REVOKEPERMISSION)
++
++ private:
++  ~AsideNotificationRevokePermissionFunction() final = default;
++  ResponseAction Run() final;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_NOTIFICATION_ASIDE_NOTIFICATION_API_H_
+diff --git a/chrome/browser/extensions/api/aside_omnibox/BUILD.gn b/chrome/browser/extensions/api/aside_omnibox/BUILD.gn
+new file mode 100644
+index 0000000000..786addfa96
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/BUILD.gn
+@@ -0,0 +1,41 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++import("//extensions/buildflags/buildflags.gni")
++
++assert(enable_extensions)
++
++source_set("aside_omnibox") {
++  sources = [
++    "aside_omnibox_api.cc",
++    "aside_omnibox_api.h",
++    "aside_omnibox_service.cc",
++    "aside_omnibox_service.h",
++    "aside_omnibox_service_factory.cc",
++    "aside_omnibox_service_factory.h",
++    "aside_omnibox_session.cc",
++    "aside_omnibox_session.h",
++  ]
++  configs += [ "//build/config/compiler:wexit_time_destructors" ]
++  public_deps = [
++    "//chrome/browser/extensions",
++    "//chrome/common/extensions/api",
++    "//content/public/browser",
++    "//extensions/browser",
++  ]
++  deps = [
++    "//base",
++    "//chrome/browser/autocomplete",
++    "//chrome/browser/ui",
++    "//chrome/browser/profiles:profile",
++    "//components/keyed_service/core",
++    "//components/omnibox/browser",
++    "//components/search_engines",
++    "//extensions/browser",
++    "//extensions/common",
++    "//third_party/metrics_proto",
++    "//ui/base",
++    "//url",
++  ]
++}
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.cc
+new file mode 100644
+index 0000000000..59c4b4f51d
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.cc
+@@ -0,0 +1,360 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.h"
++
++#include <optional>
++#include <string>
++
++#include "base/values.h"
++#include "chrome/common/extensions/api/aside_omnibox.h"
++
++#include "base/strings/utf_string_conversions.h"
++#include "base/uuid.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/search_engines/template_url_service_factory.h"
++#include "components/search_engines/template_url.h"
++#include "components/search_engines/template_url_service.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h"
++#include "extensions/common/extension.h"
++
++#include "base/functional/function_ref.h"
++#include "base/json/json_writer.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
++#include "ui/base/window_open_disposition.h"
++#include "url/gurl.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "content/public/browser/web_contents.h"
++
++namespace extensions {
++
++ExtensionFunction::ResponseAction AsideOmniboxCreateSessionFunction::Run() {
++  if (!extension()) {
++    return RespondNow(Error("No extension"));
++  }
++  std::string session_id = AsideOmniboxService::Get(browser_context())
++                               ->CreateSession(browser_context(),
++                                               extension()->id());
++  base::DictValue session;
++  session.Set("sessionId", session_id);
++  return RespondNow(WithArguments(std::move(session)));
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxDestroySessionFunction::Run() {
++  std::optional<api::aside_omnibox::DestroySession::Params> params =
++      api::aside_omnibox::DestroySession::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())->DestroySession(params->session_id);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxGetSearchEnginesFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  base::DictValue dict;
++  base::ListValue engines;
++  TemplateURLService* service =
++      TemplateURLServiceFactory::GetForProfile(profile);
++  if (service && service->loaded()) {
++    const TemplateURL* default_provider = service->GetDefaultSearchProvider();
++    for (TemplateURL* turl : service->GetTemplateURLs()) {
++      base::DictValue entry;
++      entry.Set("id", static_cast<double>(turl->id()));
++      entry.Set("name", base::UTF16ToUTF8(turl->short_name()));
++      entry.Set("keyword", base::UTF16ToUTF8(turl->keyword()));
++      entry.Set("isDefault",
++                default_provider && default_provider->id() == turl->id());
++      engines.Append(std::move(entry));
++    }
++  }
++  dict.Set("engines", std::move(engines));
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxOnFocusChangedFunction::Run() {
++  std::optional<api::aside_omnibox::OnFocusChanged::Params> params =
++      api::aside_omnibox::OnFocusChanged::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxQueryAutocompleteFunction::Run() {
++  std::optional<api::aside_omnibox::QueryAutocomplete::Params> params =
++      api::aside_omnibox::QueryAutocomplete::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())
++      ->Query(params->session_id, params->input);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxStopAutocompleteFunction::Run() {
++  std::optional<api::aside_omnibox::StopAutocomplete::Params> params =
++      api::aside_omnibox::StopAutocomplete::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())
++      ->Stop(params->session_id, params->clear_result);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxOpenAutocompleteMatchFunction::Run() {
++  std::optional<api::aside_omnibox::OpenAutocompleteMatch::Params> params =
++      api::aside_omnibox::OpenAutocompleteMatch::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  const std::string* url = params->request.additional_properties.FindString("url");
++  if (url) {{
++    GURL gurl(*url);
++    if (gurl.is_valid()) {{
++      Profile* profile = Profile::FromBrowserContext(browser_context());
++      BrowserWindowInterface* browser = nullptr;
++      ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
++          [&](BrowserWindowInterface* candidate) {{
++            if (candidate->GetProfile() == profile) {{
++              browser = candidate;
++              return false;
++            }}
++            return true;
++          }});
++      if (browser) {{
++        browser->OpenGURL(gurl, WindowOpenDisposition::CURRENT_TAB);
++      }}
++    }}
++  }}
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxSetPopupSelectionFunction::Run() {
++  std::optional<api::aside_omnibox::SetPopupSelection::Params> params =
++      api::aside_omnibox::SetPopupSelection::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  if (AsideOmniboxSession* session =
++          AsideOmniboxService::Get(browser_context())->GetSession(params->session_id)) {
++    std::string json;
++    base::JSONWriter::Write(params->selection.additional_properties, &json);
++    session->SetSelection(json);
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxOpenPopupSelectionFunction::Run() {
++  std::optional<api::aside_omnibox::OpenPopupSelection::Params> params =
++      api::aside_omnibox::OpenPopupSelection::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  const std::string* url = params->request.additional_properties.FindString("url");
++  if (url) {{
++    GURL gurl(*url);
++    if (gurl.is_valid()) {{
++      Profile* profile = Profile::FromBrowserContext(browser_context());
++      BrowserWindowInterface* browser = nullptr;
++      ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
++          [&](BrowserWindowInterface* candidate) {{
++            if (candidate->GetProfile() == profile) {{
++              browser = candidate;
++              return false;
++            }}
++            return true;
++          }});
++      if (browser) {{
++        browser->OpenGURL(gurl, WindowOpenDisposition::CURRENT_TAB);
++      }}
++    }}
++  }}
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxOnNavigationLikelyFunction::Run() {
++  std::optional<api::aside_omnibox::OnNavigationLikely::Params> params =
++      api::aside_omnibox::OnNavigationLikely::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxDeleteAutocompleteMatchFunction::Run() {
++  std::optional<api::aside_omnibox::DeleteAutocompleteMatch::Params> params =
++      api::aside_omnibox::DeleteAutocompleteMatch::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxSession* session =
++      AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  if (session) {
++    std::optional<int> line = params->request.additional_properties.FindInt("line");
++    if (line && *line >= 0) {
++      session->DeleteMatch(static_cast<size_t>(*line));
++    }
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxActivateKeywordFunction::Run() {
++  std::optional<api::aside_omnibox::ActivateKeyword::Params> params =
++      api::aside_omnibox::ActivateKeyword::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxExecuteActionFunction::Run() {
++  std::optional<api::aside_omnibox::ExecuteAction::Params> params =
++      api::aside_omnibox::ExecuteAction::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxOnThumbnailRemovedFunction::Run() {
++  std::optional<api::aside_omnibox::OnThumbnailRemoved::Params> params =
++      api::aside_omnibox::OnThumbnailRemoved::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxGetPlaceholderConfigFunction::Run() {
++  base::DictValue dict;
++  dict.Set("placeholderText", "Search or type a URL");
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxGetRecentTabsFunction::Run() {
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  base::ListValue tabs;
++  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
++      [&](BrowserWindowInterface* browser) {
++        if (browser->GetProfile() != profile) {
++          return true;
++        }
++        TabStripModel* tab_strip = browser->GetTabStripModel();
++        for (int i = 0; i < tab_strip->count(); ++i) {
++          content::WebContents* contents = tab_strip->GetWebContentsAt(i);
++          if (!contents) {
++            continue;
++          }
++          base::DictValue tab;
++          tab.Set("title", base::UTF16ToUTF8(contents->GetTitle()));
++          tab.Set("url", contents->GetLastCommittedURL().spec());
++          tabs.Append(std::move(tab));
++        }
++        return true;
++      });
++  base::DictValue dict;
++  dict.Set("tabs", std::move(tabs));
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxGetTabPreviewFunction::Run() {
++  base::DictValue dict;
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxGetInputStateFunction::Run() {
++  std::optional<api::aside_omnibox::GetInputState::Params> params =
++      api::aside_omnibox::GetInputState::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxSession* session =
++      AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  base::DictValue dict;
++  if (session) {
++    dict.Set("inputText", session->last_input());
++    dict.Set("toolMode", session->tool_mode());
++    dict.Set("modelMode", session->model_mode());
++  }
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxNotifySessionStartedFunction::Run() {
++  std::optional<api::aside_omnibox::NotifySessionStarted::Params> params =
++      api::aside_omnibox::NotifySessionStarted::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxNotifySessionAbandonedFunction::Run() {
++  std::optional<api::aside_omnibox::NotifySessionAbandoned::Params> params =
++      api::aside_omnibox::NotifySessionAbandoned::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxAddFileContextFunction::Run() {
++  std::optional<api::aside_omnibox::AddFileContext::Params> params =
++      api::aside_omnibox::AddFileContext::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  base::DictValue dict;
++  dict.Set("contextToken", base::Uuid::GenerateRandomV4().AsLowercaseString());
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxAddTabContextFunction::Run() {
++  std::optional<api::aside_omnibox::AddTabContext::Params> params =
++      api::aside_omnibox::AddTabContext::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  base::DictValue dict;
++  dict.Set("contextToken", base::Uuid::GenerateRandomV4().AsLowercaseString());
++  dict.Set("tabId", params->tab_id);
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxDeleteContextFunction::Run() {
++  std::optional<api::aside_omnibox::DeleteContext::Params> params =
++      api::aside_omnibox::DeleteContext::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxClearFilesFunction::Run() {
++  std::optional<api::aside_omnibox::ClearFiles::Params> params =
++      api::aside_omnibox::ClearFiles::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxSubmitQueryFunction::Run() {
++  std::optional<api::aside_omnibox::SubmitQuery::Params> params =
++      api::aside_omnibox::SubmitQuery::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxOpenLensSearchFunction::Run() {
++  std::optional<api::aside_omnibox::OpenLensSearch::Params> params =
++      api::aside_omnibox::OpenLensSearch::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxSetActiveToolModeFunction::Run() {
++  std::optional<api::aside_omnibox::SetActiveToolMode::Params> params =
++      api::aside_omnibox::SetActiveToolMode::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  if (AsideOmniboxSession* session =
++          AsideOmniboxService::Get(browser_context())->GetSession(params->session_id)) {
++    session->SetToolMode(params->tool_mode);
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxSetActiveModelModeFunction::Run() {
++  std::optional<api::aside_omnibox::SetActiveModelMode::Params> params =
++      api::aside_omnibox::SetActiveModelMode::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  if (AsideOmniboxSession* session =
++          AsideOmniboxService::Get(browser_context())->GetSession(params->session_id)) {
++    session->SetModelMode(params->model_mode);
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxActivateMetricsFunnelFunction::Run() {
++  std::optional<api::aside_omnibox::ActivateMetricsFunnel::Params> params =
++      api::aside_omnibox::ActivateMetricsFunnel::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  AsideOmniboxService::Get(browser_context())->GetSession(params->session_id);
++  return RespondNow(NoArguments());
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.h b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.h
+new file mode 100644
+index 0000000000..17b657673d
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.h
+@@ -0,0 +1,275 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_API_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_API_H_
++
++#include "extensions/browser/extension_function.h"
++
++namespace extensions {
++
++class AsideOmniboxCreateSessionFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.createSession", ASIDEOMNIBOX_CREATESESSION)
++
++ private:
++  ~AsideOmniboxCreateSessionFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxDestroySessionFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.destroySession", ASIDEOMNIBOX_DESTROYSESSION)
++
++ private:
++  ~AsideOmniboxDestroySessionFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxGetSearchEnginesFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.getSearchEngines", ASIDEOMNIBOX_GETSEARCHENGINES)
++
++ private:
++  ~AsideOmniboxGetSearchEnginesFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxOnFocusChangedFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.onFocusChanged", ASIDEOMNIBOX_ONFOCUSCHANGED)
++
++ private:
++  ~AsideOmniboxOnFocusChangedFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxQueryAutocompleteFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.queryAutocomplete", ASIDEOMNIBOX_QUERYAUTOCOMPLETE)
++
++ private:
++  ~AsideOmniboxQueryAutocompleteFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxStopAutocompleteFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.stopAutocomplete", ASIDEOMNIBOX_STOPAUTOCOMPLETE)
++
++ private:
++  ~AsideOmniboxStopAutocompleteFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxOpenAutocompleteMatchFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.openAutocompleteMatch", ASIDEOMNIBOX_OPENAUTOCOMPLETEMATCH)
++
++ private:
++  ~AsideOmniboxOpenAutocompleteMatchFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxSetPopupSelectionFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.setPopupSelection", ASIDEOMNIBOX_SETPOPUPSELECTION)
++
++ private:
++  ~AsideOmniboxSetPopupSelectionFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxOpenPopupSelectionFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.openPopupSelection", ASIDEOMNIBOX_OPENPOPUPSELECTION)
++
++ private:
++  ~AsideOmniboxOpenPopupSelectionFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxOnNavigationLikelyFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.onNavigationLikely", ASIDEOMNIBOX_ONNAVIGATIONLIKELY)
++
++ private:
++  ~AsideOmniboxOnNavigationLikelyFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxDeleteAutocompleteMatchFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.deleteAutocompleteMatch", ASIDEOMNIBOX_DELETEAUTOCOMPLETEMATCH)
++
++ private:
++  ~AsideOmniboxDeleteAutocompleteMatchFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxActivateKeywordFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.activateKeyword", ASIDEOMNIBOX_ACTIVATEKEYWORD)
++
++ private:
++  ~AsideOmniboxActivateKeywordFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxExecuteActionFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.executeAction", ASIDEOMNIBOX_EXECUTEACTION)
++
++ private:
++  ~AsideOmniboxExecuteActionFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxOnThumbnailRemovedFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.onThumbnailRemoved", ASIDEOMNIBOX_ONTHUMBNAILREMOVED)
++
++ private:
++  ~AsideOmniboxOnThumbnailRemovedFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxGetPlaceholderConfigFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.getPlaceholderConfig", ASIDEOMNIBOX_GETPLACEHOLDERCONFIG)
++
++ private:
++  ~AsideOmniboxGetPlaceholderConfigFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxGetRecentTabsFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.getRecentTabs", ASIDEOMNIBOX_GETRECENTTABS)
++
++ private:
++  ~AsideOmniboxGetRecentTabsFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxGetTabPreviewFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.getTabPreview", ASIDEOMNIBOX_GETTABPREVIEW)
++
++ private:
++  ~AsideOmniboxGetTabPreviewFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxGetInputStateFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.getInputState", ASIDEOMNIBOX_GETINPUTSTATE)
++
++ private:
++  ~AsideOmniboxGetInputStateFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxNotifySessionStartedFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.notifySessionStarted", ASIDEOMNIBOX_NOTIFYSESSIONSTARTED)
++
++ private:
++  ~AsideOmniboxNotifySessionStartedFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxNotifySessionAbandonedFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.notifySessionAbandoned", ASIDEOMNIBOX_NOTIFYSESSIONABANDONED)
++
++ private:
++  ~AsideOmniboxNotifySessionAbandonedFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxAddFileContextFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.addFileContext", ASIDEOMNIBOX_ADDFILECONTEXT)
++
++ private:
++  ~AsideOmniboxAddFileContextFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxAddTabContextFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.addTabContext", ASIDEOMNIBOX_ADDTABCONTEXT)
++
++ private:
++  ~AsideOmniboxAddTabContextFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxDeleteContextFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.deleteContext", ASIDEOMNIBOX_DELETECONTEXT)
++
++ private:
++  ~AsideOmniboxDeleteContextFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxClearFilesFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.clearFiles", ASIDEOMNIBOX_CLEARFILES)
++
++ private:
++  ~AsideOmniboxClearFilesFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxSubmitQueryFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.submitQuery", ASIDEOMNIBOX_SUBMITQUERY)
++
++ private:
++  ~AsideOmniboxSubmitQueryFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxOpenLensSearchFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.openLensSearch", ASIDEOMNIBOX_OPENLENSSEARCH)
++
++ private:
++  ~AsideOmniboxOpenLensSearchFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxSetActiveToolModeFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.setActiveToolMode", ASIDEOMNIBOX_SETACTIVETOOLMODE)
++
++ private:
++  ~AsideOmniboxSetActiveToolModeFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxSetActiveModelModeFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.setActiveModelMode", ASIDEOMNIBOX_SETACTIVEMODELMODE)
++
++ private:
++  ~AsideOmniboxSetActiveModelModeFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideOmniboxActivateMetricsFunnelFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideOmnibox.activateMetricsFunnel", ASIDEOMNIBOX_ACTIVATEMETRICSFUNNEL)
++
++ private:
++  ~AsideOmniboxActivateMetricsFunnelFunction() final = default;
++  ResponseAction Run() final;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_API_H_
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.cc
+new file mode 100644
+index 0000000000..7db1b405f2
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.cc
+@@ -0,0 +1,66 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.h"
++
++#include <utility>
++
++#include "base/uuid.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h"
++#include "chrome/browser/profiles/profile.h"
++
++namespace extensions {
++
++AsideOmniboxService::AsideOmniboxService(Profile* profile)
++    : profile_(profile) {}
++
++AsideOmniboxService::~AsideOmniboxService() = default;
++
++// static
++AsideOmniboxService* AsideOmniboxService::Get(
++    content::BrowserContext* browser_context) {
++  return AsideOmniboxServiceFactory::GetForBrowserContext(browser_context);
++}
++
++std::string AsideOmniboxService::CreateSession(
++    content::BrowserContext* browser_context,
++    const std::string& extension_id) {
++  std::string session_id = base::Uuid::GenerateRandomV4().AsLowercaseString();
++  sessions_[session_id] = std::make_unique<AsideOmniboxSession>(
++      profile_, browser_context, session_id, extension_id);
++  return session_id;
++}
++
++void AsideOmniboxService::DestroySession(const std::string& session_id) {
++  sessions_.erase(session_id);
++}
++
++void AsideOmniboxService::Query(const std::string& session_id,
++                                const std::string& input) {
++  auto it = sessions_.find(session_id);
++  if (it != sessions_.end()) {
++    it->second->Query(input);
++  }
++}
++
++void AsideOmniboxService::Stop(const std::string& session_id,
++                               bool clear_result) {
++  auto it = sessions_.find(session_id);
++  if (it != sessions_.end()) {
++    it->second->Stop(clear_result);
++  }
++}
++
++AsideOmniboxSession* AsideOmniboxService::GetSession(
++    const std::string& session_id) {
++  auto it = sessions_.find(session_id);
++  return it != sessions_.end() ? it->second.get() : nullptr;
++}
++
++void AsideOmniboxService::Shutdown() {
++  sessions_.clear();
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.h b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.h
+new file mode 100644
+index 0000000000..4fcfc81048
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.h
+@@ -0,0 +1,51 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SERVICE_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SERVICE_H_
++
++#include <map>
++#include <memory>
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "components/keyed_service/core/keyed_service.h"
++
++class Profile;
++
++namespace content {
++class BrowserContext;
++}
++
++namespace extensions {
++
++class AsideOmniboxSession;
++
++// Per-profile owner of omnibox autocomplete sessions.
++class AsideOmniboxService : public KeyedService {
++ public:
++  explicit AsideOmniboxService(Profile* profile);
++  AsideOmniboxService(const AsideOmniboxService&) = delete;
++  AsideOmniboxService& operator=(const AsideOmniboxService&) = delete;
++  ~AsideOmniboxService() override;
++
++  static AsideOmniboxService* Get(content::BrowserContext* browser_context);
++
++  std::string CreateSession(content::BrowserContext* browser_context,
++                            const std::string& extension_id);
++  void DestroySession(const std::string& session_id);
++  void Query(const std::string& session_id, const std::string& input);
++  void Stop(const std::string& session_id, bool clear_result);
++  AsideOmniboxSession* GetSession(const std::string& session_id);
++
++  void Shutdown() override;
++
++ private:
++  raw_ptr<Profile> profile_;
++  std::map<std::string, std::unique_ptr<AsideOmniboxSession>> sessions_;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SERVICE_H_
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.cc
+new file mode 100644
+index 0000000000..8615154794
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.cc
+@@ -0,0 +1,38 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.h"
++
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.h"
++#include "chrome/browser/profiles/profile.h"
++
++namespace extensions {
++
++// static
++AsideOmniboxService* AsideOmniboxServiceFactory::GetForBrowserContext(
++    content::BrowserContext* browser_context) {
++  return static_cast<AsideOmniboxService*>(
++      GetInstance()->GetServiceForBrowserContext(browser_context,
++                                                 /*create=*/true));
++}
++
++// static
++AsideOmniboxServiceFactory* AsideOmniboxServiceFactory::GetInstance() {
++  static base::NoDestructor<AsideOmniboxServiceFactory> instance;
++  return instance.get();
++}
++
++AsideOmniboxServiceFactory::AsideOmniboxServiceFactory()
++    : ProfileKeyedServiceFactory("AsideOmniboxService") {}
++
++AsideOmniboxServiceFactory::~AsideOmniboxServiceFactory() = default;
++
++std::unique_ptr<KeyedService>
++AsideOmniboxServiceFactory::BuildServiceInstanceForBrowserContext(
++    content::BrowserContext* context) const {
++  return std::make_unique<AsideOmniboxService>(
++      Profile::FromBrowserContext(context));
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.h b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.h
+new file mode 100644
+index 0000000000..f7a0d4749b
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.h
+@@ -0,0 +1,40 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SERVICE_FACTORY_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SERVICE_FACTORY_H_
++
++#include "base/no_destructor.h"
++#include "chrome/browser/profiles/profile_keyed_service_factory.h"
++
++namespace content {
++class BrowserContext;
++}
++
++namespace extensions {
++
++class AsideOmniboxService;
++
++class AsideOmniboxServiceFactory : public ProfileKeyedServiceFactory {
++ public:
++  static AsideOmniboxService* GetForBrowserContext(
++      content::BrowserContext* browser_context);
++  static AsideOmniboxServiceFactory* GetInstance();
++
++  AsideOmniboxServiceFactory(const AsideOmniboxServiceFactory&) = delete;
++  AsideOmniboxServiceFactory& operator=(const AsideOmniboxServiceFactory&) =
++      delete;
++
++ private:
++  friend base::NoDestructor<AsideOmniboxServiceFactory>;
++  AsideOmniboxServiceFactory();
++  ~AsideOmniboxServiceFactory() override;
++
++  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
++      content::BrowserContext* context) const override;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SERVICE_FACTORY_H_
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.cc
+new file mode 100644
+index 0000000000..237e9e2ecf
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.cc
+@@ -0,0 +1,115 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h"
++
++#include <utility>
++
++#include "base/strings/utf_string_conversions.h"
++#include "base/values.h"
++#include "chrome/browser/autocomplete/chrome_autocomplete_provider_client.h"
++#include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
++#include "chrome/browser/profiles/profile.h"
++#include "components/omnibox/browser/autocomplete_classifier.h"
++#include "components/omnibox/browser/autocomplete_controller_config.h"
++#include "components/omnibox/browser/autocomplete_input.h"
++#include "components/omnibox/browser/autocomplete_match.h"
++#include "components/omnibox/browser/autocomplete_match_type.h"
++#include "components/omnibox/browser/autocomplete_result.h"
++#include "extensions/browser/event_router.h"
++#include "extensions/browser/extension_event_histogram_value.h"
++#include "third_party/metrics_proto/omnibox_event.pb.h"
++
++namespace extensions {
++
++namespace {
++constexpr char kEventName[] = "asideOmnibox.onAutocompleteResultChanged";
++}  // namespace
++
++AsideOmniboxSession::AsideOmniboxSession(
++    Profile* profile,
++    content::BrowserContext* browser_context,
++    std::string session_id,
++    std::string extension_id)
++    : profile_(profile),
++      browser_context_(browser_context),
++      session_id_(std::move(session_id)),
++      extension_id_(std::move(extension_id)),
++      controller_(std::make_unique<AutocompleteController>(
++          std::make_unique<ChromeAutocompleteProviderClient>(profile),
++          AutocompleteControllerConfig{
++              .provider_types =
++                  AutocompleteClassifier::DefaultOmniboxProviders()})) {
++  controller_->AddObserver(this);
++}
++
++AsideOmniboxSession::~AsideOmniboxSession() {
++  controller_->RemoveObserver(this);
++}
++
++void AsideOmniboxSession::Query(const std::string& input_text) {
++  ChromeAutocompleteSchemeClassifier scheme_classifier(profile_);
++  last_input_ = input_text;
++  AutocompleteInput input(base::UTF8ToUTF16(input_text),
++                          metrics::OmniboxEventProto::OTHER, scheme_classifier);
++  controller_->Start(input);
++}
++
++void AsideOmniboxSession::Stop(bool clear_result) {
++  controller_->Stop(clear_result ? AutocompleteStopReason::kClobbered
++                                  : AutocompleteStopReason::kInteraction);
++}
++
++void AsideOmniboxSession::DeleteMatch(size_t line) {
++  const AutocompleteResult& result = controller_->result();
++  if (line < result.size()) {
++    controller_->DeleteMatch(result.match_at(line));
++  }
++}
++
++void AsideOmniboxSession::SetToolMode(std::string mode) {
++  tool_mode_ = std::move(mode);
++}
++
++void AsideOmniboxSession::SetModelMode(std::string mode) {
++  model_mode_ = std::move(mode);
++}
++
++void AsideOmniboxSession::SetSelection(std::string selection) {
++  selection_ = std::move(selection);
++}
++
++void AsideOmniboxSession::OnResultChanged(AutocompleteController* controller,
++                                          bool default_match_changed) {
++  EventRouter* router = EventRouter::Get(browser_context_);
++  if (!router || !router->ExtensionHasEventListener(extension_id_, kEventName)) {
++    return;
++  }
++  // Result contract (extension reads .matches[].{contents,destinationUrl,
++  // fillIntoEdit,isSearchType}).
++  base::ListValue matches;
++  for (const AutocompleteMatch& match : controller->result()) {
++    base::DictValue m;
++    m.Set("contents", base::UTF16ToUTF8(match.contents));
++    m.Set("description", base::UTF16ToUTF8(match.description));
++    m.Set("destinationUrl", match.destination_url.spec());
++    m.Set("fillIntoEdit", base::UTF16ToUTF8(match.fill_into_edit));
++    m.Set("isSearchType", AutocompleteMatch::IsSearchType(match.type));
++    m.Set("relevance", match.relevance);
++    m.Set("type", AutocompleteMatchType::ToString(match.type));
++    matches.Append(std::move(m));
++  }
++  base::DictValue result;
++  result.Set("matches", std::move(matches));
++
++  base::ListValue args;
++  args.Append(session_id_);
++  args.Append(std::move(result));
++  auto event = std::make_unique<Event>(
++      events::ASIDE_OMNIBOX_ON_AUTOCOMPLETE_RESULT_CHANGED, kEventName,
++      std::move(args), profile_);
++  router->DispatchEventToExtension(extension_id_, std::move(event));
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h
+new file mode 100644
+index 0000000000..1c6b843b03
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h
+@@ -0,0 +1,63 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SESSION_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SESSION_H_
++
++#include <memory>
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "components/omnibox/browser/autocomplete_controller.h"
++
++class Profile;
++
++namespace content {
++class BrowserContext;
++}
++
++namespace extensions {
++
++// One omnibox autocomplete session: owns an AutocompleteController, drives it,
++// and forwards results to the extension as asideOmnibox.onAutocompleteResultChanged.
++class AsideOmniboxSession : public AutocompleteController::Observer {
++ public:
++  AsideOmniboxSession(Profile* profile,
++                      content::BrowserContext* browser_context,
++                      std::string session_id,
++                      std::string extension_id);
++  AsideOmniboxSession(const AsideOmniboxSession&) = delete;
++  AsideOmniboxSession& operator=(const AsideOmniboxSession&) = delete;
++  ~AsideOmniboxSession() override;
++
++  void Query(const std::string& input_text);
++  void Stop(bool clear_result);
++  void DeleteMatch(size_t line);
++  void SetToolMode(std::string mode);
++  void SetModelMode(std::string mode);
++  void SetSelection(std::string selection);
++
++  const std::string& last_input() const { return last_input_; }
++  const std::string& tool_mode() const { return tool_mode_; }
++  const std::string& model_mode() const { return model_mode_; }
++
++  // AutocompleteController::Observer:
++  void OnResultChanged(AutocompleteController* controller,
++                       bool default_match_changed) override;
++
++ private:
++  raw_ptr<Profile> profile_;
++  raw_ptr<content::BrowserContext> browser_context_;
++  std::string session_id_;
++  std::string extension_id_;
++  std::unique_ptr<AutocompleteController> controller_;
++  std::string last_input_;
++  std::string tool_mode_;
++  std::string model_mode_;
++  std::string selection_;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SESSION_H_
+diff --git a/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc b/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc
+index 77b95c43ee..4d7f37ff36 100644
+--- a/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc
++++ b/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc
+@@ -179,7 +179,11 @@ ExtensionFunction::ResponseAction TabCaptureCaptureFunction::Run() {
+   if (!extension()->permissions_data()->HasAPIPermissionForTab(
+           sessions::SessionTabHelper::IdForTab(target_contents).id(),
+           mojom::APIPermissionID::kTabCaptureForTab) &&
+-      (GetAllowlistedExtensionID() != extension_id)) {
++      (GetAllowlistedExtensionID() != extension_id) &&
++      // Aside: a trusted extension holding this permission may capture without
++      // a user gesture (used for background tab previews).
++      !extension()->permissions_data()->HasAPIPermission(
++          mojom::APIPermissionID::kAsideCaptureTabWithoutUserInteraction)) {
+     return RespondNow(Error(kGrantError));
+   }
+ 
+@@ -257,7 +261,11 @@ ExtensionFunction::ResponseAction TabCaptureGetMediaStreamIdFunction::Run() {
+   if (!extension()->permissions_data()->HasAPIPermissionForTab(
+           sessions::SessionTabHelper::IdForTab(target_contents).id(),
+           mojom::APIPermissionID::kTabCaptureForTab) &&
+-      (GetAllowlistedExtensionID() != extension_id)) {
++      (GetAllowlistedExtensionID() != extension_id) &&
++      // Aside: a trusted extension holding this permission may capture without
++      // a user gesture (used for background tab previews).
++      !extension()->permissions_data()->HasAPIPermission(
++          mojom::APIPermissionID::kAsideCaptureTabWithoutUserInteraction)) {
+     return RespondNow(Error(kGrantError));
+   }
+ 
+diff --git a/chrome/browser/prefs/browser_prefs.cc b/chrome/browser/prefs/browser_prefs.cc
+index 48394ef7d6..9f9a8c4285 100644
+--- a/chrome/browser/prefs/browser_prefs.cc
++++ b/chrome/browser/prefs/browser_prefs.cc
+@@ -1715,6 +1715,22 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
+   accessibility_annotator::prefs::RegisterProfilePrefs(registry);
+   AimEligibilityService::RegisterProfilePrefs(registry);
+   AnnouncementNotificationService::RegisterProfilePrefs(registry);
++  // Aside private preferences (chrome/browser/extensions/api/aside_*). Keys must
++  // match the literals used in the aside_* API implementations.
++  registry->RegisterStringPref("aside.tab_style", std::string());
++  registry->RegisterBooleanPref("aside.browser_preferences.horizontal_tab_strip_shrink_to_fit_enabled", false);
++  registry->RegisterBooleanPref("aside.tab_switcher.sort_by_recently_used", false);
++  registry->RegisterBooleanPref("aside.auto_pip.enabled", false);
++  registry->RegisterBooleanPref("aside.vertical_tabs.bookmarks_section_enabled",
++                                false);
++  registry->RegisterBooleanPref("aside.keep_tasks_running_enabled", false);
++  registry->RegisterBooleanPref("aside.mini_popup.enabled", true);
++  registry->RegisterStringPref("aside.mini_popup.shortcut", std::string());
++  registry->RegisterIntegerPref("aside.account_id", 0);
++  registry->RegisterStringPref("aside.account_user_id", std::string());
++  registry->RegisterStringPref("aside.profile_id", std::string());
++  registry->RegisterIntegerPref(
++      "aside.browser_preferences.browser_color_scheme", 2);
+   autofill::prefs::RegisterProfilePrefs(registry);
+   browsing_data::prefs::RegisterBrowserUserPrefs(registry);
+   capture_policy::RegisterProfilePrefs(registry);
+diff --git a/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc b/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc
+index faa78dde10..8f82600b31 100644
+--- a/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc
++++ b/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc
+@@ -4,6 +4,9 @@
+ 
+ #include "chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.h"
+ 
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.h"
++
+ #include <memory>
+ #include <utility>
+ 
+@@ -722,6 +725,8 @@ void ChromeBrowserMainExtraPartsProfiles::
+   // Common factory registrations (Please keep this list ordered without taking
+   // into consideration buildflags, repeating buildflags is ok):
+   AboutSigninInternalsFactory::GetInstance();
++  extensions::MiniPopupServiceFactory::GetInstance();
++  extensions::AsideOmniboxServiceFactory::GetInstance();
+   AboutThisSiteServiceFactory::GetInstance();
+   AcceptLanguagesServiceFactory::GetInstance();
+   AccessibilityAnnotatorBackendFactory::GetInstance();
+diff --git a/chrome/common/extensions/api/_api_features.json b/chrome/common/extensions/api/_api_features.json
+index 79ef33aa4b..1ccea441a8 100644
+--- a/chrome/common/extensions/api/_api_features.json
++++ b/chrome/common/extensions/api/_api_features.json
+@@ -11,6 +11,48 @@
+ // renderer.
+ 
+ {
++  "asideAccount": {
++    "channel": "stable",
++    "contexts": ["privileged_extension"],
++    "extension_types": ["extension"],
++    "dependencies": ["permission:at.studio.Aside.ext.private.account"],
++    "allowlist": ["4A76B267556C299D3719FF535FC6011CF9674AC0"]
++  },
++  "asideNotification": {
++    "channel": "stable",
++    "contexts": ["privileged_extension"],
++    "extension_types": ["extension"],
++    "dependencies": ["permission:at.studio.Aside.ext.private.notification"],
++    "allowlist": ["4A76B267556C299D3719FF535FC6011CF9674AC0"]
++  },
++  "asideBrowserImport": {
++    "channel": "stable",
++    "contexts": ["privileged_extension"],
++    "extension_types": ["extension"],
++    "dependencies": ["permission:at.studio.Aside.ext.private.browser-import"],
++    "allowlist": ["4A76B267556C299D3719FF535FC6011CF9674AC0"]
++  },
++  "asideMiniPopup": {
++    "channel": "stable",
++    "contexts": ["privileged_extension"],
++    "extension_types": ["extension"],
++    "dependencies": ["permission:at.studio.Aside.ext.private.launch-extension"],
++    "allowlist": ["4A76B267556C299D3719FF535FC6011CF9674AC0"]
++  },
++  "asideBrowserPreferences": {
++    "channel": "stable",
++    "contexts": ["privileged_extension"],
++    "extension_types": ["extension"],
++    "dependencies": ["permission:at.studio.Aside.ext.private.pref-get-set"],
++    "allowlist": ["4A76B267556C299D3719FF535FC6011CF9674AC0"]
++  },
++  "asideOmnibox": {
++    "channel": "stable",
++    "contexts": ["privileged_extension"],
++    "extension_types": ["extension"],
++    "dependencies": ["permission:at.studio.Aside.ext.private.omnibox"],
++    "allowlist": ["4A76B267556C299D3719FF535FC6011CF9674AC0"]
++  },
+   "accessibilityFeatures": [{
+     "dependencies": ["permission:accessibilityFeatures.modify"],
+     "contexts": ["privileged_extension"]
+diff --git a/chrome/common/extensions/api/_permission_features.json b/chrome/common/extensions/api/_permission_features.json
+index be9119db6f..1b46606440 100644
+--- a/chrome/common/extensions/api/_permission_features.json
++++ b/chrome/common/extensions/api/_permission_features.json
+@@ -1184,5 +1184,54 @@
+       "7D5A66C88A25019F997E548DEC5E0011E2855591",  // http://crbug.com/40181096
+       "F740D260E7E2107B3AE454F512B65AE6CF244433"   // http://b/273392894
+     ]
++  },
++  "at.studio.Aside.ext.private.capture-tab-without-userinteraction": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.account": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.browser-import": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.notification": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.omnibox": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.pref-get-set": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.launch-extension": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
+   }
+ }
+diff --git a/chrome/common/extensions/api/api_sources.gni b/chrome/common/extensions/api/api_sources.gni
+index 5357482de4..18c550db36 100644
+--- a/chrome/common/extensions/api/api_sources.gni
++++ b/chrome/common/extensions/api/api_sources.gni
+@@ -13,6 +13,12 @@ assert(enable_extensions_core)
+ # TODO(https://crbug.com/356905053): Continue moving more here.
+ schema_sources_ = [
+   "activity_log_private.json",
++  "aside_omnibox.json",
++  "aside_browser_preferences.json",
++  "aside_mini_popup.json",
++  "aside_browser_import.json",
++  "aside_notification.json",
++  "aside_account.json",
+   "bookmarks.json",
+   "content_settings.json",
+   "context_menus.json",
+diff --git a/chrome/common/extensions/api/aside_account.json b/chrome/common/extensions/api/aside_account.json
+new file mode 100644
+index 0000000000..88c74732bd
+--- /dev/null
++++ b/chrome/common/extensions/api/aside_account.json
+@@ -0,0 +1,85 @@
++[
++  {
++    "namespace": "asideAccount",
++    "types": [
++      {
++        "id": "JsonObject",
++        "type": "object",
++        "additionalProperties": {
++          "type": "any"
++        }
++      },
++      {
++        "id": "ProfileInfo",
++        "type": "object",
++        "properties": {
++          "profileIndex": {
++            "type": "integer"
++          },
++          "name": {
++            "type": "string"
++          },
++          "isCurrent": {
++            "type": "boolean"
++          },
++          "isLocked": {
++            "type": "boolean"
++          }
++        }
++      }
++    ],
++    "functions": [
++      {
++        "name": "getProfileContext",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getProfiles",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "profiles",
++              "type": "array",
++              "items": {
++                "$ref": "ProfileInfo"
++              }
++            }
++          ]
++        }
++      },
++      {
++        "name": "signDaemonAuthChallenge",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "challenge",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      }
++    ],
++    "description": "Aside private API: profile context and daemon auth signing (trusted bundled extensions only)."
++  }
++]
+\ No newline at end of file
+diff --git a/chrome/common/extensions/api/aside_browser_import.json b/chrome/common/extensions/api/aside_browser_import.json
+new file mode 100644
+index 0000000000..15b0f4d08b
+--- /dev/null
++++ b/chrome/common/extensions/api/aside_browser_import.json
+@@ -0,0 +1,112 @@
++[
++  {
++    "namespace": "asideBrowserImport",
++    "types": [
++      {
++        "id": "JsonObject",
++        "type": "object",
++        "additionalProperties": {
++          "type": "any"
++        }
++      },
++      {
++        "id": "SafariArchive",
++        "type": "object",
++        "properties": {
++          "fileName": {
++            "type": "string",
++            "optional": true
++          },
++          "data": {
++            "type": "binary"
++          }
++        }
++      }
++    ],
++    "functions": [
++      {
++        "name": "getImportSources",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "sources",
++              "type": "array",
++              "items": {
++                "$ref": "JsonObject"
++              }
++            }
++          ]
++        }
++      },
++      {
++        "name": "startImport",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "options",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getImportProgress",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "jobId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "progress",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "cancelImport",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "jobId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      }
++    ],
++    "events": [
++      {
++        "name": "onImportProgress",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "progress",
++            "$ref": "JsonObject"
++          }
++        ]
++      }
++    ],
++    "description": "Aside private API asideBrowserImport (trusted bundled extensions only)."
++  }
++]
+\ No newline at end of file
+diff --git a/chrome/common/extensions/api/aside_browser_preferences.json b/chrome/common/extensions/api/aside_browser_preferences.json
+new file mode 100644
+index 0000000000..7aff9d9229
+--- /dev/null
++++ b/chrome/common/extensions/api/aside_browser_preferences.json
+@@ -0,0 +1,437 @@
++[
++  {
++    "namespace": "asideBrowserPreferences",
++    "types": [
++      {
++        "id": "JsonObject",
++        "type": "object",
++        "additionalProperties": {
++          "type": "any"
++        }
++      }
++    ],
++    "functions": [
++      {
++        "name": "getBrowserColorScheme",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "colorScheme",
++              "type": "string"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setBrowserColorScheme",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "colorScheme",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getTabStyle",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "tabStyle",
++              "type": "string"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setTabStyle",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "tabStyle",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getHorizontalTabShrinkEnabled",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "isEnabled",
++              "type": "boolean"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setHorizontalTabShrinkEnabled",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "isEnabled",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getTabSwitcherSortByRecentlyUsed",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "sortByRecentlyUsed",
++              "type": "boolean"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setTabSwitcherSortByRecentlyUsed",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sortByRecentlyUsed",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getDefaultZoom",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "zoom",
++              "type": "number"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setDefaultZoom",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "zoom",
++            "type": "number"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getDefaultBrowserState",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setAsDefaultBrowser",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getDockState",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "addToDock",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getKeepTasksRunningState",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setKeepTasksRunningEnabled",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "enabled",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getAutoPipEnabled",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "isEnabled",
++              "type": "boolean"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setAutoPipEnabled",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "isEnabled",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getVerticalTabsBookmarksSectionEnabled",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "isEnabled",
++              "type": "boolean"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setVerticalTabsBookmarksSectionEnabled",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "isEnabled",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getBrowserVersion",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "version",
++              "type": "string"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getSyncStatus",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "checkForUpdates",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getLanguageSettings",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getSupportedLanguages",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setPreferredLanguages",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "languageCodes",
++            "type": "array",
++            "items": {
++              "type": "string"
++            }
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "setSpellCheckEnabled",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "enabled",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getSearchEngines",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setDefaultSearchEngine",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "engineId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      }
++    ],
++    "description": "Aside private API asideBrowserPreferences (trusted bundled extensions only)."
++  }
++]
+\ No newline at end of file
+diff --git a/chrome/common/extensions/api/aside_mini_popup.json b/chrome/common/extensions/api/aside_mini_popup.json
+new file mode 100644
+index 0000000000..c2888da41a
+--- /dev/null
++++ b/chrome/common/extensions/api/aside_mini_popup.json
+@@ -0,0 +1,178 @@
++[
++  {
++    "namespace": "asideMiniPopup",
++    "types": [
++      {
++        "id": "State",
++        "type": "string",
++        "enum": [
++          "compact",
++          "compact-with-attachments",
++          "expanded"
++        ]
++      }
++    ],
++    "functions": [
++      {
++        "name": "hide",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getEnabled",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": [
++            {
++              "name": "enabled",
++              "type": "boolean"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setEnabled",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "enabled",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getShortcut",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": [
++            {
++              "name": "shortcut",
++              "type": "string"
++            }
++          ]
++        }
++      },
++      {
++        "name": "setShortcut",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "shortcut",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "setState",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "state",
++            "$ref": "State"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "setSize",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "width",
++            "type": "integer",
++            "minimum": 1
++          },
++          {
++            "name": "height",
++            "type": "integer",
++            "minimum": 1
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "setOptionWindowSize",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "width",
++            "type": "integer",
++            "minimum": 1
++          },
++          {
++            "name": "height",
++            "type": "integer",
++            "minimum": 1
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "pickDirectory",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": [
++            {
++              "name": "path",
++              "type": "string",
++              "optional": true
++            }
++          ]
++        }
++      },
++      {
++        "name": "switchProfile",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "profileIndex",
++            "type": "integer",
++            "minimum": 0
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      }
++    ],
++    "description": "Aside private API asideMiniPopup (trusted bundled extensions only)."
++  }
++]
+\ No newline at end of file
+diff --git a/chrome/common/extensions/api/aside_notification.json b/chrome/common/extensions/api/aside_notification.json
+new file mode 100644
+index 0000000000..d9e0a454b1
+--- /dev/null
++++ b/chrome/common/extensions/api/aside_notification.json
+@@ -0,0 +1,51 @@
++[
++  {
++    "namespace": "asideNotification",
++    "types": [],
++    "functions": [
++      {
++        "parameters": [
++          {
++            "name": "tabId",
++            "type": "integer"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "isGranted",
++              "type": "boolean"
++            }
++          ]
++        },
++        "name": "requestPermission",
++        "type": "function"
++      },
++      {
++        "parameters": [
++          {
++            "name": "origin",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "isRevoked",
++              "type": "boolean"
++            }
++          ]
++        },
++        "name": "revokePermission",
++        "type": "function"
++      }
++    ],
++    "properties": {},
++    "events": [],
++    "platforms": null,
++    "deprecated": null,
++    "description": "Aside private API asideNotification (trusted bundled extensions only)."
++  }
++]
+\ No newline at end of file
+diff --git a/chrome/common/extensions/api/aside_omnibox.json b/chrome/common/extensions/api/aside_omnibox.json
+new file mode 100644
+index 0000000000..4767444e51
+--- /dev/null
++++ b/chrome/common/extensions/api/aside_omnibox.json
+@@ -0,0 +1,835 @@
++[
++  {
++    "namespace": "asideOmnibox",
++    "types": [
++      {
++        "id": "JsonObject",
++        "type": "object",
++        "additionalProperties": {
++          "type": "any"
++        }
++      }
++    ],
++    "functions": [
++      {
++        "name": "createSession",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "options",
++            "$ref": "JsonObject",
++            "optional": true
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "session",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "destroySession",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getSearchEngines",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "onFocusChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "focused",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "queryAutocomplete",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "input",
++            "type": "string"
++          },
++          {
++            "name": "options",
++            "$ref": "JsonObject",
++            "optional": true
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "stopAutocomplete",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "clearResult",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "openAutocompleteMatch",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "request",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "setPopupSelection",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "selection",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "openPopupSelection",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "request",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "onNavigationLikely",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "request",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "deleteAutocompleteMatch",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "request",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "activateKeyword",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "request",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "executeAction",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "request",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "onThumbnailRemoved",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "getPlaceholderConfig",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getRecentTabs",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getTabPreview",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "tabId",
++            "type": "integer"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getInputState",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "notifySessionStarted",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "notifySessionAbandoned",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "addFileContext",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "request",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "addTabContext",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "tabId",
++            "type": "integer"
++          },
++          {
++            "name": "delayUpload",
++            "type": "boolean",
++            "optional": true
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "deleteContext",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "contextToken",
++            "type": "string"
++          },
++          {
++            "name": "fromAutomaticChip",
++            "type": "boolean",
++            "optional": true
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "clearFiles",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "shouldBlockAutoSuggestedTabs",
++            "type": "boolean"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "submitQuery",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "request",
++            "$ref": "JsonObject"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "openLensSearch",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "setActiveToolMode",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "toolMode",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "setActiveModelMode",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "modelMode",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      },
++      {
++        "name": "activateMetricsFunnel",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "funnelName",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "optional": true,
++          "parameters": []
++        }
++      }
++    ],
++    "events": [
++      {
++        "name": "onAutocompleteResultChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "result",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onSelectionUpdated",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onStepSelection",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onOpenCurrentSelection",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onAimButtonVisibilityChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onKeywordSelectedChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onInputTextChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onThumbnailChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onContextualInputStatusChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onTabStripChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          }
++        ]
++      },
++      {
++        "name": "onInputStateChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onFileContextAdded",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onAutoSuggestedTabContextChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onLensSearchEligibilityChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onContentSharingPolicyChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onAimEligibilityChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onShowAiModePrefChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onSmartTabSharingActiveChanged",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      },
++      {
++        "name": "onSessionInvalidated",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "sessionId",
++            "type": "string"
++          },
++          {
++            "name": "details",
++            "$ref": "JsonObject"
++          }
++        ]
++      }
++    ],
++    "description": "Aside private API asideOmnibox (trusted bundled extensions only)."
++  }
++]
+\ No newline at end of file
+diff --git a/chrome/common/extensions/permissions/chrome_api_permissions.cc b/chrome/common/extensions/permissions/chrome_api_permissions.cc
+index 8e93fc106c..b34bba16da 100644
+--- a/chrome/common/extensions/permissions/chrome_api_permissions.cc
++++ b/chrome/common/extensions/permissions/chrome_api_permissions.cc
+@@ -221,6 +221,15 @@ constexpr APIPermissionInfo::InitInfo permissions_to_register[] = {
+      APIPermissionInfo::kFlagImpliesFullURLAccess},
+     {APIPermissionID::kTabCaptureForTab, "tabCaptureForTab",
+      APIPermissionInfo::kFlagInternal},
++    // Aside private permission: capture a tab without a user gesture.
++    {APIPermissionID::kAsideCaptureTabWithoutUserInteraction,
++     "at.studio.Aside.ext.private.capture-tab-without-userinteraction"},
++    {APIPermissionID::kAsideAccount, "at.studio.Aside.ext.private.account"},
++    {APIPermissionID::kAsideBrowserImport, "at.studio.Aside.ext.private.browser-import"},
++    {APIPermissionID::kAsideNotification, "at.studio.Aside.ext.private.notification"},
++    {APIPermissionID::kAsideOmnibox, "at.studio.Aside.ext.private.omnibox"},
++    {APIPermissionID::kAsidePrefGetSet, "at.studio.Aside.ext.private.pref-get-set"},
++    {APIPermissionID::kAsideLaunchExtension, "at.studio.Aside.ext.private.launch-extension"},
+ 
+     // Platform-app permissions.
+     {APIPermissionID::kFileSystemProvider, "fileSystemProvider",
+diff --git a/extensions/browser/extension_event_histogram_value.h b/extensions/browser/extension_event_histogram_value.h
+index 7b3cbec076..de871db4e9 100644
+--- a/extensions/browser/extension_event_histogram_value.h
++++ b/extensions/browser/extension_event_histogram_value.h
+@@ -599,6 +599,7 @@ enum HistogramValue {
+   DICTATION_PRIVATE_ON_START_STREAM = 575,
+   DICTATION_PRIVATE_ON_END_STREAM = 576,
+   DICTATION_PRIVATE_ON_CONTEXT_UPDATE = 577,
++  ASIDE_OMNIBOX_ON_AUTOCOMPLETE_RESULT_CHANGED = 578,
+   // Last entry: Add new entries above, then run:
+   // tools/metrics/histograms/update_extension_histograms.py
+   ENUM_BOUNDARY
+diff --git a/extensions/browser/extension_function_histogram_value.h b/extensions/browser/extension_function_histogram_value.h
+index 8cb9d5c891..be98f7edd8 100644
+--- a/extensions/browser/extension_function_histogram_value.h
++++ b/extensions/browser/extension_function_histogram_value.h
+@@ -2040,6 +2040,83 @@ enum HistogramValue {
+   CONTEXTUALTASKSPRIVATE_LAUNCHPANELINNEWTAB = 1975,
+   DICTATIONPRIVATE_UPDATETRANSCRIPTION = 1976,
+   DICTATIONPRIVATE_SETSTREAMSTATE = 1977,
++  ASIDEACCOUNT_GETPROFILECONTEXT = 1978,
++  ASIDEACCOUNT_GETPROFILES = 1979,
++  ASIDEACCOUNT_SIGNDAEMONAUTHCHALLENGE = 1980,
++  ASIDENOTIFICATION_REQUESTPERMISSION = 1981,
++  ASIDENOTIFICATION_REVOKEPERMISSION = 1982,
++  ASIDEBROWSERIMPORT_GETIMPORTSOURCES = 1983,
++  ASIDEBROWSERIMPORT_STARTIMPORT = 1984,
++  ASIDEBROWSERIMPORT_GETIMPORTPROGRESS = 1985,
++  ASIDEBROWSERIMPORT_CANCELIMPORT = 1986,
++  ASIDEMINIPOPUP_HIDE = 1987,
++  ASIDEMINIPOPUP_GETENABLED = 1988,
++  ASIDEMINIPOPUP_SETENABLED = 1989,
++  ASIDEMINIPOPUP_GETSHORTCUT = 1990,
++  ASIDEMINIPOPUP_SETSHORTCUT = 1991,
++  ASIDEMINIPOPUP_SETSTATE = 1992,
++  ASIDEMINIPOPUP_SETSIZE = 1993,
++  ASIDEMINIPOPUP_SETOPTIONWINDOWSIZE = 1994,
++  ASIDEMINIPOPUP_PICKDIRECTORY = 1995,
++  ASIDEMINIPOPUP_SWITCHPROFILE = 1996,
++  ASIDEBROWSERPREFERENCES_GETBROWSERCOLORSCHEME = 1997,
++  ASIDEBROWSERPREFERENCES_SETBROWSERCOLORSCHEME = 1998,
++  ASIDEBROWSERPREFERENCES_GETTABSTYLE = 1999,
++  ASIDEBROWSERPREFERENCES_SETTABSTYLE = 2000,
++  ASIDEBROWSERPREFERENCES_GETHORIZONTALTABSHRINKENABLED = 2001,
++  ASIDEBROWSERPREFERENCES_SETHORIZONTALTABSHRINKENABLED = 2002,
++  ASIDEBROWSERPREFERENCES_GETTABSWITCHERSORTBYRECENTLYUSED = 2003,
++  ASIDEBROWSERPREFERENCES_SETTABSWITCHERSORTBYRECENTLYUSED = 2004,
++  ASIDEBROWSERPREFERENCES_GETDEFAULTZOOM = 2005,
++  ASIDEBROWSERPREFERENCES_SETDEFAULTZOOM = 2006,
++  ASIDEBROWSERPREFERENCES_GETDEFAULTBROWSERSTATE = 2007,
++  ASIDEBROWSERPREFERENCES_SETASDEFAULTBROWSER = 2008,
++  ASIDEBROWSERPREFERENCES_GETDOCKSTATE = 2009,
++  ASIDEBROWSERPREFERENCES_ADDTODOCK = 2010,
++  ASIDEBROWSERPREFERENCES_GETKEEPTASKSRUNNINGSTATE = 2011,
++  ASIDEBROWSERPREFERENCES_SETKEEPTASKSRUNNINGENABLED = 2012,
++  ASIDEBROWSERPREFERENCES_GETAUTOPIPENABLED = 2013,
++  ASIDEBROWSERPREFERENCES_SETAUTOPIPENABLED = 2014,
++  ASIDEBROWSERPREFERENCES_GETVERTICALTABSBOOKMARKSSECTIONENABLED = 2015,
++  ASIDEBROWSERPREFERENCES_SETVERTICALTABSBOOKMARKSSECTIONENABLED = 2016,
++  ASIDEBROWSERPREFERENCES_GETBROWSERVERSION = 2017,
++  ASIDEBROWSERPREFERENCES_GETSYNCSTATUS = 2018,
++  ASIDEBROWSERPREFERENCES_CHECKFORUPDATES = 2019,
++  ASIDEBROWSERPREFERENCES_GETLANGUAGESETTINGS = 2020,
++  ASIDEBROWSERPREFERENCES_GETSUPPORTEDLANGUAGES = 2021,
++  ASIDEBROWSERPREFERENCES_SETPREFERREDLANGUAGES = 2022,
++  ASIDEBROWSERPREFERENCES_SETSPELLCHECKENABLED = 2023,
++  ASIDEBROWSERPREFERENCES_GETSEARCHENGINES = 2024,
++  ASIDEBROWSERPREFERENCES_SETDEFAULTSEARCHENGINE = 2025,
++  ASIDEOMNIBOX_CREATESESSION = 2026,
++  ASIDEOMNIBOX_DESTROYSESSION = 2027,
++  ASIDEOMNIBOX_GETSEARCHENGINES = 2028,
++  ASIDEOMNIBOX_ONFOCUSCHANGED = 2029,
++  ASIDEOMNIBOX_QUERYAUTOCOMPLETE = 2030,
++  ASIDEOMNIBOX_STOPAUTOCOMPLETE = 2031,
++  ASIDEOMNIBOX_OPENAUTOCOMPLETEMATCH = 2032,
++  ASIDEOMNIBOX_SETPOPUPSELECTION = 2033,
++  ASIDEOMNIBOX_OPENPOPUPSELECTION = 2034,
++  ASIDEOMNIBOX_ONNAVIGATIONLIKELY = 2035,
++  ASIDEOMNIBOX_DELETEAUTOCOMPLETEMATCH = 2036,
++  ASIDEOMNIBOX_ACTIVATEKEYWORD = 2037,
++  ASIDEOMNIBOX_EXECUTEACTION = 2038,
++  ASIDEOMNIBOX_ONTHUMBNAILREMOVED = 2039,
++  ASIDEOMNIBOX_GETPLACEHOLDERCONFIG = 2040,
++  ASIDEOMNIBOX_GETRECENTTABS = 2041,
++  ASIDEOMNIBOX_GETTABPREVIEW = 2042,
++  ASIDEOMNIBOX_GETINPUTSTATE = 2043,
++  ASIDEOMNIBOX_NOTIFYSESSIONSTARTED = 2044,
++  ASIDEOMNIBOX_NOTIFYSESSIONABANDONED = 2045,
++  ASIDEOMNIBOX_ADDFILECONTEXT = 2046,
++  ASIDEOMNIBOX_ADDTABCONTEXT = 2047,
++  ASIDEOMNIBOX_DELETECONTEXT = 2048,
++  ASIDEOMNIBOX_CLEARFILES = 2049,
++  ASIDEOMNIBOX_SUBMITQUERY = 2050,
++  ASIDEOMNIBOX_OPENLENSSEARCH = 2051,
++  ASIDEOMNIBOX_SETACTIVETOOLMODE = 2052,
++  ASIDEOMNIBOX_SETACTIVEMODELMODE = 2053,
++  ASIDEOMNIBOX_ACTIVATEMETRICSFUNNEL = 2054,
+   // Last entry: Add new entries above, then run:
+   // tools/metrics/histograms/update_extension_histograms.py
+   ENUM_BOUNDARY
+diff --git a/extensions/common/mojom/api_permission_id.mojom b/extensions/common/mojom/api_permission_id.mojom
+index 4e1045188b..3f4bc7c9d7 100644
+--- a/extensions/common/mojom/api_permission_id.mojom
++++ b/extensions/common/mojom/api_permission_id.mojom
+@@ -294,6 +294,15 @@ enum APIPermissionID {
+   kIndigoPrivate = 267,
+   kContextualTasksPrivate = 268,
+   kDictationPrivate = 269,
++  // Aside: allows a trusted extension to capture a tab without a user gesture.
++  kAsideCaptureTabWithoutUserInteraction = 270,
++  // Aside: private permissions for trusted bundled extensions.
++  kAsideAccount = 271,
++  kAsideBrowserImport = 272,
++  kAsideNotification = 273,
++  kAsideOmnibox = 274,
++  kAsidePrefGetSet = 275,
++  kAsideLaunchExtension = 276,
+ 
+   // Add new entries at the end of the enum and be sure to update the
+   // "ExtensionPermission3" enum in

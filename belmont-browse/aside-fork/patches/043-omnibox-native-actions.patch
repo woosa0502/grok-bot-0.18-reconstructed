@@ -1,0 +1,1518 @@
+diff --git a/chrome/browser/extensions/api/aside_omnibox/BUILD.gn b/chrome/browser/extensions/api/aside_omnibox/BUILD.gn
+--- a/chrome/browser/extensions/api/aside_omnibox/BUILD.gn
++++ b/chrome/browser/extensions/api/aside_omnibox/BUILD.gn
+@@ -3,6 +3,7 @@
+ # found in the LICENSE file.
+ 
+ import("//extensions/buildflags/buildflags.gni")
++import("//testing/test.gni")
+ 
+ assert(enable_extensions)
+ 
+@@ -10,6 +11,10 @@
+   sources = [
+     "aside_omnibox_api.cc",
+     "aside_omnibox_api.h",
++    "aside_omnibox_context_store.cc",
++    "aside_omnibox_context_store.h",
++    "aside_omnibox_match_utils.cc",
++    "aside_omnibox_match_utils.h",
+     "aside_omnibox_service.cc",
+     "aside_omnibox_service.h",
+     "aside_omnibox_service_factory.cc",
+@@ -27,14 +32,51 @@
+   deps = [
+     "//base",
+     "//chrome/browser/autocomplete",
++    "//chrome/browser/profiles:profile",
+     "//chrome/browser/ui",
+-    "//chrome/browser/profiles:profile",
+     "//components/keyed_service/core",
+     "//components/omnibox/browser",
+     "//components/search_engines",
+     "//extensions/browser",
+     "//extensions/common",
++    "//services/data_decoder/public/cpp",
+     "//third_party/metrics_proto",
++    "//ui/base",
++    "//ui/gfx",
++    "//ui/gfx/geometry",
++    "//url",
++  ]
++}
++
++# Local-only storage regressions; no browser, profile, or network is started.
++test("aside_omnibox_context_unittests") {
++  sources = [
++    "aside_omnibox_context_store.cc",
++    "aside_omnibox_context_store.h",
++    "aside_omnibox_context_store_unittest.cc",
++  ]
++  deps = [
++    "//base",
++    "//base/test:run_all_unittests",
++    "//base/test:test_support",
++    "//testing/gtest",
++    "//url",
++  ]
++}
++
++# Executes native OmniboxAction objects with an in-memory client and callback.
++test("aside_omnibox_action_unittests") {
++  sources = [
++    "aside_omnibox_match_utils.cc",
++    "aside_omnibox_match_utils.h",
++    "aside_omnibox_match_utils_unittest.cc",
++  ]
++  deps = [
++    "//base",
++    "//base/test:run_all_unittests",
++    "//base/test:test_support",
++    "//components/omnibox/browser",
++    "//testing/gtest",
+     "//ui/base",
+     "//url",
+   ]
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.cc
+--- a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.cc
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.cc
+@@ -8,17 +8,22 @@
+ #include <string>
+ #include <utility>
+ 
+-#include "base/base64.h"
+-#include "base/json/json_writer.h"
++#include "base/containers/span.h"
++#include "base/functional/bind.h"
+ #include "base/strings/string_number_conversions.h"
+ #include "base/strings/utf_string_conversions.h"
+ #include "base/values.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.h"
+ #include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service.h"
+ #include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h"
+ #include "chrome/browser/extensions/extension_tab_util.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/search_engines/template_url_service_factory.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
++#include "chrome/browser/ui/location_bar/location_bar.h"
++#include "chrome/browser/ui/omnibox/omnibox_controller.h"
++#include "chrome/browser/ui/tab_contents/core_tab_helper.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/common/extensions/api/aside_omnibox.h"
+@@ -31,6 +36,10 @@
+ #include "components/search_engines/template_url_service.h"
+ #include "components/tabs/public/tab_interface.h"
+ #include "content/public/browser/web_contents.h"
++#include "services/data_decoder/public/cpp/decode_image.h"
++#include "third_party/skia/include/core/SkBitmap.h"
++#include "ui/gfx/geometry/size.h"
++#include "ui/gfx/image/image.h"
+ #include "extensions/common/extension.h"
+ #include "ui/base/window_open_disposition.h"
+ #include "ui/base/window_open_disposition_utils.h"
+@@ -52,6 +61,10 @@
+ AsideOmniboxSession* FindSession(ExtensionFunction* fn,
+                                  const std::string& session_id,
+                                  std::string* error) {
++  if (!fn->browser_context()) {
++    *error = kServiceUnavailable;
++    return nullptr;
++  }
+   AsideOmniboxService* service = AsideOmniboxService::Get(fn->browser_context());
+   if (!service) {
+     *error = kServiceUnavailable;
+@@ -91,28 +104,47 @@
+       request.FindBool("shiftKey").value_or(false));
+ }
+ 
+-void OpenUrl(Profile* profile, const GURL& url, WindowOpenDisposition disposition) {
+-  if (!url.is_valid()) {
+-    return;
+-  }
+-  if (BrowserWindowInterface* browser = FindBrowserForProfile(profile)) {
+-    browser->OpenGURL(url, disposition);
+-  }
+-}
+-
+-// Resolves the match URL for a request: explicit "url" wins, else the match
+-// at "line" in the session's current result.
+-GURL MatchUrlFromRequest(AsideOmniboxSession* session,
+-                         const base::DictValue& request) {
+-  if (const std::string* url = request.FindString("url")) {
+-    return GURL(*url);
+-  }
+-  const std::optional<int> line = request.FindInt("line");
+-  const AutocompleteResult& result = session->result();
+-  if (line && *line >= 0 && static_cast<size_t>(*line) < result.size()) {
+-    return result.match_at(static_cast<size_t>(*line)).destination_url;
+-  }
+-  return GURL();
++bool OpenUrl(AsideOmniboxSession* session, const GURL& url,
++             WindowOpenDisposition disposition) {
++  if (!url.is_valid() || !session->target()) {
++    return false;
++  }
++  session->target()->OpenURL(
++      content::OpenURLParams(url, content::Referrer(), disposition,
++                             ui::PAGE_TRANSITION_GENERATED, false),
++      /*navigation_handle_callback=*/{});
++  return true;
++}
++
++// Never apply an action or a keyword to a different result that arrived while
++// the extension was displaying an older list.
++const AutocompleteMatch* MatchFromRequest(AsideOmniboxSession* session,
++                                          const base::DictValue& request) {
++  return FindAsideOmniboxMatch(session->result(), request,
++                               session->result_sequence_id());
++}
++
++std::string ExecuteActionRequest(AsideOmniboxSession* session,
++                                const base::DictValue& request,
++                                WindowOpenDisposition disposition) {
++  const auto* match = MatchFromRequest(session, request);
++  const auto index = request.FindInt("actionIndex");
++  if (!match || !index || *index < 0 ||
++      static_cast<size_t>(*index) >= match->actions.size()) {
++    return "Invalid or stale autocomplete action";
++  }
++  auto* tab = session->target()
++      ? tabs::TabInterface::MaybeGetFromContents(session->target()) : nullptr;
++  auto* browser = tab ? tab->GetBrowserWindowInterface() : nullptr;
++  auto* location_bar = browser ? browser->GetFeatures().location_bar() : nullptr;
++  auto* controller = location_bar ? location_bar->GetOmniboxController() : nullptr;
++  if (!controller || browser->GetTabStripModel()->GetActiveWebContents() !=
++                         session->target()) {
++    return "Target tab is not active or omnibox actions are unavailable";
++  }
++  return session->ExecuteAction(*request.FindInt("line"), *index, disposition,
++                                controller->client())
++      ? std::string() : "Omnibox action is unavailable";
+ }
+ 
+ double MillisSinceEpoch(base::Time t) {
+@@ -169,7 +201,7 @@
+     return RespondNow(Error("Failed to create asideOmnibox session"));
+   }
+   const int target_tab_id = ExtensionTabUtil::GetTabId(target);
+-  session->set_target_tab_id(target_tab_id);
++  session->SetTarget(target, target_tab_id);
+ 
+   // RE 0x405a41c..0x405a5f0: {sessionId, targetInternalTabId, targetTabId,
+   // targetUrl, contentSharingEnabled, aimEligible, canShowAiMode}.
+@@ -279,15 +311,104 @@
+   }
+ 
+ ASIDE_OMNIBOX_SESSION_ACK(AsideOmniboxOnFocusChangedFunction, OnFocusChanged)
+-ASIDE_OMNIBOX_SESSION_ACK(AsideOmniboxOnThumbnailRemovedFunction, OnThumbnailRemoved)
+ ASIDE_OMNIBOX_SESSION_ACK(AsideOmniboxNotifySessionStartedFunction, NotifySessionStarted)
+-ASIDE_OMNIBOX_SESSION_ACK(AsideOmniboxNotifySessionAbandonedFunction, NotifySessionAbandoned)
+-ASIDE_OMNIBOX_SESSION_ACK(AsideOmniboxOpenLensSearchFunction, OpenLensSearch)
+ ASIDE_OMNIBOX_SESSION_ACK(AsideOmniboxActivateMetricsFunnelFunction, ActivateMetricsFunnel)
+ ASIDE_OMNIBOX_SESSION_ACK(AsideOmniboxOnNavigationLikelyFunction, OnNavigationLikely)
+-ASIDE_OMNIBOX_SESSION_ACK(AsideOmniboxActivateKeywordFunction, ActivateKeyword)
+ 
+ #undef ASIDE_OMNIBOX_SESSION_ACK
++
++ExtensionFunction::ResponseAction AsideOmniboxOnThumbnailRemovedFunction::Run() {
++  auto params = api::aside_omnibox::OnThumbnailRemoved::Params::Create(args());
++  if (!params) return RespondNow(Error(kInvalidArguments));
++  std::string error;
++  auto* session = FindSession(this, params->session_id, &error);
++  if (!session) return RespondNow(Error(error));
++  session->contexts().ClearImages();
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxNotifySessionAbandonedFunction::Run() {
++  auto params = api::aside_omnibox::NotifySessionAbandoned::Params::Create(args());
++  if (!params) return RespondNow(Error(kInvalidArguments));
++  std::string error;
++  auto* session = FindSession(this, params->session_id, &error);
++  if (!session) return RespondNow(Error(error));
++  session->Stop(true);
++  session->contexts().Clear();
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxActivateKeywordFunction::Run() {
++  auto params = api::aside_omnibox::ActivateKeyword::Params::Create(args());
++  if (!params) return RespondNow(Error(kInvalidArguments));
++  std::string error;
++  auto* session = FindSession(this, params->session_id, &error);
++  if (!session) return RespondNow(Error(error));
++  const auto* match = MatchFromRequest(session, params->request.additional_properties);
++  if (!match) return RespondNow(Error("Invalid or stale keyword match"));
++  const auto& keyword = match->associated_keyword.empty()
++      ? match->keyword : match->associated_keyword;
++  if (keyword.empty() || !session->ActivateKeyword(keyword)) {
++    return RespondNow(Error("Keyword search provider is unavailable"));
++  }
++  return RespondNow(NoArguments());
++}
++
++ExtensionFunction::ResponseAction AsideOmniboxOpenLensSearchFunction::Run() {
++  auto params = api::aside_omnibox::OpenLensSearch::Params::Create(args());
++  if (!params) return RespondNow(Error(kInvalidArguments));
++  std::string error;
++  auto* session = FindSession(this, params->session_id, &error);
++  if (!session) return RespondNow(Error(error));
++  const auto* image = session->contexts().GetSingleImage();
++  if (!image) return RespondNow(Error("Image search requires exactly one image context"));
++  auto* provider_service = TemplateURLServiceFactory::GetForProfile(
++      Profile::FromBrowserContext(browser_context()));
++  const auto* provider = provider_service ? provider_service->GetDefaultSearchProvider() : nullptr;
++  if (!provider || !provider->image_url_ref().IsValid(provider_service->search_terms_data())) {
++    return RespondNow(Error("The current search provider does not support image search"));
++  }
++  if (!session->target() || !CoreTabHelper::FromWebContents(session->target())) {
++    return RespondNow(Error("Image search target tab is unavailable"));
++  }
++  // Decode through Chromium's isolated decoder, accepting its supported image
++  // formats. MIME or data-URL claims alone do not establish a valid image.
++  data_decoder::DecodeImageIsolated(base::as_byte_span(image->second.bytes),
++      data_decoder::mojom::ImageCodec::kDefault, true,
++      data_decoder::kDefaultMaxSizeInBytes, gfx::Size(),
++      base::BindOnce(&AsideOmniboxOpenLensSearchFunction::OnImageDecoded,
++                     base::RetainedRef(this), params->session_id, image->first));
++  return RespondLater();
++}
++
++void AsideOmniboxOpenLensSearchFunction::OnImageDecoded(
++    std::string session_id, std::string token, const SkBitmap& bitmap) {
++  std::string error;
++  auto* session = FindSession(this, session_id, &error);
++  if (!session) { Respond(Error(error)); return; }
++  // A user can remove a file, abandon/destroy the session, or close its tab
++  // while the isolated decoder is working. None may initiate a later upload.
++  const auto* image = session->contexts().GetSingleImage();
++  if (!image || image->first != token) {
++    Respond(Error("Image context was removed or changed")); return;
++  }
++  if (bitmap.drawsNothing()) {
++    Respond(Error("Invalid or unsupported image payload")); return;
++  }
++  auto* service = TemplateURLServiceFactory::GetForProfile(
++      Profile::FromBrowserContext(browser_context()));
++  const auto* provider = service ? service->GetDefaultSearchProvider() : nullptr;
++  if (!provider || !provider->image_url_ref().IsValid(service->search_terms_data())) {
++    Respond(Error("The current search provider does not support image search")); return;
++  }
++  auto* helper = session->target() ? CoreTabHelper::FromWebContents(session->target()) : nullptr;
++  if (!helper) { Respond(Error("Image search target tab is unavailable")); return; }
++  // Same native path as Chromium's image context-menu action. It prepares the
++  // provider's image URL and POST body; no endpoint is invented by this API.
++  helper->SearchByImage(gfx::Image::CreateFrom1xBitmap(bitmap));
++  session->contexts().Remove(token);
++  Respond(NoArguments());
++}
+ 
+ ExtensionFunction::ResponseAction AsideOmniboxQueryAutocompleteFunction::Run() {
+   std::optional<api::aside_omnibox::QueryAutocomplete::Params> params =
+@@ -300,7 +421,9 @@
+   if (!session) {
+     return RespondNow(Error(error));
+   }
+-  session->Query(params->input);
++  const bool prevent_inline = params->options &&
++      params->options->additional_properties.FindBool("preventInlineAutocomplete").value_or(false);
++  session->Query(params->input, prevent_inline);
+   return RespondNow(NoArguments());
+ }
+ 
+@@ -331,8 +454,11 @@
+     return RespondNow(Error(error));
+   }
+   const base::DictValue& request = params->request.additional_properties;
+-  OpenUrl(Profile::FromBrowserContext(browser_context()),
+-          MatchUrlFromRequest(session, request), DispositionFromRequest(request));
++  const auto* match = MatchFromRequest(session, request);
++  if (!match || !OpenUrl(session, match->destination_url,
++                          DispositionFromRequest(request))) {
++    return RespondNow(Error("Invalid or stale autocomplete match"));
++  }
+   return RespondNow(NoArguments());
+ }
+ 
+@@ -347,9 +473,13 @@
+   if (!session) {
+     return RespondNow(Error(error));
+   }
+-  std::string json;
+-  base::JSONWriter::Write(params->selection.additional_properties, &json);
+-  session->SetSelection(json);
++  const auto& selection = params->selection.additional_properties;
++  const auto line = selection.FindInt("line");
++  if (!IsAsideOmniboxResultCurrent(selection, session->result_sequence_id()) || !line || *line < -1 || (*line >= 0 &&
++      static_cast<size_t>(*line) >= session->result().size())) {
++    return RespondNow(Error("Invalid or stale popup selection"));
++  }
++  session->SetSelection(selection.Clone());
+   return RespondNow(NoArguments());
+ }
+ 
+@@ -367,20 +497,43 @@
+   // RE 0x405ce40: {selection{line,state}, disposition, currentTab,
+   // resultSequenceId, actionIndex}.
+   const base::DictValue& request = params->request.additional_properties;
+-  GURL url;
+-  if (const base::DictValue* selection = request.FindDict("selection")) {
+-    url = MatchUrlFromRequest(session, *selection);
+-  }
+-  if (!url.is_valid()) {
+-    url = MatchUrlFromRequest(session, request);
+-  }
+-  WindowOpenDisposition disposition = WindowOpenDisposition::CURRENT_TAB;
+-  if (const std::optional<int> d = request.FindInt("disposition")) {
++  const base::DictValue* selection = request.FindDict("selection");
++  base::DictValue action_request = selection ? selection->Clone() : request.Clone();
++  if (const auto sequence = request.FindDouble("resultSequenceId")) {
++    if (const auto selected_sequence = action_request.FindDouble("resultSequenceId");
++        selected_sequence && *selected_sequence != *sequence) {
++      return RespondNow(Error("Conflicting resultSequenceId values"));
++    }
++    action_request.Set("resultSequenceId", *sequence);
++  }
++  if (const auto* url = request.FindString("url")) {
++    action_request.Set("url", *url);
++  }
++  WindowOpenDisposition disposition = DispositionFromRequest(request);
++  if (const auto d = request.FindInt("disposition")) {
++    if (*d < static_cast<int>(WindowOpenDisposition::UNKNOWN) ||
++        *d > static_cast<int>(WindowOpenDisposition::MAX_VALUE)) {
++      return RespondNow(Error("Invalid disposition"));
++    }
+     disposition = static_cast<WindowOpenDisposition>(*d);
+-  } else if (request.FindBool("currentTab").value_or(true) == false) {
++  } else if (!request.FindBool("currentTab").value_or(true)) {
+     disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+   }
+-  OpenUrl(Profile::FromBrowserContext(browser_context()), url, disposition);
++  const std::string* state = action_request.FindString("state");
++  if (state && (*state == "actionButton" || *state == "focusedButtonAction")) {
++    if (const auto index = request.FindInt("actionIndex")) {
++      action_request.Set("actionIndex", *index);
++    }
++    error = ExecuteActionRequest(session, action_request, disposition);
++    if (!error.empty()) {
++      return RespondNow(Error(error));
++    }
++  } else {
++    const auto* match = MatchFromRequest(session, action_request);
++    if (!match || !OpenUrl(session, match->destination_url, disposition)) {
++      return RespondNow(Error("Invalid or stale autocomplete selection"));
++    }
++  }
+   return RespondNow(NoArguments());
+ }
+ 
+@@ -395,11 +548,12 @@
+   if (!session) {
+     return RespondNow(Error(error));
+   }
+-  const std::optional<int> line =
+-      params->request.additional_properties.FindInt("line");
+-  if (line && *line >= 0) {
+-    session->DeleteMatch(static_cast<size_t>(*line));
+-  }
++  const auto& request = params->request.additional_properties;
++  const auto* match = MatchFromRequest(session, request);
++  if (!match || !match->SupportsDeletion()) {
++    return RespondNow(Error("Invalid, stale, or non-deletable autocomplete match"));
++  }
++  session->DeleteMatch(*request.FindInt("line"));
+   return RespondNow(NoArguments());
+ }
+ 
+@@ -414,11 +568,11 @@
+   if (!session) {
+     return RespondNow(Error(error));
+   }
+-  // Fork approximation: an omnibox action is executed by navigating to the
+-  // match (the original runs OmniboxAction::Execute through its searchbox).
+-  const base::DictValue& request = params->request.additional_properties;
+-  OpenUrl(Profile::FromBrowserContext(browser_context()),
+-          MatchUrlFromRequest(session, request), DispositionFromRequest(request));
++  const auto& request = params->request.additional_properties;
++  error = ExecuteActionRequest(session, request, DispositionFromRequest(request));
++  if (!error.empty()) {
++    return RespondNow(Error(error));
++  }
+   return RespondNow(NoArguments());
+ }
+ 
+@@ -510,6 +664,7 @@
+   }
+   base::DictValue dict;
+   dict.Set("inputText", session->last_input());
++  dict.Set("resultSequenceId", session->result_sequence_id());
+   dict.Set("toolMode", session->tool_mode());
+   dict.Set("modelMode", session->model_mode());
+   return RespondNow(WithArguments(std::move(dict)));
+@@ -526,17 +681,13 @@
+   if (!session) {
+     return RespondNow(Error(error));
+   }
+-  // RE 0x405ffc0: {fileName, mimeType, bytesBase64, imageDataUrl, isDeletable,
+-  // selectionTimeMs}; the payload must be valid base64.
+-  const base::DictValue& request = params->request.additional_properties;
+-  const std::string* bytes = request.FindString("bytesBase64");
+-  std::string decoded;
+-  if (!bytes || !base::Base64Decode(*bytes, &decoded)) {
+-    return RespondNow(Error("Invalid bytesBase64 payload"));
++  auto added = session->contexts().AddFile(params->request.additional_properties);
++  if (!added.has_value()) {
++    return RespondNow(Error(added.error()));
+   }
+   base::DictValue dict;
+   dict.Set("ok", true);
+-  dict.Set("contextToken", session->AddContextToken());
++  dict.Set("contextToken", *added);
+   return RespondNow(WithArguments(std::move(dict)));
+ }
+ 
+@@ -558,9 +709,14 @@
+       !contents) {
+     return RespondNow(Error(kInvalidTabId));
+   }
++  auto added = session->contexts().AddTab(params->tab_id,
++      contents->GetLastCommittedURL(), base::UTF16ToUTF8(contents->GetTitle()));
++  if (!added.has_value()) {
++    return RespondNow(Error(added.error()));
++  }
+   base::DictValue dict;
+   dict.Set("ok", true);
+-  dict.Set("contextToken", session->AddContextToken());
++  dict.Set("contextToken", *added);
+   return RespondNow(WithArguments(std::move(dict)));
+ }
+ 
+@@ -575,7 +731,7 @@
+   if (!session) {
+     return RespondNow(Error(error));
+   }
+-  if (!session->RemoveContextToken(params->context_token)) {
++  if (!session->contexts().Remove(params->context_token)) {
+     return RespondNow(Error("Invalid contextToken"));
+   }
+   return RespondNow(NoArguments());
+@@ -592,7 +748,7 @@
+   if (!session) {
+     return RespondNow(Error(error));
+   }
+-  session->ClearContextTokens();
++  session->contexts().Clear();
+   return RespondNow(NoArguments());
+ }
+ 
+@@ -614,15 +770,24 @@
+   if (!query) {
+     return RespondNow(Error(kInvalidArguments));
+   }
++  // The fork has no contextual upload session. Never silently turn a query
++  // with retained attachments into an unrelated text-only web search.
++  if (!session->contexts().empty()) {
++    return RespondNow(Error("Contextual query submission is unavailable; use image search for a single image or remove attachments"));
++  }
+   Profile* profile = Profile::FromBrowserContext(browser_context());
+-  TemplateURLService* turl_service =
+-      TemplateURLServiceFactory::GetForProfile(profile);
+-  if (turl_service && turl_service->GetDefaultSearchProvider()) {
+-    const TemplateURL* dse = turl_service->GetDefaultSearchProvider();
+-    GURL url(dse->url_ref().ReplaceSearchTerms(
+-        TemplateURLRef::SearchTermsArgs(base::UTF8ToUTF16(*query)),
+-        turl_service->search_terms_data()));
+-    OpenUrl(profile, url, DispositionFromRequest(request));
++  TemplateURLService* turl_service = TemplateURLServiceFactory::GetForProfile(profile);
++  const TemplateURL* provider = !turl_service ? nullptr : session->keyword().empty()
++      ? turl_service->GetDefaultSearchProvider()
++      : turl_service->GetTemplateURLForKeyword(session->keyword());
++  if (!provider || !provider->SupportsReplacement(turl_service->search_terms_data())) {
++    return RespondNow(Error("Search provider is unavailable"));
++  }
++  GURL url(provider->url_ref().ReplaceSearchTerms(
++      TemplateURLRef::SearchTermsArgs(base::UTF8ToUTF16(*query)),
++      turl_service->search_terms_data()));
++  if (!OpenUrl(session, url, DispositionFromRequest(request))) {
++    return RespondNow(Error("Target tab or search URL is unavailable"));
+   }
+   return RespondNow(NoArguments());
+ }
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.h b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.h
+--- a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.h
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_api.h
+@@ -7,6 +7,8 @@
+ 
+ #include "extensions/browser/extension_function.h"
+ 
++class SkBitmap;
++
+ namespace extensions {
+ 
+ class AsideOmniboxCreateSessionFunction final : public ExtensionFunction {
+@@ -241,6 +243,8 @@
+  private:
+   ~AsideOmniboxOpenLensSearchFunction() final = default;
+   ResponseAction Run() final;
++  void OnImageDecoded(std::string session_id, std::string token,
++                      const SkBitmap& bitmap);
+ };
+ 
+ class AsideOmniboxSetActiveToolModeFunction final : public ExtensionFunction {
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.cc
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.cc
+@@ -0,0 +1,125 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.h"
++
++#include <utility>
++
++#include "base/base64.h"
++#include "base/strings/string_util.h"
++#include "base/rand_util.h"
++#include "base/strings/stringprintf.h"
++
++namespace extensions {
++
++AsideOmniboxContextStore::AsideOmniboxContextStore() = default;
++AsideOmniboxContextStore::~AsideOmniboxContextStore() = default;
++
++base::expected<std::string, std::string> AsideOmniboxContextStore::AddFile(
++    const base::DictValue& request) {
++  if (contexts_.size() >= kMaxContexts) {
++    return base::unexpected("Too many contexts");
++  }
++  const std::string* encoded = request.FindString("bytesBase64");
++  Context context;
++  // Bound before decoding too, so an oversized request cannot allocate an
++  // unbounded duplicate of its payload.
++  if (!encoded || encoded->size() > ((kMaxFileBytes + 2) / 3) * 4 ||
++      !base::Base64Decode(*encoded, &context.bytes) || context.bytes.empty()) {
++    return base::unexpected("Invalid or oversized bytesBase64 payload");
++  }
++  if (context.bytes.size() > kMaxFileBytes ||
++      context.bytes.size() > kMaxTotalBytes - total_bytes_) {
++    return base::unexpected("Context storage limit exceeded");
++  }
++  const std::string* mime = request.FindString("mimeType");
++  if (!mime || mime->empty() || mime->size() > 128 ||
++      mime->find('/') == std::string::npos ||
++      mime->find_first_of("\r\n\0", 0, 3) != std::string::npos) {
++    return base::unexpected("Invalid mimeType");
++  }
++  context.mime_type = base::ToLowerASCII(*mime);
++  if (const std::string* name = request.FindString("fileName")) {
++    if (name->size() > 4096) {
++      return base::unexpected("Invalid fileName");
++    }
++    context.file_name = *name;
++  }
++  return base::ok(Insert(std::move(context)));
++}
++
++base::expected<std::string, std::string> AsideOmniboxContextStore::AddTab(
++    int tab_id, const GURL& url, std::string title) {
++  if (contexts_.size() >= kMaxContexts) {
++    return base::unexpected("Too many contexts");
++  }
++  if (tab_id < 0 || !url.SchemeIsHTTPOrHTTPS()) {
++    return base::unexpected("Tab context requires an HTTP or HTTPS page");
++  }
++  Context context;
++  context.kind = Context::Kind::kTab;
++  context.tab_id = tab_id;
++  context.tab_url = url;
++  context.tab_title = std::move(title);
++  return base::ok(Insert(std::move(context)));
++}
++
++std::string AsideOmniboxContextStore::Insert(Context context) {
++  std::string token;
++  do {
++    token = base::StringPrintf("%016llX%016llX",
++        static_cast<unsigned long long>(base::RandUint64()),
++        static_cast<unsigned long long>(base::RandUint64()));
++  } while (contexts_.contains(token));
++  total_bytes_ += context.bytes.size();
++  contexts_.emplace(token, std::move(context));
++  return token;
++}
++
++const AsideOmniboxContextStore::Context* AsideOmniboxContextStore::Get(
++    const std::string& token) const {
++  auto it = contexts_.find(token);
++  return it == contexts_.end() ? nullptr : &it->second;
++}
++
++const std::pair<const std::string, AsideOmniboxContextStore::Context>*
++AsideOmniboxContextStore::GetSingleImage() const {
++  if (contexts_.size() != 1) {
++    return nullptr;
++  }
++  const auto& entry = *contexts_.begin();
++  return entry.second.kind == Context::Kind::kFile &&
++                 base::StartsWith(entry.second.mime_type, "image/")
++             ? &entry
++             : nullptr;
++}
++
++bool AsideOmniboxContextStore::Remove(const std::string& token) {
++  auto it = contexts_.find(token);
++  if (it == contexts_.end()) {
++    return false;
++  }
++  total_bytes_ -= it->second.bytes.size();
++  contexts_.erase(it);
++  return true;
++}
++
++void AsideOmniboxContextStore::Clear() {
++  contexts_.clear();
++  total_bytes_ = 0;
++}
++
++void AsideOmniboxContextStore::ClearImages() {
++  for (auto it = contexts_.begin(); it != contexts_.end();) {
++    if (it->second.kind == Context::Kind::kFile &&
++        base::StartsWith(it->second.mime_type, "image/")) {
++      total_bytes_ -= it->second.bytes.size();
++      it = contexts_.erase(it);
++    } else {
++      ++it;
++    }
++  }
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.h b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.h
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.h
+@@ -0,0 +1,59 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_CONTEXT_STORE_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_CONTEXT_STORE_H_
++
++#include <map>
++#include <string>
++
++#include "base/types/expected.h"
++#include "base/values.h"
++#include "url/gurl.h"
++
++namespace extensions {
++
++// Session-local, in-memory attachments. A token owns its payload; deleting or
++// clearing it releases the bytes. Nothing is uploaded when adding an attachment.
++class AsideOmniboxContextStore {
++ public:
++  static constexpr size_t kMaxFileBytes = 20 * 1024 * 1024;
++  static constexpr size_t kMaxTotalBytes = 40 * 1024 * 1024;
++  static constexpr size_t kMaxContexts = 16;
++  struct Context {
++    enum class Kind { kFile, kTab };
++    Kind kind = Kind::kFile;
++    std::string file_name;
++    std::string mime_type;
++    std::string bytes;
++    int tab_id = -1;
++    GURL tab_url;
++    std::string tab_title;
++  };
++
++  AsideOmniboxContextStore();
++  ~AsideOmniboxContextStore();
++  base::expected<std::string, std::string> AddFile(
++      const base::DictValue& request);
++  base::expected<std::string, std::string> AddTab(
++      int tab_id, const GURL& url, std::string title);
++  const Context* Get(const std::string& token) const;
++  // Exactly one attached image is required by the single-image search path.
++  const std::pair<const std::string, Context>* GetSingleImage() const;
++  bool Remove(const std::string& token);
++  void Clear();
++  void ClearImages();
++  bool empty() const { return contexts_.empty(); }
++  size_t size() const { return contexts_.size(); }
++  size_t total_bytes() const { return total_bytes_; }
++
++ private:
++  std::string Insert(Context context);
++  std::map<std::string, Context> contexts_;
++  size_t total_bytes_ = 0;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_CONTEXT_STORE_H_
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store_unittest.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store_unittest.cc
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store_unittest.cc
+@@ -0,0 +1,127 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.h"
++
++#include "base/base64.h"
++#include "testing/gtest/include/gtest/gtest.h"
++
++namespace extensions {
++namespace {
++
++base::DictValue File(std::string bytes, std::string mime = "image/png") {
++  return base::DictValue()
++      .Set("bytesBase64", base::Base64Encode(bytes))
++      .Set("fileName", "local-test.png")
++      .Set("mimeType", std::move(mime));
++}
++
++TEST(AsideOmniboxContextStoreTest, PreservesExactBinaryPayloadUntilRemoval) {
++  AsideOmniboxContextStore store;
++  const std::string bytes("\x89PNG\0\r\n", 7);
++  auto token = store.AddFile(File(bytes));
++  ASSERT_TRUE(token.has_value());
++  EXPECT_EQ(token->size(), 32u);
++  ASSERT_TRUE(store.Get(*token));
++  EXPECT_EQ(store.Get(*token)->bytes, bytes);
++  EXPECT_EQ(store.Get(*token)->mime_type, "image/png");
++  EXPECT_EQ(store.Get(*token)->file_name, "local-test.png");
++  EXPECT_EQ(store.total_bytes(), bytes.size());
++  EXPECT_TRUE(store.Remove(*token));
++  EXPECT_FALSE(store.Get(*token));
++  EXPECT_FALSE(store.Remove(*token));
++  EXPECT_EQ(store.total_bytes(), 0u);
++}
++
++TEST(AsideOmniboxContextStoreTest, TokensCannotAccessAnotherSession) {
++  AsideOmniboxContextStore first, second;
++  auto a = first.AddFile(File("first"));
++  auto b = second.AddFile(File("second"));
++  ASSERT_TRUE(a.has_value());
++  ASSERT_TRUE(b.has_value());
++  EXPECT_NE(*a, *b);
++  EXPECT_FALSE(second.Get(*a));
++  EXPECT_FALSE(second.Remove(*a));
++  EXPECT_EQ(second.Get(*b)->bytes, "second");
++  first.Clear();
++  EXPECT_TRUE(first.empty());
++  EXPECT_EQ(second.Get(*b)->bytes, "second");
++}
++
++TEST(AsideOmniboxContextStoreTest, KeepsTabIdentitySeparateFromImage) {
++  AsideOmniboxContextStore store;
++  auto tab = store.AddTab(42, GURL("https://example.test/source"), "Source");
++  auto image = store.AddFile(File("image"));
++  ASSERT_TRUE(tab.has_value());
++  ASSERT_TRUE(image.has_value());
++  EXPECT_EQ(store.Get(*tab)->tab_id, 42);
++  EXPECT_EQ(store.Get(*tab)->tab_url, GURL("https://example.test/source"));
++  EXPECT_EQ(store.Get(*tab)->tab_title, "Source");
++  EXPECT_FALSE(store.GetSingleImage());
++  store.ClearImages();
++  EXPECT_FALSE(store.Get(*image));
++  EXPECT_TRUE(store.Get(*tab));
++  EXPECT_EQ(store.total_bytes(), 0u);
++}
++
++TEST(AsideOmniboxContextStoreTest, SingleImageSelectionRejectsAmbiguousPayloads) {
++  AsideOmniboxContextStore store;
++  auto first = store.AddFile(File("one"));
++  ASSERT_TRUE(first.has_value());
++  ASSERT_TRUE(store.GetSingleImage());
++  EXPECT_EQ(store.GetSingleImage()->first, *first);
++  auto second = store.AddFile(File("two"));
++  ASSERT_TRUE(second.has_value());
++  EXPECT_FALSE(store.GetSingleImage());
++  store.Remove(*second);
++  ASSERT_TRUE(store.GetSingleImage());
++  store.Clear();
++  EXPECT_FALSE(store.GetSingleImage());
++  ASSERT_TRUE(store.AddFile(File("plain", "text/plain")).has_value());
++  EXPECT_FALSE(store.GetSingleImage());
++}
++
++TEST(AsideOmniboxContextStoreTest, RejectsInvalidPayloadWithoutKeepingBytes) {
++  AsideOmniboxContextStore store;
++  EXPECT_FALSE(store.AddFile(base::DictValue()).has_value());
++  EXPECT_FALSE(store.AddFile(File("")).has_value());
++  auto malformed = File("data");
++  malformed.Set("bytesBase64", "%%%malformed%%%=");
++  EXPECT_FALSE(store.AddFile(malformed).has_value());
++  EXPECT_FALSE(store.AddFile(File("data", "image/png\r\nInjected: yes")).has_value());
++  EXPECT_FALSE(store.AddFile(File("data", "image")).has_value());
++  EXPECT_FALSE(store.AddTab(-1, GURL("https://example.test"), "").has_value());
++  EXPECT_FALSE(store.AddTab(1, GURL("chrome://settings"), "").has_value());
++  EXPECT_TRUE(store.empty());
++  EXPECT_EQ(store.total_bytes(), 0u);
++}
++
++TEST(AsideOmniboxContextStoreTest, ReleasedStorageCanBeReused) {
++  AsideOmniboxContextStore store;
++  const std::string full(AsideOmniboxContextStore::kMaxFileBytes, 'x');
++  auto first = store.AddFile(File(full));
++  auto second = store.AddFile(File(full));
++  ASSERT_TRUE(first.has_value());
++  ASSERT_TRUE(second.has_value());
++  EXPECT_FALSE(store.AddFile(File("overflow")).has_value());
++  EXPECT_FALSE(store.AddFile(File(full + "x")).has_value());
++  EXPECT_TRUE(store.Remove(*first));
++  EXPECT_TRUE(store.AddFile(File("replacement")).has_value());
++  store.Clear();
++  EXPECT_EQ(store.total_bytes(), 0u);
++  EXPECT_TRUE(store.AddFile(File(full)).has_value());
++}
++
++TEST(AsideOmniboxContextStoreTest, TabContextsCannotGrowWithoutBound) {
++  AsideOmniboxContextStore store;
++  for (size_t i = 0; i < AsideOmniboxContextStore::kMaxContexts; ++i) {
++    ASSERT_TRUE(store.AddTab(i, GURL("https://example.test"), "tab").has_value());
++  }
++  EXPECT_FALSE(store.AddTab(100, GURL("https://example.test"), "tab").has_value());
++  store.Clear();
++  EXPECT_TRUE(store.AddTab(100, GURL("https://example.test"), "tab").has_value());
++}
++
++}  // namespace
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.cc
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.cc
+@@ -0,0 +1,68 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.h"
++
++#include "base/strings/utf_string_conversions.h"
++#include "components/omnibox/browser/autocomplete_match.h"
++#include "components/omnibox/browser/autocomplete_result.h"
++
++namespace extensions {
++
++const AutocompleteMatch* FindAsideOmniboxMatch(
++    const AutocompleteResult& result, const base::DictValue& request,
++    double result_sequence_id) {
++  if (!IsAsideOmniboxResultCurrent(request, result_sequence_id)) {
++    return nullptr;
++  }
++  const auto line = request.FindInt("line");
++  if (!line || *line < 0 || static_cast<size_t>(*line) >= result.size()) {
++    return nullptr;
++  }
++  const auto& match = result.match_at(*line);
++  const auto* url = request.FindString("url");
++  if (url && GURL(*url) != match.destination_url) {
++    return nullptr;
++  }
++  return &match;
++}
++
++bool IsAsideOmniboxResultCurrent(const base::DictValue& request,
++                                double result_sequence_id) {
++  const auto received = request.FindDouble("resultSequenceId");
++  return received && *received > 0 && *received == result_sequence_id;
++}
++
++bool ExecuteAsideOmniboxAction(const AutocompleteResult& result,
++                              size_t line, size_t action_index,
++                              OmniboxAction::ExecutionContext& context) {
++  if (line >= result.size() || action_index >= result.match_at(line).actions.size()) {
++    return false;
++  }
++  // Execute may synchronously replace the entire result. Retain only the
++  // selected action, and never read the result or match again after execution.
++  scoped_refptr<OmniboxAction> action = result.match_at(line).actions[action_index];
++  if (!action) {
++    return false;
++  }
++  action->Execute(context);
++  return true;
++}
++
++base::ListValue AsideOmniboxActionDescriptions(const AutocompleteMatch& match) {
++  base::ListValue actions;
++  for (const auto& action : match.actions) {
++    base::DictValue item;
++    if (action) {
++      const auto& labels = action->GetLabelStrings();
++      item.Set("hint", base::UTF16ToUTF8(labels.hint));
++      item.Set("suggestionContents", base::UTF16ToUTF8(labels.suggestion_contents));
++    }
++    // Preserve positional indexes even if an unavailable action is present.
++    actions.Append(std::move(item));
++  }
++  return actions;
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.h b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.h
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.h
+@@ -0,0 +1,28 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_MATCH_UTILS_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_MATCH_UTILS_H_
++
++#include "base/values.h"
++#include "components/omnibox/browser/actions/omnibox_action.h"
++
++class AutocompleteResult;
++struct AutocompleteMatch;
++
++namespace extensions {
++
++const AutocompleteMatch* FindAsideOmniboxMatch(
++    const AutocompleteResult& result, const base::DictValue& request,
++    double result_sequence_id);
++bool IsAsideOmniboxResultCurrent(const base::DictValue& request,
++                                double result_sequence_id);
++bool ExecuteAsideOmniboxAction(const AutocompleteResult& result,
++                              size_t line, size_t action_index,
++                              OmniboxAction::ExecutionContext& context);
++base::ListValue AsideOmniboxActionDescriptions(const AutocompleteMatch& match);
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_MATCH_UTILS_H_
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils_unittest.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils_unittest.cc
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils_unittest.cc
+@@ -0,0 +1,194 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.h"
++
++#include "base/functional/bind.h"
++#include "components/omnibox/browser/autocomplete_match.h"
++#include "components/omnibox/browser/autocomplete_result.h"
++#include "testing/gtest/include/gtest/gtest.h"
++
++namespace extensions {
++namespace {
++
++class LocalActionClient : public OmniboxAction::Client {
++ public:
++  void OpenSharingHub() override {}
++  void NewIncognitoWindow() override { ++incognito_requests; }
++  void OpenIncognitoClearBrowsingDataDialog() override {}
++  void CloseIncognitoWindows() override {}
++  void PromptPageTranslation() override {}
++  void OpenLensOverlay(bool show) override {}
++  void IssueContextualSearchRequest(const GURL&,
++                                   AutocompleteMatchType::Type,
++                                   bool) override {}
++  int incognito_requests = 0;
++};
++
++struct Navigation {
++  void Open(const GURL& destination, TemplateURLRef::PostContent*,
++            WindowOpenDisposition requested_disposition, ui::PageTransition,
++            AutocompleteMatchType::Type, base::TimeTicks, bool, bool,
++            const std::u16string&, const AutocompleteMatch&,
++            const AutocompleteMatch&) {
++    ++calls;
++    url = destination;
++    disposition = requested_disposition;
++  }
++  int calls = 0;
++  GURL url;
++  WindowOpenDisposition disposition = WindowOpenDisposition::UNKNOWN;
++};
++
++class IncognitoAction : public OmniboxAction {
++ public:
++  IncognitoAction() : OmniboxAction(LabelStrings(), GURL()) {}
++  void Execute(ExecutionContext& context) const override {
++    context.client_->NewIncognitoWindow();
++  }
++ private:
++  ~IncognitoAction() override = default;
++};
++
++class MutatingAction : public OmniboxAction {
++ public:
++  MutatingAction(base::RepeatingClosure mutation, bool* destroyed)
++      : OmniboxAction(LabelStrings(), GURL()),
++        mutation_(std::move(mutation)), destroyed_(destroyed) {}
++  void Execute(ExecutionContext& context) const override {
++    mutation_.Run();
++    EXPECT_FALSE(*destroyed_);
++    context.client_->NewIncognitoWindow();
++  }
++ private:
++  ~MutatingAction() override { *destroyed_ = true; }
++  base::RepeatingClosure mutation_;
++  raw_ptr<bool> destroyed_;
++};
++
++AutocompleteMatch Match() {
++  AutocompleteMatch match;
++  match.destination_url = GURL("https://suggestion.test/match");
++  match.actions.push_back(base::MakeRefCounted<OmniboxAction>(
++      OmniboxAction::LabelStrings(u"First", u"First action", u"", u""),
++      GURL("https://action.test/first")));
++  match.actions.push_back(base::MakeRefCounted<OmniboxAction>(
++      OmniboxAction::LabelStrings(u"Second", u"Second action", u"", u""),
++      GURL("https://action.test/second")));
++  return match;
++}
++
++TEST(AsideOmniboxActionsTest, ExecutesChosenActionInsteadOfMatchUrl) {
++  AutocompleteResult result;
++  result.AppendMatches({Match()});
++  LocalActionClient client;
++  Navigation navigation;
++  OmniboxAction::ExecutionContext context(client,
++      base::BindOnce(&Navigation::Open, base::Unretained(&navigation)),
++      base::TimeTicks::Now(), WindowOpenDisposition::NEW_BACKGROUND_TAB);
++  ASSERT_TRUE(ExecuteAsideOmniboxAction(result, 0, 1, context));
++  EXPECT_EQ(navigation.calls, 1);
++  EXPECT_EQ(navigation.url, GURL("https://action.test/second"));
++  EXPECT_EQ(navigation.disposition, WindowOpenDisposition::NEW_BACKGROUND_TAB);
++}
++
++TEST(AsideOmniboxActionsTest, NonNavigationActionInvokesNativeClientCapability) {
++  auto match = Match();
++  match.actions[1] = base::MakeRefCounted<IncognitoAction>();
++  AutocompleteResult result;
++  result.AppendMatches({match});
++  LocalActionClient client;
++  Navigation navigation;
++  OmniboxAction::ExecutionContext context(client,
++      base::BindOnce(&Navigation::Open, base::Unretained(&navigation)),
++      base::TimeTicks::Now(), WindowOpenDisposition::CURRENT_TAB);
++  ASSERT_TRUE(ExecuteAsideOmniboxAction(result, 0, 1, context));
++  EXPECT_EQ(client.incognito_requests, 1);
++  EXPECT_EQ(navigation.calls, 0);
++}
++
++TEST(AsideOmniboxActionsTest, InvalidIndexesProduceNoAction) {
++  AutocompleteResult result;
++  result.AppendMatches({Match()});
++  LocalActionClient client;
++  Navigation navigation;
++  OmniboxAction::ExecutionContext context(client,
++      base::BindOnce(&Navigation::Open, base::Unretained(&navigation)),
++      base::TimeTicks::Now(), WindowOpenDisposition::CURRENT_TAB);
++  EXPECT_FALSE(ExecuteAsideOmniboxAction(result, 1, 0, context));
++  EXPECT_FALSE(ExecuteAsideOmniboxAction(result, 0, 2, context));
++  EXPECT_FALSE(ExecuteAsideOmniboxAction(result, 0, static_cast<size_t>(-1), context));
++  EXPECT_EQ(navigation.calls, 0);
++  EXPECT_EQ(client.incognito_requests, 0);
++}
++
++TEST(AsideOmniboxActionsTest, RejectsStaleUrlAndOutOfRangeLine) {
++  AutocompleteResult result;
++  result.AppendMatches({Match()});
++  auto request = base::DictValue().Set("line", 0).Set(
++      "url", "https://suggestion.test/match").Set("resultSequenceId", 7);
++  EXPECT_TRUE(FindAsideOmniboxMatch(result, request, 7));
++  request.Set("url", "https://suggestion.test/replaced");
++  EXPECT_FALSE(FindAsideOmniboxMatch(result, request, 7));
++  request.Remove("url");
++  request.Set("line", -1);
++  EXPECT_FALSE(FindAsideOmniboxMatch(result, request, 7));
++  request.Set("line", 1);
++  EXPECT_FALSE(FindAsideOmniboxMatch(result, request, 7));
++  request.Remove("line");
++  EXPECT_FALSE(FindAsideOmniboxMatch(result, request, 7));
++}
++
++TEST(AsideOmniboxActionsTest, RejectsOldSelectionAfterSameUrlActionReordering) {
++  AutocompleteResult result;
++  auto match = Match();
++  result.AppendMatches({match});
++  auto selection = base::DictValue().Set("line", 0).Set("resultSequenceId", 10);
++  EXPECT_TRUE(FindAsideOmniboxMatch(result, selection, 10));
++  // New results have the same URL and number of actions, but reverse meaning.
++  std::swap(match.actions[0], match.actions[1]);
++  result.Reset();
++  result.AppendMatches({match});
++  EXPECT_FALSE(FindAsideOmniboxMatch(result, selection, 11));
++  selection.Set("url", match.destination_url.spec());
++  EXPECT_FALSE(FindAsideOmniboxMatch(result, selection, 11));
++  selection.Set("resultSequenceId", 11);
++  EXPECT_TRUE(FindAsideOmniboxMatch(result, selection, 11));
++  selection.Remove("resultSequenceId");
++  EXPECT_FALSE(FindAsideOmniboxMatch(result, selection, 11));
++}
++
++TEST(AsideOmniboxActionsTest, RetainsActionWhenExecutionDestroysResults) {
++  AutocompleteResult result;
++  bool destroyed = false;
++  AutocompleteMatch match;
++  match.actions.push_back(base::MakeRefCounted<MutatingAction>(
++      base::BindRepeating(&AutocompleteResult::Reset, base::Unretained(&result)),
++      &destroyed));
++  result.AppendMatches({match});
++  match.actions.clear();
++  LocalActionClient client;
++  OmniboxAction::ExecutionContext context(client, {}, base::TimeTicks::Now(),
++                                         WindowOpenDisposition::CURRENT_TAB);
++  ASSERT_TRUE(ExecuteAsideOmniboxAction(result, 0, 0, context));
++  EXPECT_TRUE(destroyed);
++  EXPECT_TRUE(result.empty());
++  EXPECT_EQ(client.incognito_requests, 1);
++}
++
++TEST(AsideOmniboxActionsTest, ActionDescriptionsPreserveIndexAndOriginalUiLabels) {
++  auto match = Match();
++  auto descriptions = AsideOmniboxActionDescriptions(match);
++  ASSERT_EQ(descriptions.size(), 2u);
++  EXPECT_EQ(*descriptions[0].GetDict().FindString("hint"), "First");
++  EXPECT_EQ(*descriptions[1].GetDict().FindString("hint"), "Second");
++  match.actions[0] = nullptr;
++  descriptions = AsideOmniboxActionDescriptions(match);
++  ASSERT_EQ(descriptions.size(), 2u);
++  EXPECT_TRUE(descriptions[0].GetDict().empty());
++  EXPECT_EQ(*descriptions[1].GetDict().FindString("hint"), "Second");
++}
++
++}  // namespace
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.cc b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.cc
+--- a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.cc
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.cc
+@@ -3,17 +3,23 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h"
+-
+-#include "base/rand_util.h"
+-#include "base/strings/stringprintf.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_match_utils.h"
++
+ 
+ #include <utility>
+ 
++#include "base/functional/bind.h"
++#include "base/strings/string_util.h"
+ #include "base/strings/utf_string_conversions.h"
+ #include "base/values.h"
+ #include "chrome/browser/autocomplete/chrome_autocomplete_provider_client.h"
+ #include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/search_engines/template_url_service_factory.h"
++#include "components/omnibox/browser/actions/omnibox_action.h"
++#include "components/omnibox/browser/omnibox_client.h"
++#include "components/search_engines/template_url_service.h"
++#include "content/public/browser/web_contents.h"
+ #include "components/omnibox/browser/autocomplete_classifier.h"
+ #include "components/omnibox/browser/autocomplete_controller_config.h"
+ #include "components/omnibox/browser/autocomplete_input.h"
+@@ -40,7 +46,9 @@
+       session_id_(std::move(session_id)),
+       extension_id_(std::move(extension_id)),
+       controller_(std::make_unique<AutocompleteController>(
+-          std::make_unique<ChromeAutocompleteProviderClient>(profile),
++          std::make_unique<ChromeAutocompleteProviderClient>(
++              profile, base::BindRepeating(&AsideOmniboxSession::target,
++                                          base::Unretained(this))),
+           AutocompleteControllerConfig{
+               .provider_types =
+                   AutocompleteClassifier::DefaultOmniboxProviders()})) {
+@@ -51,17 +59,36 @@
+   controller_->RemoveObserver(this);
+ }
+ 
+-void AsideOmniboxSession::Query(const std::string& input_text) {
++void AsideOmniboxSession::Query(const std::string& input_text, bool prevent_inline) {
++  ++result_sequence_id_;
+   ChromeAutocompleteSchemeClassifier scheme_classifier(profile_);
+   last_input_ = input_text;
+-  AutocompleteInput input(base::UTF8ToUTF16(input_text),
++  std::u16string text = base::UTF8ToUTF16(input_text);
++  if (!keyword_.empty()) {
++    const std::u16string prefix = keyword_ + u" ";
++    if (!base::StartsWith(text, prefix)) {
++      text = prefix + text;
++    }
++  }
++  AutocompleteInput input(text,
+                           metrics::OmniboxEventProto::OTHER, scheme_classifier);
++  input.set_in_keyword_mode(!keyword_.empty());
++  input.set_prevent_inline_autocomplete(prevent_inline);
+   controller_->Start(input);
+ }
+ 
+ void AsideOmniboxSession::Stop(bool clear_result) {
++  if (clear_result) {
++    ++result_sequence_id_;
++  }
+   controller_->Stop(clear_result ? AutocompleteStopReason::kClobbered
+                                   : AutocompleteStopReason::kInteraction);
++  if (clear_result && !keyword_.empty()) {
++    keyword_.clear();
++    base::DictValue details;
++    details.Set("isKeywordSelected", false);
++    Dispatch("asideOmnibox.onKeywordSelectedChanged", std::move(details));
++  }
+ }
+ 
+ void AsideOmniboxSession::DeleteMatch(size_t line) {
+@@ -71,20 +98,75 @@
+   }
+ }
+ 
+-std::string AsideOmniboxSession::AddContextToken() {
+-  std::string token = base::StringPrintf("%016llX%016llX",
+-      static_cast<unsigned long long>(base::RandUint64()),
+-      static_cast<unsigned long long>(base::RandUint64()));
+-  context_tokens_.insert(token);
+-  return token;
+-}
+-
+-bool AsideOmniboxSession::RemoveContextToken(const std::string& token) {
+-  return context_tokens_.erase(token) > 0;
+-}
+-
+-void AsideOmniboxSession::ClearContextTokens() {
+-  context_tokens_.clear();
++void AsideOmniboxSession::SetTarget(content::WebContents* target, int tab_id) {
++  target_ = target->GetWeakPtr();
++  target_tab_id_ = tab_id;
++}
++
++bool AsideOmniboxSession::ActivateKeyword(const std::u16string& keyword) {
++  auto* service = TemplateURLServiceFactory::GetForProfile(profile_);
++  const TemplateURL* provider = service
++      ? service->GetTemplateURLForKeyword(keyword) : nullptr;
++  if (!provider || !provider->SupportsReplacement(service->search_terms_data())) {
++    return false;
++  }
++  keyword_ = keyword;
++  base::DictValue details;
++  details.Set("isKeywordSelected", true);
++  details.Set("keyword", base::UTF16ToUTF8(keyword_));
++  details.Set("shortName", base::UTF16ToUTF8(provider->short_name()));
++  details.Set("keywordPlaceholder", base::UTF16ToUTF8(
++      AutocompleteMatch::GetKeywordPlaceholder(provider, false)));
++  Dispatch("asideOmnibox.onKeywordSelectedChanged", std::move(details));
++  Query("");
++  return true;
++}
++
++bool AsideOmniboxSession::ExecuteAction(size_t line, size_t action_index,
++                                      WindowOpenDisposition disposition,
++                                      OmniboxClient* client) {
++  if (!client || line >= result().size() ||
++      action_index >= result().match_at(line).actions.size()) {
++    return false;
++  }
++  auto weak_this = weak_factory_.GetWeakPtr();
++  OmniboxAction::ExecutionContext context(
++      *controller_->autocomplete_provider_client(),
++      base::BindOnce(&OmniboxClient::OnAutocompleteAccept, client->AsWeakPtr()),
++      base::TimeTicks::Now(), disposition);
++  if (!ExecuteAsideOmniboxAction(result(), line, action_index, context)) {
++    return false;
++  }
++  const int starter_pack = context.enter_starter_pack_id_;
++  if (!weak_this) {
++    return true;
++  }
++  if (starter_pack) {
++    auto* service = TemplateURLServiceFactory::GetForProfile(profile_);
++    const TemplateURL* provider = service ? service->FindStarterPackTemplateURL(
++        static_cast<template_url_starter_pack_data::StarterPackId>(starter_pack))
++        : nullptr;
++    if (provider) {
++      ActivateKeyword(provider->keyword());
++    }
++  }
++  return true;
++}
++
++void AsideOmniboxSession::Dispatch(const std::string& name,
++                                  base::DictValue details) {
++  EventRouter* router = EventRouter::Get(browser_context_);
++  if (!router || !router->ExtensionHasEventListener(extension_id_, name)) {
++    return;
++  }
++  base::ListValue args;
++  args.Append(session_id_);
++  args.Append(std::move(details));
++  const auto histogram = name == "asideOmnibox.onKeywordSelectedChanged"
++      ? events::ASIDE_OMNIBOX_ON_KEYWORD_SELECTED_CHANGED
++      : events::ASIDE_OMNIBOX_ON_SELECTION_UPDATED;
++  router->DispatchEventToExtension(extension_id_, std::make_unique<Event>(
++      histogram, name, std::move(args), profile_));
+ }
+ 
+ const AutocompleteResult& AsideOmniboxSession::result() const {
+@@ -99,12 +181,19 @@
+   model_mode_ = std::move(mode);
+ }
+ 
+-void AsideOmniboxSession::SetSelection(std::string selection) {
++void AsideOmniboxSession::SetSelection(base::DictValue selection) {
++  if (selection_ == selection) {
++    return;
++  }
+   selection_ = std::move(selection);
++  base::DictValue details;
++  details.Set("selection", selection_.Clone());
++  Dispatch("asideOmnibox.onSelectionUpdated", std::move(details));
+ }
+ 
+ void AsideOmniboxSession::OnResultChanged(AutocompleteController* controller,
+                                           bool default_match_changed) {
++  ++result_sequence_id_;
+   EventRouter* router = EventRouter::Get(browser_context_);
+   if (!router || !router->ExtensionHasEventListener(extension_id_, kEventName)) {
+     return;
+@@ -114,17 +203,24 @@
+   base::ListValue matches;
+   for (const AutocompleteMatch& match : controller->result()) {
+     base::DictValue m;
++    m.Set("resultSequenceId", result_sequence_id());
+     m.Set("contents", base::UTF16ToUTF8(match.contents));
+     m.Set("description", base::UTF16ToUTF8(match.description));
+     m.Set("destinationUrl", match.destination_url.spec());
+     m.Set("fillIntoEdit", base::UTF16ToUTF8(match.fill_into_edit));
+     m.Set("isSearchType", AutocompleteMatch::IsSearchType(match.type));
+     m.Set("relevance", match.relevance);
++    m.Set("supportsDeletion", match.SupportsDeletion());
++    m.Set("keyword", base::UTF16ToUTF8(match.keyword));
++    m.Set("fromKeyword", match.from_keyword);
++    m.Set("actions", AsideOmniboxActionDescriptions(match));
+     m.Set("type", AutocompleteMatchType::ToString(match.type));
+     matches.Append(std::move(m));
+   }
+   base::DictValue result;
+   result.Set("matches", std::move(matches));
++  result.Set("resultSequenceId", result_sequence_id());
++  result.Set("input", base::UTF16ToUTF8(controller->input().text()));
+ 
+   base::ListValue args;
+   args.Append(session_id_);
+diff --git a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h
+--- a/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h
++++ b/chrome/browser/extensions/api/aside_omnibox/aside_omnibox_session.h
+@@ -6,16 +6,20 @@
+ #define CHROME_BROWSER_EXTENSIONS_API_ASIDE_OMNIBOX_ASIDE_OMNIBOX_SESSION_H_
+ 
+ #include <memory>
+-#include <set>
+ #include <string>
+ 
+ #include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/values.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_context_store.h"
+ #include "components/omnibox/browser/autocomplete_controller.h"
+ 
+ class Profile;
++class OmniboxClient;
+ 
+ namespace content {
+ class BrowserContext;
++class WebContents;
+ }
+ 
+ namespace extensions {
+@@ -32,24 +36,30 @@
+   AsideOmniboxSession& operator=(const AsideOmniboxSession&) = delete;
+   ~AsideOmniboxSession() override;
+ 
+-  void Query(const std::string& input_text);
++  void Query(const std::string& input_text, bool prevent_inline = false);
+   void Stop(bool clear_result);
+   void DeleteMatch(size_t line);
+   void SetToolMode(std::string mode);
+   void SetModelMode(std::string mode);
+-  void SetSelection(std::string selection);
++  void SetSelection(base::DictValue selection);
+ 
+   const std::string& last_input() const { return last_input_; }
+   const std::string& extension_id() const { return extension_id_; }
+   const std::string& session_id() const { return session_id_; }
+   int target_tab_id() const { return target_tab_id_; }
+-  void set_target_tab_id(int tab_id) { target_tab_id_ = tab_id; }
+-  // Context tokens handed out by addTabContext/addFileContext (RE: deleteContext
+-  // rejects unknown tokens with "Invalid contextToken").
+-  std::string AddContextToken();
+-  bool RemoveContextToken(const std::string& token);
+-  void ClearContextTokens();
++  void SetTarget(content::WebContents* target, int tab_id);
++  content::WebContents* target() const { return target_.get(); }
++  AsideOmniboxContextStore& contexts() { return contexts_; }
++  bool ActivateKeyword(const std::u16string& keyword);
++  const std::u16string& keyword() const { return keyword_; }
++  bool ExecuteAction(size_t line, size_t action_index,
++                     WindowOpenDisposition disposition, OmniboxClient* client);
++  void Dispatch(const std::string& name, base::DictValue details);
++
+   const AutocompleteResult& result() const;
++  double result_sequence_id() const {
++    return static_cast<double>(result_sequence_id_);
++  }
+   const std::string& tool_mode() const { return tool_mode_; }
+   const std::string& model_mode() const { return model_mode_; }
+ 
+@@ -62,13 +72,17 @@
+   raw_ptr<content::BrowserContext> browser_context_;
+   std::string session_id_;
+   std::string extension_id_;
++  base::WeakPtr<content::WebContents> target_;
+   std::unique_ptr<AutocompleteController> controller_;
+   std::string last_input_;
+   std::string tool_mode_;
+   std::string model_mode_;
+-  std::string selection_;
++  base::DictValue selection_;
++  uint64_t result_sequence_id_ = 0;
+   int target_tab_id_ = -1;
+-  std::set<std::string> context_tokens_;
++  AsideOmniboxContextStore contexts_;
++  std::u16string keyword_;
++  base::WeakPtrFactory<AsideOmniboxSession> weak_factory_{this};
+ };
+ 
+ }  // namespace extensions
+diff --git a/extensions/browser/extension_event_histogram_value.h b/extensions/browser/extension_event_histogram_value.h
+--- a/extensions/browser/extension_event_histogram_value.h
++++ b/extensions/browser/extension_event_histogram_value.h
+@@ -601,6 +601,8 @@
+   DICTATION_PRIVATE_ON_CONTEXT_UPDATE = 577,
+   ASIDE_OMNIBOX_ON_AUTOCOMPLETE_RESULT_CHANGED = 578,
+   ASIDE_BROWSER_IMPORT_ON_IMPORT_PROGRESS = 579,
++  ASIDE_OMNIBOX_ON_KEYWORD_SELECTED_CHANGED = 580,
++  ASIDE_OMNIBOX_ON_SELECTION_UPDATED = 581,
+   // Last entry: Add new entries above, then run:
+   // tools/metrics/histograms/update_extension_histograms.py
+   ENUM_BOUNDARY
+diff --git a/tools/metrics/histograms/metadata/extensions/enums.xml b/tools/metrics/histograms/metadata/extensions/enums.xml
+--- a/tools/metrics/histograms/metadata/extensions/enums.xml
++++ b/tools/metrics/histograms/metadata/extensions/enums.xml
+@@ -818,6 +818,8 @@
+   <int value="575" label="DICTATION_PRIVATE_ON_START_STREAM"/>
+   <int value="576" label="DICTATION_PRIVATE_ON_END_STREAM"/>
+   <int value="577" label="DICTATION_PRIVATE_ON_CONTEXT_UPDATE"/>
++  <int value="580" label="ASIDE_OMNIBOX_ON_KEYWORD_SELECTED_CHANGED"/>
++  <int value="581" label="ASIDE_OMNIBOX_ON_SELECTION_UPDATED"/>
+ </enum>
+ 
+ <!-- LINT.ThenChange(//extensions/browser/extension_event_histogram_value.h:HistogramValue) -->

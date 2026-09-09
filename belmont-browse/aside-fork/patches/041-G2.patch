@@ -1,0 +1,2373 @@
+diff --git a/chrome/browser/ui/page_info/chrome_page_info_delegate.cc b/chrome/browser/ui/page_info/chrome_page_info_delegate.cc
+index 00d0b82fdb..b4796092cb 100644
+--- a/chrome/browser/ui/page_info/chrome_page_info_delegate.cc
++++ b/chrome/browser/ui/page_info/chrome_page_info_delegate.cc
+@@ -225,13 +225,15 @@ bool ChromePageInfoDelegate::IsRwsManaged(const GURL& site_url) {
+ }
+ 
+ bool ChromePageInfoDelegate::CreateInfoBarDelegate() {
++  // Aside: the original browser has no PageInfoInfoBarDelegate at all — the
++  // "reload to apply your updated settings" prompt is a bubble anchored under
++  // the page-info icon (PageInfoReloadBubbleView), which LocationBarView shows
++  // from its page-info closing callback. Reporting success here keeps
++  // PageInfo::OnUIClosing()'s `reload_prompt` true so that callback still runs;
++  // only the info bar itself is gone.
+   infobars::ContentInfoBarManager* infobar_manager =
+       infobars::ContentInfoBarManager::FromWebContents(web_contents_);
+-  if (infobar_manager) {
+-    PageInfoInfoBarDelegate::Create(infobar_manager);
+-    return true;
+-  }
+-  return false;
++  return infobar_manager != nullptr;
+ }
+ 
+ std::unique_ptr<content_settings::CookieControlsController>
+diff --git a/chrome/browser/ui/views/frame/browser_view.cc b/chrome/browser/ui/views/frame/browser_view.cc
+index 4a2d263f41..c0e4eef217 100644
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -643,6 +643,60 @@ bool ConvertedHitTest(views::View* src, views::View* dst, gfx::Point* point) {
+   return dst->HitTestPoint(*point);
+ }
+ 
++// Aside: the seam between the vertical tab strip and the content pane sitting
++// next to it. While a split is showing, each pane carries its own outline and
++// rounded corners, which leaves a visible notch where the leading pane meets
++// the vertical tab strip; this view fills that notch. Restores the original
++// browser's VerticalTabStripAdjacentPaneDecorationView (browser_view.cc).
++class VerticalTabStripAdjacentPaneDecorationView : public views::View {
++  METADATA_HEADER(VerticalTabStripAdjacentPaneDecorationView, views::View)
++
++ public:
++  VerticalTabStripAdjacentPaneDecorationView() {
++    SetCanProcessEventsWithinSubtree(false);
++    SetVisible(false);
++  }
++  VerticalTabStripAdjacentPaneDecorationView(
++      const VerticalTabStripAdjacentPaneDecorationView&) = delete;
++  VerticalTabStripAdjacentPaneDecorationView& operator=(
++      const VerticalTabStripAdjacentPaneDecorationView&) = delete;
++  ~VerticalTabStripAdjacentPaneDecorationView() override = default;
++
++  void SetCornerRadius(int radius) {
++    if (corner_radius_ == radius) {
++      return;
++    }
++    corner_radius_ = radius;
++    SchedulePaint();
++  }
++
++ protected:
++  void OnPaint(gfx::Canvas* canvas) override {
++    const ui::ColorProvider* const color_provider = GetColorProvider();
++    if (!color_provider || GetLocalBounds().IsEmpty()) {
++      return;
++    }
++    cc::PaintFlags flags;
++    flags.setAntiAlias(true);
++    flags.setStyle(cc::PaintFlags::kFill_Style);
++    flags.setColor(color_provider->GetColor(kColorToolbar));
++    // Fill the seam, then punch the pane's rounded corner back out of it so the
++    // pane keeps its radius while the notch behind it is filled.
++    canvas->DrawRect(gfx::RectF(GetLocalBounds()), flags);
++
++    flags.setColor(color_provider->GetColor(kColorToolbarSeparatorDefault));
++    canvas->DrawLine(gfx::PointF(width() - 1, corner_radius_),
++                     gfx::PointF(width() - 1, height() - corner_radius_),
++                     flags);
++  }
++
++ private:
++  int corner_radius_ = 12;
++};
++
++BEGIN_METADATA(VerticalTabStripAdjacentPaneDecorationView)
++END_METADATA
++
+ }  // namespace
+ 
+ // Implements the exclusive access context and bubble context.
+@@ -961,6 +1015,11 @@ BrowserView::BrowserView(Browser* browser)
+   contents_container_ = AddChildView(std::move(contents_container));
+   set_contents_view(contents_container_);
+ 
++  // Aside: fills the notch where the leading split pane meets the vertical tab
++  // strip. Added after the contents container so it paints over it.
++  vertical_tab_strip_adjacent_pane_decoration_ = AddChildView(
++      std::make_unique<VerticalTabStripAdjacentPaneDecorationView>());
++
+   // InfoBarContainer needs to be added as a child here for drop-shadow, but
+   // needs to come after toolbar in focus order (see EnsureFocusOrder()).
+   infobar_container_ =
+@@ -1145,6 +1204,7 @@ BrowserView::~BrowserView() {
+   context_highlight_view_ = nullptr;
+   window_scrim_view_ = nullptr;
+   contents_container_ = nullptr;
++  vertical_tab_strip_adjacent_pane_decoration_ = nullptr;
+   vertical_tab_strip_region_view_ = nullptr;
+   vertical_tab_strip_top_corner_ = nullptr;
+   vertical_tab_strip_bottom_corner_ = nullptr;
+@@ -4780,6 +4840,32 @@ void BrowserView::Layout(PassKey) {
+     user_education->help_bubble_factory_registry().NotifyAnchorBoundsChanged(
+         GetElementContext());
+   }
++
++  // Aside: position the vertical-tab-strip / split-pane seam decoration.
++  LayoutVerticalTabStripAdjacentPaneDecoration();
++}
++
++void BrowserView::LayoutVerticalTabStripAdjacentPaneDecoration() {
++  if (!vertical_tab_strip_adjacent_pane_decoration_ || !contents_container_) {
++    return;
++  }
++  const bool visible =
++      vertical_tab_strip_region_view_ &&
++      vertical_tab_strip_region_view_->GetVisible() &&
++      multi_contents_view_ && multi_contents_view_->IsInSplitView();
++  vertical_tab_strip_adjacent_pane_decoration_->SetVisible(visible);
++  if (!visible) {
++    return;
++  }
++  // A thin strip along the leading edge of the contents area, from the top of
++  // the contents to its bottom.
++  constexpr int kSeamWidth = 6;
++  const gfx::Rect contents = contents_container_->bounds();
++  gfx::Rect seam(contents.x(), contents.y(), kSeamWidth, contents.height());
++  if (base::i18n::IsRTL()) {
++    seam.set_x(contents.right() - kSeamWidth);
++  }
++  vertical_tab_strip_adjacent_pane_decoration_->SetBoundsRect(seam);
+ }
+ 
+ void BrowserView::OnGestureEvent(ui::GestureEvent* event) {
+diff --git a/chrome/browser/ui/views/frame/browser_view.h b/chrome/browser/ui/views/frame/browser_view.h
+index c6bcc529f1..2c8674df09 100644
+--- a/chrome/browser/ui/views/frame/browser_view.h
++++ b/chrome/browser/ui/views/frame/browser_view.h
+@@ -716,6 +716,8 @@ class BrowserView : public BrowserWindow,
+ 
+   // views::View:
+   void Layout(PassKey) override;
++  // Aside: positions the vertical tab strip / split pane seam decoration.
++  void LayoutVerticalTabStripAdjacentPaneDecoration();
+   void OnGestureEvent(ui::GestureEvent* event) override;
+   void ViewHierarchyChanged(
+       const views::ViewHierarchyChangedDetails& details) override;
+@@ -1242,6 +1244,10 @@ class BrowserView : public BrowserWindow,
+   // The view responsible for housing the contents of the vertical tab strip.
+   raw_ptr<VerticalTabStripRegionView> vertical_tab_strip_region_view_ = nullptr;
+ 
++  // Aside: fills the notch where the leading split pane meets the vertical tab
++  // strip (VerticalTabStripAdjacentPaneDecorationView, defined in the .cc).
++  raw_ptr<views::View> vertical_tab_strip_adjacent_pane_decoration_ = nullptr;
++
+   // Outward-projecting corners of the vertical tab strip.
+   raw_ptr<CustomFloatingCorner> vertical_tab_strip_top_corner_ = nullptr;
+   raw_ptr<CustomFloatingCorner> vertical_tab_strip_bottom_corner_ = nullptr;
+diff --git a/chrome/browser/ui/views/frame/contents_container_view.cc b/chrome/browser/ui/views/frame/contents_container_view.cc
+index 9d1cec9e85..151fc99de0 100644
+--- a/chrome/browser/ui/views/frame/contents_container_view.cc
++++ b/chrome/browser/ui/views/frame/contents_container_view.cc
+@@ -8,7 +8,9 @@
+ #include <optional>
+ #include <utility>
+ 
++#include "base/functional/bind.h"
+ #include "base/i18n/rtl.h"
++#include "base/task/single_thread_task_runner.h"
+ #include "chrome/browser/actor/ui/actor_overlay_web_view.h"
+ #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
+ #include "chrome/browser/enterprise/data_protection/data_protection_overlay_view.h"
+@@ -28,6 +30,7 @@
+ #include "chrome/browser/ui/views/frame/contents_separator.h"
+ #include "chrome/browser/ui/views/frame/contents_web_view.h"
+ #include "chrome/browser/ui/views/frame/multi_contents_view_mini_toolbar.h"
++#include "chrome/browser/ui/views/frame/aside_agent_control_banner.h"
+ #include "chrome/browser/ui/views/frame/scrim_view.h"
+ #include "chrome/browser/ui/views/frame/tab_modal_dialog_host.h"
+ #include "chrome/browser/ui/views/frame/top_container_view.h"
+@@ -40,6 +43,7 @@
+ #include "ui/base/metadata/metadata_impl_macros.h"
+ #include "ui/color/color_provider.h"
+ #include "ui/compositor/layer.h"
++#include "ui/compositor_extra/shadow.h"
+ #include "ui/gfx/geometry/insets.h"
+ #include "ui/gfx/geometry/rect.h"
+ #include "ui/gfx/geometry/rounded_corners_f.h"
+@@ -58,6 +62,10 @@
+ 
+ namespace {
+ constexpr int kSplitViewContentPadding = 4;
++// Aside: elevation and corner radius of the drop shadow the original browser
++// paints behind each pane of a split.
++constexpr int kSplitPaneShadowElevation = 6;
++constexpr int kSplitPaneShadowCornerRadius = 12;
+ constexpr int kNewTabFooterSeparatorHeight = 1;
+ constexpr int kNewTabFooterHeight = 56;
+ }  // namespace
+@@ -131,6 +139,9 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
+         AddChildView(std::move(read_anything_immersive_overlay_view));
+   }
+ 
++  aside_agent_banner_ = AddChildView(std::make_unique<AsideAgentControlBanner>(
++      browser_view_->browser(), contents_view_));
++
+   contents_scrim_view_ = AddChildView(std::make_unique<ScrimView>());
+   contents_scrim_view_->layer()->SetName("ContentsScrimView");
+ 
+@@ -204,6 +215,9 @@ void ContentsContainerView::UpdateBorderAndOverlay(bool is_in_split,
+                                                    bool is_highlighted) {
+   const bool split_changed = is_in_split != is_in_split_;
+   is_in_split_ = is_in_split;
++  // Aside: remembered so the split mini toolbar can be re-sampled later.
++  split_is_active_ = is_active;
++  split_is_highlighted_ = is_highlighted;
+ 
+   if (!is_in_split) {
+     if (split_changed) {
+@@ -215,6 +229,8 @@ void ContentsContainerView::UpdateBorderAndOverlay(bool is_in_split,
+       if (capture_contents_border_view_) {
+         capture_contents_border_view_->SetIsInSplit(false);
+       }
++      // Aside: drop the split pane shadow when leaving the split.
++      UpdateSplitPaneShadow();
+     }
+   } else {
+     if (split_changed) {
+@@ -230,6 +246,12 @@ void ContentsContainerView::UpdateBorderAndOverlay(bool is_in_split,
+     if (capture_contents_border_view_) {
+       capture_contents_border_view_->SetIsInSplit(true);
+     }
++    // Aside: the active pane carries the drop shadow, and takes focus once the
++    // activation has settled.
++    UpdateSplitPaneShadow();
++    if (is_active) {
++      PostFocusAfterActivation();
++    }
+   }
+ 
+ #if BUILDFLAG(IS_CHROMEOS)
+@@ -326,6 +348,8 @@ void ContentsContainerView::Layout(PassKey pass_key) {
+   LayoutSuperclass<views::View>(this);
+ 
+   UpdateContentsClip();
++  // Aside: keep the "Split Pane Shadow" framed around the pane.
++  UpdateSplitPaneShadow();
+ }
+ 
+ views::View::Views ContentsContainerView::GetChildrenInZOrder() {
+@@ -531,6 +555,20 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
+                                        footer_rect);
+   }
+ 
++  gfx::Rect agent_banner_rect;
++  if (aside_agent_banner_ && aside_agent_banner_->GetVisible()) {
++    const int banner_height = aside_agent_banner_->GetPreferredSize().height();
++    agent_banner_rect =
++        gfx::Rect(contents_view_bounds.x(), contents_view_bounds.y(),
++                  contents_view_bounds.width(), banner_height);
++    contents_view_bounds.Inset(gfx::Insets::TLBR(banner_height, 0, 0, 0));
++  }
++  if (aside_agent_banner_) {
++    layouts.child_layouts.emplace_back(aside_agent_banner_.get(),
++                                       aside_agent_banner_->GetVisible(),
++                                       GetMirroredRect(agent_banner_rect));
++  }
++
+   const auto& contents_rect = GetMirroredRect(contents_view_bounds);
+   layouts.child_layouts.emplace_back(
+       contents_view_.get(), contents_view_->GetVisible(), contents_rect);
+@@ -691,5 +729,99 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
+   return layouts;
+ }
+ 
++// --- Aside restoration: split pane decoration, focus and modal handling ----
++
++bool ContentsContainerView::IsBlockedByModal() const {
++  if (!contents_view_ || !contents_view_->holder()) {
++    return false;
++  }
++  return contents_view_->holder()->GetProperty(views::kIsBlockedByModalKey);
++}
++
++void ContentsContainerView::PostFocusAfterActivation() {
++  if (focus_after_activation_pending_) {
++    return;
++  }
++  focus_after_activation_pending_ = true;
++  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE,
++      base::BindOnce(&ContentsContainerView::FocusAfterActivation,
++                     weak_factory_.GetWeakPtr()));
++}
++
++void ContentsContainerView::FocusAfterActivation() {
++  focus_after_activation_pending_ = false;
++  if (!is_in_split_ || !contents_view_ || !GetWidget()) {
++    return;
++  }
++  // A tab-modal dialog owns the focus; never pull it back into the page.
++  if (IsBlockedByModal()) {
++    return;
++  }
++  if (!contents_view_->GetVisible() || !contents_view_->web_contents()) {
++    return;
++  }
++  contents_view_->RequestFocus();
++}
++
++void ContentsContainerView::ResampleSplitToolbarColorAfterCommittedNavigation() {
++  if (resample_split_toolbar_color_pending_) {
++    return;
++  }
++  resample_split_toolbar_color_pending_ = true;
++  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE,
++      base::BindOnce(&ContentsContainerView::ResampleSplitToolbarColor,
++                     weak_factory_.GetWeakPtr()));
++}
++
++void ContentsContainerView::ResampleSplitToolbarColor() {
++  resample_split_toolbar_color_pending_ = false;
++  if (!is_in_split_ || !mini_toolbar_) {
++    return;
++  }
++  // The mini toolbar derives its colours from the theme and the pane's active
++  // state; re-running the state pass picks up the committed page's colour.
++  mini_toolbar_->UpdateState(split_is_active_, split_is_highlighted_);
++  mini_toolbar_->SchedulePaint();
++  if (container_outline_) {
++    container_outline_->SchedulePaint();
++  }
++}
++
++void ContentsContainerView::UpdateSplitPaneShadow() {
++  if (!is_in_split_) {
++    split_pane_shadow_.reset();
++    if (split_pane_shadow_host_) {
++      RemoveChildViewT(split_pane_shadow_host_.ExtractAsDangling());
++      split_pane_shadow_host_ = nullptr;
++    }
++    return;
++  }
++
++  if (!split_pane_shadow_host_) {
++    // A layer-only, event-transparent child that hosts the shadow layer. It is
++    // added first so it sits behind every other child.
++    auto host = std::make_unique<views::View>();
++    host->SetPaintToLayer(ui::LAYER_NOT_DRAWN);
++    host->layer()->SetFillsBoundsOpaquely(false);
++    host->SetCanProcessEventsWithinSubtree(false);
++    split_pane_shadow_host_ = AddChildViewAt(std::move(host), 0);
++  }
++  split_pane_shadow_host_->SetBoundsRect(GetLocalBounds());
++
++  if (!split_pane_shadow_) {
++    split_pane_shadow_ = std::make_unique<ui::Shadow>();
++    split_pane_shadow_->Init(kSplitPaneShadowElevation);
++    split_pane_shadow_->SetRoundedCornerRadius(kSplitPaneShadowCornerRadius);
++    split_pane_shadow_->layer()->SetName("Split Pane Shadow");
++    split_pane_shadow_host_->layer()->Add(split_pane_shadow_->layer());
++  }
++
++  gfx::Rect content_bounds = GetLocalBounds();
++  content_bounds.Inset(gfx::Insets(kSplitViewContentPadding));
++  split_pane_shadow_->SetContentBounds(content_bounds);
++}
++
+ BEGIN_METADATA(ContentsContainerView)
+ END_METADATA
+diff --git a/chrome/browser/ui/views/frame/contents_container_view.h b/chrome/browser/ui/views/frame/contents_container_view.h
+index e3ae9d104d..e710501a45 100644
+--- a/chrome/browser/ui/views/frame/contents_container_view.h
++++ b/chrome/browser/ui/views/frame/contents_container_view.h
+@@ -9,6 +9,7 @@
+ #include <optional>
+ 
+ #include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
+ #include "base/scoped_observation.h"
+ #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
+ #include "chrome/browser/ui/views/frame/tab_modal_dialog_host.h"
+@@ -17,6 +18,7 @@
+ #include "ui/views/layout/delegating_layout_manager.h"
+ #include "ui/views/view.h"
+ 
++class AsideAgentControlBanner;
+ class BrowserView;
+ class ContentsCaptureBorderView;
+ class ContentsContainerOutline;
+@@ -30,6 +32,10 @@ namespace gfx {
+ class Rect;
+ }  // namespace gfx
+ 
++namespace ui {
++class Shadow;
++}  // namespace ui
++
+ namespace glic {
+ class ContextSharingBorderView;
+ }  // namespace glic
+@@ -143,6 +149,29 @@ class ContentsContainerView : public views::View,
+ 
+   views::View* GetToastAnchorView() { return toast_anchor_view_; }
+ 
++  // --- Aside restoration --------------------------------------------------
++  // Whether a tab-modal dialog is covering this pane. Mirrors the original's
++  // read of views::kIsBlockedByModalKey on the contents holder.
++  bool IsBlockedByModal() const;
++
++  // Moves focus into this pane's web contents once the pending activation has
++  // settled. The original posts this instead of focusing synchronously, so the
++  // focus lands after the widget's own activation bookkeeping and never while a
++  // tab-modal dialog is up (original PostFocusAfterActivation,
++  // contents_container_view.cc).
++  void PostFocusAfterActivation();
++
++  // Re-reads the split mini toolbar's colours after a navigation commits; the
++  // committed page's theme colour is not available yet at commit time (original
++  // ResampleSplitToolbarColorAfterCommittedNavigation,
++  // contents_container_view.cc).
++  void ResampleSplitToolbarColorAfterCommittedNavigation();
++
++  ui::Shadow* split_pane_shadow_for_testing() {
++    return split_pane_shadow_.get();
++  }
++  // --- end Aside restoration ----------------------------------------------
++
+  private:
+   void UpdateContentsClip();
+ 
+@@ -208,6 +237,9 @@ class ContentsContainerView : public views::View,
+   // open.
+   raw_ptr<ScrimView> contents_scrim_view_ = nullptr;
+ 
++  // Aside: "Aside is controlling the tab" / "Take over" strip.
++  raw_ptr<AsideAgentControlBanner> aside_agent_banner_ = nullptr;
++
+   // The view that contains the Glic Actor Overlay. The Actor Overlay is a UI
+   // overlay that is shown on top of the web contents.
+   raw_ptr<ActorOverlayWebView> actor_overlay_web_view_ = nullptr;
+@@ -242,6 +274,24 @@ class ContentsContainerView : public views::View,
+ 
+   DevToolsContentsResizingStrategy strategy_;
+   base::ScopedObservation<View, ViewObserver> view_bounds_observer_{this};
++
++  // --- Aside restoration --------------------------------------------------
++  void FocusAfterActivation();
++  void ResampleSplitToolbarColor();
++  // Creates, moves or drops the drop shadow that the original browser paints
++  // behind each pane while a split is showing. Its layer is named
++  // "Split Pane Shadow".
++  void UpdateSplitPaneShadow();
++
++  std::unique_ptr<ui::Shadow> split_pane_shadow_;
++  raw_ptr<views::View> split_pane_shadow_host_ = nullptr;
++  bool split_is_active_ = false;
++  bool split_is_highlighted_ = false;
++  bool focus_after_activation_pending_ = false;
++  bool resample_split_toolbar_color_pending_ = false;
++
++  base::WeakPtrFactory<ContentsContainerView> weak_factory_{this};
++  // --- end Aside restoration ----------------------------------------------
+ };
+ 
+ #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_CONTENTS_CONTAINER_VIEW_H_
+diff --git a/chrome/browser/ui/views/frame/contents_web_view.cc b/chrome/browser/ui/views/frame/contents_web_view.cc
+index a831bfd4ff..13d4c3d1b9 100644
+--- a/chrome/browser/ui/views/frame/contents_web_view.cc
++++ b/chrome/browser/ui/views/frame/contents_web_view.cc
+@@ -4,7 +4,15 @@
+ 
+ #include "chrome/browser/ui/views/frame/contents_web_view.h"
+ 
++#include "chrome/browser/ui/views/frame/contents_container_view.h"
++#include "ui/views/view_utils.h"
++
++#include <algorithm>
++
+ #include "base/debug/dump_without_crashing.h"
++#include "base/functional/bind.h"
++#include "base/task/single_thread_task_runner.h"
++#include "base/time/time.h"
+ #include "build/build_config.h"
+ #include "chrome/browser/ui/color/chrome_color_id.h"
+ #include "chrome/browser/ui/views/frame/web_contents_close_handler.h"
+@@ -12,6 +20,7 @@
+ #include "components/search/ntp_features.h"
+ #include "components/tabs/public/tab_interface.h"
+ #include "components/web_modal/web_contents_modal_dialog_manager.h"
++#include "content/public/browser/render_frame_host.h"
+ #include "content/public/browser/render_widget_host_view.h"
+ #include "content/public/browser/web_contents.h"
+ #include "third_party/blink/public/common/input/web_input_event.h"
+@@ -138,6 +147,15 @@ void ContentsWebView::OnThemeChanged() {
+   UpdateBackgroundColor();
+ }
+ 
++void ContentsWebView::PrimaryPageChanged(content::Page& page) {
++  // Aside: the committed page's colour is not readable at commit time, so the
++  // split mini toolbar colour is re-sampled from a posted task.
++  if (auto* container =
++          views::AsViewClass<ContentsContainerView>(parent())) {
++    container->ResampleSplitToolbarColorAfterCommittedNavigation();
++  }
++}
++
+ void ContentsWebView::OnLetterboxingChanged() {
+   if (GetWidget()) {
+     UpdateBackgroundColor();
+@@ -157,6 +175,14 @@ void ContentsWebView::SetWebContents(content::WebContents* web_contents) {
+ 
+   UpdateIsBlockedByModal();
+ 
++  // Aside: an extension page paints its own body background; measure it a
++  // moment after the swap so the frame behind it matches.
++  extension_body_background_color_.reset();
++  if (content::RenderFrameHost* rfh = web_contents->GetPrimaryMainFrame();
++      rfh && rfh->GetLastCommittedURL().SchemeIs("chrome-extension")) {
++    ScheduleTargetExtensionBodyBackgroundProbe(rfh->GetGlobalId());
++  }
++
+   if (!status_bubble_) {
+     status_bubble_ = std::make_unique<StatusBubbleViews>(this);
+     status_bubble_->Reposition();
+@@ -187,10 +213,57 @@ void ContentsWebView::DidGetUserInteraction(const blink::WebInputEvent& event) {
+ }
+ #endif
+ 
++void ContentsWebView::ScheduleTargetExtensionBodyBackgroundProbe(
++    content::GlobalRenderFrameHostId frame_id) {
++  if (std::ranges::find(pending_background_probes_, frame_id) !=
++      pending_background_probes_.end()) {
++    return;
++  }
++  pending_background_probes_.push_back(frame_id);
++  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
++      FROM_HERE,
++      base::BindOnce(&ContentsWebView::RunTargetExtensionBodyBackgroundProbe,
++                     weak_factory_.GetWeakPtr(), frame_id),
++      base::Milliseconds(50));
++}
++
++void ContentsWebView::RunTargetExtensionBodyBackgroundProbe(
++    content::GlobalRenderFrameHostId frame_id) {
++  std::erase(pending_background_probes_, frame_id);
++  if (!web_contents()) {
++    return;
++  }
++  content::RenderFrameHost* rfh = web_contents()->GetPrimaryMainFrame();
++  if (!rfh || rfh->GetGlobalId() != frame_id ||
++      !rfh->GetLastCommittedURL().SchemeIs("chrome-extension")) {
++    return;
++  }
++  content::RenderWidgetHostView* rwhv = web_contents()->GetRenderWidgetHostView();
++  if (!rwhv) {
++    return;
++  }
++  const std::optional<SkColor> measured = rwhv->GetBackgroundColor();
++  if (!measured.has_value() || SkColorGetA(*measured) != SK_AlphaOPAQUE) {
++    return;
++  }
++  if (extension_body_background_color_ == measured) {
++    return;
++  }
++  extension_body_background_color_ = measured;
++  if (GetWidget()) {
++    UpdateBackgroundColor();
++  }
++}
++
+ void ContentsWebView::UpdateBackgroundColor() {
+-  const SkColor color = GetColorProvider()->GetColor(
++  SkColor color = GetColorProvider()->GetColor(
+       is_letterboxing() ? kColorWebContentsBackgroundLetterboxing
+                         : kColorWebContentsBackground);
++  // Aside: while an extension page is showing, use the colour its body
++  // painted so the frame behind it does not show through in a different tone.
++  if (extension_body_background_color_.has_value() && !is_letterboxing()) {
++    color = *extension_body_background_color_;
++  }
+   // `color` must be opaque, see RenderWidgetHostView::SetBackgroundColor() for
+   // details.
+   // TODO(crbug.com/456309057): Update this to be a CHECK.
+diff --git a/chrome/browser/ui/views/frame/contents_web_view.h b/chrome/browser/ui/views/frame/contents_web_view.h
+index dba4f324e7..71b0052b59 100644
+--- a/chrome/browser/ui/views/frame/contents_web_view.h
++++ b/chrome/browser/ui/views/frame/contents_web_view.h
+@@ -6,8 +6,12 @@
+ #define CHROME_BROWSER_UI_VIEWS_FRAME_CONTENTS_WEB_VIEW_H_
+ 
+ #include <memory>
++#include <optional>
++#include <vector>
+ 
+ #include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "content/public/browser/global_routing_id.h"
+ #include "build/build_config.h"
+ #include "chrome/browser/ui/views/frame/web_contents_close_handler_delegate.h"
+ #include "chrome/common/buildflags.h"
+@@ -71,6 +75,9 @@ class ContentsWebView : public views::WebView,
+ #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+   void DidGetUserInteraction(const blink::WebInputEvent& event) override;
+ #endif
++  // Aside: tells the owning ContentsContainerView to re-sample the split mini
++  // toolbar colour once the new page has committed.
++  void PrimaryPageChanged(content::Page& page) override;
+ 
+   // ui::View overrides:
+   std::unique_ptr<ui::Layer> RecreateLayer() override;
+@@ -81,6 +88,18 @@ class ContentsWebView : public views::WebView,
+ 
+  private:
+   void UpdateBackgroundColor();
++
++  // Aside measures the body background colour of an extension page shortly
++  // after it is shown, so the browser frame behind it does not flash the
++  // default web-contents colour.  The original names this
++  // ScheduleTargetExtensionBodyBackgroundProbe (contents_web_view.cc:697 in
++  // Aside 1.0.825.1; RE @0xd172c05, 50 ms delay, pending probes coalesced in a
++  // sorted vector keyed by the target frame).
++  void ScheduleTargetExtensionBodyBackgroundProbe(
++      content::GlobalRenderFrameHostId frame_id);
++  void RunTargetExtensionBodyBackgroundProbe(
++      content::GlobalRenderFrameHostId frame_id);
++
+   std::unique_ptr<StatusBubbleViews> status_bubble_;
+   std::unique_ptr<WebContentsCloseHandler> web_contents_close_handler_;
+ 
+@@ -88,7 +107,16 @@ class ContentsWebView : public views::WebView,
+   bool is_animating_bounds_ = false;
+   bool use_default_deadline_when_animating_ = false;
+ 
++  // Frames with an in-flight background probe, kept sorted so a second request
++  // for the same frame does not queue a second task.
++  std::vector<content::GlobalRenderFrameHostId> pending_background_probes_;
++  // The colour the last probe measured, applied while the extension page that
++  // produced it is still showing.
++  std::optional<SkColor> extension_body_background_color_;
++
+   std::unique_ptr<ui::LayerTreeOwner> cloned_layer_tree_;
++
++  base::WeakPtrFactory<ContentsWebView> weak_factory_{this};
+ };
+ 
+ #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_CONTENTS_WEB_VIEW_H_
+diff --git a/chrome/browser/ui/views/frame/multi_contents_view.cc b/chrome/browser/ui/views/frame/multi_contents_view.cc
+index 86edc89c5c..482aa93b73 100644
+--- a/chrome/browser/ui/views/frame/multi_contents_view.cc
++++ b/chrome/browser/ui/views/frame/multi_contents_view.cc
+@@ -8,9 +8,18 @@
+ #include <cstdlib>
+ 
+ #include "base/check_deref.h"
++#include "base/containers/span.h"
+ #include "base/feature_list.h"
+ #include "base/i18n/rtl.h"
++#include "base/json/json_writer.h"
+ #include "base/notreached.h"
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/tabs/tab_group_model.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "components/tabs/public/tab_group.h"
++#include "ui/compositor/compositor.h"
++#include "ui/views/widget/widget.h"
+ #include "chrome/browser/actor/ui/actor_overlay_web_view.h"
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/profiles/profile.h"
+@@ -98,6 +107,9 @@ MultiContentsView::MultiContentsView(
+       AddChildView(std::make_unique<ContentsContainerView>(browser_view_)));
+   contents_container_views_[1]->SetVisible(false);
+ 
++  // Aside: the size that hidden agent tabs render at.
++  ai_tabs_viewport_ = AddChildView(std::make_unique<AsideAiTabsViewport>());
++
+   drop_target_view_ =
+       AddChildView(std::make_unique<MultiContentsDropTargetView>());
+   drop_target_controller_ =
+@@ -183,6 +195,10 @@ MultiContentsView::~MultiContentsView() {
+   if (drop_target_controller_) {
+     drop_target_controller_.reset();
+   }
++  if (ai_tabs_viewport_) {
++    ai_tabs_viewport_->SetSizedWebContents(nullptr);
++    ai_tabs_viewport_ = nullptr;
++  }
+   drop_target_view_ = nullptr;
+   resize_area_ = nullptr;
+   contents_separators_.Reset();
+@@ -269,6 +285,10 @@ void MultiContentsView::SetWebContentsAtIndex(
+       sad_tab_helper->ReinstallInWebView();
+     }
+   }
++
++  // Aside: a tab that just came on screen no longer needs its own viewport,
++  // and the tab it replaced may now need one.
++  UpdateAiTabsViewport();
+ }
+ 
+ void MultiContentsView::ShowSplitView(
+@@ -305,6 +325,8 @@ void MultiContentsView::CloseSplitView() {
+       sad_tab_helper->ReinstallInWebView();
+     }
+   }
++
++  UpdateAiTabsViewport();
+ }
+ 
+ void MultiContentsView::SwapContentsInSplitView() {
+@@ -332,6 +354,7 @@ void MultiContentsView::SetActiveIndex(int index) {
+   GetActiveContentsView()->set_is_primary_web_contents_for_window(true);
+   GetInactiveContentsView()->set_is_primary_web_contents_for_window(false);
+   UpdateContentsBorderAndOverlay();
++  UpdateAiTabsViewport();
+ }
+ 
+ void MultiContentsView::UpdateSplitVisualData(
+@@ -503,6 +526,13 @@ views::ProposedLayout MultiContentsView::CalculateProposedLayout(
+   layouts.child_layouts.emplace_back(background_view_.get(), show_background,
+                                      available_space);
+ 
++  // Aside: the agent-tab viewport is never shown, but it carries the bounds a
++  // hidden agent tab is rendered at, so it spans the whole contents area.
++  if (ai_tabs_viewport_) {
++    layouts.child_layouts.emplace_back(ai_tabs_viewport_.get(), false,
++                                       available_space);
++  }
++
+   if (IsDragAndDropEnabled()) {
+     available_space =
+         CalculateDropTargetLayout(available_space, layouts.child_layouts);
+@@ -849,5 +879,200 @@ int MultiContentsView::GetResizeAxisComponent(const gfx::Size& size) const {
+              : size.height();
+ }
+ 
++// --- Aside restoration: AsideAiTabsViewport --------------------------------
++
++AsideAiTabsViewport::AsideAiTabsViewport() {
++  // The viewport carries bounds only. It never paints and never takes events.
++  SetVisible(false);
++  SetCanProcessEventsWithinSubtree(false);
++}
++
++AsideAiTabsViewport::~AsideAiTabsViewport() {
++  SetSizedWebContents(nullptr);
++}
++
++void AsideAiTabsViewport::SetSizedWebContents(
++    content::WebContents* web_contents) {
++  if (sized_web_contents_ == web_contents) {
++    return;
++  }
++  if (sized_web_contents_) {
++    ClearDeviceMetricsOverride();
++    Detach();
++  }
++  sized_web_contents_ = web_contents;
++  Observe(web_contents);
++  if (sized_web_contents_) {
++    ApplyViewportToContents();
++  }
++}
++
++void AsideAiTabsViewport::OnBoundsChanged(const gfx::Rect& previous_bounds) {
++  views::View::OnBoundsChanged(previous_bounds);
++  ApplyViewportToContents();
++}
++
++void AsideAiTabsViewport::WebContentsDestroyed() {
++  // The session is gone with the contents; drop it without talking to it.
++  sized_web_contents_ = nullptr;
++  Observe(nullptr);
++  metrics_override_applied_ = false;
++  applied_size_ = gfx::Size();
++  Detach();
++}
++
++void AsideAiTabsViewport::DispatchProtocolMessage(
++    content::DevToolsAgentHost* agent_host,
++    base::span<const uint8_t> message) {
++  // The viewport only sends; replies and events are of no interest.
++}
++
++void AsideAiTabsViewport::AgentHostClosed(
++    content::DevToolsAgentHost* agent_host) {
++  agent_host_ = nullptr;
++  metrics_override_applied_ = false;
++  applied_size_ = gfx::Size();
++}
++
++bool AsideAiTabsViewport::IsTrusted() {
++  // A browser-internal client: the Emulation domain is only reachable from a
++  // trusted session.
++  return true;
++}
++
++void AsideAiTabsViewport::ApplyViewportToContents() {
++  if (!sized_web_contents_) {
++    return;
++  }
++  const gfx::Rect bounds = GetLocalBounds();
++  if (bounds.IsEmpty()) {
++    return;
++  }
++  sized_web_contents_->Resize(bounds);
++  if (metrics_override_applied_ && applied_size_ == bounds.size()) {
++    return;
++  }
++  SendDeviceMetricsOverride(bounds.size());
++}
++
++void AsideAiTabsViewport::SendDeviceMetricsOverride(const gfx::Size& size) {
++  if (!EnsureAttached()) {
++    return;
++  }
++  float device_scale_factor = 1.0f;
++  if (const views::Widget* const widget = GetWidget()) {
++    if (const ui::Compositor* const compositor = widget->GetCompositor()) {
++      device_scale_factor = compositor->device_scale_factor();
++    }
++  }
++
++  base::DictValue params;
++  params.Set("width", size.width());
++  params.Set("height", size.height());
++  params.Set("deviceScaleFactor", static_cast<double>(device_scale_factor));
++  params.Set("mobile", false);
++  params.Set("scale", 1.0);
++  params.Set("screenWidth", size.width());
++  params.Set("screenHeight", size.height());
++  params.Set("positionX", 0);
++  params.Set("positionY", 0);
++  params.Set("dontSetVisibleSize", false);
++  SendCommand("Emulation.setDeviceMetricsOverride", std::move(params));
++
++  metrics_override_applied_ = true;
++  applied_size_ = size;
++}
++
++void AsideAiTabsViewport::ClearDeviceMetricsOverride() {
++  if (!metrics_override_applied_) {
++    return;
++  }
++  if (agent_host_) {
++    SendCommand("Emulation.clearDeviceMetricsOverride", base::DictValue());
++  }
++  metrics_override_applied_ = false;
++  applied_size_ = gfx::Size();
++}
++
++void AsideAiTabsViewport::SendCommand(std::string_view method,
++                                      base::DictValue params) {
++  if (!agent_host_) {
++    return;
++  }
++  base::DictValue command;
++  command.Set("id", next_command_id_++);
++  command.Set("method", std::string(method));
++  command.Set("params", std::move(params));
++
++  std::string json;
++  if (!base::JSONWriter::Write(command, &json)) {
++    return;
++  }
++  agent_host_->DispatchProtocolMessage(this, base::as_byte_span(json));
++}
++
++bool AsideAiTabsViewport::EnsureAttached() {
++  if (agent_host_) {
++    return true;
++  }
++  if (!sized_web_contents_) {
++    return false;
++  }
++  scoped_refptr<content::DevToolsAgentHost> host =
++      content::DevToolsAgentHost::GetOrCreateFor(sized_web_contents_);
++  if (!host || !host->AttachClient(this)) {
++    return false;
++  }
++  agent_host_ = std::move(host);
++  return true;
++}
++
++void AsideAiTabsViewport::Detach() {
++  if (!agent_host_) {
++    return;
++  }
++  agent_host_->DetachClient(this);
++  agent_host_ = nullptr;
++}
++
++BEGIN_METADATA(AsideAiTabsViewport)
++END_METADATA
++
++void MultiContentsView::UpdateAiTabsViewport() {
++  if (!ai_tabs_viewport_) {
++    return;
++  }
++  content::WebContents* agent_contents = nullptr;
++
++  Browser* const browser = browser_view_ ? browser_view_->browser() : nullptr;
++  TabStripModel* const model = browser ? browser->tab_strip_model() : nullptr;
++  if (model && model->SupportsTabGroups()) {
++    content::WebContents* const shown[] = {
++        contents_container_views_[0]->contents_view()->web_contents(),
++        contents_container_views_[1]->GetVisible()
++            ? contents_container_views_[1]->contents_view()->web_contents()
++            : nullptr};
++    for (int i = 0; i < model->count() && !agent_contents; ++i) {
++      const std::optional<tab_groups::TabGroupId> group_id =
++          model->GetTabGroupForTab(i);
++      if (!group_id.has_value()) {
++        continue;
++      }
++      const TabGroup* const group =
++          model->group_model()->GetTabGroup(group_id.value());
++      if (!aside::IsAgentTabsGroup(group)) {
++        continue;
++      }
++      content::WebContents* const contents = model->GetWebContentsAt(i);
++      // Only a tab that is not on screen needs a viewport of its own.
++      if (contents && contents != shown[0] && contents != shown[1]) {
++        agent_contents = contents;
++      }
++    }
++  }
++
++  ai_tabs_viewport_->SetSizedWebContents(agent_contents);
++}
++
+ BEGIN_METADATA(MultiContentsView)
+ END_METADATA
+diff --git a/chrome/browser/ui/views/frame/multi_contents_view.h b/chrome/browser/ui/views/frame/multi_contents_view.h
+index 12511f171b..e41541a9b4 100644
+--- a/chrome/browser/ui/views/frame/multi_contents_view.h
++++ b/chrome/browser/ui/views/frame/multi_contents_view.h
+@@ -9,9 +9,15 @@
+ #include <optional>
+ 
+ #include "base/callback_list.h"
++#include "base/containers/span.h"
+ #include "base/functional/callback_forward.h"
+ #include "base/gtest_prod_util.h"
+ #include "base/memory/raw_ptr.h"
++#include "base/memory/scoped_refptr.h"
++#include "base/values.h"
++#include "content/public/browser/devtools_agent_host.h"
++#include "content/public/browser/devtools_agent_host_client.h"
++#include "content/public/browser/web_contents_observer.h"
+ #include "chrome/browser/ui/tabs/split_tab_highlight_controller.h"
+ #include "chrome/browser/ui/ui_features.h"
+ #include "chrome/browser/ui/views/frame/contents_container_view.h"
+@@ -45,6 +51,76 @@ namespace views {
+ class WebView;
+ }  // namespace views
+ 
++// Aside: the viewport that agent ("AI") tabs are rendered into while the agent
++// is working in them.  An agent tab is not the visible tab, so its renderer has
++// no size of its own and would keep whatever size it last had (or none at all).
++// The original browser therefore hands such a tab the size of the visible
++// contents area: it resizes the WebContents to this view's bounds and pushes
++// Emulation.setDeviceMetricsOverride over the tab's own DevTools session,
++// clearing the override again when the tab stops being driven.
++//
++// Restores the original browser's AsideAiTabsViewport, declared in
++// multi_contents_view.h (class name @0xe8d67d9; the update path that resizes
++// the contents and sends the override is @0x04c78900, the two protocol helpers
++// are @0x04c7dbd0 "Emulation.clearDeviceMetricsOverride" and @0x04c7dee0
++// "Emulation.setDeviceMetricsOverride" with width / height /
++// deviceScaleFactor / mobile / scale / screenWidth / screenHeight / positionX /
++// positionY / dontSetVisibleSize).
++class AsideAiTabsViewport : public views::View,
++                            public content::WebContentsObserver,
++                            public content::DevToolsAgentHostClient {
++  METADATA_HEADER(AsideAiTabsViewport, views::View)
++
++ public:
++  AsideAiTabsViewport();
++  AsideAiTabsViewport(const AsideAiTabsViewport&) = delete;
++  AsideAiTabsViewport& operator=(const AsideAiTabsViewport&) = delete;
++  ~AsideAiTabsViewport() override;
++
++  // Starts sizing `web_contents` to this viewport, or stops doing so when
++  // given nullptr. Passing the contents that is already being sized is a
++  // no-op.
++  void SetSizedWebContents(content::WebContents* web_contents);
++  content::WebContents* sized_web_contents() const {
++    return sized_web_contents_;
++  }
++
++  bool has_metrics_override_for_testing() const {
++    return metrics_override_applied_;
++  }
++  const gfx::Size& applied_size_for_testing() const { return applied_size_; }
++
++  // views::View:
++  void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
++
++  // content::WebContentsObserver:
++  void WebContentsDestroyed() override;
++
++  // content::DevToolsAgentHostClient:
++  void DispatchProtocolMessage(content::DevToolsAgentHost* agent_host,
++                               base::span<const uint8_t> message) override;
++  void AgentHostClosed(content::DevToolsAgentHost* agent_host) override;
++  bool IsTrusted() override;
++
++ private:
++  // Resizes the sized contents and (re-)applies the metrics override for the
++  // current bounds. Does nothing while the bounds are empty.
++  void ApplyViewportToContents();
++  void SendDeviceMetricsOverride(const gfx::Size& size);
++  void ClearDeviceMetricsOverride();
++  // Serializes {"id":<n>,"method":<method>,"params":<params>} and sends it on
++  // the attached session.
++  void SendCommand(std::string_view method, base::DictValue params);
++  bool EnsureAttached();
++  void Detach();
++
++  raw_ptr<content::WebContents> sized_web_contents_ = nullptr;
++  scoped_refptr<content::DevToolsAgentHost> agent_host_;
++  int next_command_id_ = 1;
++  bool metrics_override_applied_ = false;
++  gfx::Size applied_size_;
++};
++
+ // MultiContentsView shows up to two contents web views side by side, and
+ // manages their layout relative to each other.
+ class MultiContentsView
+@@ -212,6 +288,12 @@ class MultiContentsView
+ 
+   MultiContentsViewDelegate* delegate_for_testing() { return delegate_.get(); }
+ 
++  // Aside: the viewport that gives hidden agent tabs a size (see
++  // AsideAiTabsViewport above).
++  AsideAiTabsViewport* ai_tabs_viewport_for_testing() {
++    return ai_tabs_viewport_;
++  }
++
+   const FocusableViewMap* GetFocusableViewsMapFor(
+       const ContentsContainerView* container) const;
+ 
+@@ -276,6 +358,11 @@ class MultiContentsView
+ 
+   void UpdateContentsBorderAndOverlay();
+ 
++  // Aside: points `ai_tabs_viewport_` at the agent tab that is currently
++  // working but not on screen, so it keeps rendering at the size of the
++  // contents area. Points it at nothing when no such tab exists.
++  void UpdateAiTabsViewport();
++
+   double CalculateRatioWithSnapPoints(double start_size,
+                                       double total_size) const;
+ 
+@@ -309,6 +396,10 @@ class MultiContentsView
+   std::unique_ptr<MultiContentsViewDropTargetController>
+       drop_target_controller_;
+ 
++  // Aside: sizes the hidden agent tab. Never painted and never hit-tested; it
++  // only carries the bounds that agent tabs are given.
++  raw_ptr<AsideAiTabsViewport> ai_tabs_viewport_ = nullptr;
++
+   // The index in contents_views_ of the active contents view.
+   int active_index_ = 0;
+ 
+diff --git a/chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.cc b/chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.cc
+index 782c80273c..a4e601674e 100644
+--- a/chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.cc
++++ b/chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.cc
+@@ -22,11 +22,27 @@
+ #include "chrome/browser/ui/views/tabs/dragging/tab_drag_controller.h"
+ #include "chrome/common/pref_names.h"
+ #include "components/prefs/pref_service.h"
++#include "chrome/browser/ui/views/tabs/dragging/drag_session_data.h"
++#include "components/favicon/content/content_favicon_driver.h"
++#include "components/vector_icons/vector_icons.h"
++#include "content/public/browser/web_contents.h"
+ #include "content/public/common/drop_data.h"
+ #include "ui/base/dragdrop/drag_drop_types.h"
+ #include "ui/base/dragdrop/os_exchange_data.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/color/color_id.h"
++#include "ui/color/color_provider.h"
++#include "ui/compositor/layer.h"
+ #include "ui/compositor/layer_tree_owner.h"
++#include "ui/gfx/image/image.h"
++#include "ui/views/background.h"
++#include "ui/views/border.h"
++#include "ui/views/controls/image_view.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/layout/box_layout.h"
+ #include "ui/views/view_class_properties.h"
++#include "ui/views/view_utils.h"
+ 
+ namespace {
+ static constexpr base::TimeDelta kShowDropTargetForLinkAfterHideLookbackWindow =
+@@ -54,6 +70,101 @@ bool IsPointEligibleForDrag(gfx::Point point_in_view,
+ 
+ }  // namespace
+ 
++// Aside: while a tab is dragged over the contents area, the original browser
++// floats a small card under the pointer showing the tab that would be dropped
++// into the new split pane — the dragged tab's favicon and title on a rounded,
++// shadowed surface. Restores the original browser's FloatingTabDragView
++// (declared in multi_contents_view_drop_target_controller.cc:180, class name
++// @0xe8d694d, constructed from the tab-drag update path @0x04c7edd0).
++class FloatingTabDragView : public views::View {
++  METADATA_HEADER(FloatingTabDragView, views::View)
++
++ public:
++  static constexpr int kIconSize = 16;
++  static constexpr int kCornerRadius = 8;
++  static constexpr int kMaxWidth = 220;
++  // How far above the pointer the card floats.
++  static constexpr int kPointerOffset = 24;
++
++  FloatingTabDragView() {
++    SetCanProcessEventsWithinSubtree(false);
++    SetPaintToLayer();
++    layer()->SetFillsBoundsOpaquely(false);
++    layer()->SetName("FloatingTabDragView");
++
++    auto* const layout = SetLayoutManager(std::make_unique<views::BoxLayout>(
++        views::BoxLayout::Orientation::kHorizontal, gfx::Insets::VH(6, 8), 8));
++    layout->set_cross_axis_alignment(
++        views::BoxLayout::CrossAxisAlignment::kCenter);
++
++    icon_ = AddChildView(std::make_unique<views::ImageView>());
++    title_ = AddChildView(std::make_unique<views::Label>(
++        std::u16string(), views::style::CONTEXT_LABEL,
++        views::style::STYLE_PRIMARY));
++    title_->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    title_->SetElideBehavior(gfx::ELIDE_TAIL);
++    title_->SetMaximumWidth(kMaxWidth);
++  }
++  FloatingTabDragView(const FloatingTabDragView&) = delete;
++  FloatingTabDragView& operator=(const FloatingTabDragView&) = delete;
++  ~FloatingTabDragView() override = default;
++
++  void SetDraggedContents(content::WebContents* contents) {
++    if (!contents) {
++      title_->SetText(std::u16string());
++      icon_->SetImage(ui::ImageModel());
++      return;
++    }
++    title_->SetText(contents->GetTitle());
++    gfx::Image favicon;
++    if (auto* driver =
++            favicon::ContentFaviconDriver::FromWebContents(contents);
++        driver && !driver->GetFavicon().IsEmpty()) {
++      favicon = driver->GetFavicon();
++    }
++    if (favicon.IsEmpty()) {
++      icon_->SetImage(ui::ImageModel::FromVectorIcon(
++          vector_icons::kGlobeIcon, ui::kColorIcon, kIconSize));
++    } else {
++      icon_->SetImage(ui::ImageModel::FromImage(favicon));
++    }
++  }
++
++  // Centers the card on `point_in_parent`, lifted above the pointer, and keeps
++  // it inside the parent.
++  void MoveToPoint(const gfx::Point& point_in_parent) {
++    const gfx::Size size = GetPreferredSize();
++    gfx::Rect bounds(
++        gfx::Point(point_in_parent.x() - size.width() / 2,
++                   point_in_parent.y() - size.height() - kPointerOffset),
++        size);
++    if (parent()) {
++      bounds.AdjustToFit(parent()->GetLocalBounds());
++    }
++    SetBoundsRect(bounds);
++  }
++
++  // views::View:
++  void OnThemeChanged() override {
++    views::View::OnThemeChanged();
++    const ui::ColorProvider* const color_provider = GetColorProvider();
++    if (!color_provider) {
++      return;
++    }
++    SetBackground(views::CreateRoundedRectBackground(
++        color_provider->GetColor(ui::kColorBubbleBackground), kCornerRadius));
++    SetBorder(views::CreateRoundedRectBorder(
++        1, kCornerRadius, color_provider->GetColor(ui::kColorBubbleBorder)));
++  }
++
++ private:
++  raw_ptr<views::ImageView> icon_ = nullptr;
++  raw_ptr<views::Label> title_ = nullptr;
++};
++
++BEGIN_METADATA(FloatingTabDragView)
++END_METADATA
++
+ // static
+ int MultiContentsViewDropTargetController::DropTargetConstants::GetHideWidth() {
+   return
+@@ -110,6 +221,7 @@ MultiContentsViewDropTargetController::MultiContentsViewDropTargetController(
+ MultiContentsViewDropTargetController::
+     ~MultiContentsViewDropTargetController() {
+   hide_drop_target_timer_.Stop();
++  HideFloatingTabDragView();
+   on_will_destroy_callback_list_.Notify();
+   drop_target_view_->SetDragDelegate(nullptr);
+ }
+@@ -137,10 +249,15 @@ TabDragContext* MultiContentsViewDropTargetController::OnTabDragUpdated(
+       !IsPointEligibleForDrag(point_in_parent, drop_target_parent_view_)) {
+     ResetDropTargetTimers();
+     HideDropTarget();
++    // Aside: the floating card only follows a drag that could become a split.
++    HideFloatingTabDragView();
+     return nullptr;
+   }
+   HandleDragUpdate(point_in_parent,
+                    MultiContentsDropTargetView::DragType::kTab);
++  // Aside: show the dragged tab under the pointer while it is over the
++  // contents area.
++  ShowFloatingTabDragView(drag_data, point_in_parent);
+   return nullptr;
+ }
+ 
+@@ -150,11 +267,52 @@ void MultiContentsViewDropTargetController::OnTabDragExited(
+     const gfx::Point& point_in_screen) {
+   ResetDropTargetTimers();
+   HideDropTarget();
++  HideFloatingTabDragView();
+ }
+ 
+ void MultiContentsViewDropTargetController::OnTabDragEnded() {
+   ResetDropTargetTimers();
+   HideDropTarget();
++  HideFloatingTabDragView();
++}
++
++// --- Aside restoration: FloatingTabDragView --------------------------------
++
++void MultiContentsViewDropTargetController::ShowFloatingTabDragView(
++    const DragSessionData& drag_data,
++    const gfx::Point& point_in_parent) {
++  content::WebContents* dragged_contents = nullptr;
++  for (const TabDragData& tab : drag_data.tab_drag_data_) {
++    if (tab.contents) {
++      dragged_contents = tab.contents;
++      break;
++    }
++  }
++  if (!dragged_contents) {
++    HideFloatingTabDragView();
++    return;
++  }
++
++  if (!floating_tab_drag_view_) {
++    floating_tab_drag_view_ = drop_target_parent_view_->AddChildView(
++        std::make_unique<FloatingTabDragView>());
++  }
++  auto* const view =
++      views::AsViewClass<FloatingTabDragView>(floating_tab_drag_view_);
++  view->SetDraggedContents(dragged_contents);
++  view->MoveToPoint(point_in_parent);
++  view->SetVisible(true);
++}
++
++void MultiContentsViewDropTargetController::HideFloatingTabDragView() {
++  if (!floating_tab_drag_view_) {
++    return;
++  }
++  views::View* const parent = floating_tab_drag_view_->parent();
++  views::View* const view = floating_tab_drag_view_.ExtractAsDangling();
++  if (parent) {
++    parent->RemoveChildViewT(view);
++  }
+ }
+ 
+ bool MultiContentsViewDropTargetController::CanDropTab() {
+diff --git a/chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.h b/chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.h
+index 8d0b3bf3d5..0b6a5ff36d 100644
+--- a/chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.h
++++ b/chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.h
+@@ -24,6 +24,7 @@ struct DropData;
+ 
+ class PrefService;
+ class TabStripModel;
++struct DragSessionData;
+ 
+ // `MultiContentsViewDropTargetController` is responsible for handling
+ // the drag-entrypoint of a single `MultiContentsView`. This includes dragging
+@@ -141,6 +142,14 @@ class MultiContentsViewDropTargetController final
+   // Shows the drop target that should be displayed at the end of the delay.
+   void ShowTimerDelayedDropTarget();
+ 
++  // Aside: creates/moves the floating card that shows the dragged tab under
++  // the pointer while a tab drag hovers the contents area, and removes it
++  // again. Restores the original browser's FloatingTabDragView (defined in the
++  // .cc).
++  void ShowFloatingTabDragView(const DragSessionData& drag_data,
++                               const gfx::Point& point_in_parent);
++  void HideFloatingTabDragView();
++
+   // Timer to hide the drop target if the drag isn't over web contents or
+   // drop target.
+   void StartDropTargetHideTimer();
+@@ -181,6 +190,10 @@ class MultiContentsViewDropTargetController final
+   // the show timer for link drags.
+   base::Time drop_target_last_hidden_;
+ 
++  // Aside: the floating card under the pointer during a tab drag. Owned by
++  // `drop_target_parent_view_` while it exists.
++  raw_ptr<views::View> floating_tab_drag_view_ = nullptr;
++
+   // The view that is displayed when drags hover over the "drop" region of
+   // the content area.
+   const raw_ref<MultiContentsDropTargetView> drop_target_view_;
+diff --git a/chrome/browser/ui/views/location_bar/location_bar_view.cc b/chrome/browser/ui/views/location_bar/location_bar_view.cc
+index 0353e3f0ae..622a72f5d7 100644
+--- a/chrome/browser/ui/views/location_bar/location_bar_view.cc
++++ b/chrome/browser/ui/views/location_bar/location_bar_view.cc
+@@ -16,6 +16,8 @@
+ #include "base/functional/callback_helpers.h"
+ #include "base/i18n/rtl.h"
+ #include "base/metrics/field_trial_params.h"
++#include "base/numerics/safe_conversions.h"
++#include "base/task/single_thread_task_runner.h"
+ #include "base/strings/utf_string_conversions.h"
+ #include "base/trace_event/trace_event.h"
+ #include "base/trace_event/typed_macros.h"
+@@ -87,6 +89,7 @@
+ #include "chrome/browser/ui/views/omnibox/omnibox_popup_webui_base_content.h"
+ #include "chrome/browser/ui/views/omnibox/omnibox_popup_webui_content.h"
+ #include "chrome/browser/ui/views/omnibox/omnibox_view_views.h"
++#include "chrome/browser/ui/views/page_info/page_info_reload_bubble_view.h"
+ #include "chrome/browser/ui/views/page_action/page_action_container_view.h"
+ #include "chrome/browser/ui/views/page_action/page_action_icon_container.h"
+ #include "chrome/browser/ui/views/page_action/page_action_icon_controller.h"
+@@ -165,6 +168,7 @@
+ #include "ui/base/resource/resource_bundle.h"
+ #include "ui/base/ui_base_features.h"
+ #include "ui/color/color_id.h"
++#include "cc/paint/paint_flags.h"
+ #include "ui/color/color_provider.h"
+ #include "ui/compositor/layer.h"
+ #include "ui/compositor/paint_recorder.h"
+@@ -212,6 +216,23 @@ constexpr int kIntentChipIntraItemPadding = 12;
+ // The padding between the content setting icons and other trailing decorations.
+ constexpr int kContentSettingIntraItemPadding = 8;
+ 
++// --- Aside restoration ------------------------------------------------------
++// The original browser advances the omnibox load-progress fill on a repeating
++// half-second timer and hides it one second after the load completes.
++constexpr base::TimeDelta kAsidePageLoadProgressTrickleInterval =
++    base::Milliseconds(500);
++constexpr base::TimeDelta kAsidePageLoadProgressHideDelay = base::Seconds(1);
++// Each trickle tick moves this share of the remaining distance.
++constexpr double kAsidePageLoadProgressTrickleStep = 0.25;
++// The Aside new tab page needs the location bar re-read a few times after the
++// navigation commits; the original retries six times, 50 ms apart.
++constexpr base::TimeDelta kAsideBromiumRefreshInterval = base::Milliseconds(50);
++constexpr int kAsideBromiumRefreshRetries = 6;
++// The Aside extension that owns the new tab page.
++constexpr char kAsideExtensionHost[] = "fjdhphbdlfjogobdofoaagnlnkoibdge";
++constexpr char kAsideNewTabPath[] = "/newtab.html";
++// --- end Aside restoration --------------------------------------------------
++
+ }  // namespace
+ 
+ using content::WebContents;
+@@ -299,6 +320,56 @@ LocationBarView::~LocationBarView() {
+   RemoveChildViewT(omnibox_view_.ExtractAsDangling());
+ }
+ 
++// The overlay that carries the omnibox load-progress fill. It is a layer-backed
++// child added last so that it paints above the omnibox text field, which draws
++// its own opaque background; a fill painted in OnPaintBackground would be
++// hidden behind it.
++class LocationBarView::PageLoadProgressView : public views::View {
++  METADATA_HEADER(PageLoadProgressView, views::View)
++
++ public:
++  PageLoadProgressView() {
++    SetCanProcessEventsWithinSubtree(false);
++    SetPaintToLayer();
++    layer()->SetFillsBoundsOpaquely(false);
++    layer()->SetName("LocationBarPageLoadProgress");
++    SetVisible(false);
++  }
++  PageLoadProgressView(const PageLoadProgressView&) = delete;
++  PageLoadProgressView& operator=(const PageLoadProgressView&) = delete;
++  ~PageLoadProgressView() override = default;
++
++  void SetCornerRadius(float radius) {
++    if (corner_radius_ == radius) {
++      return;
++    }
++    corner_radius_ = radius;
++    SchedulePaint();
++  }
++
++  // views::View:
++  void OnPaint(gfx::Canvas* canvas) override {
++    const ui::ColorProvider* const color_provider = GetColorProvider();
++    if (!color_provider || GetLocalBounds().IsEmpty()) {
++      return;
++    }
++    // A translucent wash of the omnibox's selected-result background.
++    cc::PaintFlags flags;
++    flags.setAntiAlias(true);
++    flags.setStyle(cc::PaintFlags::kFill_Style);
++    flags.setColor(SkColorSetA(
++        color_provider->GetColor(kColorOmniboxResultsBackgroundSelected),
++        0x66));
++    canvas->DrawRoundRect(GetLocalBounds(), corner_radius_, flags);
++  }
++
++ private:
++  float corner_radius_ = 0.0f;
++};
++
++BEGIN_METADATA(LocationBarView, PageLoadProgressView)
++END_METADATA
++
+ void LocationBarView::Init() {
+   // We need to be in a Widget, otherwise GetNativeTheme() may change and we're
+   // not prepared for that.
+@@ -608,6 +679,11 @@ void LocationBarView::Init() {
+   ai_mode_hint_label->SetVisible(false);
+   ai_mode_hint_label_ = AddChildView(std::move(ai_mode_hint_label));
+ 
++  // Aside: the omnibox load-progress fill. Added last so it paints over the
++  // omnibox's own decorations.
++  page_load_progress_view_ =
++      AddChildView(std::make_unique<PageLoadProgressView>());
++
+   // Initialize the location entry. We do this to avoid a black flash which is
+   // visible when the location entry has just been initialized.
+   Update(nullptr);
+@@ -771,9 +847,175 @@ void LocationBarView::OnDidChangeFocus(views::View* before, views::View* now) {
+   // but the RenderFrameHost hasn't yet been updated to be queryable for
+   // IsSandboxed() during this stack so we crash. By posting a task we make sure
+   // the RenderFrameHost is not in the middle of updating its own state.
++  //
++  // Aside: the original browser coalesces these into a single pending task
++  // instead of posting one per focus change.
++  ScheduleDeferredLocationBarRefresh();
++}
++
++// --- Aside restoration: coalesced refresh ----------------------------------
++
++void LocationBarView::ScheduleDeferredLocationBarRefresh() {
++  if (deferred_location_bar_refresh_pending_) {
++    return;
++  }
++  deferred_location_bar_refresh_pending_ = true;
+   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+-      FROM_HERE, base::BindOnce(&LocationBarView::RefreshPageActionIconViews,
+-                                weak_factory_.GetWeakPtr()));
++      FROM_HERE,
++      base::BindOnce(&LocationBarView::RunDeferredLocationBarRefresh,
++                     weak_factory_.GetWeakPtr()));
++}
++
++void LocationBarView::RunDeferredLocationBarRefresh() {
++  deferred_location_bar_refresh_pending_ = false;
++  RefreshPageActionIconViews();
++}
++
++bool LocationBarView::IsBromiumPage() const {
++  const content::WebContents* const contents =
++      const_cast<LocationBarView*>(this)->GetWebContentsForPageActionIconView();
++  if (!contents) {
++    return false;
++  }
++  const GURL& url = contents->GetLastCommittedURL();
++  return url.SchemeIs("chrome-extension") && url.host() == kAsideExtensionHost &&
++         url.path() == kAsideNewTabPath;
++}
++
++void LocationBarView::ScheduleBromiumLocationBarRefreshRetries() {
++  if (!IsBromiumPage()) {
++    bromium_location_bar_refresh_retries_ = 0;
++    bromium_location_bar_refresh_timer_.Stop();
++    return;
++  }
++  bromium_location_bar_refresh_retries_ = kAsideBromiumRefreshRetries;
++  bromium_location_bar_refresh_timer_.Start(
++      FROM_HERE, kAsideBromiumRefreshInterval,
++      base::BindRepeating(&LocationBarView::RunBromiumLocationBarRefreshRetry,
++                          base::Unretained(this)));
++}
++
++void LocationBarView::RunBromiumLocationBarRefreshRetry() {
++  if (--bromium_location_bar_refresh_retries_ <= 0) {
++    bromium_location_bar_refresh_timer_.Stop();
++    bromium_location_bar_refresh_retries_ = 0;
++  }
++  RefreshPageActionIconViews();
++  OnChanged();
++}
++
++// --- Aside restoration: omnibox page-load progress -------------------------
++
++void LocationBarView::OnPageLoadProgressMaybeChanged() {
++  content::WebContents* const contents =
++      GetWebContentsForPageActionIconView();
++  if (!contents) {
++    HidePageLoadProgress();
++    return;
++  }
++
++  const double progress =
++      contents->IsLoading() ? contents->GetLoadProgress() : 1.0;
++  page_load_progress_target_ = std::clamp(progress, 0.0, 1.0);
++
++  if (contents->IsLoading() && page_load_progress_target_ < 1.0) {
++    if (!page_load_progress_visible_) {
++      page_load_progress_visible_ = true;
++      page_load_progress_ = 0.0;
++    }
++    page_load_progress_hide_timer_.Stop();
++    StartPageLoadProgressTrickle();
++    UpdatePageLoadProgressView();
++    SchedulePaint();
++    return;
++  }
++
++  if (page_load_progress_visible_) {
++    page_load_progress_ = 1.0;
++    page_load_progress_target_ = 1.0;
++    page_load_progress_trickle_timer_.Stop();
++    StartPageLoadProgressHideTimer();
++    UpdatePageLoadProgressView();
++    SchedulePaint();
++  }
++}
++
++void LocationBarView::StartPageLoadProgressTrickle() {
++  if (page_load_progress_trickle_timer_.IsRunning()) {
++    return;
++  }
++  page_load_progress_trickle_timer_.Start(
++      FROM_HERE, kAsidePageLoadProgressTrickleInterval,
++      base::BindRepeating(&LocationBarView::OnPageLoadProgressTrickle,
++                          base::Unretained(this)));
++}
++
++void LocationBarView::OnPageLoadProgressTrickle() {
++  content::WebContents* const contents =
++      GetWebContentsForPageActionIconView();
++  if (!contents || !contents->IsLoading()) {
++    page_load_progress_trickle_timer_.Stop();
++    OnPageLoadProgressMaybeChanged();
++    return;
++  }
++  page_load_progress_target_ =
++      std::clamp(contents->GetLoadProgress(), 0.0, 1.0);
++  // Never move backwards, and always creep forward a little so a stalled load
++  // still looks alive.
++  const double target = std::max(page_load_progress_target_,
++                                 page_load_progress_ +
++                                     (1.0 - page_load_progress_) *
++                                         kAsidePageLoadProgressTrickleStep);
++  page_load_progress_ = std::clamp(std::max(page_load_progress_, target), 0.0,
++                                   1.0);
++  UpdatePageLoadProgressView();
++  SchedulePaint();
++}
++
++void LocationBarView::StartPageLoadProgressHideTimer() {
++  page_load_progress_hide_timer_.Start(
++      FROM_HERE, kAsidePageLoadProgressHideDelay,
++      base::BindOnce(&LocationBarView::HidePageLoadProgress,
++                     base::Unretained(this)));
++}
++
++void LocationBarView::HidePageLoadProgress() {
++  page_load_progress_trickle_timer_.Stop();
++  page_load_progress_hide_timer_.Stop();
++  if (!page_load_progress_visible_ && page_load_progress_ == 0.0) {
++    return;
++  }
++  page_load_progress_visible_ = false;
++  page_load_progress_ = 0.0;
++  page_load_progress_target_ = 0.0;
++  UpdatePageLoadProgressView();
++  SchedulePaint();
++}
++
++
++void LocationBarView::UpdatePageLoadProgressView() {
++  // The fill lives in `page_load_progress_view_`; this keeps its bounds and
++  // visibility in step with the current progress.
++  if (!page_load_progress_view_) {
++    return;
++  }
++  const bool show = page_load_progress_visible_ && page_load_progress_ > 0.0 &&
++                    !is_popup_mode_ && !GetLocalBounds().IsEmpty();
++  page_load_progress_view_->SetVisible(show);
++  if (!show) {
++    return;
++  }
++  gfx::Rect bounds = GetLocalBounds();
++  bounds.set_width(base::ClampRound(
++      bounds.width() * std::clamp(page_load_progress_, 0.0, 1.0)));
++  page_load_progress_view_->SetCornerRadius(GetBorderRadius());
++  page_load_progress_view_->SetBoundsRect(bounds);
++  // The omnibox text field paints its own opaque background, so the fill has
++  // to sit above it in the layer order.
++  if (ui::Layer* const layer = page_load_progress_view_->layer();
++      layer && layer->parent()) {
++    layer->parent()->StackAtTop(layer);
++  }
+ }
+ 
+ bool LocationBarView::HasFocus() const {
+@@ -1167,6 +1409,11 @@ void LocationBarView::Update(WebContents* contents) {
+   RefreshPageActionContainerViewAndIconsVisibility(
+       /*should_hide_page_actions=*/ShouldHidePageActionIcons());
+ 
++  // Aside: pick up the new tab's load progress and, on the Aside new tab page,
++  // start the post-commit refresh retries.
++  OnPageLoadProgressMaybeChanged();
++  ScheduleBromiumLocationBarRefreshRetries();
++
+   OnChanged();  // NOTE: Triggers layout.
+ 
+   // A permission prompt may be suspended due to an invalid state (empty or
+@@ -1743,6 +1990,12 @@ void LocationBarView::OnPageInfoBubbleClosed(
+   if (!reload_prompt) {
+     return;
+   }
++
++  // Aside: instead of Chromium's permission-change infobar, show the reload
++  // bubble under the page-info icon.
++  PageInfoReloadBubbleView::ShowBubble(
++      location_icon_view_, GetWebContentsForPageActionIconView());
++
+   if (closed_reason != views::Widget::ClosedReason::kEscKeyPressed &&
+       closed_reason != views::Widget::ClosedReason::kCloseButtonClicked) {
+     return;
+@@ -2081,6 +2334,8 @@ void LocationBarView::OnChanged() {
+ 
+   InvalidateLayout();
+   SchedulePaint();
++  // Aside: the omnibox load-progress fill follows the active tab.
++  OnPageLoadProgressMaybeChanged();
+   UpdateChipVisibility();
+   // The AI mode page action icon view visibility depends on whether or not
+   // user text has been entered into the omnibox, so refresh the icon on
+diff --git a/chrome/browser/ui/views/location_bar/location_bar_view.h b/chrome/browser/ui/views/location_bar/location_bar_view.h
+index f0c5338654..6db1abd47c 100644
+--- a/chrome/browser/ui/views/location_bar/location_bar_view.h
++++ b/chrome/browser/ui/views/location_bar/location_bar_view.h
+@@ -17,6 +17,7 @@
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/weak_ptr.h"
+ #include "base/scoped_observation.h"
++#include "base/timer/timer.h"
+ #include "build/build_config.h"
+ #include "chrome/browser/ui/location_bar/location_bar.h"
+ #include "chrome/browser/ui/omnibox/omnibox_popup_state_manager.h"
+@@ -256,6 +257,19 @@ class LocationBarView
+   // views::FocusChangeListener:
+   void OnDidChangeFocus(views::View* before, views::View* now) override;
+ 
++  // Aside: the omnibox paints a page-load progress fill behind its contents.
++  // Restores the original browser's LocationBarView page load progress
++  // (original symbols StartPageLoadProgressTrickle /
++  // StartPageLoadProgressHideTimer, location_bar_view.cc:2772 and :2800).
++  void OnPageLoadProgressMaybeChanged();
++  double page_load_progress_for_testing() const { return page_load_progress_; }
++  bool page_load_progress_visible_for_testing() const {
++    return page_load_progress_visible_;
++  }
++  int bromium_refresh_retries_for_testing() const {
++    return bromium_location_bar_refresh_retries_;
++  }
++
+   // IconLabelBubbleView::Delegate:
+   SkColor GetIconLabelBubbleSurroundingForegroundColor() const override;
+   SkAlpha GetIconLabelBubbleSeparatorAlpha() const override;
+@@ -643,6 +657,54 @@ class LocationBarView
+ 
+   void OnMiddleClickPaste(base::TimeTicks event_timestamp, std::u16string text);
+ 
++  // --- Aside restoration: page-load progress + coalesced refresh ------------
++  // The layer-backed overlay that carries the progress fill (defined in the
++  // .cc). It has to be a child on top of the omnibox text field, which paints
++  // its own opaque background.
++  class PageLoadProgressView;
++
++  // Advances `page_load_progress_` toward `page_load_progress_target_` and
++  // repaints. Runs from the trickle timer.
++  void StartPageLoadProgressTrickle();
++  void OnPageLoadProgressTrickle();
++  // Hides the progress fill one second after the page finished loading.
++  void StartPageLoadProgressHideTimer();
++  void HidePageLoadProgress();
++  // Keeps the overlay's bounds, visibility and stacking in step with
++  // `page_load_progress_`.
++  void UpdatePageLoadProgressView();
++
++  // Coalesces the page-action refresh that follows a focus change into a single
++  // posted task (original ScheduleDeferredLocationBarRefresh,
++  // location_bar_view.cc:2884).
++  void ScheduleDeferredLocationBarRefresh();
++  void RunDeferredLocationBarRefresh();
++
++  // The Aside new tab page (chrome-extension://<aside id>/newtab.html) draws
++  // its own omnibox, and it is not ready to answer at navigation-commit time.
++  // The original browser therefore re-reads the location bar six more times,
++  // 50 ms apart, after committing to that page (original
++  // ScheduleBromiumLocationBarRefreshRetries / RunBromiumLocationBarRefreshRetry,
++  // location_bar_view.cc:2903).
++  void ScheduleBromiumLocationBarRefreshRetries();
++  void RunBromiumLocationBarRefreshRetry();
++  bool IsBromiumPage() const;
++
++  // Current painted progress, in [0, 1].
++  double page_load_progress_ = 0.0;
++  // Progress reported by the active tab, in [0, 1].
++  double page_load_progress_target_ = 0.0;
++  bool page_load_progress_visible_ = false;
++  raw_ptr<PageLoadProgressView> page_load_progress_view_ = nullptr;
++  base::RepeatingTimer page_load_progress_trickle_timer_;
++  base::OneShotTimer page_load_progress_hide_timer_;
++
++  bool deferred_location_bar_refresh_pending_ = false;
++
++  int bromium_location_bar_refresh_retries_ = 0;
++  base::RepeatingTimer bromium_location_bar_refresh_timer_;
++  // --- end Aside restoration ----------------------------------------------
++
+   base::WeakPtrFactory<LocationBarView> weak_factory_{this};
+ };
+ 
+diff --git a/chrome/browser/ui/views/page_info/BUILD.gn b/chrome/browser/ui/views/page_info/BUILD.gn
+index 8b0d267c74..b613ec2a10 100644
+--- a/chrome/browser/ui/views/page_info/BUILD.gn
++++ b/chrome/browser/ui/views/page_info/BUILD.gn
+@@ -9,6 +9,7 @@ source_set("page_info") {
+     "page_info_bubble_specification.h",
+     "page_info_bubble_view.h",
+     "page_info_bubble_view_base.h",
++    "page_info_reload_bubble_view.h",
+     "page_info_navigation_handler.h",
+     "page_info_view_factory.h",
+   ]
+@@ -31,6 +32,7 @@ source_set("impl") {
+     "page_info_bubble_specification.cc",
+     "page_info_bubble_view.cc",
+     "page_info_bubble_view_base.cc",
++    "page_info_reload_bubble_view.cc",
+   ]
+ 
+   deps = [
+diff --git a/chrome/browser/ui/views/page_info/page_info_reload_bubble_view.cc b/chrome/browser/ui/views/page_info/page_info_reload_bubble_view.cc
+new file mode 100644
+index 0000000000..fa6ce48367
+--- /dev/null
++++ b/chrome/browser/ui/views/page_info/page_info_reload_bubble_view.cc
+@@ -0,0 +1,134 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/page_info/page_info_reload_bubble_view.h"
++
++#include <memory>
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "components/strings/grit/components_strings.h"
++#include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/reload_type.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/base/l10n/l10n_util.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/mojom/dialog_button.mojom.h"
++#include "ui/views/bubble/bubble_border.h"
++#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/layout/box_layout.h"
++#include "ui/views/layout/layout_provider.h"
++#include "ui/views/widget/widget.h"
++
++namespace {
++
++// The bubble currently on screen, if any. There is at most one.
++PageInfoReloadBubbleView* g_reload_bubble = nullptr;
++
++// The width the original browser gives the reload bubble body.
++constexpr int kBubbleWidth = 320;
++
++}  // namespace
++
++// static
++void PageInfoReloadBubbleView::ShowBubble(views::View* anchor_view,
++                                          content::WebContents* web_contents) {
++  if (!anchor_view || !web_contents) {
++    return;
++  }
++  HideBubble();
++
++  auto* bubble = new PageInfoReloadBubbleView(
++      views::BubbleAnchor(anchor_view), web_contents);
++  g_reload_bubble = bubble;
++  views::Widget* const widget =
++      views::BubbleDialogDelegateView::CreateBubble(bubble);
++  widget->ShowInactive();
++}
++
++// static
++void PageInfoReloadBubbleView::HideBubble() {
++  if (g_reload_bubble && g_reload_bubble->GetWidget()) {
++    g_reload_bubble->GetWidget()->Close();
++  }
++  g_reload_bubble = nullptr;
++}
++
++// static
++PageInfoReloadBubbleView* PageInfoReloadBubbleView::GetBubbleForTesting() {
++  return g_reload_bubble;
++}
++
++PageInfoReloadBubbleView::PageInfoReloadBubbleView(
++    views::BubbleAnchor anchor,
++    content::WebContents* web_contents)
++    : views::BubbleDialogDelegateView(anchor,
++                                      views::BubbleBorder::TOP_LEFT,
++                                      views::BubbleBorder::DIALOG_SHADOW,
++                                      /*autosize=*/false),
++      content::WebContentsObserver(web_contents) {
++  SetButtons(static_cast<int>(ui::mojom::DialogButton::kNone));
++  SetShowCloseButton(true);
++  // The location bar takes focus back right after the Page Info bubble closes,
++  // which would deactivate (and so close) this bubble immediately. The prompt
++  // is passive: it stays until the user acts on it or the page navigates.
++  set_close_on_deactivate(false);
++  set_margins(views::LayoutProvider::Get()->GetDialogInsetsForContentType(
++      views::DialogContentType::kText, views::DialogContentType::kControl));
++
++  SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kVertical, gfx::Insets(),
++      views::LayoutProvider::Get()->GetDistanceMetric(
++          views::DISTANCE_RELATED_CONTROL_VERTICAL)));
++
++  auto* label = AddChildView(std::make_unique<views::Label>(
++      l10n_util::GetStringUTF16(IDS_PAGE_INFO_INFOBAR_TEXT),
++      views::style::CONTEXT_DIALOG_BODY_TEXT, views::style::STYLE_PRIMARY));
++  label->SetMultiLine(true);
++  label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  label->SetMaximumWidth(kBubbleWidth);
++
++  // Aside: the original names this child "ActionButton".
++  auto action_button = std::make_unique<views::MdTextButton>(
++      base::BindRepeating(&PageInfoReloadBubbleView::ShowAction,
++                          base::Unretained(this)),
++      l10n_util::GetStringUTF16(IDS_PAGE_INFO_INFOBAR_BUTTON));
++  action_button->SetStyle(ui::ButtonStyle::kProminent);
++  action_button_ = AddChildView(std::move(action_button));
++}
++
++PageInfoReloadBubbleView::~PageInfoReloadBubbleView() {
++  if (g_reload_bubble == this) {
++    g_reload_bubble = nullptr;
++  }
++}
++
++void PageInfoReloadBubbleView::ShowAction() {
++  content::WebContents* const contents = web_contents();
++  if (contents) {
++    contents->GetController().Reload(content::ReloadType::NORMAL,
++                                     /*check_for_repost=*/true);
++  }
++  if (GetWidget()) {
++    GetWidget()->CloseWithReason(
++        views::Widget::ClosedReason::kAcceptButtonClicked);
++  }
++}
++
++void PageInfoReloadBubbleView::PrimaryPageChanged(content::Page& page) {
++  // The reason for the prompt is gone once the page navigates.
++  if (GetWidget()) {
++    GetWidget()->Close();
++  }
++}
++
++void PageInfoReloadBubbleView::WebContentsDestroyed() {
++  if (GetWidget()) {
++    GetWidget()->Close();
++  }
++}
++
++BEGIN_METADATA(PageInfoReloadBubbleView)
++END_METADATA
+diff --git a/chrome/browser/ui/views/page_info/page_info_reload_bubble_view.h b/chrome/browser/ui/views/page_info/page_info_reload_bubble_view.h
+new file mode 100644
+index 0000000000..bb9d42f967
+--- /dev/null
++++ b/chrome/browser/ui/views/page_info/page_info_reload_bubble_view.h
+@@ -0,0 +1,67 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_PAGE_INFO_PAGE_INFO_RELOAD_BUBBLE_VIEW_H_
++#define CHROME_BROWSER_UI_VIEWS_PAGE_INFO_PAGE_INFO_RELOAD_BUBBLE_VIEW_H_
++
++#include "base/memory/weak_ptr.h"
++#include "content/public/browser/web_contents_observer.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/bubble/bubble_dialog_delegate_view.h"
++
++namespace content {
++class WebContents;
++}  // namespace content
++
++namespace views {
++class MdTextButton;
++class View;
++}  // namespace views
++
++// Aside: after the user changes a site permission in the Page Info bubble, the
++// original browser replaces Chromium's permission-change infobar with a small
++// bubble anchored under the page-info icon: "Reload this page to apply your
++// updated settings on this site" plus a "Reload" action button.
++//
++// Restores the original browser's PageInfoReloadBubbleView
++// (chrome/browser/ui/views/page_info/page_info_reload_bubble_view.{h,cc}).
++class PageInfoReloadBubbleView : public views::BubbleDialogDelegateView,
++                                 public content::WebContentsObserver {
++  METADATA_HEADER(PageInfoReloadBubbleView, views::BubbleDialogDelegateView)
++
++ public:
++  // Shows the bubble anchored at `anchor_view` for `web_contents`. Closes any
++  // bubble that is already showing. Does nothing without an anchor or contents.
++  static void ShowBubble(views::View* anchor_view,
++                         content::WebContents* web_contents);
++
++  // Closes the bubble if one is showing.
++  static void HideBubble();
++
++  // The bubble that is currently showing, or nullptr.
++  static PageInfoReloadBubbleView* GetBubbleForTesting();
++
++  PageInfoReloadBubbleView(const PageInfoReloadBubbleView&) = delete;
++  PageInfoReloadBubbleView& operator=(const PageInfoReloadBubbleView&) = delete;
++  ~PageInfoReloadBubbleView() override;
++
++  views::MdTextButton* action_button_for_testing() { return action_button_; }
++
++  // content::WebContentsObserver:
++  void PrimaryPageChanged(content::Page& page) override;
++  void WebContentsDestroyed() override;
++
++ private:
++  PageInfoReloadBubbleView(views::BubbleAnchor anchor,
++                           content::WebContents* web_contents);
++
++  // Reloads the page the bubble was opened for and closes the bubble.
++  void ShowAction();
++
++  raw_ptr<views::MdTextButton> action_button_ = nullptr;
++
++  base::WeakPtrFactory<PageInfoReloadBubbleView> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_PAGE_INFO_PAGE_INFO_RELOAD_BUBBLE_VIEW_H_
+diff --git a/chrome/browser/ui/views/tabs/common/BUILD.gn b/chrome/browser/ui/views/tabs/common/BUILD.gn
+index 678488e3b0..d9d8d200a7 100644
+--- a/chrome/browser/ui/views/tabs/common/BUILD.gn
++++ b/chrome/browser/ui/views/tabs/common/BUILD.gn
+@@ -48,6 +48,8 @@ source_set("impl") {
+     "tab_drag_handler.cc",
+     "tab_drag_handler.h",
+     "tab_drag_scroll_handler.cc",
++    "tab_expand_chevron_view.cc",
++    "tab_expand_chevron_view.h",
+     "tab_group_header_view.cc",
+     "tab_group_header_view.h",
+     "tab_group_view.cc",
+diff --git a/chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.cc b/chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.cc
+new file mode 100644
+index 0000000000..cce15a36a3
+--- /dev/null
++++ b/chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.cc
+@@ -0,0 +1,74 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.h"
++
++#include "chrome/app/vector_icons/vector_icons.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/base/ui_base_features.h"
++#include "ui/gfx/paint_vector_icon.h"
++#include "ui/views/property_effects.h"
++
++TabExpandChevronView::TabExpandChevronView() {
++  SetHorizontalAlignment(views::ImageViewBase::Alignment::kTrailing);
++  SetCanProcessEventsWithinSubtree(false);
++}
++
++TabExpandChevronView::~TabExpandChevronView() = default;
++
++void TabExpandChevronView::SetExpanded(bool expanded) {
++  if (expanded_ == expanded) {
++    return;
++  }
++  expanded_ = expanded;
++  RefreshIcon();
++  OnPropertyChanged(&expanded_, views::PropertyEffects::kPaint);
++}
++
++bool TabExpandChevronView::GetExpanded() const {
++  return expanded_;
++}
++
++void TabExpandChevronView::SetIconColor(SkColor color) {
++  if (icon_color_ == color) {
++    return;
++  }
++  icon_color_ = color;
++  RefreshIcon();
++  OnPropertyChanged(&icon_color_, views::PropertyEffects::kPaint);
++}
++
++SkColor TabExpandChevronView::GetIconColor() const {
++  return icon_color_;
++}
++
++void TabExpandChevronView::SetIconSize(int size) {
++  if (icon_size_ == size) {
++    return;
++  }
++  icon_size_ = size;
++  RefreshIcon();
++  OnPropertyChanged(&icon_size_, views::PropertyEffects::kPreferredSizeChanged);
++}
++
++int TabExpandChevronView::GetIconSize() const {
++  return icon_size_;
++}
++
++void TabExpandChevronView::RefreshIcon() {
++  const bool rounded = features::IsRoundedIconsEnabled();
++  const gfx::VectorIcon& icon =
++      expanded_ ? (rounded ? kKeyboardArrowUpIcon
++                           : kKeyboardArrowUpChromeRefreshOldIcon)
++                : (rounded ? kKeyboardArrowDownIcon
++                           : kKeyboardArrowDownChromeRefreshOldIcon);
++  SetImage(ui::ImageModel::FromVectorIcon(icon, icon_color_, icon_size_));
++}
++
++BEGIN_METADATA(TabExpandChevronView)
++ADD_PROPERTY_METADATA(bool, Expanded)
++ADD_PROPERTY_METADATA(SkColor, IconColor, ui::metadata::SkColorConverter)
++ADD_PROPERTY_METADATA(int, IconSize)
++END_METADATA
+diff --git a/chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.h b/chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.h
+new file mode 100644
+index 0000000000..f340888ea9
+--- /dev/null
++++ b/chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.h
+@@ -0,0 +1,45 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_TABS_COMMON_TAB_EXPAND_CHEVRON_VIEW_H_
++#define CHROME_BROWSER_UI_VIEWS_TABS_COMMON_TAB_EXPAND_CHEVRON_VIEW_H_
++
++#include "third_party/skia/include/core/SkColor.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/gfx/color_palette.h"
++#include "ui/views/controls/image_view.h"
++
++// Aside: the chevron shown at the trailing edge of a tab group header, which
++// points down while the group is collapsed and up while it is expanded.
++// Restores the original browser's TabExpandChevronView
++// (chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.h).
++class TabExpandChevronView : public views::ImageView {
++  METADATA_HEADER(TabExpandChevronView, views::ImageView)
++
++ public:
++  TabExpandChevronView();
++  TabExpandChevronView(const TabExpandChevronView&) = delete;
++  TabExpandChevronView& operator=(const TabExpandChevronView&) = delete;
++  ~TabExpandChevronView() override;
++
++  // Whether the row this chevron belongs to is expanded. Changing it swaps the
++  // icon.
++  void SetExpanded(bool expanded);
++  bool GetExpanded() const;
++
++  void SetIconColor(SkColor color);
++  SkColor GetIconColor() const;
++
++  void SetIconSize(int size);
++  int GetIconSize() const;
++
++ private:
++  void RefreshIcon();
++
++  bool expanded_ = false;
++  SkColor icon_color_ = gfx::kPlaceholderColor;
++  int icon_size_ = 16;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_TABS_COMMON_TAB_EXPAND_CHEVRON_VIEW_H_
+diff --git a/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc b/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
+index 28fac81220..c86d4edd0e 100644
+--- a/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
++++ b/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
+@@ -4,6 +4,14 @@
+ 
+ #include "chrome/browser/ui/views/tabs/common/tab_group_header_view.h"
+ 
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "components/tabs/public/tab_group.h"
++#include "ui/views/layout/flex_layout_view.h"
++#include "ui/views/view_class_properties.h"
++
+ #include "base/task/single_thread_task_runner.h"
+ #include "build/build_config.h"
+ #include "build/buildflag.h"
+@@ -139,7 +147,8 @@ TabGroupHeaderView::TabGroupHeaderView(
+       editor_bubble_button_(AddChildView(std::make_unique<views::LabelButton>(
+           base::BindRepeating(&TabGroupHeaderView::ShowEditorBubble,
+                               base::Unretained(this))))),
+-      collapse_icon_(AddChildView(std::make_unique<views::ImageView>())),
++      collapse_icon_(
++          AddChildView(std::make_unique<TabExpandChevronView>())),
+       delegate_(delegate),
+       editor_bubble_tracker_(state_controller) {
+   SetProperty(views::kElementIdentifierKey, kTabGroupHeaderElementId);
+@@ -148,6 +157,23 @@ TabGroupHeaderView::TabGroupHeaderView(
+   SetNotifyEnterExitOnChild(true);
+ 
+   ConfigureEditorBubbleButton(editor_bubble_button_);
++
++  // Aside: AiTabsCountBadgeView, placed right after the sync icon.
++  {
++    auto badge = std::make_unique<views::FlexLayoutView>();
++    badge->SetOrientation(views::LayoutOrientation::kHorizontal);
++    badge->SetCrossAxisAlignment(views::LayoutAlignment::kCenter);
++    badge->SetTooltipText(u"Tabs controlled by Aside while it works");
++    ai_badge_icon_ = badge->AddChildView(std::make_unique<views::ImageView>());
++    ai_badge_label_ = badge->AddChildView(std::make_unique<views::Label>(
++        std::u16string(), views::style::CONTEXT_LABEL,
++        views::style::STYLE_PRIMARY));
++    ai_badge_label_->SetProperty(views::kMarginsKey,
++                                 gfx::Insets::TLBR(0, 2, 0, 4));
++    ai_badge_ = AddChildView(std::move(badge));
++    ai_badge_->SetVisible(false);
++    ReorderChildView(ai_badge_, GetIndexOf(sync_icon_).value() + 1);
++  }
+   editor_bubble_opened_subscription_ =
+       editor_bubble_tracker_.RegisterOnBubbleOpened(base::BindRepeating(
+           &TabGroupHeaderView::OnBubbleOpened, base::Unretained(this)));
+@@ -467,6 +493,21 @@ void TabGroupHeaderView::OnDataChanged(
+ 
+     // Update save tab group related items, the sync icon and attention
+     // indicator.
++    const TabGroup& tab_group = delegate_->GetTabGroup();
++    const bool is_agent_group = aside::IsAgentTabsGroup(&tab_group);
++    ai_badge_->SetVisible(is_agent_group);
++    if (is_agent_group) {
++      ai_badge_icon_->SetImage(ui::ImageModel::FromVectorIcon(
++          kAsideWindowSparkleStrokeIcon, foreground_color, kIconSize));
++      std::optional<aside::AiTabsMetadata> metadata =
++          aside::GetAiTabsMetadata(&tab_group);
++      ai_badge_label_->SetText(
++          metadata && !metadata->badge_label.empty()
++              ? base::UTF8ToUTF16(metadata->badge_label)
++              : base::NumberToString16(tab_group.tab_count()));
++      ai_badge_label_->SetEnabledColor(foreground_color);
++    }
++
+     sync_icon_->SetVisible(is_shared_);
+     if (is_shared_) {
+       sync_icon_->SetImage(ui::ImageModel::FromVectorIcon(
+@@ -486,16 +527,10 @@ void TabGroupHeaderView::OnDataChanged(
+     // Update editor bubble button.
+     UpdateEditorButtonColors(editor_bubble_button_, foreground_color);
+ 
+-    // Update collapse icon.
+-    collapse_icon_->SetImage(ui::ImageModel::FromVectorIcon(
+-        tab_group_visual_data_.is_collapsed()
+-            ? features::IsRoundedIconsEnabled()
+-                  ? kKeyboardArrowDownIcon
+-                  : kKeyboardArrowDownChromeRefreshOldIcon
+-        : features::IsRoundedIconsEnabled()
+-            ? kKeyboardArrowUpIcon
+-            : kKeyboardArrowUpChromeRefreshOldIcon,
+-        foreground_color, kIconSize));
++    // Update collapse icon (Aside: TabExpandChevronView).
++    collapse_icon_->SetIconSize(kIconSize);
++    collapse_icon_->SetIconColor(foreground_color);
++    collapse_icon_->SetExpanded(!tab_group_visual_data_.is_collapsed());
+ 
+     // Update background.
+     SetBackground(views::CreateRoundedRectBackground(background_color,
+diff --git a/chrome/browser/ui/views/tabs/common/tab_group_header_view.h b/chrome/browser/ui/views/tabs/common/tab_group_header_view.h
+index eab34b7c8b..de94959f63 100644
+--- a/chrome/browser/ui/views/tabs/common/tab_group_header_view.h
++++ b/chrome/browser/ui/views/tabs/common/tab_group_header_view.h
+@@ -11,6 +11,7 @@
+ #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+ #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
+ #include "chrome/browser/ui/views/tabs/groups/tab_group_editor_bubble_tracker.h"
++#include "chrome/browser/ui/views/tabs/common/tab_expand_chevron_view.h"
+ #include "chrome/browser/ui/views/tabs/hovercard/hover_card_anchor_target.h"
+ #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
+ #include "components/tab_groups/tab_group_visual_data.h"
+@@ -107,7 +108,7 @@ class TabGroupHeaderView : public views::FlexLayoutView,
+   void OnDataChanged(const tabs::TabGroupData& tab_group_data);
+ 
+   views::LabelButton* editor_bubble_button() { return editor_bubble_button_; }
+-  views::ImageView* collapse_icon_for_testing() { return collapse_icon_; }
++  TabExpandChevronView* collapse_icon_for_testing() { return collapse_icon_; }
+   views::ImageView* attention_indicator_for_testing() {
+     return attention_indicator_;
+   }
+@@ -136,6 +137,12 @@ class TabGroupHeaderView : public views::FlexLayoutView,
+   // the tabstrip.
+   const raw_ptr<views::ImageView> sync_icon_ = nullptr;
+ 
++  // Aside: AiTabsCountBadgeView — sparkle icon + count/badge label shown on
++  // the "Agent Tabs" group header (tooltip IDS 11708).
++  raw_ptr<views::View> ai_badge_ = nullptr;
++  raw_ptr<views::ImageView> ai_badge_icon_ = nullptr;
++  raw_ptr<views::Label> ai_badge_label_ = nullptr;
++
+   const raw_ptr<views::Label> group_header_label_ = nullptr;
+ 
+   // The circle indicator rendered after the title when a tab group needs
+@@ -144,7 +151,8 @@ class TabGroupHeaderView : public views::FlexLayoutView,
+ 
+   const raw_ptr<views::LabelButton> editor_bubble_button_ = nullptr;
+ 
+-  const raw_ptr<views::ImageView> collapse_icon_ = nullptr;
++  // Aside: TabExpandChevronView, the expand/collapse chevron.
++  const raw_ptr<TabExpandChevronView> collapse_icon_ = nullptr;
+   const raw_ref<Delegate> delegate_;
+ 
+   std::unique_ptr<ExpandOnHoverLock> expand_on_hover_lock_;
+diff --git a/chrome/browser/ui/views/toolbar/toolbar_action_hover_card_controller.cc b/chrome/browser/ui/views/toolbar/toolbar_action_hover_card_controller.cc
+index cea6d3bdd6..88ff6db5c2 100644
+--- a/chrome/browser/ui/views/toolbar/toolbar_action_hover_card_controller.cc
++++ b/chrome/browser/ui/views/toolbar/toolbar_action_hover_card_controller.cc
+@@ -31,6 +31,15 @@
+ 
+ namespace {
+ 
++// Aside: the two bundled Aside extensions get the original browser's labels.
++// (RE: pinned_toolbar_actions_container.cc / toolbar_action_hover_card_controller.cc
++// compare the action id against these two ids and substitute u"Ask Aside".)
++constexpr char kAsideAgentExtensionId[] = "fjdhphbdlfjogobdofoaagnlnkoibdge";
++constexpr char kAsidePasswordManagerExtensionId[] =
++    "clcdgiameigmljcbkkcbjiljinmfkncl";
++constexpr char16_t kAsideAskAsideLabel[] = u"Ask Aside";
++constexpr char16_t kAsidePasswordManagerLabel[] = u"Aside Password Manager";
++
+ constexpr base::TimeDelta kTriggerDelay = base::Milliseconds(300);
+ constexpr base::TimeDelta kHoverCardSlideDuration = base::Milliseconds(200);
+ 
+@@ -256,6 +265,14 @@ void ToolbarActionHoverCardController::UpdateHoverCardContent(
+   }
+ 
+   std::u16string extension_name = action_view->view_model()->GetActionName();
++  // Aside: the bundled Aside extensions are shown under the original browser's
++  // own names rather than the extension manifest names.
++  const std::string action_id = action_view->view_model()->GetId();
++  if (action_id == kAsideAgentExtensionId) {
++    extension_name = kAsideAskAsideLabel;
++  } else if (action_id == kAsidePasswordManagerExtensionId) {
++    extension_name = kAsidePasswordManagerLabel;
++  }
+   std::u16string action_title =
+       action_view->view_model()->GetActionTitle(web_contents);
+   // Hover card only uses the action title when it's different than the
+diff --git a/chrome/browser/ui/views/toolbar/toolbar_action_view.cc b/chrome/browser/ui/views/toolbar/toolbar_action_view.cc
+index 7aeadf9a0f..6cd956b0c8 100644
+--- a/chrome/browser/ui/views/toolbar/toolbar_action_view.cc
++++ b/chrome/browser/ui/views/toolbar/toolbar_action_view.cc
+@@ -52,6 +52,17 @@ using views::LabelButtonBorder;
+ ////////////////////////////////////////////////////////////////////////////////
+ // ToolbarActionView
+ 
++namespace {
++// Aside: the two bundled Aside extensions and the labels the original browser
++// shows for them.
++constexpr char kAsideAgentExtensionId[] = "fjdhphbdlfjogobdofoaagnlnkoibdge";
++constexpr char kAsidePasswordManagerExtensionId[] =
++    "clcdgiameigmljcbkkcbjiljinmfkncl";
++constexpr char16_t kAsideAskAsideLabel[] = u"Ask Aside";
++constexpr char16_t kAsidePasswordManagerLabel[] = u"Aside Password Manager";
++}  // namespace
++
++
+ ToolbarActionView::ToolbarActionView(ToolbarActionViewModel* view_model,
+                                      ToolbarActionView::Delegate* delegate)
+     : MenuButton(base::BindRepeating(&ToolbarActionView::ButtonPressed,
+@@ -178,7 +189,22 @@ void ToolbarActionView::MaybeUpdateHoverCardStatus(
+ 
+ void ToolbarActionView::UpdateState() {
+   content::WebContents* web_contents = delegate_->GetCurrentWebContents();
+-  GetViewAccessibility().SetName(view_model_->GetAccessibleName(web_contents));
++  // Aside: the bundled Aside extensions carry the original browser's own
++  // labels ("Ask Aside" / "Aside Password Manager") rather than their manifest
++  // names.
++  const std::string action_id = view_model_->GetId();
++  const bool is_aside_agent = action_id == kAsideAgentExtensionId;
++  const bool is_aside_password_manager =
++      action_id == kAsidePasswordManagerExtensionId;
++  if (is_aside_agent) {
++    GetViewAccessibility().SetName(std::u16string(kAsideAskAsideLabel));
++  } else if (is_aside_password_manager) {
++    GetViewAccessibility().SetName(
++        std::u16string(kAsidePasswordManagerLabel));
++  } else {
++    GetViewAccessibility().SetName(
++        view_model_->GetAccessibleName(web_contents));
++  }
+   if (!sessions::SessionTabHelper::IdForTab(web_contents).is_valid()) {
+     return;
+   }
+@@ -190,8 +216,12 @@ void ToolbarActionView::UpdateState() {
+                   ui::GetDefaultDisabledIconFromImageModel(icon));
+   }
+ 
+-  if (!base::FeatureList::IsEnabled(
+-          extensions_features::kExtensionsMenuAccessControl)) {
++  if (is_aside_agent) {
++    SetTooltipText(std::u16string(kAsideAskAsideLabel));
++  } else if (is_aside_password_manager) {
++    SetTooltipText(std::u16string(kAsidePasswordManagerLabel));
++  } else if (!base::FeatureList::IsEnabled(
++                 extensions_features::kExtensionsMenuAccessControl)) {
+     SetTooltipText(view_model_->GetTooltip(web_contents));
+   }
+ 
+diff --git a/chrome/browser/ui/views/toolbar/toolbar_controller.cc b/chrome/browser/ui/views/toolbar/toolbar_controller.cc
+index 2f28c96117..846869fc29 100644
+--- a/chrome/browser/ui/views/toolbar/toolbar_controller.cc
++++ b/chrome/browser/ui/views/toolbar/toolbar_controller.cc
+@@ -427,6 +427,8 @@ std::string ToolbarController::GetActionNameFromElementIdentifier(
+            {kActionSidePanelShowGlic, "PinnedGlicButton"},
+            {kActionSidePanelShowTabsFromOtherDevices,
+             "PinnedTabsFromOtherDevicesButton"},
++           // Aside: the "Ask Aside" toolbar action.
++           {kActionAskAside, "PinnedAskAsideButton"},
+            {kGlicButtonElementId, "GlicButtonElementId"}});
+ 
+   const auto it = identifier_to_action_name_map->find(identifier);

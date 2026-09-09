@@ -1,0 +1,437 @@
+[
+  {
+    "namespace": "asideBrowserPreferences",
+    "types": [
+      {
+        "id": "JsonObject",
+        "type": "object",
+        "additionalProperties": {
+          "type": "any"
+        }
+      }
+    ],
+    "functions": [
+      {
+        "name": "getBrowserColorScheme",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "colorScheme",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setBrowserColorScheme",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "colorScheme",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getTabStyle",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "tabStyle",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setTabStyle",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "tabStyle",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getHorizontalTabShrinkEnabled",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "isEnabled",
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setHorizontalTabShrinkEnabled",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "isEnabled",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getTabSwitcherSortByRecentlyUsed",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "sortByRecentlyUsed",
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setTabSwitcherSortByRecentlyUsed",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sortByRecentlyUsed",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getDefaultZoom",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "zoom",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setDefaultZoom",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "zoom",
+            "type": "number"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getDefaultBrowserState",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setAsDefaultBrowser",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getDockState",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "addToDock",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getKeepTasksRunningState",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setKeepTasksRunningEnabled",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "enabled",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getAutoPipEnabled",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "isEnabled",
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setAutoPipEnabled",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "isEnabled",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getVerticalTabsBookmarksSectionEnabled",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "isEnabled",
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setVerticalTabsBookmarksSectionEnabled",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "isEnabled",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getBrowserVersion",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "version",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getSyncStatus",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "checkForUpdates",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getLanguageSettings",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getSupportedLanguages",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setPreferredLanguages",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "languageCodes",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "setSpellCheckEnabled",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "enabled",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getSearchEngines",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "setDefaultSearchEngine",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "engineId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      }
+    ],
+    "description": "Aside private API asideBrowserPreferences (trusted bundled extensions only)."
+  }
+]

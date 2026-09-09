@@ -1,0 +1,27 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideHeadphonesSolidIcon
+
+CANVAS_DIMENSIONS, 18,
+FILL_RULE_NONZERO,
+MOVE_TO, 3.75f, 9,
+CUBIC_TO, 3.75f, 6.1005f, 6.1005f, 3.75f, 9, 3.75f,
+CUBIC_TO, 11.8995f, 3.75f, 14.25f, 6.1005f, 14.25f, 9,
+V_LINE_TO, 9.75f,
+CUBIC_TO, 12.5932f, 9.75f, 11.25f, 11.0932f, 11.25f, 12.75f,
+V_LINE_TO, 13.5f,
+CUBIC_TO, 11.25f, 14.7427f, 12.2573f, 15.75f, 13.5f, 15.75f,
+CUBIC_TO, 14.7427f, 15.75f, 15.75f, 14.7427f, 15.75f, 13.5f,
+V_LINE_TO, 9,
+CUBIC_TO, 15.75f, 5.5256f, 13.125f, 2.6643f, 9.75f, 2.2912f,
+V_LINE_TO, 2.25f,
+H_LINE_TO, 9,
+CUBIC_TO, 5.2721f, 2.25f, 2.25f, 5.2721f, 2.25f, 9,
+V_LINE_TO, 13.5f,
+CUBIC_TO, 2.25f, 14.7427f, 3.2574f, 15.75f, 4.5f, 15.75f,
+CUBIC_TO, 5.7426f, 15.75f, 6.75f, 14.7427f, 6.75f, 13.5f,
+V_LINE_TO, 12.75f,
+CUBIC_TO, 6.75f, 11.0932f, 5.4069f, 9.75f, 3.75f, 9.75f,
+V_LINE_TO, 9,
+CLOSE,

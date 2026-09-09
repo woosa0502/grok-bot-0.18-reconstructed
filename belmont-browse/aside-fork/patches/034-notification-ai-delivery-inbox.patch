@@ -1,0 +1,580 @@
+diff --git a/chrome/browser/extensions/api/aside_notification/aside_notification_api.cc b/chrome/browser/extensions/api/aside_notification/aside_notification_api.cc
+new file mode 100644
+index 0000000000..e3c9d93a3a
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_notification/aside_notification_api.cc
+@@ -0,0 +1,117 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_notification/aside_notification_api.h"
++
++#include "chrome/browser/notifications/aside_inbox_delivery.h"
++
++#include <optional>
++#include <string>
++
++#include "base/values.h"
++#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
++#include "chrome/browser/extensions/extension_tab_util.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/common/extensions/api/aside_notification.h"
++#include "components/content_settings/core/browser/host_content_settings_map.h"
++#include "components/content_settings/core/common/content_settings.h"
++#include "components/content_settings/core/common/content_settings_types.h"
++#include "components/prefs/pref_service.h"
++#include "components/prefs/scoped_user_pref_update.h"
++#include "content/public/browser/web_contents.h"
++#include "extensions/common/extension.h"
++#include "extensions/common/mojom/api_permission_id.mojom.h"
++#include "extensions/common/permissions/permissions_data.h"
++#include "url/gurl.h"
++#include "url/origin.h"
++
++namespace extensions {
++
++namespace {
++
++// RE 0x3f39714 / 0x3f39bb0: the original keeps its own per-origin ledger of
++// AI-notification delivery modes in this profile dict pref (origin -> mode 1),
++// in addition to the Chromium notification content setting.
++constexpr char kDeliveryModeByOriginPref[] =
++    "persistent_notifications.ai_delivery_mode_by_origin";
++constexpr int kDeliveryModeDefault = 1;
++
++// RE 0x3f393f4: the handler re-checks the private entitlement at runtime.
++bool HasPrivateEntitlement(const Extension* extension) {
++  return extension && extension->permissions_data()->HasAPIPermission(
++                          mojom::APIPermissionID::kAsideNotification);
++}
++
++}  // namespace
++
++ExtensionFunction::ResponseAction AsideNotificationRequestPermissionFunction::Run() {
++  if (!HasPrivateEntitlement(extension())) {
++    return RespondNow(Error("Permission denied: missing private entitlements"));
++  }
++  std::optional<api::aside_notification::RequestPermission::Params> params =
++      api::aside_notification::RequestPermission::Params::Create(args());
++  if (!params) {
++    return RespondNow(Error("Invalid tabId for requestPermission"));
++  }
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  content::WebContents* contents = nullptr;
++  if (!ExtensionTabUtil::GetTabById(params->tab_id, profile,
++                                    include_incognito_information(),
++                                    &contents) ||
++      !contents) {
++    return RespondNow(Error("Invalid tabId for requestPermission"));
++  }
++  // RE 0x3f39564: only http(s) tab origins are eligible.
++  const GURL& tab_url = contents->GetLastCommittedURL();
++  if (!tab_url.is_valid() || !tab_url.SchemeIsHTTPOrHTTPS()) {
++    return RespondNow(
++        Error("Tab URL is not eligible for notification permission"));
++  }
++  const url::Origin origin = url::Origin::Create(tab_url);
++  {
++    ScopedDictPrefUpdate update(profile->GetPrefs(), kDeliveryModeByOriginPref);
++    update->Set(origin.Serialize(), kDeliveryModeDefault);
++  }
++  // RE 0x3f397b4: content setting ALLOW (1) for the origin.
++  if (HostContentSettingsMap* map =
++          HostContentSettingsMapFactory::GetForProfile(profile)) {
++    aside::ScopedPermissionChangeSource source("default");
++    map->SetContentSettingDefaultScope(origin.GetURL(), GURL(),
++                                       ContentSettingsType::NOTIFICATIONS,
++                                       CONTENT_SETTING_ALLOW);
++  }
++  return RespondNow(WithArguments(true));
++}
++
++ExtensionFunction::ResponseAction AsideNotificationRevokePermissionFunction::Run() {
++  if (!HasPrivateEntitlement(extension())) {
++    return RespondNow(Error("Permission denied: missing private entitlements"));
++  }
++  std::optional<api::aside_notification::RevokePermission::Params> params =
++      api::aside_notification::RevokePermission::Params::Create(args());
++  if (!params) {
++    return RespondNow(Error("Invalid origin for revokePermission"));
++  }
++  const GURL origin_url(params->origin);
++  if (!origin_url.is_valid() || !origin_url.SchemeIsHTTPOrHTTPS()) {
++    return RespondNow(Error("Invalid origin for revokePermission"));
++  }
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  const url::Origin origin = url::Origin::Create(origin_url);
++  {
++    ScopedDictPrefUpdate update(profile->GetPrefs(), kDeliveryModeByOriginPref);
++    update->Remove(origin.Serialize());
++  }
++  // RE 0x3f39b84: content setting back to DEFAULT (0).
++  if (HostContentSettingsMap* map =
++          HostContentSettingsMapFactory::GetForProfile(profile)) {
++    aside::ScopedPermissionChangeSource source("default");
++    map->SetContentSettingDefaultScope(origin.GetURL(), GURL(),
++                                       ContentSettingsType::NOTIFICATIONS,
++                                       CONTENT_SETTING_DEFAULT);
++  }
++  return RespondNow(WithArguments(true));
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/notifications/BUILD.gn b/chrome/browser/notifications/BUILD.gn
+index af9adfba6c..8b0019694b 100644
+--- a/chrome/browser/notifications/BUILD.gn
++++ b/chrome/browser/notifications/BUILD.gn
+@@ -186,6 +186,10 @@ source_set("impl") {
+     "notifier_state_tracker_factory.cc",
+     "persistent_notification_handler.cc",
+     "platform_notification_service_factory.cc",
++    "aside_inbox_delivery.cc",
++    "aside_inbox_delivery.h",
++    "aside_notification_sync_service_factory.cc",
++    "aside_notification_sync_service_factory.h",
+     "platform_notification_service_impl.cc",
+     "scheduler/notification_background_task_scheduler_impl.cc",
+     "scheduler/notification_schedule_service_factory.cc",
+diff --git a/chrome/browser/notifications/platform_notification_service_impl.cc b/chrome/browser/notifications/platform_notification_service_impl.cc
+index e617356dc4..746d4d8b60 100644
+--- a/chrome/browser/notifications/platform_notification_service_impl.cc
++++ b/chrome/browser/notifications/platform_notification_service_impl.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "chrome/browser/notifications/platform_notification_service_impl.h"
+ 
++#include "chrome/browser/notifications/aside_inbox_delivery.h"
++
+ #include <memory>
+ #include <optional>
+ #include <set>
+@@ -272,6 +274,13 @@ void PlatformNotificationServiceImpl::DisplayNotification(
+     const blink::NotificationResources& notification_resources) {
+   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+ 
++  // Aside: origins in AI delivery mode hand the notification to the agent.
++  if (aside::MaybeDeliverNotificationToAside(profile_, notification_id, origin,
++                                             document_url, notification_data,
++                                             notification_resources)) {
++    return;
++  }
++
+   // Posted tasks can request notifications to be added, which would cause a
+   // crash (see |ScopedKeepAlive|). We just do nothing here, the user would not
+   // see the notification anyway, since we are shutting down.
+@@ -320,6 +329,13 @@ void PlatformNotificationServiceImpl::DisplayPersistentNotification(
+     const blink::NotificationResources& notification_resources) {
+   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+ 
++  // Aside: origins in AI delivery mode hand the notification to the agent.
++  if (aside::MaybeDeliverNotificationToAside(
++          profile_, notification_id, origin, service_worker_scope,
++          notification_data, notification_resources)) {
++    return;
++  }
++
+   closed_notifications_.erase(notification_id);
+ 
+   // Posted tasks can request notifications to be added, which would cause a
+diff --git a/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc b/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc
+index faa78dde10..8987fa81b1 100644
+--- a/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc
++++ b/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc
+@@ -4,6 +4,9 @@
+ 
+ #include "chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.h"
+ 
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.h"
++
+ #include <memory>
+ #include <utility>
+ 
+@@ -233,6 +236,8 @@
+ #include "chrome/browser/signin/identity_manager_factory.h"
+ #include "chrome/browser/signin/signin_metrics_service_factory.h"
+ #include "chrome/browser/signin/signin_policy_service_factory.h"
++#include "chrome/browser/notifications/aside_notification_sync_service_factory.h"
++#include "chrome/browser/signin/aside_profile_attributes_updater_factory.h"
+ #include "chrome/browser/signin/signin_profile_attributes_updater_factory.h"
+ #include "chrome/browser/site_cookie_provider/site_cookie_provider_service_factory.h"
+ #include "chrome/browser/ssl/https_first_mode_settings_tracker.h"
+@@ -722,6 +727,8 @@ void ChromeBrowserMainExtraPartsProfiles::
+   // Common factory registrations (Please keep this list ordered without taking
+   // into consideration buildflags, repeating buildflags is ok):
+   AboutSigninInternalsFactory::GetInstance();
++  extensions::MiniPopupServiceFactory::GetInstance();
++  extensions::AsideOmniboxServiceFactory::GetInstance();
+   AboutThisSiteServiceFactory::GetInstance();
+   AcceptLanguagesServiceFactory::GetInstance();
+   AccessibilityAnnotatorBackendFactory::GetInstance();
+@@ -1492,6 +1499,8 @@ void ChromeBrowserMainExtraPartsProfiles::
+ #endif
+   SigninMetricsServiceFactory::GetInstance();
+   SigninPolicyServiceFactory::GetInstance();
++  AsideNotificationSyncServiceFactory::GetInstance();
++  AsideProfileAttributesUpdaterFactory::GetInstance();
+   SigninProfileAttributesUpdaterFactory::GetInstance();
+   if (base::FeatureList::IsEnabled(
+           site_cookie_provider::features::kSiteCookieProviderEnabled)) {
+diff --git a/chrome/browser/notifications/aside_inbox_delivery.h b/chrome/browser/notifications/aside_inbox_delivery.h
+new file mode 100644
+index 0000000000..f99f10d324
+--- /dev/null
++++ b/chrome/browser/notifications/aside_inbox_delivery.h
+@@ -0,0 +1,86 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_NOTIFICATIONS_ASIDE_INBOX_DELIVERY_H_
++#define CHROME_BROWSER_NOTIFICATIONS_ASIDE_INBOX_DELIVERY_H_
++
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "base/scoped_observation.h"
++#include "components/content_settings/core/browser/content_settings_observer.h"
++#include "components/content_settings/core/browser/host_content_settings_map.h"
++#include "components/keyed_service/core/keyed_service.h"
++
++class GURL;
++class Profile;
++
++namespace blink {
++struct NotificationResources;
++struct PlatformNotificationData;
++}  // namespace blink
++
++namespace aside {
++
++// Web notifications from origins whose delivery mode is "AI"
++// (persistent_notifications.ai_delivery_mode_by_origin, set by
++// asideNotification.requestPermission) are not shown; instead the payload is
++// stored in the profile's AsideInbox and handed to the Aside extension as an
++// external runtime message {type:"aside.inboxNotification", site_url,
++// notification_id, inbox_entry_id, context_url, title, body,
++// image_png_base64, timestamp}. RE: original
++// chrome/browser/notifications/platform_notification_service_impl.cc
++// (SaveAsideInboxPayloadAndDispatch, "AsideInbox", "inbox_store_failed").
++// Returns true when the notification was taken over.
++bool MaybeDeliverNotificationToAside(
++    Profile* profile,
++    const std::string& notification_id,
++    const GURL& origin,
++    const GURL& context_url,
++    const blink::PlatformNotificationData& notification_data,
++    const blink::NotificationResources& notification_resources);
++
++// Tells the extension about a notification permission change:
++// {type:"aside.notificationPermissionChanged", origin, permission
++// ("allow"|"deny"|"allow_for_ai"|"default"), source ("native_ui"|"default"),
++// timestamp}.
++void NotifyPermissionChanged(Profile* profile,
++                             const GURL& origin,
++                             const std::string& source);
++
++// While alive, permission changes observed by NotificationSyncService are
++// reported with `source` (the asideNotification API uses "default") instead
++// of "native_ui".
++class ScopedPermissionChangeSource {
++ public:
++  explicit ScopedPermissionChangeSource(const char* source);
++  ~ScopedPermissionChangeSource();
++};
++
++// Watches the profile's notification content settings and reports changes
++// made from the native UI (page info, prompts) to the extension.
++class NotificationSyncService : public KeyedService,
++                                public content_settings::Observer {
++ public:
++  explicit NotificationSyncService(Profile* profile);
++  ~NotificationSyncService() override;
++
++  // content_settings::Observer:
++  void OnContentSettingChanged(
++      const ContentSettingsPattern& primary_pattern,
++      const ContentSettingsPattern& secondary_pattern,
++      ContentSettingsTypeSet content_type_set) override;
++
++  // KeyedService:
++  void Shutdown() override;
++
++ private:
++  raw_ptr<Profile> profile_;
++  base::ScopedObservation<HostContentSettingsMap, content_settings::Observer>
++      observation_{this};
++};
++
++}  // namespace aside
++
++#endif  // CHROME_BROWSER_NOTIFICATIONS_ASIDE_INBOX_DELIVERY_H_
+diff --git a/chrome/browser/notifications/aside_inbox_delivery.cc b/chrome/browser/notifications/aside_inbox_delivery.cc
+new file mode 100644
+index 0000000000..ef0098f21b
+--- /dev/null
++++ b/chrome/browser/notifications/aside_inbox_delivery.cc
+@@ -0,0 +1,185 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/notifications/aside_inbox_delivery.h"
++
++#include <optional>
++#include <utility>
++#include <vector>
++
++#include "base/base64.h"
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/functional/bind.h"
++#include "base/json/json_writer.h"
++#include "base/logging.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/task/thread_pool.h"
++#include "base/time/time.h"
++#include "base/uuid.h"
++#include "base/values.h"
++#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/aside/aside_extension_bridge.h"
++#include "components/content_settings/core/common/content_settings.h"
++#include "components/content_settings/core/common/content_settings_pattern.h"
++#include "components/content_settings/core/common/content_settings_types.h"
++#include "components/prefs/pref_service.h"
++#include "third_party/blink/public/common/notifications/notification_resources.h"
++#include "third_party/blink/public/common/notifications/platform_notification_data.h"
++#include "ui/gfx/codec/png_codec.h"
++#include "url/gurl.h"
++#include "url/origin.h"
++
++namespace aside {
++
++namespace {
++
++constexpr char kDeliveryModeByOriginPref[] =
++    "persistent_notifications.ai_delivery_mode_by_origin";
++constexpr char kInboxDirName[] = "AsideInbox";
++const char* g_permission_change_source = "native_ui";
++
++bool IsAiDelivery(Profile* profile, const GURL& origin) {
++  if (!profile) {
++    return false;
++  }
++  const base::DictValue& modes =
++      profile->GetPrefs()->GetDict(kDeliveryModeByOriginPref);
++  const std::string key = url::Origin::Create(origin).Serialize();
++  return modes.FindInt(key).value_or(0) != 0;
++}
++
++// Writes the payload as <profile>/AsideInbox/<entry id>.json (blocking).
++bool StoreInboxEntry(base::FilePath dir, std::string entry_id, std::string json) {
++  if (!base::CreateDirectory(dir)) {
++    return false;
++  }
++  return base::WriteFile(dir.AppendASCII(entry_id + ".json"), json);
++}
++
++void DispatchInbox(Profile* profile, base::DictValue payload, bool stored) {
++  if (!stored) {
++    payload.Set("inbox_store_failed", true);
++  }
++  SendExternalMessage(profile, "aside.inboxNotification", std::move(payload));
++}
++
++}  // namespace
++
++bool MaybeDeliverNotificationToAside(
++    Profile* profile,
++    const std::string& notification_id,
++    const GURL& origin,
++    const GURL& context_url,
++    const blink::PlatformNotificationData& notification_data,
++    const blink::NotificationResources& notification_resources) {
++  if (!IsAiDelivery(profile, origin) || !IsExtensionEnabled(profile)) {
++    return false;
++  }
++  const std::string entry_id = base::Uuid::GenerateRandomV4().AsLowercaseString();
++  VLOG(1) << "aside: delivering notification " << notification_id << " from "
++          << origin.spec() << " to the inbox (" << entry_id << ")";
++  base::DictValue payload;
++  payload.Set("site_url", url::Origin::Create(origin).Serialize());
++  payload.Set("notification_id", notification_id);
++  payload.Set("inbox_entry_id", entry_id);
++  if (context_url.is_valid()) {
++    payload.Set("context_url", context_url.spec());
++  }
++  payload.Set("title", base::UTF16ToUTF8(notification_data.title));
++  payload.Set("body", base::UTF16ToUTF8(notification_data.body));
++  if (!notification_data.tag.empty()) {
++    payload.Set("tag", notification_data.tag);
++  }
++  if (!notification_resources.notification_icon.drawsNothing()) {
++    std::optional<std::vector<uint8_t>> png = gfx::PNGCodec::EncodeBGRASkBitmap(
++        notification_resources.notification_icon, /*discard_transparency=*/false);
++    if (png) {
++      payload.Set("image_png_base64", base::Base64Encode(*png));
++    }
++  }
++  payload.Set("timestamp",
++              static_cast<double>(base::Time::Now().InMillisecondsSinceUnixEpoch()));
++
++  std::string json;
++  base::JSONWriter::Write(payload, &json);
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(&StoreInboxEntry,
++                     profile->GetPath().AppendASCII(kInboxDirName), entry_id,
++                     json),
++      base::BindOnce(&DispatchInbox, profile, std::move(payload)));
++  return true;
++}
++
++ScopedPermissionChangeSource::ScopedPermissionChangeSource(const char* source) {
++  g_permission_change_source = source;
++}
++
++ScopedPermissionChangeSource::~ScopedPermissionChangeSource() {
++  g_permission_change_source = "native_ui";
++}
++
++void NotifyPermissionChanged(Profile* profile,
++                             const GURL& origin,
++                             const std::string& source) {
++  if (!profile || !IsExtensionEnabled(profile)) {
++    return;
++  }
++  VLOG(1) << "aside: notification permission changed for " << origin.spec()
++          << " (" << source << ")";
++  HostContentSettingsMap* map =
++      HostContentSettingsMapFactory::GetForProfile(profile);
++  ContentSetting setting =
++      map ? map->GetContentSetting(origin, origin,
++                                   ContentSettingsType::NOTIFICATIONS)
++          : CONTENT_SETTING_DEFAULT;
++  std::string permission = "default";
++  if (setting == CONTENT_SETTING_ALLOW) {
++    permission = IsAiDelivery(profile, origin) ? "allow_for_ai" : "allow";
++  } else if (setting == CONTENT_SETTING_BLOCK) {
++    permission = "deny";
++  }
++  base::DictValue payload;
++  payload.Set("origin", url::Origin::Create(origin).Serialize());
++  payload.Set("permission", permission);
++  payload.Set("source", source);
++  payload.Set("timestamp",
++              static_cast<double>(base::Time::Now().InMillisecondsSinceUnixEpoch()));
++  SendExternalMessage(profile, "aside.notificationPermissionChanged",
++                      std::move(payload));
++}
++
++NotificationSyncService::NotificationSyncService(Profile* profile)
++    : profile_(profile) {
++  if (HostContentSettingsMap* map =
++          HostContentSettingsMapFactory::GetForProfile(profile_)) {
++    observation_.Observe(map);
++  }
++}
++
++NotificationSyncService::~NotificationSyncService() = default;
++
++void NotificationSyncService::Shutdown() {
++  observation_.Reset();
++  profile_ = nullptr;
++}
++
++void NotificationSyncService::OnContentSettingChanged(
++    const ContentSettingsPattern& primary_pattern,
++    const ContentSettingsPattern& secondary_pattern,
++    ContentSettingsTypeSet content_type_set) {
++  if (!profile_ || !content_type_set.Contains(ContentSettingsType::NOTIFICATIONS)) {
++    return;
++  }
++  // Only concrete origins can be reported (wildcard resets are skipped).
++  const GURL origin(primary_pattern.ToString());
++  if (!origin.is_valid() || primary_pattern.MatchesAllHosts()) {
++    return;
++  }
++  NotifyPermissionChanged(profile_, origin, g_permission_change_source);
++}
++
++}  // namespace aside
+diff --git a/chrome/browser/notifications/aside_notification_sync_service_factory.h b/chrome/browser/notifications/aside_notification_sync_service_factory.h
+new file mode 100644
+index 0000000000..a70e6ecbb5
+--- /dev/null
++++ b/chrome/browser/notifications/aside_notification_sync_service_factory.h
+@@ -0,0 +1,25 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_NOTIFICATIONS_ASIDE_NOTIFICATION_SYNC_SERVICE_FACTORY_H_
++#define CHROME_BROWSER_NOTIFICATIONS_ASIDE_NOTIFICATION_SYNC_SERVICE_FACTORY_H_
++
++#include "base/no_destructor.h"
++#include "chrome/browser/profiles/profile_keyed_service_factory.h"
++
++class AsideNotificationSyncServiceFactory : public ProfileKeyedServiceFactory {
++ public:
++  static AsideNotificationSyncServiceFactory* GetInstance();
++
++ private:
++  friend base::NoDestructor<AsideNotificationSyncServiceFactory>;
++  AsideNotificationSyncServiceFactory();
++  ~AsideNotificationSyncServiceFactory() override;
++
++  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
++      content::BrowserContext* context) const override;
++  bool ServiceIsCreatedWithBrowserContext() const override;
++};
++
++#endif  // CHROME_BROWSER_NOTIFICATIONS_ASIDE_NOTIFICATION_SYNC_SERVICE_FACTORY_H_
+diff --git a/chrome/browser/notifications/aside_notification_sync_service_factory.cc b/chrome/browser/notifications/aside_notification_sync_service_factory.cc
+new file mode 100644
+index 0000000000..32ab505236
+--- /dev/null
++++ b/chrome/browser/notifications/aside_notification_sync_service_factory.cc
+@@ -0,0 +1,40 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/notifications/aside_notification_sync_service_factory.h"
++
++#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
++#include "chrome/browser/notifications/aside_inbox_delivery.h"
++#include "chrome/browser/profiles/profile.h"
++
++// static
++AsideNotificationSyncServiceFactory*
++AsideNotificationSyncServiceFactory::GetInstance() {
++  static base::NoDestructor<AsideNotificationSyncServiceFactory> instance;
++  return instance.get();
++}
++
++AsideNotificationSyncServiceFactory::AsideNotificationSyncServiceFactory()
++    : ProfileKeyedServiceFactory(
++          "AsideNotificationSyncService",
++          ProfileSelections::Builder()
++              .WithRegular(ProfileSelection::kOriginalOnly)
++              .Build()) {
++  DependsOn(HostContentSettingsMapFactory::GetInstance());
++}
++
++AsideNotificationSyncServiceFactory::~AsideNotificationSyncServiceFactory() =
++    default;
++
++std::unique_ptr<KeyedService>
++AsideNotificationSyncServiceFactory::BuildServiceInstanceForBrowserContext(
++    content::BrowserContext* context) const {
++  return std::make_unique<aside::NotificationSyncService>(
++      Profile::FromBrowserContext(context));
++}
++
++bool AsideNotificationSyncServiceFactory::ServiceIsCreatedWithBrowserContext()
++    const {
++  return true;
++}

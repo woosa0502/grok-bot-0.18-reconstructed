@@ -1,0 +1,27 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("aside_import_data") {
+  sources = [
+    "aside_import_data_ui.cc",
+    "aside_import_data_ui.h",
+  ]
+  public_deps = [
+    "//content/public/browser",
+    "//ui/webui",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser:browser_process_impl",
+    "//chrome/browser/importer",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui/select_file_policy",
+    "//components/user_data_importer/common",
+    "//content/public/common",
+    "//third_party/zlib/google:zip",
+    "//ui/base",
+    "//ui/shell_dialogs",
+  ]
+  data_deps = [ "//chrome/browser/resources/aside_import_data" ]
+}

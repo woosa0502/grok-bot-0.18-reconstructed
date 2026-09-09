@@ -8,6 +8,7 @@ node_modules/
 /reports/
 /work/
 /data/artifacts/
+/scratch_macvm/
 .DS_Store
 *.log
 

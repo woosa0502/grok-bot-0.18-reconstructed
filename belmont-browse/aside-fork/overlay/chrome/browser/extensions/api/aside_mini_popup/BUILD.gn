@@ -1,0 +1,44 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+assert(enable_extensions)
+
+source_set("aside_mini_popup") {
+  sources = [
+    "aside_mini_popup_api.cc",
+    "aside_mini_popup_api.h",
+    "mini_popup_service.cc",
+    "mini_popup_service.h",
+    "mini_popup_service_factory.cc",
+    "mini_popup_service_factory.h",
+    "mini_popup_view.cc",
+    "mini_popup_view.h",
+  ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+  public_deps = [
+    "//chrome/browser/extensions",
+    "//chrome/common/extensions/api",
+    "//content/public/browser",
+    "//extensions/browser",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/profiles:profile_manager",
+    "//chrome/browser/profiles:profile_util",
+    "//chrome/browser/ui/select_file_policy",
+    "//components/prefs",
+    "//chrome/browser/ui",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+    "//extensions/browser",
+    "//extensions/common",
+    "//ui/base",
+    "//ui/gfx/geometry",
+    "//ui/shell_dialogs",
+    "//ui/views",
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Agent Tabs test",
+  "version": "1.0",
+  "permissions": ["tabs", "tabGroups"],
+  "background": {"service_worker": "background.js"}
+}

@@ -1,0 +1,17 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideExpandMoreIcon
+
+CANVAS_DIMENSIONS, 16,
+MOVE_TO, 11.53f, 5.86f,
+CUBIC_TO, 11.79f, 5.6f, 12.21f, 5.6f, 12.47f, 5.86f,
+CUBIC_TO, 12.73f, 6.12f, 12.73f, 6.54f, 12.47f, 6.8f,
+LINE_TO, 8.47f, 10.8f,
+CUBIC_TO, 8.21f, 11.06f, 7.79f, 11.06f, 7.53f, 10.8f,
+LINE_TO, 3.53f, 6.8f,
+CUBIC_TO, 3.27f, 6.54f, 3.27f, 6.12f, 3.53f, 5.86f,
+CUBIC_TO, 3.79f, 5.6f, 4.21f, 5.6f, 4.47f, 5.86f,
+LINE_TO, 8, 9.39f,
+LINE_TO, 11.53f, 5.86f,
+CLOSE,

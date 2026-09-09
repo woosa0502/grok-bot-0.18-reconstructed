@@ -1,0 +1,3126 @@
+diff --git a/chrome/browser/component_updater/BUILD.gn b/chrome/browser/component_updater/BUILD.gn
+index 05a9c1c03f..c2a537cd23 100644
+--- a/chrome/browser/component_updater/BUILD.gn
++++ b/chrome/browser/component_updater/BUILD.gn
+@@ -13,6 +13,9 @@ import("//third_party/widevine/cdm/widevine.gni")
+ # Header-only target. Only .h files; no sources.
+ source_set("component_updater") {
+   public = [
++    "aside_component_installer.h",
++    "aside_component_update_service.h",
++    "aside_component_update_service_helpers.h",
+     "captcha_provider_component_installer.h",
+     "chrome_component_updater_configurator.h",
+     "chrome_origin_trials_component_installer.h",
+@@ -108,6 +111,9 @@ source_set("component_updater") {
+ # Implementation target. Only .cc/.mm files.
+ source_set("impl") {
+   sources = [
++    "aside_component_installer.cc",
++    "aside_component_update_service.cc",
++    "aside_component_update_service_helpers.cc",
+     "captcha_provider_component_installer.cc",
+     "chrome_component_updater_configurator.cc",
+     "chrome_origin_trials_component_installer.cc",
+@@ -144,6 +150,7 @@ source_set("impl") {
+     "//chrome/browser/net",
+     "//chrome/browser/page_load_metrics",
+     "//chrome/browser/permissions",
++    "//chrome/browser/signin",
+     "//chrome/browser/update_client",
+     "//chrome/common",
+     "//chrome/common/platform_runtime",
+diff --git a/chrome/browser/component_updater/aside_component_installer.cc b/chrome/browser/component_updater/aside_component_installer.cc
+new file mode 100644
+index 0000000000..4c027c0afd
+--- /dev/null
++++ b/chrome/browser/component_updater/aside_component_installer.cc
+@@ -0,0 +1,223 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/component_updater/aside_component_installer.h"
++
++#include <array>
++#include <memory>
++#include <string>
++#include <utility>
++#include <vector>
++
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/functional/callback_helpers.h"
++#include "base/logging.h"
++#include "base/memory/scoped_refptr.h"
++#include "chrome/browser/component_updater/aside_component_update_service_helpers.h"
++#include "components/component_updater/component_updater_service.h"
++#include "components/crx_file/id_util.h"
++#include "content/public/browser/browser_thread.h"
++
++namespace component_updater {
++
++namespace {
++
++// SHA-256 of the SubjectPublicKeyInfo that signs the published Aside Daemon
++// CRX. Recovered from the CRX3 header of
++// AsideDaemon-1.26.905.904.crx; the first sixteen bytes fold to the Omaha app
++// id "kbbaihbiiohdfpocgkpkmngpjcpddbhh" used in the original update request.
++constexpr std::array<uint8_t, 32> kAsideDaemonPublicKeySHA256 = {
++    0xa1, 0x10, 0x87, 0x18, 0x8e, 0x73, 0x5f, 0xe2, 0x6a, 0xfa, 0xcd,
++    0x6f, 0x92, 0xf3, 0x31, 0x77, 0x58, 0xb6, 0x51, 0x8b, 0x88, 0x4e,
++    0x5e, 0x69, 0xd8, 0x35, 0x03, 0x71, 0xa0, 0x41, 0x92, 0xae};
++
++// Same, for AsideAgentManager-1.26.905.904.crx; app id
++// "fjdhphbdlfjogobdofoaagnlnkoibdge".
++constexpr std::array<uint8_t, 32> kAsideAgentManagerPublicKeySHA256 = {
++    0x59, 0x37, 0xf7, 0x13, 0xb5, 0x9e, 0x6e, 0x13, 0xe5, 0xe0, 0x06,
++    0xdb, 0xda, 0xe8, 0x13, 0x64, 0x5e, 0xcc, 0x89, 0xb0, 0xc5, 0x57,
++    0xb1, 0xce, 0x78, 0xa2, 0x17, 0x3c, 0x2a, 0x3e, 0xf0, 0x59};
++
++// Aside Password Manager. No published CRX was ever captured for this
++// component, but the original keeps the three key hashes in one table in
++// __DATA_CONST: "AsidePasswordManager" (0xd9c1cd8) is immediately followed by
++// this 32-byte hash at 0xd9c1cf8 (arm64: 0xc799758), exactly the way
++// "AsideAgentManager"/"Aside Daemon" are followed by the two hashes that the
++// published CRX3 headers confirm byte for byte. Folds to the app id
++// "clcdgiameigmljcbkkcbjiljinmfkncl".
++constexpr std::array<uint8_t, 32> kAsidePasswordManagerPublicKeySHA256 = {
++    0x2b, 0x23, 0x68, 0x0c, 0x48, 0x6c, 0xb9, 0x21, 0xaa, 0x21, 0x98,
++    0xb9, 0x8d, 0xc5, 0xad, 0x2b, 0xa6, 0xb2, 0x56, 0x32, 0x35, 0x17,
++    0xed, 0x00, 0x1e, 0xe9, 0x26, 0x78, 0xd4, 0x2a, 0x6e, 0x4b};
++
++// RE: "aside_component" (0xe5709ce) — the root every component installs under.
++constexpr base::FilePath::CharType kAsideComponentDir[] =
++    FILE_PATH_LITERAL("aside_component");
++
++constexpr base::FilePath::CharType kManifestFileName[] =
++    FILE_PATH_LITERAL("manifest.json");
++
++}  // namespace
++
++std::string AsideComponentToken(AsideComponentKind kind) {
++  switch (kind) {
++    case AsideComponentKind::kDaemon:
++      return "aside-daemon";
++    case AsideComponentKind::kPasswordManager:
++      return "password-manager";
++    case AsideComponentKind::kAgentManager:
++      return "agent-manager";
++  }
++}
++
++std::string AsideComponentName(AsideComponentKind kind) {
++  switch (kind) {
++    case AsideComponentKind::kDaemon:
++      return "Aside Daemon";
++    case AsideComponentKind::kPasswordManager:
++      return "Aside Password Manager";
++    case AsideComponentKind::kAgentManager:
++      return "Aside Agent Manager";
++  }
++}
++
++std::vector<uint8_t> AsideComponentPublicKeyHash(AsideComponentKind kind) {
++  switch (kind) {
++    case AsideComponentKind::kDaemon:
++      return std::vector<uint8_t>(kAsideDaemonPublicKeySHA256.begin(),
++                                  kAsideDaemonPublicKeySHA256.end());
++    case AsideComponentKind::kAgentManager:
++      return std::vector<uint8_t>(kAsideAgentManagerPublicKeySHA256.begin(),
++                                  kAsideAgentManagerPublicKeySHA256.end());
++    case AsideComponentKind::kPasswordManager:
++      return std::vector<uint8_t>(kAsidePasswordManagerPublicKeySHA256.begin(),
++                                  kAsidePasswordManagerPublicKeySHA256.end());
++  }
++}
++
++std::string AsideComponentAppId(AsideComponentKind kind) {
++  const std::vector<uint8_t> hash = AsideComponentPublicKeyHash(kind);
++  if (hash.empty()) {
++    return std::string();
++  }
++  return crx_file::id_util::GenerateIdFromHash(hash);
++}
++
++AsideComponentInstallerPolicy::AsideComponentInstallerPolicy(
++    AsideComponentKind kind,
++    AsideComponentReadyCallback ready_callback)
++    : kind_(kind), ready_callback_(std::move(ready_callback)) {}
++
++AsideComponentInstallerPolicy::~AsideComponentInstallerPolicy() = default;
++
++bool AsideComponentInstallerPolicy::
++    SupportsGroupPolicyEnabledComponentUpdates() const {
++  return false;
++}
++
++bool AsideComponentInstallerPolicy::RequiresNetworkEncryption() const {
++  // Not recoverable from the original binary. CRX3 signature verification
++  // against the pinned key above is what actually gates installation, and the
++  // published URLs are https either way.
++  return false;
++}
++
++update_client::CrxInstaller::Result
++AsideComponentInstallerPolicy::OnCustomInstall(
++    const base::DictValue& manifest,
++    const base::FilePath& install_dir) {
++  if (kind_ == AsideComponentKind::kDaemon) {
++    for (const base::FilePath& candidate :
++         AsideDaemonExecutableCandidates(install_dir)) {
++      if (!base::PathExists(candidate)) {
++        continue;
++      }
++      std::string error;
++      if (!RepairAsideDaemonExecutablePermissions(candidate, &error)) {
++        LOG(WARNING) << error;
++      }
++    }
++  }
++  return update_client::CrxInstaller::Result(update_client::InstallError::NONE);
++}
++
++void AsideComponentInstallerPolicy::OnCustomUninstall() {}
++
++bool AsideComponentInstallerPolicy::VerifyInstallation(
++    const base::DictValue& manifest,
++    const base::FilePath& install_dir) const {
++  if (kind_ == AsideComponentKind::kDaemon) {
++    for (const base::FilePath& candidate :
++         AsideDaemonExecutableCandidates(install_dir)) {
++      if (base::PathExists(candidate)) {
++        return true;
++      }
++    }
++    // RE: "Aside Daemon executable is missing: ".
++    LOG(WARNING) << "Aside Daemon executable is missing: "
++                 << install_dir.value();
++    return false;
++  }
++  // The extension-shaped components (agent manager, password manager) ship a
++  // Chrome extension manifest at their root.
++  return base::PathExists(install_dir.Append(kManifestFileName));
++}
++
++void AsideComponentInstallerPolicy::ComponentReady(
++    const base::Version& version,
++    const base::FilePath& install_dir,
++    base::DictValue manifest) {
++  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
++  if (!install_dir.IsAbsolute()) {
++    // RE: "Aside component extension install directory is not absolute: ".
++    LOG(WARNING) << "Aside component extension install directory is not "
++                    "absolute: "
++                 << install_dir.value();
++    return;
++  }
++  if (ready_callback_) {
++    ready_callback_.Run(kind_, version, install_dir);
++  }
++}
++
++base::FilePath AsideComponentInstallerPolicy::GetRelativeInstallDir() const {
++  return base::FilePath(kAsideComponentDir)
++      .AppendASCII(AsideComponentToken(kind_));
++}
++
++void AsideComponentInstallerPolicy::GetHash(std::vector<uint8_t>* hash) const {
++  *hash = AsideComponentPublicKeyHash(kind_);
++}
++
++std::string AsideComponentInstallerPolicy::GetName() const {
++  return AsideComponentName(kind_);
++}
++
++update_client::InstallerAttributes
++AsideComponentInstallerPolicy::GetInstallerAttributes() const {
++  return update_client::InstallerAttributes();
++}
++
++void RegisterAsideComponents(ComponentUpdateService* cus,
++                             AsideComponentReadyCallback ready_callback) {
++  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
++  for (AsideComponentKind kind :
++       {AsideComponentKind::kDaemon, AsideComponentKind::kPasswordManager,
++        AsideComponentKind::kAgentManager}) {
++    if (AsideComponentPublicKeyHash(kind).empty()) {
++      // RE: "A bundled Aside component was not found after component
++      // registration completed".
++      VLOG(1) << "A bundled Aside component was not found after component "
++                 "registration completed: "
++              << AsideComponentToken(kind);
++      continue;
++    }
++    auto installer = base::MakeRefCounted<ComponentInstaller>(
++        std::make_unique<AsideComponentInstallerPolicy>(kind, ready_callback));
++    installer->Register(cus, base::DoNothing());
++  }
++}
++
++}  // namespace component_updater
+diff --git a/chrome/browser/component_updater/aside_component_installer.h b/chrome/browser/component_updater/aside_component_installer.h
+new file mode 100644
+index 0000000000..32f7c707d4
+--- /dev/null
++++ b/chrome/browser/component_updater/aside_component_installer.h
+@@ -0,0 +1,87 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_COMPONENT_UPDATER_ASIDE_COMPONENT_INSTALLER_H_
++#define CHROME_BROWSER_COMPONENT_UPDATER_ASIDE_COMPONENT_INSTALLER_H_
++
++#include <stdint.h>
++
++#include <string>
++#include <vector>
++
++#include "base/files/file_path.h"
++#include "base/functional/callback.h"
++#include "base/values.h"
++#include "base/version.h"
++#include "components/component_updater/component_installer.h"
++
++namespace component_updater {
++
++class ComponentUpdateService;
++
++// The bundled Aside components, in the order the original registers them.
++// RE: "aside-daemon", "password-manager", "agent-manager" (0xe5709c1).
++enum class AsideComponentKind {
++  kDaemon,
++  kPasswordManager,
++  kAgentManager,
++};
++
++// "aside-daemon" / "password-manager" / "agent-manager".
++std::string AsideComponentToken(AsideComponentKind kind);
++// "Aside Daemon" / "Aside Password Manager" / "Aside Agent Manager".
++std::string AsideComponentName(AsideComponentKind kind);
++// The Omaha app id, derived from the signing key hash. Empty when the key for
++// that component is not known to this build.
++std::string AsideComponentAppId(AsideComponentKind kind);
++// The 32-byte SHA-256 of the component's signing key, or an empty vector.
++std::vector<uint8_t> AsideComponentPublicKeyHash(AsideComponentKind kind);
++
++// Called on the UI thread each time a bundled Aside component becomes ready.
++using AsideComponentReadyCallback =
++    base::RepeatingCallback<void(AsideComponentKind kind,
++                                 const base::Version& version,
++                                 const base::FilePath& install_dir)>;
++
++class AsideComponentInstallerPolicy : public ComponentInstallerPolicy {
++ public:
++  AsideComponentInstallerPolicy(AsideComponentKind kind,
++                                AsideComponentReadyCallback ready_callback);
++  ~AsideComponentInstallerPolicy() override;
++
++  AsideComponentInstallerPolicy(const AsideComponentInstallerPolicy&) = delete;
++  AsideComponentInstallerPolicy& operator=(
++      const AsideComponentInstallerPolicy&) = delete;
++
++  // ComponentInstallerPolicy:
++  bool VerifyInstallation(const base::DictValue& manifest,
++                          const base::FilePath& install_dir) const override;
++  void ComponentReady(const base::Version& version,
++                      const base::FilePath& install_dir,
++                      base::DictValue manifest) override;
++  update_client::InstallerAttributes GetInstallerAttributes() const override;
++
++ private:
++  bool SupportsGroupPolicyEnabledComponentUpdates() const override;
++  bool RequiresNetworkEncryption() const override;
++  update_client::CrxInstaller::Result OnCustomInstall(
++      const base::DictValue& manifest,
++      const base::FilePath& install_dir) override;
++  void OnCustomUninstall() override;
++  base::FilePath GetRelativeInstallDir() const override;
++  void GetHash(std::vector<uint8_t>* hash) const override;
++  std::string GetName() const override;
++
++  const AsideComponentKind kind_;
++  const AsideComponentReadyCallback ready_callback_;
++};
++
++// Registers every bundled Aside component whose signing key this build knows,
++// against `cus` (the Aside-specific component update service, not Chrome's).
++void RegisterAsideComponents(ComponentUpdateService* cus,
++                             AsideComponentReadyCallback ready_callback);
++
++}  // namespace component_updater
++
++#endif  // CHROME_BROWSER_COMPONENT_UPDATER_ASIDE_COMPONENT_INSTALLER_H_
+diff --git a/chrome/browser/component_updater/aside_component_update_service.cc b/chrome/browser/component_updater/aside_component_update_service.cc
+new file mode 100644
+index 0000000000..ead7ff291c
+--- /dev/null
++++ b/chrome/browser/component_updater/aside_component_update_service.cc
+@@ -0,0 +1,714 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/component_updater/aside_component_update_service.h"
++
++#include <optional>
++#include <string>
++#include <utility>
++#include <vector>
++
++#include "base/command_line.h"
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/functional/bind.h"
++#include "base/functional/callback_helpers.h"
++#include "base/json/json_reader.h"
++#include "base/logging.h"
++#include "base/memory/scoped_refptr.h"
++#include "base/no_destructor.h"
++#include "base/path_service.h"
++#include "base/process/launch.h"
++#include "base/strings/strcat.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/task/task_traits.h"
++#include "base/task/thread_pool.h"
++#include "base/values.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/component_updater/aside_component_update_service_helpers.h"
++#include "base/memory/raw_ptr.h"
++#include "chrome/browser/component_updater/component_updater_utils.h"
++#include "chrome/browser/net/system_network_context_manager.h"
++#include "chrome/browser/update_client/chrome_update_query_params_delegate.h"
++#include "chrome/common/channel_info.h"
++#include "components/component_updater/component_updater_command_line_config_policy.h"
++#include "components/component_updater/configurator_impl.h"
++#include "components/services/patch/content/patch_service.h"
++#include "components/services/unzip/content/unzip_service.h"
++#include "components/update_client/net/network_chromium.h"
++#include "components/update_client/patch/patch_impl.h"
++#include "components/update_client/unzip/unzip_impl.h"
++#include "components/update_client/update_query_params.h"
++#include "chrome/browser/signin/aside_daemon_authorizer.h"
++#include "chrome/common/chrome_paths.h"
++#include "components/component_updater/component_updater_service.h"
++#include "components/component_updater/update_scheduler.h"
++#include "components/prefs/pref_service.h"
++#include "components/update_client/activity_data_service.h"
++#include "components/update_client/configurator.h"
++#include "components/update_client/crx_cache.h"
++#include "components/update_client/crx_downloader_factory.h"
++#include "components/update_client/network.h"
++#include "components/update_client/patcher.h"
++#include "components/update_client/persisted_data.h"
++#include "components/update_client/protocol_handler.h"
++#include "components/update_client/unzipper.h"
++#include "components/update_client/update_client.h"
++#include "content/public/browser/browser_thread.h"
++#include "net/base/load_flags.h"
++#include "net/http/http_request_headers.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
++#include "services/network/public/cpp/resource_request.h"
++#include "services/network/public/cpp/shared_url_loader_factory.h"
++#include "services/network/public/cpp/simple_url_loader.h"
++#include "url/gurl.h"
++
++namespace component_updater {
++
++namespace {
++
++// RE: "https://ptqgesmtzwdmeiknncqc.supabase.co/functions/v1/omaha" (0xd9c1de0).
++constexpr char kAsideOmahaUrl[] =
++    "https://ptqgesmtzwdmeiknncqc.supabase.co/functions/v1/omaha";
++// RE: "http://127.0.0.1:21420/health" (0xd9c1e20) and
++// "http://127.0.0.1:21420/shutdown" (0xd9c1e50). Both are derived from the
++// daemon base URL so ASIDE_DAEMON_BASE_URL redirects them together.
++constexpr char kHealthPath[] = "/health";
++constexpr char kShutdownPath[] = "/shutdown";
++// RE: "aside_component_crx_cache" (0xe570ab4).
++constexpr char kAsideCrxCacheDir[] = "aside_component_crx_cache";
++// RE: the NSUserDefaults key "disableBundledAsideComponent" (0xe4a908e).
++constexpr char kDisableSwitch[] = "disable-bundled-aside-component";
++// Ours, so a replay server can stand in for the Omaha endpoint in tests.
++constexpr char kUpdateUrlSwitch[] = "aside-component-update-url";
++
++constexpr base::TimeDelta kInitialDelay = base::Seconds(30);
++constexpr base::TimeDelta kNextCheckDelay = base::Hours(5);
++constexpr base::TimeDelta kHealthTimeout = base::Seconds(2);
++// RE: "Aside component update health gate reached fallback threshold; running
++// update task anyway".
++constexpr int kHealthGateFallbackThreshold = 3;
++constexpr int kActivationVerificationAttempts = 20;
++constexpr base::TimeDelta kActivationVerificationInterval = base::Seconds(1);
++
++constexpr net::NetworkTrafficAnnotationTag kDaemonTrafficAnnotation =
++    net::DefineNetworkTrafficAnnotation("aside_component_daemon", R"(
++        semantics {
++          sender: "Aside component update service"
++          description: "Checks that the local Aside daemon is alive and asks "
++                       "it to shut down before a component update replaces it."
++          trigger: "Aside component update task."
++          data: "None."
++          destination: LOCAL
++        }
++        policy {
++          cookies_allowed: NO
++          setting: "Not user controllable."
++          policy_exception_justification: "Loopback only."
++        })");
++
++std::string DaemonUrl(const char* path) {
++  return base::StrCat({AsideDaemonAuthorizer::DaemonBaseUrl(), path});
++}
++
++std::unique_ptr<network::SimpleURLLoader> MakeDaemonLoader(
++    const std::string& url,
++    const std::string& method,
++    const std::optional<std::string>& authorization) {
++  auto request = std::make_unique<network::ResourceRequest>();
++  request->url = GURL(url);
++  request->method = method;
++  request->load_flags = net::LOAD_DISABLE_CACHE | net::LOAD_BYPASS_CACHE;
++  request->credentials_mode = network::mojom::CredentialsMode::kOmit;
++  if (authorization) {
++    request->headers.SetHeader(net::HttpRequestHeaders::kAuthorization,
++                               *authorization);
++  }
++  auto loader = network::SimpleURLLoader::Create(std::move(request),
++                                                 kDaemonTrafficAnnotation);
++  loader->SetAllowHttpErrorResults(true);
++  loader->SetTimeoutDuration(kHealthTimeout);
++  return loader;
++}
++
++// The Aside components use their own Omaha endpoint and their own CRX cache,
++// so they run on their own configurator rather than on Chrome's (two
++// update_client::CrxCache instances must never share a cache root).
++class AsideConfigurator : public update_client::Configurator {
++ public:
++  AsideConfigurator(const base::CommandLine* cmdline, PrefService* pref_service)
++      : configurator_impl_(ComponentUpdaterCommandLineConfigPolicy(cmdline),
++                           /*require_encryption=*/false),
++        pref_service_(pref_service),
++        persisted_data_(update_client::CreatePersistedData(
++            base::BindRepeating(
++                [](PrefService* prefs) { return prefs; },
++                pref_service),
++            nullptr)) {
++    CHECK(pref_service_);
++    base::FilePath path;
++    const bool have_path =
++        base::PathService::Get(chrome::DIR_USER_DATA, &path);
++    crx_cache_ = base::MakeRefCounted<update_client::CrxCache>(
++        have_path ? std::optional<base::FilePath>(
++                        path.AppendASCII(kAsideCrxCacheDir))
++                  : std::nullopt);
++  }
++
++  base::TimeDelta InitialDelay() const override { return kInitialDelay; }
++  base::TimeDelta NextCheckDelay() const override { return kNextCheckDelay; }
++  base::TimeDelta OnDemandDelay() const override {
++    return configurator_impl_.OnDemandDelay();
++  }
++  base::TimeDelta UpdateDelay() const override {
++    return configurator_impl_.UpdateDelay();
++  }
++  std::vector<GURL> UpdateUrl() const override {
++    return {GURL(AsideComponentUpdateService::UpdateUrl())};
++  }
++  std::vector<GURL> PingUrl() const override { return {}; }
++  std::string GetProdId() const override {
++    return update_client::UpdateQueryParams::GetProdIdString(
++        update_client::UpdateQueryParams::ProdId::CHROME);
++  }
++  base::Version GetBrowserVersion() const override {
++    return configurator_impl_.GetBrowserVersion();
++  }
++  std::string GetChannel() const override {
++    return chrome::GetChannelName(chrome::WithExtendedStable(true));
++  }
++  std::string GetLang() const override {
++    return ChromeUpdateQueryParamsDelegate::GetLang();
++  }
++  std::string GetOSLongName() const override {
++    return configurator_impl_.GetOSLongName();
++  }
++  base::flat_map<std::string, std::string> ExtraRequestParams() const override {
++    return configurator_impl_.ExtraRequestParams();
++  }
++  std::string GetDownloadPreference() const override { return std::string(); }
++  scoped_refptr<update_client::NetworkFetcherFactory> GetNetworkFetcherFactory()
++      override {
++    if (!network_fetcher_factory_) {
++      network_fetcher_factory_ =
++          base::MakeRefCounted<update_client::NetworkFetcherChromiumFactory>(
++              g_browser_process->system_network_context_manager()
++                  ->GetSharedURLLoaderFactory(),
++              base::BindRepeating([](const GURL& url) { return false; }));
++    }
++    return network_fetcher_factory_;
++  }
++  scoped_refptr<update_client::CrxDownloaderFactory> GetCrxDownloaderFactory()
++      override {
++    if (!crx_downloader_factory_) {
++      crx_downloader_factory_ = update_client::MakeCrxDownloaderFactory(
++          GetNetworkFetcherFactory(), std::nullopt);
++    }
++    return crx_downloader_factory_;
++  }
++  scoped_refptr<update_client::UnzipperFactory> GetUnzipperFactory() override {
++    if (!unzip_factory_) {
++      unzip_factory_ = base::MakeRefCounted<update_client::UnzipChromiumFactory>(
++          base::BindRepeating(&unzip::LaunchUnzipper));
++    }
++    return unzip_factory_;
++  }
++  scoped_refptr<update_client::PatcherFactory> GetPatcherFactory() override {
++    if (!patch_factory_) {
++      patch_factory_ = base::MakeRefCounted<update_client::PatchChromiumFactory>(
++          base::BindRepeating(&patch::LaunchFilePatcher));
++    }
++    return patch_factory_;
++  }
++  bool EnabledBackgroundDownloader() const override { return false; }
++  bool EnabledCupSigning() const override { return false; }
++  PrefService* GetPrefService() const override { return pref_service_; }
++  update_client::PersistedData* GetPersistedData() const override {
++    return persisted_data_.get();
++  }
++  bool IsPerUserInstall() const override {
++    return component_updater::IsPerUserInstall();
++  }
++  std::unique_ptr<update_client::ProtocolHandlerFactory>
++  GetProtocolHandlerFactory() const override {
++    return configurator_impl_.GetProtocolHandlerFactory();
++  }
++  std::optional<bool> IsMachineExternallyManaged() const override {
++    return configurator_impl_.IsMachineExternallyManaged();
++  }
++  update_client::UpdaterStateProvider GetUpdaterStateProvider() const override {
++    return configurator_impl_.GetUpdaterStateProvider();
++  }
++  scoped_refptr<update_client::CrxCache> GetCrxCache() const override {
++    return crx_cache_;
++  }
++#if BUILDFLAG(CHROME_FOR_TESTING)
++  std::vector<std::string> GetRequiredComponents() const override {
++    return {};
++  }
++#endif
++  bool IsConnectionMetered() const override {
++    return configurator_impl_.IsConnectionMetered();
++  }
++
++ private:
++  ~AsideConfigurator() override = default;
++
++  ConfiguratorImpl configurator_impl_;
++  raw_ptr<PrefService, LeakedDanglingUntriaged> pref_service_;
++  std::unique_ptr<update_client::PersistedData> persisted_data_;
++  scoped_refptr<update_client::NetworkFetcherFactory> network_fetcher_factory_;
++  scoped_refptr<update_client::CrxDownloaderFactory> crx_downloader_factory_;
++  scoped_refptr<update_client::UnzipperFactory> unzip_factory_;
++  scoped_refptr<update_client::PatcherFactory> patch_factory_;
++  scoped_refptr<update_client::CrxCache> crx_cache_;
++};
++
++// RE: "Aside component update scheduler started; initial_delay_ms=",
++// ", delay_ms=", "ScheduleNext", "Aside component update task started",
++// "Aside component update task finished",
++// "Aside component update scheduler stopped".
++class AsideUpdateScheduler : public UpdateScheduler {
++ public:
++  // Runs before each scheduled pass; the callback says whether the pass may
++  // proceed. RE: the health gate in front of "Aside component update task
++  // started".
++  using HealthGate =
++      base::RepeatingCallback<void(base::OnceCallback<void(bool)>)>;
++
++  explicit AsideUpdateScheduler(HealthGate gate) : gate_(std::move(gate)) {}
++  ~AsideUpdateScheduler() override = default;
++
++  void Schedule(base::TimeDelta initial_delay,
++                base::TimeDelta delay,
++                const UserTask& user_task,
++                const OnStopTaskCallback& on_stop) override {
++    user_task_ = user_task;
++    delay_ = delay;
++    VLOG(1) << "Aside component update scheduler started; initial_delay_ms="
++            << initial_delay.InMilliseconds()
++            << ", delay_ms=" << delay.InMilliseconds();
++    timer_.Start(FROM_HERE, initial_delay,
++                 base::BindOnce(&AsideUpdateScheduler::RunTask,
++                                weak_factory_.GetWeakPtr()));
++  }
++
++  void Stop() override {
++    timer_.Stop();
++    user_task_.Reset();
++    VLOG(1) << "Aside component update scheduler stopped";
++  }
++
++ private:
++  void RunTask() {
++    if (!user_task_) {
++      return;
++    }
++    if (!gate_) {
++      StartTask(true);
++      return;
++    }
++    gate_.Run(base::BindOnce(&AsideUpdateScheduler::StartTask,
++                             weak_factory_.GetWeakPtr()));
++  }
++
++  void StartTask(bool allowed) {
++    if (!user_task_) {
++      return;
++    }
++    if (!allowed) {
++      ScheduleNext();
++      return;
++    }
++    VLOG(1) << "Aside component update task started";
++    user_task_.Run(base::BindOnce(&AsideUpdateScheduler::ScheduleNext,
++                                  weak_factory_.GetWeakPtr()));
++  }
++
++  // RE: "ScheduleNext" (0xe570b16).
++  void ScheduleNext() {
++    VLOG(1) << "Aside component update task finished";
++    if (delay_.is_zero() || !user_task_) {
++      return;
++    }
++    timer_.Start(FROM_HERE, delay_,
++                 base::BindOnce(&AsideUpdateScheduler::RunTask,
++                                weak_factory_.GetWeakPtr()));
++  }
++
++  HealthGate gate_;
++  UserTask user_task_;
++  base::TimeDelta delay_;
++  base::OneShotTimer timer_;
++  base::WeakPtrFactory<AsideUpdateScheduler> weak_factory_{this};
++};
++
++}  // namespace
++
++// static
++AsideComponentUpdateService* AsideComponentUpdateService::GetInstance() {
++  static base::NoDestructor<AsideComponentUpdateService> instance;
++  return instance.get();
++}
++
++// static
++bool AsideComponentUpdateService::IsEnabled() {
++  return !base::CommandLine::ForCurrentProcess()->HasSwitch(kDisableSwitch);
++}
++
++// static
++std::string AsideComponentUpdateService::UpdateUrl() {
++  const std::string override =
++      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++          kUpdateUrlSwitch);
++  return override.empty() ? std::string(kAsideOmahaUrl) : override;
++}
++
++AsideComponentUpdateService::AsideComponentUpdateService() = default;
++AsideComponentUpdateService::~AsideComponentUpdateService() = default;
++
++void AsideComponentUpdateService::Start() {
++  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
++  if (started_ || !IsEnabled()) {
++    return;
++  }
++  if (!g_browser_process || !g_browser_process->local_state()) {
++    return;
++  }
++  started_ = true;
++
++  auto scheduler = std::make_unique<AsideUpdateScheduler>(
++      base::BindRepeating(&AsideComponentUpdateService::RunHealthGate,
++                          weak_factory_.GetWeakPtr()));
++  cus_ = ComponentUpdateServiceFactory(
++      base::MakeRefCounted<AsideConfigurator>(
++          base::CommandLine::ForCurrentProcess(),
++          g_browser_process->local_state()),
++      std::move(scheduler), /*brand=*/std::string());
++
++  RegisterAsideComponents(
++      cus_.get(),
++      base::BindRepeating(&AsideComponentUpdateService::OnComponentReady,
++                          weak_factory_.GetWeakPtr()));
++}
++
++void AsideComponentUpdateService::Shutdown() {
++  activation_timer_.Stop();
++  cus_.reset();
++  started_ = false;
++}
++
++void AsideComponentUpdateService::CheckNow(
++    base::OnceCallback<void(bool)> callback) {
++  if (!cus_) {
++    std::move(callback).Run(false);
++    return;
++  }
++  const std::string app_id =
++      AsideComponentAppId(AsideComponentKind::kDaemon);
++  if (app_id.empty()) {
++    std::move(callback).Run(false);
++    return;
++  }
++  cus_->GetOnDemandUpdater().OnDemandUpdate(
++      app_id, OnDemandUpdater::Priority::FOREGROUND,
++      base::BindOnce(
++          [](base::OnceCallback<void(bool)> cb, update_client::Error error) {
++            std::move(cb).Run(error == update_client::Error::NONE);
++          },
++          std::move(callback)));
++}
++
++base::FilePath AsideComponentUpdateService::InstallDirFor(
++    AsideComponentKind kind) const {
++  auto it = installed_.find(kind);
++  return it == installed_.end() ? base::FilePath() : it->second.install_dir;
++}
++
++base::Version AsideComponentUpdateService::VersionFor(
++    AsideComponentKind kind) const {
++  auto it = installed_.find(kind);
++  return it == installed_.end() ? base::Version() : it->second.version;
++}
++
++scoped_refptr<network::SharedURLLoaderFactory>
++AsideComponentUpdateService::LoaderFactory() const {
++  return g_browser_process ? g_browser_process->shared_url_loader_factory()
++                           : nullptr;
++}
++
++void AsideComponentUpdateService::OnComponentReady(
++    AsideComponentKind kind,
++    const base::Version& version,
++    const base::FilePath& install_dir) {
++  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
++  Installed& slot = installed_[kind];
++  const bool changed = slot.version != version;
++  slot.version = version;
++  slot.install_dir = install_dir;
++  if (kind == AsideComponentKind::kAgentManager) {
++    // RE: "Loaded Aside component extension id ".
++    VLOG(1) << "Loaded Aside component extension id "
++            << AsideComponentAppId(kind);
++    return;
++  }
++  if (kind == AsideComponentKind::kDaemon && changed) {
++    RestartDaemonForComponentUpdate(version, install_dir);
++  }
++}
++
++void AsideComponentUpdateService::RunHealthGate(
++    base::OnceCallback<void(bool)> allowed) {
++  scoped_refptr<network::SharedURLLoaderFactory> factory = LoaderFactory();
++  if (!factory) {
++    // RE: "Aside component update health gate skipped because URL loader
++    // factory is unavailable; running update task".
++    VLOG(1) << "Aside component update health gate skipped because URL loader "
++               "factory is unavailable; running update task";
++    std::move(allowed).Run(true);
++    return;
++  }
++  // RE: "CreateAsideDaemonHealthLoader".
++  auto loader = MakeDaemonLoader(DaemonUrl(kHealthPath), "GET", std::nullopt);
++  network::SimpleURLLoader* raw = loader.get();
++  raw->DownloadToString(
++      factory.get(),
++      base::BindOnce(&AsideComponentUpdateService::OnHealthGateResult,
++                     weak_factory_.GetWeakPtr(), std::move(allowed),
++                     std::move(loader)),
++      /*max_body_size=*/64 * 1024);
++}
++
++void AsideComponentUpdateService::OnHealthGateResult(
++    base::OnceCallback<void(bool)> allowed,
++    std::unique_ptr<network::SimpleURLLoader> loader,
++    std::optional<std::string> body) {
++  const int net_error = loader->NetError();
++  // RE: "Aside component update health gate result: net_error=",
++  // ", has_body=".
++  VLOG(1) << "Aside component update health gate result: net_error="
++          << net_error << ", has_body=" << body.has_value();
++  if (net_error == 0 && body) {
++    consecutive_health_failures_ = 0;
++    std::move(allowed).Run(true);
++    return;
++  }
++  if (++consecutive_health_failures_ >= kHealthGateFallbackThreshold) {
++    // RE: "Aside component update health gate reached fallback threshold;
++    // running update task anyway".
++    VLOG(1) << "Aside component update health gate reached fallback threshold; "
++               "running update task anyway";
++    consecutive_health_failures_ = 0;
++    std::move(allowed).Run(true);
++    return;
++  }
++  std::move(allowed).Run(false);
++}
++
++void AsideComponentUpdateService::RestartDaemonForComponentUpdate(
++    const base::Version& version,
++    const base::FilePath& install_dir) {
++  // RE: "Restarting Aside Daemon for component update; launch_dir=".
++  VLOG(1) << "Restarting Aside Daemon for component update; launch_dir="
++          << install_dir.value();
++  base::ThreadPool::PostTask(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
++      base::BindOnce(
++          &AppendAsideComponentUpdateLog,
++          base::StrCat(
++              {"Restarting Aside Daemon for component update; launch_dir=",
++               install_dir.value()})));
++  scoped_refptr<network::SharedURLLoaderFactory> factory = LoaderFactory();
++  if (!factory) {
++    ForceKillAndLaunch(version, install_dir);
++    return;
++  }
++  // RE: "Sending Aside Daemon graceful shutdown request for component
++  // restart" / "CreateAsideDaemonShutdownLoader".
++  VLOG(1) << "Sending Aside Daemon graceful shutdown request for component "
++             "restart";
++  AsideDaemonAuthorizer::GetInstance()->PostJsonWithAuthorization(
++      factory, kShutdownPath, "{}",
++      base::BindOnce(&AsideComponentUpdateService::OnDaemonShutdownRequested,
++                     weak_factory_.GetWeakPtr(), version, install_dir));
++}
++
++void AsideComponentUpdateService::OnDaemonShutdownRequested(
++    const base::Version& version,
++    const base::FilePath& install_dir,
++    std::optional<std::string> response) {
++  if (!response) {
++    // RE: "Failed to authorize Aside Daemon shutdown request during restart;
++    // falling back to force-kill".
++    LOG(WARNING) << "Failed to authorize Aside Daemon shutdown request during "
++                    "restart; falling back to force-kill";
++  } else {
++    // RE: "Aside Daemon graceful shutdown request succeeded during restart".
++    VLOG(1) << "Aside Daemon graceful shutdown request succeeded during "
++               "restart";
++  }
++  ForceKillAndLaunch(version, install_dir);
++}
++
++void AsideComponentUpdateService::ForceKillAndLaunch(
++    const base::Version& version,
++    const base::FilePath& install_dir) {
++  // RE: "QueueForceKillAsideDaemonProcessesForInstallDir" /
++  // "ScheduleLaunchPendingDaemonAfterForceKill".
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](base::FilePath dir) {
++            int matched = 0;
++            const int killed = ForceKillAsideDaemonProcesses(
++                AsideDaemonExecutableCandidates(dir), &matched);
++            AppendAsideComponentUpdateLog(base::StrCat(
++                {"Aside Daemon force-kill for ", dir.value(), " matched ",
++                 base::NumberToString(matched), " process(es), killed ",
++                 base::NumberToString(killed)}));
++            return killed;
++          },
++          install_dir),
++      base::BindOnce(
++          [](base::WeakPtr<AsideComponentUpdateService> self,
++             base::Version version, base::FilePath dir, int killed) {
++            if (!self) {
++              return;
++            }
++            VLOG(1) << "Aside Daemon force-kill for " << dir.value()
++                    << " killed " << killed;
++            self->LaunchPendingDaemon(version, dir);
++          },
++          weak_factory_.GetWeakPtr(), version, install_dir));
++}
++
++void AsideComponentUpdateService::LaunchPendingDaemon(
++    const base::Version& version,
++    const base::FilePath& install_dir) {
++  // RE: "Launching pending Aside Daemon version ".
++  VLOG(1) << "Launching pending Aside Daemon version " << version.GetString();
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(
++          [](base::FilePath dir) {
++            for (const base::FilePath& exe :
++                 AsideDaemonExecutableCandidates(dir)) {
++              if (!base::PathExists(exe)) {
++                continue;
++              }
++              std::string error;
++              if (!RepairAsideDaemonExecutablePermissions(exe, &error)) {
++                // RE: "Aside Daemon launch failed because permissions could
++                // not be repaired: ".
++                LOG(WARNING) << "Aside Daemon launch failed because "
++                                "permissions could not be repaired: "
++                             << exe.value();
++                return false;
++              }
++              base::LaunchOptions options;
++              options.current_directory = dir;
++              base::Process process =
++                  base::LaunchProcess(base::CommandLine(exe), options);
++              if (!process.IsValid()) {
++                // RE: "Failed to launch Aside Daemon from ".
++                LOG(WARNING) << "Failed to launch Aside Daemon from "
++                             << dir.value();
++                return false;
++              }
++              // RE: "Aside Daemon launch succeeded from ".
++              VLOG(1) << "Aside Daemon launch succeeded from " << dir.value();
++              return true;
++            }
++            // RE: "Aside Daemon launch failed because executable is missing: ".
++            LOG(WARNING) << "Aside Daemon launch failed because executable is "
++                            "missing: "
++                         << dir.value();
++            return false;
++          },
++          install_dir),
++      base::BindOnce(
++          [](base::WeakPtr<AsideComponentUpdateService> self,
++             base::Version version, base::FilePath dir, bool launched) {
++            if (!self || !launched) {
++              return;
++            }
++            self->ScheduleDaemonActivationVerification(version, dir);
++          },
++          weak_factory_.GetWeakPtr(), version, install_dir));
++}
++
++void AsideComponentUpdateService::ScheduleDaemonActivationVerification(
++    const base::Version& version,
++    const base::FilePath& install_dir) {
++  if (!version.IsValid() || install_dir.empty()) {
++    // RE: "Skipped Aside Daemon activation verification because the expected
++    // version or install dir is invalid".
++    LOG(WARNING) << "Skipped Aside Daemon activation verification because the "
++                    "expected version or install dir is invalid";
++    return;
++  }
++  // RE: "Started Aside Daemon activation verification; expected_version=".
++  VLOG(1) << "Started Aside Daemon activation verification; expected_version="
++          << version.GetString();
++  VerifyDaemonActivation(version, install_dir,
++                         kActivationVerificationAttempts);
++}
++
++void AsideComponentUpdateService::VerifyDaemonActivation(
++    const base::Version& version,
++    const base::FilePath& install_dir,
++    int attempts_left) {
++  if (attempts_left <= 0) {
++    // RE: "Aside Daemon activation verification timed out; expected_version=".
++    LOG(WARNING) << "Aside Daemon activation verification timed out; "
++                    "expected_version="
++                 << version.GetString();
++    return;
++  }
++  scoped_refptr<network::SharedURLLoaderFactory> factory = LoaderFactory();
++  if (!factory) {
++    return;
++  }
++  auto loader = MakeDaemonLoader(DaemonUrl(kHealthPath), "GET", std::nullopt);
++  network::SimpleURLLoader* raw = loader.get();
++  raw->DownloadToString(
++      factory.get(),
++      base::BindOnce(&AsideComponentUpdateService::OnActivationHealthResult,
++                     weak_factory_.GetWeakPtr(), version, install_dir,
++                     attempts_left, std::move(loader)),
++      /*max_body_size=*/64 * 1024);
++}
++
++void AsideComponentUpdateService::OnActivationHealthResult(
++    const base::Version& version,
++    const base::FilePath& install_dir,
++    int attempts_left,
++    std::unique_ptr<network::SimpleURLLoader> loader,
++    std::optional<std::string> body) {
++  if (body) {
++    std::optional<base::Value> json =
++        base::JSONReader::Read(*body, base::JSON_PARSE_RFC);
++    if (json && json->is_dict()) {
++      const std::string* reported = json->GetDict().FindString("version");
++      if (reported && base::Version(*reported) == version) {
++        // RE: "Verified active Aside Daemon version ".
++        VLOG(1) << "Verified active Aside Daemon version "
++                << version.GetString();
++        base::ThreadPool::PostTask(
++            FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
++            base::BindOnce(&AppendAsideComponentUpdateLog,
++                           base::StrCat({"Verified active Aside Daemon version ",
++                                         version.GetString()})));
++        return;
++      }
++    }
++  }
++  activation_timer_.Start(
++      FROM_HERE, kActivationVerificationInterval,
++      base::BindOnce(&AsideComponentUpdateService::VerifyDaemonActivation,
++                     weak_factory_.GetWeakPtr(), version, install_dir,
++                     attempts_left - 1));
++}
++
++}  // namespace component_updater
+diff --git a/chrome/browser/component_updater/aside_component_update_service.h b/chrome/browser/component_updater/aside_component_update_service.h
+new file mode 100644
+index 0000000000..b5e9c959da
+--- /dev/null
++++ b/chrome/browser/component_updater/aside_component_update_service.h
+@@ -0,0 +1,121 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_COMPONENT_UPDATER_ASIDE_COMPONENT_UPDATE_SERVICE_H_
++#define CHROME_BROWSER_COMPONENT_UPDATER_ASIDE_COMPONENT_UPDATE_SERVICE_H_
++
++#include <map>
++#include <optional>
++#include <memory>
++#include <string>
++
++#include "base/files/file_path.h"
++#include "base/functional/callback.h"
++#include "base/memory/weak_ptr.h"
++#include "base/no_destructor.h"
++#include "base/timer/timer.h"
++#include "base/version.h"
++#include "chrome/browser/component_updater/aside_component_installer.h"
++
++namespace network {
++class SharedURLLoaderFactory;
++class SimpleURLLoader;
++}  // namespace network
++
++namespace component_updater {
++
++class ComponentUpdateService;
++
++// Drives the bundled Aside components: it runs its own component update
++// service against the Aside Omaha endpoint, keeps the Aside Daemon running,
++// and restarts the daemon when a new build is installed.
++// RE: chrome/browser/component_updater/aside_component_update_service.cc
++// (Aside Framework 1.0.825.1, region 0x0491e180).
++class AsideComponentUpdateService {
++ public:
++  static AsideComponentUpdateService* GetInstance();
++
++  AsideComponentUpdateService(const AsideComponentUpdateService&) = delete;
++  AsideComponentUpdateService& operator=(const AsideComponentUpdateService&) =
++      delete;
++
++  // True unless --disable-bundled-aside-component was passed.
++  static bool IsEnabled();
++
++  // The Omaha update endpoint. Defaults to the original's endpoint and can be
++  // pointed at a replay server with --aside-component-update-url.
++  static std::string UpdateUrl();
++
++  // Creates the Aside component update service and registers the bundled
++  // components. Safe to call more than once.
++  void Start();
++
++  // Stops the scheduler; called on browser shutdown.
++  void Shutdown();
++
++  // Runs one update check now. `callback` gets the on-demand result of the
++  // daemon component (or false when the service is not running).
++  void CheckNow(base::OnceCallback<void(bool)> callback);
++
++  // Install directory of `kind`, or an empty path when it is not installed.
++  base::FilePath InstallDirFor(AsideComponentKind kind) const;
++  base::Version VersionFor(AsideComponentKind kind) const;
++
++  ComponentUpdateService* component_update_service() { return cus_.get(); }
++
++ private:
++  friend class base::NoDestructor<AsideComponentUpdateService>;
++
++  struct Installed {
++    base::Version version;
++    base::FilePath install_dir;
++  };
++
++  AsideComponentUpdateService();
++  ~AsideComponentUpdateService();
++
++  void OnComponentReady(AsideComponentKind kind,
++                        const base::Version& version,
++                        const base::FilePath& install_dir);
++
++  // Health gate in front of every scheduled update task.
++  void RunHealthGate(base::OnceCallback<void(bool)> allowed);
++  void OnHealthGateResult(base::OnceCallback<void(bool)> allowed,
++                          std::unique_ptr<network::SimpleURLLoader> loader,
++                          std::optional<std::string> body);
++
++  // Daemon lifecycle.
++  void RestartDaemonForComponentUpdate(const base::Version& version,
++                                       const base::FilePath& install_dir);
++  void OnDaemonShutdownRequested(const base::Version& version,
++                                 const base::FilePath& install_dir,
++                                 std::optional<std::string> response);
++  void ForceKillAndLaunch(const base::Version& version,
++                          const base::FilePath& install_dir);
++  void LaunchPendingDaemon(const base::Version& version,
++                           const base::FilePath& install_dir);
++  void ScheduleDaemonActivationVerification(const base::Version& version,
++                                            const base::FilePath& install_dir);
++  void VerifyDaemonActivation(const base::Version& version,
++                              const base::FilePath& install_dir,
++                              int attempts_left);
++  void OnActivationHealthResult(const base::Version& version,
++                                const base::FilePath& install_dir,
++                                int attempts_left,
++                                std::unique_ptr<network::SimpleURLLoader> loader,
++                                std::optional<std::string> body);
++
++  scoped_refptr<network::SharedURLLoaderFactory> LoaderFactory() const;
++
++  std::unique_ptr<ComponentUpdateService> cus_;
++  std::map<AsideComponentKind, Installed> installed_;
++  int consecutive_health_failures_ = 0;
++  bool started_ = false;
++  base::OneShotTimer activation_timer_;
++  base::WeakPtrFactory<AsideComponentUpdateService> weak_factory_{this};
++};
++
++}  // namespace component_updater
++
++#endif  // CHROME_BROWSER_COMPONENT_UPDATER_ASIDE_COMPONENT_UPDATE_SERVICE_H_
+diff --git a/chrome/browser/component_updater/aside_component_update_service_helpers.cc b/chrome/browser/component_updater/aside_component_update_service_helpers.cc
+new file mode 100644
+index 0000000000..6c01f9b61a
+--- /dev/null
++++ b/chrome/browser/component_updater/aside_component_update_service_helpers.cc
+@@ -0,0 +1,171 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/component_updater/aside_component_update_service_helpers.h"
++
++#include <signal.h>
++
++#include <string>
++#include <vector>
++
++#include "base/files/file_enumerator.h"
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/logging.h"
++#include "base/path_service.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/strcat.h"
++#include "chrome/common/chrome_paths.h"
++
++namespace component_updater {
++
++namespace {
++
++// RE: "aside_component_update.log" (0xe5720dd).
++constexpr base::FilePath::CharType kLogFileName[] =
++    FILE_PATH_LITERAL("aside_component_update.log");
++
++// RE: "Aside Daemon.app" / "Contents" / "MacOS" / "aside-daemon".
++constexpr base::FilePath::CharType kMacBundleName[] =
++    FILE_PATH_LITERAL("Aside Daemon.app");
++constexpr base::FilePath::CharType kMacContents[] =
++    FILE_PATH_LITERAL("Contents");
++constexpr base::FilePath::CharType kMacExecutableDir[] =
++    FILE_PATH_LITERAL("MacOS");
++constexpr base::FilePath::CharType kDaemonExecutable[] =
++    FILE_PATH_LITERAL("aside-daemon");
++
++}  // namespace
++
++void AppendAsideComponentUpdateLog(const std::string& line) {
++  base::FilePath dir;
++  if (!base::PathService::Get(chrome::DIR_USER_DATA, &dir) || dir.empty()) {
++    // RE: "Failed to resolve Aside component update log directory".
++    LOG(WARNING) << "Failed to resolve Aside component update log directory";
++    return;
++  }
++  const base::FilePath path = dir.Append(kLogFileName);
++  const std::string entry = base::StrCat({line, "\n"});
++  // base::AppendToFile opens with FLAG_OPEN, which fails while the log does
++  // not exist yet, so the first line written in a fresh profile would be lost.
++  if (!base::PathExists(path)) {
++    if (!base::WriteFile(path, entry)) {
++      LOG(WARNING) << "Failed to create Aside component update log at "
++                   << path.value();
++    }
++    return;
++  }
++  if (!base::AppendToFile(path, entry)) {
++    // RE: "Failed to append Aside component update log to ".
++    LOG(WARNING) << "Failed to append Aside component update log to "
++                 << path.value();
++  }
++}
++
++std::vector<base::FilePath> AsideDaemonExecutableCandidates(
++    const base::FilePath& install_dir) {
++  std::vector<base::FilePath> candidates;
++  if (install_dir.empty()) {
++    return candidates;
++  }
++  // The macOS layout that ships in the published CRX.
++  candidates.push_back(install_dir.Append(kMacBundleName)
++                           .Append(kMacContents)
++                           .Append(kMacExecutableDir)
++                           .Append(kDaemonExecutable));
++  // The layouts a POSIX component can use.
++  candidates.push_back(install_dir.Append(kDaemonExecutable));
++  candidates.push_back(
++      install_dir.Append(FILE_PATH_LITERAL("bin")).Append(kDaemonExecutable));
++  return candidates;
++}
++
++bool RepairAsideDaemonExecutablePermissions(const base::FilePath& executable,
++                                            std::string* error) {
++  int mode = 0;
++  if (!base::GetPosixFilePermissions(executable, &mode)) {
++    // RE: "Failed to read Aside Daemon executable permissions: ".
++    if (error) {
++      *error = "Failed to read Aside Daemon executable permissions: " +
++               executable.value();
++    }
++    return false;
++  }
++  const int wanted = mode | base::FILE_PERMISSION_EXECUTE_BY_USER;
++  if (wanted == mode) {
++    return true;
++  }
++  if (!base::SetPosixFilePermissions(executable, wanted)) {
++    // RE: "Failed to repair Aside Daemon executable permissions: ".
++    if (error) {
++      *error = "Failed to repair Aside Daemon executable permissions: " +
++               executable.value();
++    }
++    return false;
++  }
++  return true;
++}
++
++int ForceKillAsideDaemonProcesses(const std::vector<base::FilePath>& candidates,
++                                  int* matched) {
++  int matched_count = 0;
++  int killed = 0;
++  if (candidates.empty()) {
++    // RE: "Skipped Aside Daemon force-kill because expected executable path
++    // list is empty".
++    LOG(WARNING) << "Skipped Aside Daemon force-kill because expected "
++                    "executable path list is empty";
++    if (matched) {
++      *matched = 0;
++    }
++    return 0;
++  }
++  for (const base::FilePath& candidate : candidates) {
++    // RE: "Aside Daemon force-kill expected executable candidate: ".
++    VLOG(1) << "Aside Daemon force-kill expected executable candidate: "
++            << candidate.value();
++  }
++
++  base::FileEnumerator processes(base::FilePath(FILE_PATH_LITERAL("/proc")),
++                                 /*recursive=*/false,
++                                 base::FileEnumerator::DIRECTORIES);
++  for (base::FilePath entry = processes.Next(); !entry.empty();
++       entry = processes.Next()) {
++    int pid = 0;
++    if (!base::StringToInt(entry.BaseName().value(), &pid) || pid <= 0) {
++      continue;
++    }
++    base::FilePath exe;
++    if (!base::ReadSymbolicLink(entry.Append(FILE_PATH_LITERAL("exe")), &exe)) {
++      // Almost every process here belongs to somebody else; only complain
++      // about the ones we were asked about.
++      continue;
++    }
++    bool is_candidate = false;
++    for (const base::FilePath& candidate : candidates) {
++      if (exe == candidate) {
++        is_candidate = true;
++        break;
++      }
++    }
++    if (!is_candidate) {
++      continue;
++    }
++    ++matched_count;
++    if (kill(pid, SIGKILL) == 0) {
++      // RE: "Force-killed Aside Daemon PID ".
++      VLOG(1) << "Force-killed Aside Daemon PID " << pid;
++      ++killed;
++    } else {
++      // RE: "Failed to force-kill Aside Daemon PID ".
++      LOG(WARNING) << "Failed to force-kill Aside Daemon PID " << pid;
++    }
++  }
++  if (matched) {
++    *matched = matched_count;
++  }
++  return killed;
++}
++
++}  // namespace component_updater
+diff --git a/chrome/browser/component_updater/aside_component_update_service_helpers.h b/chrome/browser/component_updater/aside_component_update_service_helpers.h
+new file mode 100644
+index 0000000000..3f90a95a19
+--- /dev/null
++++ b/chrome/browser/component_updater/aside_component_update_service_helpers.h
+@@ -0,0 +1,44 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_COMPONENT_UPDATER_ASIDE_COMPONENT_UPDATE_SERVICE_HELPERS_H_
++#define CHROME_BROWSER_COMPONENT_UPDATER_ASIDE_COMPONENT_UPDATE_SERVICE_HELPERS_H_
++
++#include <string>
++#include <vector>
++
++#include "base/files/file_path.h"
++
++// Blocking-thread helpers shared by the Aside component installer and the
++// Aside component update service.
++// RE: chrome/browser/component_updater/aside_component_update_service_helpers.cc
++// (Aside Framework 1.0.825.1, region 0x0491e180 / 0x04a357a0).
++namespace component_updater {
++
++// Appends `line` to <user data dir>/aside_component_update.log. Runs on a
++// blocking sequence.
++void AppendAsideComponentUpdateLog(const std::string& line);
++
++// Every path the Aside Daemon executable can live at inside `install_dir`.
++// The macOS original looks inside "Aside Daemon.app/Contents/MacOS"; the
++// Linux layout keeps the executable at the top of the component or under
++// bin/. All candidates are returned so a force-kill can match any of them.
++std::vector<base::FilePath> AsideDaemonExecutableCandidates(
++    const base::FilePath& install_dir);
++
++// Gives `executable` the owner-execute bit if it does not have it. Returns
++// false and fills `error` when the permissions could not be read or written.
++bool RepairAsideDaemonExecutablePermissions(const base::FilePath& executable,
++                                            std::string* error);
++
++// Kills every running process whose executable is one of `candidates`.
++// `matched` receives the number of processes that matched. Returns the number
++// actually killed. Never touches a process outside `candidates`.
++int ForceKillAsideDaemonProcesses(
++    const std::vector<base::FilePath>& candidates,
++    int* matched);
++
++}  // namespace component_updater
++
++#endif  // CHROME_BROWSER_COMPONENT_UPDATER_ASIDE_COMPONENT_UPDATE_SERVICE_HELPERS_H_
+diff --git a/chrome/browser/component_updater/registration.cc b/chrome/browser/component_updater/registration.cc
+index 78bb87ef64..385dc8f1bc 100644
+--- a/chrome/browser/component_updater/registration.cc
++++ b/chrome/browser/component_updater/registration.cc
+@@ -16,6 +16,7 @@
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/buildflags.h"
+ #include "chrome/browser/component_updater/app_provisioning_component_installer.h"
++#include "chrome/browser/component_updater/aside_component_update_service.h"
+ #include "chrome/browser/component_updater/captcha_provider_component_installer.h"
+ #include "chrome/browser/component_updater/chrome_origin_trials_component_installer.h"
+ #include "chrome/browser/component_updater/commerce_heuristics_component_installer.h"
+@@ -229,6 +230,10 @@ void RegisterComponentsForUpdate() {
+ 
+   MaybeRegisterPlatformRuntimeComponent(cus);
+ 
++  // Aside runs its own component update service against its own Omaha
++  // endpoint, so it is started here rather than registered against `cus`.
++  AsideComponentUpdateService::GetInstance()->Start();
++
+   base::FilePath path;
+   if (base::PathService::Get(chrome::DIR_USER_DATA, &path)) {
+     if (!history_embeddings::IsHistoryEmbeddingsFeatureEnabled()) {
+diff --git a/chrome/browser/sync/BUILD.gn b/chrome/browser/sync/BUILD.gn
+index 5fc29fb82e..491321c8c9 100644
+--- a/chrome/browser/sync/BUILD.gn
++++ b/chrome/browser/sync/BUILD.gn
+@@ -13,6 +13,16 @@ source_set("sync") {
+   sources = [
+     "account_bookmark_sync_service_factory.cc",
+     "account_bookmark_sync_service_factory.h",
++    "aside_sync_auth_manager.cc",
++    "aside_sync_auth_manager.h",
++    "aside_sync_auth_manager_factory.cc",
++    "aside_sync_auth_manager_factory.h",
++    "aside_sync_encryption_controller.cc",
++    "aside_sync_encryption_controller.h",
++    "aside_sync_refresh_watchdog.cc",
++    "aside_sync_refresh_watchdog.h",
++    "aside_website_storage_kinds.cc",
++    "aside_website_storage_kinds.h",
+     "chrome_sync_client.cc",
+     "chrome_sync_client.h",
+     "chrome_sync_controller_builder.cc",
+@@ -173,6 +183,11 @@ source_set("sync") {
+     # here.
+     "//chrome/browser/android/webapk/proto",
+     "//components/webapps/browser",
++
++    # Aside: the daemon-backed sync auth / encryption services fetch tokens
++    # over loopback.
++    "//google_apis",
++    "//services/network/public/cpp",
+   ]
+ 
+   allow_circular_includes_from = []
+@@ -296,6 +311,7 @@ source_set("sync") {
+ source_set("factories") {
+   sources = [
+     "data_type_store_service_factory.h",
++    "device_info_sync_service_factory.h",
+     "sync_service_factory.h",
+   ]
+   public_deps = [
+diff --git a/chrome/browser/sync/aside_sync_auth_manager.cc b/chrome/browser/sync/aside_sync_auth_manager.cc
+new file mode 100644
+index 0000000000..c6aa0b7991
+--- /dev/null
++++ b/chrome/browser/sync/aside_sync_auth_manager.cc
+@@ -0,0 +1,297 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/sync/aside_sync_auth_manager.h"
++
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/functional/callback_helpers.h"
++#include "base/json/json_reader.h"
++#include "base/logging.h"
++#include "base/strings/stringprintf.h"
++#include "base/values.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/signin/aside_daemon_authorizer.h"
++#include "chrome/browser/sync/sync_service_factory.h"
++#include "components/prefs/pref_service.h"
++#include "content/public/browser/storage_partition.h"
++#include "google_apis/gaia/google_service_auth_error.h"
++#include "net/base/load_flags.h"
++#include "net/http/http_request_headers.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
++#include "services/network/public/cpp/resource_request.h"
++#include "services/network/public/cpp/shared_url_loader_factory.h"
++#include "services/network/public/cpp/simple_url_loader.h"
++#include "services/network/public/mojom/url_response_head.mojom.h"
++#include "url/gurl.h"
++
++namespace {
++
++// The pref the Aside settings page reads (registered in browser_prefs.cc).
++constexpr char kDiagnosticPref[] = "aside.sync_auth_diagnostic_message";
++constexpr char kAccountIdPref[] = "aside.account_id";
++
++// Original diagnostic strings, 0xe4bba12 - 0xe4bbd6d.
++constexpr char kSyncServerAuthError[] =
++    "Sync server auth error. Refreshing access token...";
++constexpr char kSyncServerUnavailable[] =
++    "Sync server unavailable or request rejected.";
++constexpr char kSessionRejected[] =
++    "Daemon auth: local Aside session was rejected. Sign in again.";
++constexpr char kWaitingForSession[] =
++    "Chromium is waiting for an Aside session.";
++constexpr char kWaitingForLocalAccountSecurity[] =
++    "Chromium is waiting for local account security.";
++constexpr char kProfileBindingIncomplete[] =
++    "Chromium Aside profile binding is incomplete.";
++constexpr char kRequestingAccessToken[] =
++    "Daemon auth: requesting sync access token...";
++constexpr char kWaitingForAccessToken[] =
++    "Daemon auth: waiting for sync access token...";
++constexpr char kRequestingDaemonAuthorization[] =
++    "Daemon auth: requesting daemon authorization...";
++constexpr char kFailedToAuthorize[] =
++    "Daemon auth: failed to authorize local daemon request.";
++constexpr char kDaemonAuthorizationFailed[] =
++    "Aside daemon authorization failed.";
++constexpr char kCannotReachDaemon[] =
++    "Daemon auth: can't reach the local Aside daemon.";
++constexpr char kNoAccessTokenReturned[] =
++    "Daemon auth: failed to return a sync access token.";
++constexpr char kAccessTokenRequestFailed[] =
++    "Aside daemon access token request failed.";
++constexpr char kMalformedTokenData[] =
++    "Daemon auth: returned malformed sync access token data.";
++constexpr char kMalformedTokenResponse[] =
++    "Malformed Aside daemon access token response.";
++
++// Original request format strings, 0xe4bbd9b / 0xe4bbdbf.
++constexpr char kAccessTokenPathFormat[] = "%s/auth/access-token?accountId=%d%s";
++constexpr char kForceRefreshSuffix[] = "&forceRefresh=1";
++
++constexpr char kAccessTokenKey[] = "accessToken";
++constexpr char kExpiresAtKey[] = "expiresAt";
++
++constexpr base::TimeDelta kExpiryMargin = base::Seconds(60);
++constexpr base::TimeDelta kRetryDelay = base::Seconds(30);
++constexpr size_t kMaxBody = 256 * 1024;
++
++constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotation =
++    net::DefineNetworkTrafficAnnotation("aside_sync_auth_manager", R"(
++        semantics {
++          sender: "Aside sync auth manager"
++          description: "Asks the local Aside daemon for the access token the "
++                       "sync engine uses against the Aside sync server."
++          trigger: "Sync engine start-up or an auth error from the server."
++          data: "Aside account id."
++          destination: LOCAL
++        }
++        policy {
++          cookies_allowed: NO
++          setting: "Not user controllable."
++          policy_exception_justification: "Loopback only."
++        })");
++
++}  // namespace
++
++AsideSyncAuthManager::AsideSyncAuthManager(Profile* profile)
++    : profile_(profile) {
++  if (syncer::SyncService* sync =
++          SyncServiceFactory::GetForProfile(profile_)) {
++    sync_observation_.Observe(sync);
++  }
++}
++
++AsideSyncAuthManager::~AsideSyncAuthManager() = default;
++
++void AsideSyncAuthManager::Shutdown() {
++  sync_observation_.Reset();
++  retry_timer_.Stop();
++}
++
++int AsideSyncAuthManager::AccountId() const {
++  PrefService* prefs = profile_ ? profile_->GetPrefs() : nullptr;
++  if (!prefs || !prefs->FindPreference(kAccountIdPref)) {
++    return -1;
++  }
++  return prefs->GetInteger(kAccountIdPref);
++}
++
++void AsideSyncAuthManager::SetDiagnostic(const std::string& message) {
++  diagnostic_message_ = message;
++  if (PrefService* prefs = profile_ ? profile_->GetPrefs() : nullptr) {
++    prefs->SetString(kDiagnosticPref, message);
++  }
++  VLOG(1) << message;
++}
++
++void AsideSyncAuthManager::RequestAccessToken(bool force_refresh,
++                                              AccessTokenCallback callback) {
++  if (!force_refresh && !cached_access_token_.empty() &&
++      base::Time::Now() + kExpiryMargin < cached_expires_at_) {
++    std::move(callback).Run(cached_access_token_, cached_expires_at_);
++    return;
++  }
++  const int account_id = AccountId();
++  if (account_id < 0) {
++    // The profile has no bound Aside account yet.
++    SetDiagnostic(profile_->GetPrefs()->GetString("aside.account_user_id")
++                          .empty()
++                      ? kWaitingForSession
++                      : kProfileBindingIncomplete);
++    std::move(callback).Run(std::nullopt, base::Time());
++    return;
++  }
++  if (request_in_flight_) {
++    SetDiagnostic(kWaitingForAccessToken);
++    std::move(callback).Run(std::nullopt, base::Time());
++    return;
++  }
++  request_in_flight_ = true;
++  SetDiagnostic(kRequestingDaemonAuthorization);
++
++  scoped_refptr<network::SharedURLLoaderFactory> factory =
++      profile_->GetDefaultStoragePartition()
++          ->GetURLLoaderFactoryForBrowserProcess();
++  AsideDaemonAuthorizer::GetInstance()->GetAuthorization(
++      factory,
++      base::BindOnce(
++          &AsideSyncAuthManager::RequestAccessTokenWithAuthorization,
++          weak_factory_.GetWeakPtr(), force_refresh, std::move(callback)));
++}
++
++void AsideSyncAuthManager::RequestAccessTokenWithAuthorization(
++    bool force_refresh,
++    AccessTokenCallback callback,
++    std::optional<std::string> authorization) {
++  if (!authorization) {
++    request_in_flight_ = false;
++    SetDiagnostic(kFailedToAuthorize);
++    LOG(WARNING) << kDaemonAuthorizationFailed;
++    std::move(callback).Run(std::nullopt, base::Time());
++    return;
++  }
++  SetDiagnostic(kRequestingAccessToken);
++
++  const std::string url = base::StringPrintf(
++      kAccessTokenPathFormat, AsideDaemonAuthorizer::DaemonBaseUrl().c_str(),
++      AccountId(), force_refresh ? kForceRefreshSuffix : "");
++  auto request = std::make_unique<network::ResourceRequest>();
++  request->url = GURL(url);
++  request->method = "GET";
++  request->load_flags = net::LOAD_DISABLE_CACHE | net::LOAD_BYPASS_CACHE;
++  request->credentials_mode = network::mojom::CredentialsMode::kOmit;
++  request->headers.SetHeader(net::HttpRequestHeaders::kAuthorization,
++                             *authorization);
++  auto loader =
++      network::SimpleURLLoader::Create(std::move(request), kTrafficAnnotation);
++  loader->SetAllowHttpErrorResults(true);
++  network::SimpleURLLoader* raw = loader.get();
++  raw->DownloadToString(
++      profile_->GetDefaultStoragePartition()
++          ->GetURLLoaderFactoryForBrowserProcess()
++          .get(),
++      base::BindOnce(&AsideSyncAuthManager::OnAccessTokenFetched,
++                     weak_factory_.GetWeakPtr(), std::move(callback),
++                     std::move(loader)),
++      kMaxBody);
++}
++
++void AsideSyncAuthManager::OnAccessTokenFetched(
++    AccessTokenCallback callback,
++    std::unique_ptr<network::SimpleURLLoader> loader,
++    std::optional<std::string> body) {
++  request_in_flight_ = false;
++  const int response_code =
++      loader->ResponseInfo() && loader->ResponseInfo()->headers
++          ? loader->ResponseInfo()->headers->response_code()
++          : 0;
++  if (!body) {
++    SetDiagnostic(kCannotReachDaemon);
++    LOG(WARNING) << kAccessTokenRequestFailed;
++    std::move(callback).Run(std::nullopt, base::Time());
++    return;
++  }
++  if (response_code == 401) {
++    // The daemon answers 401 once the local Aside session is revoked.
++    SetDiagnostic(kSessionRejected);
++    cached_access_token_.clear();
++    std::move(callback).Run(std::nullopt, base::Time());
++    return;
++  }
++  if (response_code != 200) {
++    SetDiagnostic(kNoAccessTokenReturned);
++    LOG(WARNING) << kAccessTokenRequestFailed;
++    std::move(callback).Run(std::nullopt, base::Time());
++    return;
++  }
++  std::optional<base::Value> json =
++      base::JSONReader::Read(*body, base::JSON_PARSE_RFC);
++  if (!json || !json->is_dict()) {
++    SetDiagnostic(kMalformedTokenData);
++    LOG(WARNING) << kMalformedTokenResponse;
++    std::move(callback).Run(std::nullopt, base::Time());
++    return;
++  }
++  const std::string* token = json->GetDict().FindString(kAccessTokenKey);
++  if (!token || token->empty()) {
++    SetDiagnostic(kMalformedTokenData);
++    LOG(WARNING) << kMalformedTokenResponse;
++    std::move(callback).Run(std::nullopt, base::Time());
++    return;
++  }
++  base::Time expires_at;
++  if (const std::string* expires =
++          json->GetDict().FindString(kExpiresAtKey)) {
++    if (!base::Time::FromString(expires->c_str(), &expires_at)) {
++      expires_at = base::Time();
++    }
++  } else if (std::optional<double> seconds =
++                 json->GetDict().FindDouble(kExpiresAtKey)) {
++    expires_at = base::Time::UnixEpoch() + base::Seconds(*seconds);
++  }
++  cached_access_token_ = *token;
++  cached_expires_at_ = expires_at;
++  SetDiagnostic(std::string());
++  std::move(callback).Run(cached_access_token_, cached_expires_at_);
++}
++
++void AsideSyncAuthManager::ScheduleAccessTokenRequest(bool force_refresh) {
++  if (retry_timer_.IsRunning()) {
++    return;
++  }
++  retry_timer_.Start(
++      FROM_HERE, kRetryDelay,
++      base::BindOnce(
++          [](base::WeakPtr<AsideSyncAuthManager> self, bool force) {
++            if (self) {
++              self->RequestAccessToken(force, base::DoNothing());
++            }
++          },
++          weak_factory_.GetWeakPtr(), force_refresh));
++}
++
++void AsideSyncAuthManager::OnStateChanged(syncer::SyncService* sync) {
++  const GoogleServiceAuthError error = sync->GetAuthError();
++  if (error.state() ==
++      GoogleServiceAuthError::State::INVALID_GAIA_CREDENTIALS) {
++    SetDiagnostic(kSyncServerAuthError);
++    cached_access_token_.clear();
++    ScheduleAccessTokenRequest(/*force_refresh=*/true);
++    return;
++  }
++  if (error.state() != GoogleServiceAuthError::State::NONE) {
++    SetDiagnostic(kSyncServerUnavailable);
++    return;
++  }
++  if (sync->GetTransportState() ==
++      syncer::SyncService::TransportState::PAUSED) {
++    SetDiagnostic(kWaitingForLocalAccountSecurity);
++  }
++}
++
++void AsideSyncAuthManager::OnSyncShutdown(syncer::SyncService* sync) {
++  sync_observation_.Reset();
++}
+diff --git a/chrome/browser/sync/aside_sync_auth_manager.h b/chrome/browser/sync/aside_sync_auth_manager.h
+new file mode 100644
+index 0000000000..00b54c8f57
+--- /dev/null
++++ b/chrome/browser/sync/aside_sync_auth_manager.h
+@@ -0,0 +1,90 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_SYNC_ASIDE_SYNC_AUTH_MANAGER_H_
++#define CHROME_BROWSER_SYNC_ASIDE_SYNC_AUTH_MANAGER_H_
++
++#include <memory>
++#include <optional>
++#include <string>
++
++#include "base/functional/callback.h"
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/scoped_observation.h"
++#include "base/time/time.h"
++#include "base/timer/timer.h"
++#include "components/keyed_service/core/keyed_service.h"
++#include "components/sync/service/sync_service.h"
++#include "components/sync/service/sync_service_observer.h"
++
++class Profile;
++
++namespace network {
++class SimpleURLLoader;
++}
++
++// Feeds the sync engine with access tokens minted by the local Aside daemon
++// instead of by GAIA, and mirrors its own progress into the profile pref
++// "aside.sync_auth_diagnostic_message" that the Aside settings page reads.
++//
++// GET <daemon>/auth/access-token?accountId=<id>[&forceRefresh=1]
++//   -> {accountId, accessToken, expiresAt}
++// A 401 means the local Aside session was revoked.
++//
++// RE: chrome/browser/sync/aside_sync_auth_manager.cc (Aside Framework
++// 1.0.825.1, region 0x04768830).
++class AsideSyncAuthManager : public KeyedService,
++                             public syncer::SyncServiceObserver {
++ public:
++  using AccessTokenCallback =
++      base::OnceCallback<void(std::optional<std::string> access_token,
++                              base::Time expires_at)>;
++
++  explicit AsideSyncAuthManager(Profile* profile);
++  ~AsideSyncAuthManager() override;
++
++  AsideSyncAuthManager(const AsideSyncAuthManager&) = delete;
++  AsideSyncAuthManager& operator=(const AsideSyncAuthManager&) = delete;
++
++  // Asks the daemon for a sync access token. Cached until shortly before it
++  // expires unless `force_refresh` is set.
++  void RequestAccessToken(bool force_refresh, AccessTokenCallback callback);
++
++  // The last message written to aside.sync_auth_diagnostic_message.
++  std::string diagnostic_message() const { return diagnostic_message_; }
++
++  // KeyedService:
++  void Shutdown() override;
++
++  // syncer::SyncServiceObserver:
++  void OnStateChanged(syncer::SyncService* sync) override;
++  void OnSyncShutdown(syncer::SyncService* sync) override;
++
++ private:
++  // RE: "ScheduleAccessTokenRequest".
++  void ScheduleAccessTokenRequest(bool force_refresh);
++  // RE: "RequestAccessTokenWithAuthorization".
++  void RequestAccessTokenWithAuthorization(
++      bool force_refresh,
++      AccessTokenCallback callback,
++      std::optional<std::string> authorization);
++  void OnAccessTokenFetched(AccessTokenCallback callback,
++                            std::unique_ptr<network::SimpleURLLoader> loader,
++                            std::optional<std::string> body);
++  void SetDiagnostic(const std::string& message);
++  int AccountId() const;
++
++  const raw_ptr<Profile> profile_;
++  std::string diagnostic_message_;
++  std::string cached_access_token_;
++  base::Time cached_expires_at_;
++  bool request_in_flight_ = false;
++  base::OneShotTimer retry_timer_;
++  base::ScopedObservation<syncer::SyncService, syncer::SyncServiceObserver>
++      sync_observation_{this};
++  base::WeakPtrFactory<AsideSyncAuthManager> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_SYNC_ASIDE_SYNC_AUTH_MANAGER_H_
+diff --git a/chrome/browser/sync/aside_sync_auth_manager_factory.cc b/chrome/browser/sync/aside_sync_auth_manager_factory.cc
+new file mode 100644
+index 0000000000..445f2c60ae
+--- /dev/null
++++ b/chrome/browser/sync/aside_sync_auth_manager_factory.cc
+@@ -0,0 +1,122 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/sync/aside_sync_auth_manager_factory.h"
++
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/sync/aside_sync_auth_manager.h"
++#include "chrome/browser/sync/aside_sync_encryption_controller.h"
++#include "chrome/browser/sync/aside_sync_refresh_watchdog.h"
++#include "chrome/browser/sync/sync_service_factory.h"
++
++// static
++AsideSyncAuthManager* AsideSyncAuthManagerFactory::GetForProfile(
++    Profile* profile) {
++  return static_cast<AsideSyncAuthManager*>(
++      GetInstance()->GetServiceForBrowserContext(profile, true));
++}
++
++// static
++AsideSyncAuthManagerFactory* AsideSyncAuthManagerFactory::GetInstance() {
++  static base::NoDestructor<AsideSyncAuthManagerFactory> instance;
++  return instance.get();
++}
++
++AsideSyncAuthManagerFactory::AsideSyncAuthManagerFactory()
++    : ProfileKeyedServiceFactory(
++          "AsideSyncAuthManager",
++          ProfileSelections::Builder()
++              .WithRegular(ProfileSelection::kOriginalOnly)
++              .Build()) {
++  DependsOn(SyncServiceFactory::GetInstance());
++}
++
++AsideSyncAuthManagerFactory::~AsideSyncAuthManagerFactory() = default;
++
++std::unique_ptr<KeyedService>
++AsideSyncAuthManagerFactory::BuildServiceInstanceForBrowserContext(
++    content::BrowserContext* context) const {
++  return std::make_unique<AsideSyncAuthManager>(
++      Profile::FromBrowserContext(context));
++}
++
++bool AsideSyncAuthManagerFactory::ServiceIsCreatedWithBrowserContext() const {
++  return true;
++}
++
++// static
++AsideSyncEncryptionController*
++AsideSyncEncryptionControllerFactory::GetForProfile(Profile* profile) {
++  return static_cast<AsideSyncEncryptionController*>(
++      GetInstance()->GetServiceForBrowserContext(profile, true));
++}
++
++// static
++AsideSyncEncryptionControllerFactory*
++AsideSyncEncryptionControllerFactory::GetInstance() {
++  static base::NoDestructor<AsideSyncEncryptionControllerFactory> instance;
++  return instance.get();
++}
++
++AsideSyncEncryptionControllerFactory::AsideSyncEncryptionControllerFactory()
++    : ProfileKeyedServiceFactory(
++          "AsideSyncEncryptionController",
++          ProfileSelections::Builder()
++              .WithRegular(ProfileSelection::kOriginalOnly)
++              .Build()) {
++  DependsOn(SyncServiceFactory::GetInstance());
++}
++
++AsideSyncEncryptionControllerFactory::~AsideSyncEncryptionControllerFactory() =
++    default;
++
++std::unique_ptr<KeyedService>
++AsideSyncEncryptionControllerFactory::BuildServiceInstanceForBrowserContext(
++    content::BrowserContext* context) const {
++  return std::make_unique<AsideSyncEncryptionController>(
++      Profile::FromBrowserContext(context));
++}
++
++bool AsideSyncEncryptionControllerFactory::ServiceIsCreatedWithBrowserContext()
++    const {
++  return true;
++}
++
++// static
++AsideSyncRefreshWatchdog* AsideSyncRefreshWatchdogFactory::GetForProfile(
++    Profile* profile) {
++  return static_cast<AsideSyncRefreshWatchdog*>(
++      GetInstance()->GetServiceForBrowserContext(profile, true));
++}
++
++// static
++AsideSyncRefreshWatchdogFactory*
++AsideSyncRefreshWatchdogFactory::GetInstance() {
++  static base::NoDestructor<AsideSyncRefreshWatchdogFactory> instance;
++  return instance.get();
++}
++
++AsideSyncRefreshWatchdogFactory::AsideSyncRefreshWatchdogFactory()
++    : ProfileKeyedServiceFactory(
++          "AsideSyncRefreshWatchdog",
++          ProfileSelections::Builder()
++              .WithRegular(ProfileSelection::kOriginalOnly)
++              .Build()) {
++  DependsOn(SyncServiceFactory::GetInstance());
++  DependsOn(AsideSyncAuthManagerFactory::GetInstance());
++}
++
++AsideSyncRefreshWatchdogFactory::~AsideSyncRefreshWatchdogFactory() = default;
++
++std::unique_ptr<KeyedService>
++AsideSyncRefreshWatchdogFactory::BuildServiceInstanceForBrowserContext(
++    content::BrowserContext* context) const {
++  return std::make_unique<AsideSyncRefreshWatchdog>(
++      Profile::FromBrowserContext(context));
++}
++
++bool AsideSyncRefreshWatchdogFactory::ServiceIsCreatedWithBrowserContext()
++    const {
++  return true;
++}
+diff --git a/chrome/browser/sync/aside_sync_auth_manager_factory.h b/chrome/browser/sync/aside_sync_auth_manager_factory.h
+new file mode 100644
+index 0000000000..9c03131605
+--- /dev/null
++++ b/chrome/browser/sync/aside_sync_auth_manager_factory.h
+@@ -0,0 +1,63 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_SYNC_ASIDE_SYNC_AUTH_MANAGER_FACTORY_H_
++#define CHROME_BROWSER_SYNC_ASIDE_SYNC_AUTH_MANAGER_FACTORY_H_
++
++#include <memory>
++
++#include "base/no_destructor.h"
++#include "chrome/browser/profiles/profile_keyed_service_factory.h"
++
++class AsideSyncAuthManager;
++class AsideSyncEncryptionController;
++class AsideSyncRefreshWatchdog;
++class Profile;
++
++class AsideSyncAuthManagerFactory : public ProfileKeyedServiceFactory {
++ public:
++  static AsideSyncAuthManager* GetForProfile(Profile* profile);
++  static AsideSyncAuthManagerFactory* GetInstance();
++
++ private:
++  friend base::NoDestructor<AsideSyncAuthManagerFactory>;
++  AsideSyncAuthManagerFactory();
++  ~AsideSyncAuthManagerFactory() override;
++
++  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
++      content::BrowserContext* context) const override;
++  bool ServiceIsCreatedWithBrowserContext() const override;
++};
++
++class AsideSyncEncryptionControllerFactory : public ProfileKeyedServiceFactory {
++ public:
++  static AsideSyncEncryptionController* GetForProfile(Profile* profile);
++  static AsideSyncEncryptionControllerFactory* GetInstance();
++
++ private:
++  friend base::NoDestructor<AsideSyncEncryptionControllerFactory>;
++  AsideSyncEncryptionControllerFactory();
++  ~AsideSyncEncryptionControllerFactory() override;
++
++  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
++      content::BrowserContext* context) const override;
++  bool ServiceIsCreatedWithBrowserContext() const override;
++};
++
++class AsideSyncRefreshWatchdogFactory : public ProfileKeyedServiceFactory {
++ public:
++  static AsideSyncRefreshWatchdog* GetForProfile(Profile* profile);
++  static AsideSyncRefreshWatchdogFactory* GetInstance();
++
++ private:
++  friend base::NoDestructor<AsideSyncRefreshWatchdogFactory>;
++  AsideSyncRefreshWatchdogFactory();
++  ~AsideSyncRefreshWatchdogFactory() override;
++
++  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
++      content::BrowserContext* context) const override;
++  bool ServiceIsCreatedWithBrowserContext() const override;
++};
++
++#endif  // CHROME_BROWSER_SYNC_ASIDE_SYNC_AUTH_MANAGER_FACTORY_H_
+diff --git a/chrome/browser/sync/aside_sync_encryption_controller.cc b/chrome/browser/sync/aside_sync_encryption_controller.cc
+new file mode 100644
+index 0000000000..05fc26a4b8
+--- /dev/null
++++ b/chrome/browser/sync/aside_sync_encryption_controller.cc
+@@ -0,0 +1,277 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/sync/aside_sync_encryption_controller.h"
++
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/functional/callback_helpers.h"
++#include "base/json/json_reader.h"
++#include "base/logging.h"
++#include "base/strings/stringprintf.h"
++#include "base/values.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/signin/aside_daemon_authorizer.h"
++#include "chrome/browser/sync/sync_service_factory.h"
++#include "components/prefs/pref_service.h"
++#include "components/sync/service/sync_user_settings.h"
++#include "content/public/browser/storage_partition.h"
++#include "net/base/load_flags.h"
++#include "net/http/http_request_headers.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
++#include "services/network/public/cpp/resource_request.h"
++#include "services/network/public/cpp/shared_url_loader_factory.h"
++#include "services/network/public/cpp/simple_url_loader.h"
++#include "services/network/public/mojom/url_response_head.mojom.h"
++#include "url/gurl.h"
++
++namespace {
++
++constexpr char kDiagnosticPref[] = "aside.sync_encryption_diagnostic_message";
++constexpr char kAccountIdPref[] = "aside.account_id";
++
++// Original diagnostic strings, 0xe4bbdcf - 0xe4bc0a6.
++constexpr char kWaitingForEncryptionState[] =
++    "Daemon key: waiting for sync encryption state.";
++constexpr char kWaitingForCachedKey[] =
++    "Daemon key: waiting for Chromium to apply the cached sync encryption key.";
++constexpr char kWaitingForEnable[] =
++    "Daemon key: waiting for sync encryption to finish enabling.";
++constexpr char kWaitingForStart[] =
++    "Daemon key: waiting for sync encryption to start.";
++constexpr char kRequestingKey[] =
++    "Daemon key: requesting sync encryption key...";
++constexpr char kFailedToAuthorize[] =
++    "Daemon key: failed to authorize daemon request.";
++constexpr char kCannotReachDaemon[] =
++    "Daemon key: can't reach the local Aside daemon.";
++constexpr char kLocalSecurityUnavailable[] =
++    "Daemon key: local account security is not available yet.";
++constexpr char kNoKeyReturned[] =
++    "Daemon key: failed to return a sync encryption key.";
++constexpr char kMalformedData[] =
++    "Daemon key: returned malformed sync encryption data.";
++constexpr char kKeyRejected[] =
++    "Chromium rejected the local sync encryption key.";
++constexpr char kEnabling[] = "Daemon key: enabling sync encryption...";
++
++// Original request format string, 0xe4bbf14.
++constexpr char kPassphrasePathFormat[] = "%s/auth/sync-passphrase?accountId=%d";
++constexpr char kPassphraseKey[] = "passphrase";
++
++constexpr size_t kMaxBody = 256 * 1024;
++
++constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotation =
++    net::DefineNetworkTrafficAnnotation("aside_sync_encryption_controller", R"(
++        semantics {
++          sender: "Aside sync encryption controller"
++          description: "Asks the local Aside daemon for the passphrase that "
++                       "decrypts the account's synced data."
++          trigger: "The sync engine reports that a passphrase is required."
++          data: "Aside account id."
++          destination: LOCAL
++        }
++        policy {
++          cookies_allowed: NO
++          setting: "Not user controllable."
++          policy_exception_justification: "Loopback only."
++        })");
++
++}  // namespace
++
++AsideSyncEncryptionController::AsideSyncEncryptionController(Profile* profile)
++    : profile_(profile) {
++  if (syncer::SyncService* sync = SyncServiceFactory::GetForProfile(profile_)) {
++    sync_observation_.Observe(sync);
++  }
++  SetDiagnostic(kWaitingForEncryptionState);
++}
++
++AsideSyncEncryptionController::~AsideSyncEncryptionController() = default;
++
++void AsideSyncEncryptionController::Shutdown() {
++  sync_observation_.Reset();
++}
++
++int AsideSyncEncryptionController::AccountId() const {
++  PrefService* prefs = profile_ ? profile_->GetPrefs() : nullptr;
++  if (!prefs || !prefs->FindPreference(kAccountIdPref)) {
++    return -1;
++  }
++  return prefs->GetInteger(kAccountIdPref);
++}
++
++void AsideSyncEncryptionController::SetDiagnostic(const std::string& message) {
++  diagnostic_message_ = message;
++  if (PrefService* prefs = profile_ ? profile_->GetPrefs() : nullptr) {
++    prefs->SetString(kDiagnosticPref, message);
++  }
++  VLOG(1) << message;
++}
++
++void AsideSyncEncryptionController::OnStateChanged(syncer::SyncService* sync) {
++  if (state_ == State::kDone) {
++    return;
++  }
++  if (!sync->IsEngineInitialized()) {
++    state_ = State::kWaitingForEncryptionState;
++    SetDiagnostic(kWaitingForEncryptionState);
++    return;
++  }
++  syncer::SyncUserSettings* settings = sync->GetUserSettings();
++  if (!settings) {
++    state_ = State::kWaitingForEncryptionState;
++    SetDiagnostic(kWaitingForEncryptionState);
++    return;
++  }
++  if (settings->IsPassphraseRequired()) {
++    if (state_ == State::kApplyingKey) {
++      // Chromium has the key but has not finished applying it.
++      SetDiagnostic(kWaitingForCachedKey);
++      return;
++    }
++    FetchPassphrase();
++    return;
++  }
++  if (state_ == State::kApplyingKey || state_ == State::kRequestingKey) {
++    state_ = State::kWaitingForEnableToFinish;
++    SetDiagnostic(kWaitingForEnable);
++    return;
++  }
++  if (state_ == State::kWaitingForEnableToFinish) {
++    state_ = State::kDone;
++    SetDiagnostic(std::string());
++    return;
++  }
++  if (!settings->IsUsingExplicitPassphrase()) {
++    // Encryption has not been switched on for this account yet.
++    SetDiagnostic(kWaitingForStart);
++  }
++}
++
++void AsideSyncEncryptionController::OnSyncShutdown(syncer::SyncService* sync) {
++  sync_observation_.Reset();
++}
++
++void AsideSyncEncryptionController::FetchPassphrase() {
++  if (request_in_flight_) {
++    return;
++  }
++  if (AccountId() < 0) {
++    SetDiagnostic(kLocalSecurityUnavailable);
++    return;
++  }
++  request_in_flight_ = true;
++  state_ = State::kRequestingKey;
++  SetDiagnostic(kRequestingKey);
++  scoped_refptr<network::SharedURLLoaderFactory> factory =
++      profile_->GetDefaultStoragePartition()
++          ->GetURLLoaderFactoryForBrowserProcess();
++  AsideDaemonAuthorizer::GetInstance()->GetAuthorization(
++      factory,
++      base::BindOnce(
++          &AsideSyncEncryptionController::FetchPassphraseWithAuthorization,
++          weak_factory_.GetWeakPtr()));
++}
++
++void AsideSyncEncryptionController::FetchPassphraseWithAuthorization(
++    std::optional<std::string> authorization) {
++  if (!authorization) {
++    request_in_flight_ = false;
++    state_ = State::kFailed;
++    SetDiagnostic(kFailedToAuthorize);
++    return;
++  }
++  const std::string url = base::StringPrintf(
++      kPassphrasePathFormat, AsideDaemonAuthorizer::DaemonBaseUrl().c_str(),
++      AccountId());
++  auto request = std::make_unique<network::ResourceRequest>();
++  request->url = GURL(url);
++  request->method = "GET";
++  request->load_flags = net::LOAD_DISABLE_CACHE | net::LOAD_BYPASS_CACHE;
++  request->credentials_mode = network::mojom::CredentialsMode::kOmit;
++  request->headers.SetHeader(net::HttpRequestHeaders::kAuthorization,
++                             *authorization);
++  auto loader =
++      network::SimpleURLLoader::Create(std::move(request), kTrafficAnnotation);
++  loader->SetAllowHttpErrorResults(true);
++  network::SimpleURLLoader* raw = loader.get();
++  raw->DownloadToString(
++      profile_->GetDefaultStoragePartition()
++          ->GetURLLoaderFactoryForBrowserProcess()
++          .get(),
++      base::BindOnce(&AsideSyncEncryptionController::OnPassphraseFetched,
++                     weak_factory_.GetWeakPtr(), std::move(loader)),
++      kMaxBody);
++}
++
++void AsideSyncEncryptionController::OnPassphraseFetched(
++    std::unique_ptr<network::SimpleURLLoader> loader,
++    std::optional<std::string> body) {
++  request_in_flight_ = false;
++  const int response_code =
++      loader->ResponseInfo() && loader->ResponseInfo()->headers
++          ? loader->ResponseInfo()->headers->response_code()
++          : 0;
++  if (!body) {
++    state_ = State::kFailed;
++    SetDiagnostic(kCannotReachDaemon);
++    return;
++  }
++  if (response_code == 401) {
++    state_ = State::kFailed;
++    SetDiagnostic(kLocalSecurityUnavailable);
++    return;
++  }
++  if (response_code != 200) {
++    state_ = State::kFailed;
++    SetDiagnostic(kNoKeyReturned);
++    return;
++  }
++  std::optional<base::Value> json =
++      base::JSONReader::Read(*body, base::JSON_PARSE_RFC);
++  if (!json || !json->is_dict()) {
++    state_ = State::kFailed;
++    SetDiagnostic(kMalformedData);
++    return;
++  }
++  const std::string* passphrase = json->GetDict().FindString(kPassphraseKey);
++  if (!passphrase || passphrase->empty()) {
++    state_ = State::kFailed;
++    SetDiagnostic(kMalformedData);
++    return;
++  }
++  ApplyPassphrase(*passphrase);
++}
++
++void AsideSyncEncryptionController::ApplyPassphrase(
++    const std::string& passphrase) {
++  syncer::SyncService* sync = SyncServiceFactory::GetForProfile(profile_);
++  syncer::SyncUserSettings* settings =
++      sync ? sync->GetUserSettings() : nullptr;
++  if (!settings) {
++    state_ = State::kFailed;
++    SetDiagnostic(kCannotReachDaemon);
++    return;
++  }
++  if (settings->IsPassphraseRequired()) {
++    state_ = State::kApplyingKey;
++    SetDiagnostic(kWaitingForCachedKey);
++    if (!settings->SetDecryptionPassphrase(passphrase)) {
++      state_ = State::kFailed;
++      SetDiagnostic(kKeyRejected);
++    }
++    return;
++  }
++  if (!settings->IsUsingExplicitPassphrase() &&
++      settings->IsCustomPassphraseAllowed()) {
++    state_ = State::kWaitingForEnableToFinish;
++    SetDiagnostic(kEnabling);
++    settings->SetEncryptionPassphrase(passphrase);
++    return;
++  }
++  state_ = State::kDone;
++  SetDiagnostic(std::string());
++}
+diff --git a/chrome/browser/sync/aside_sync_encryption_controller.h b/chrome/browser/sync/aside_sync_encryption_controller.h
+new file mode 100644
+index 0000000000..e8ceac357f
+--- /dev/null
++++ b/chrome/browser/sync/aside_sync_encryption_controller.h
+@@ -0,0 +1,84 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_SYNC_ASIDE_SYNC_ENCRYPTION_CONTROLLER_H_
++#define CHROME_BROWSER_SYNC_ASIDE_SYNC_ENCRYPTION_CONTROLLER_H_
++
++#include <memory>
++#include <optional>
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/scoped_observation.h"
++#include "components/keyed_service/core/keyed_service.h"
++#include "components/sync/service/sync_service.h"
++#include "components/sync/service/sync_service_observer.h"
++
++class Profile;
++
++namespace network {
++class SimpleURLLoader;
++}
++
++// Waits for the sync engine to reach a state where an encryption key can be
++// applied, fetches that key from the local Aside daemon
++// (GET <daemon>/auth/sync-passphrase?accountId=<id> -> {passphrase}) and hands
++// it to Chromium. Its progress goes into the profile pref
++// "aside.sync_encryption_diagnostic_message".
++//
++// RE: chrome/browser/sync/aside_sync_encryption_controller.cc (Aside Framework
++// 1.0.825.1, region 0x04768830).
++class AsideSyncEncryptionController : public KeyedService,
++                                      public syncer::SyncServiceObserver {
++ public:
++  // The state machine the original's diagnostic strings describe.
++  enum class State {
++    kWaitingForEncryptionState,
++    kWaitingForEncryptionToStart,
++    kRequestingKey,
++    kApplyingKey,
++    kWaitingForEnableToFinish,
++    kDone,
++    kFailed,
++  };
++
++  explicit AsideSyncEncryptionController(Profile* profile);
++  ~AsideSyncEncryptionController() override;
++
++  AsideSyncEncryptionController(const AsideSyncEncryptionController&) = delete;
++  AsideSyncEncryptionController& operator=(
++      const AsideSyncEncryptionController&) = delete;
++
++  State state() const { return state_; }
++  std::string diagnostic_message() const { return diagnostic_message_; }
++
++  // KeyedService:
++  void Shutdown() override;
++
++  // syncer::SyncServiceObserver:
++  void OnStateChanged(syncer::SyncService* sync) override;
++  void OnSyncShutdown(syncer::SyncService* sync) override;
++
++ private:
++  // RE: "FetchPassphraseWithAuthorization".
++  void FetchPassphrase();
++  void FetchPassphraseWithAuthorization(
++      std::optional<std::string> authorization);
++  void OnPassphraseFetched(std::unique_ptr<network::SimpleURLLoader> loader,
++                           std::optional<std::string> body);
++  void ApplyPassphrase(const std::string& passphrase);
++  void SetDiagnostic(const std::string& message);
++  int AccountId() const;
++
++  const raw_ptr<Profile> profile_;
++  State state_ = State::kWaitingForEncryptionState;
++  std::string diagnostic_message_;
++  bool request_in_flight_ = false;
++  base::ScopedObservation<syncer::SyncService, syncer::SyncServiceObserver>
++      sync_observation_{this};
++  base::WeakPtrFactory<AsideSyncEncryptionController> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_SYNC_ASIDE_SYNC_ENCRYPTION_CONTROLLER_H_
+diff --git a/chrome/browser/sync/aside_sync_refresh_watchdog.cc b/chrome/browser/sync/aside_sync_refresh_watchdog.cc
+new file mode 100644
+index 0000000000..263dad0c00
+--- /dev/null
++++ b/chrome/browser/sync/aside_sync_refresh_watchdog.cc
+@@ -0,0 +1,82 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/sync/aside_sync_refresh_watchdog.h"
++
++#include "base/functional/bind.h"
++#include "base/functional/callback_helpers.h"
++#include "base/logging.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/sync/aside_sync_auth_manager.h"
++#include "chrome/browser/sync/aside_sync_auth_manager_factory.h"
++#include "chrome/browser/sync/sync_service_factory.h"
++#include "components/sync/base/data_type.h"
++
++namespace {
++
++constexpr base::TimeDelta kWatchdogInterval = base::Minutes(2);
++
++bool IsTransient(syncer::SyncService::TransportState state) {
++  switch (state) {
++    case syncer::SyncService::TransportState::START_DEFERRED:
++    case syncer::SyncService::TransportState::INITIALIZING:
++    case syncer::SyncService::TransportState::PENDING_DESIRED_CONFIGURATION:
++    case syncer::SyncService::TransportState::CONFIGURING:
++      return true;
++    case syncer::SyncService::TransportState::DISABLED:
++    case syncer::SyncService::TransportState::PAUSED:
++    case syncer::SyncService::TransportState::ACTIVE:
++      return false;
++  }
++}
++
++}  // namespace
++
++AsideSyncRefreshWatchdog::AsideSyncRefreshWatchdog(Profile* profile)
++    : profile_(profile) {
++  if (syncer::SyncService* sync = SyncServiceFactory::GetForProfile(profile_)) {
++    sync_observation_.Observe(sync);
++  }
++}
++
++AsideSyncRefreshWatchdog::~AsideSyncRefreshWatchdog() = default;
++
++void AsideSyncRefreshWatchdog::Shutdown() {
++  watchdog_.Stop();
++  sync_observation_.Reset();
++}
++
++void AsideSyncRefreshWatchdog::OnStateChanged(syncer::SyncService* sync) {
++  if (!IsTransient(sync->GetTransportState())) {
++    watchdog_.Stop();
++    return;
++  }
++  if (watchdog_.IsRunning()) {
++    return;
++  }
++  watchdog_.Start(FROM_HERE, kWatchdogInterval,
++                  base::BindOnce(&AsideSyncRefreshWatchdog::OnWatchdogFired,
++                                 weak_factory_.GetWeakPtr()));
++}
++
++void AsideSyncRefreshWatchdog::OnSyncShutdown(syncer::SyncService* sync) {
++  watchdog_.Stop();
++  sync_observation_.Reset();
++}
++
++void AsideSyncRefreshWatchdog::OnWatchdogFired() {
++  syncer::SyncService* sync = SyncServiceFactory::GetForProfile(profile_);
++  if (!sync || !IsTransient(sync->GetTransportState())) {
++    return;
++  }
++  VLOG(1) << "Aside sync refresh watchdog: sync stalled in transport state "
++          << static_cast<int>(sync->GetTransportState())
++          << "; asking the daemon for a fresh access token";
++  if (AsideSyncAuthManager* auth =
++          AsideSyncAuthManagerFactory::GetForProfile(profile_)) {
++    auth->RequestAccessToken(/*force_refresh=*/true, base::DoNothing());
++  }
++  sync->TriggerRefresh(syncer::SyncService::TriggerRefreshSource::kUnknown,
++                       syncer::DataTypeSet::All());
++}
+diff --git a/chrome/browser/sync/aside_sync_refresh_watchdog.h b/chrome/browser/sync/aside_sync_refresh_watchdog.h
+new file mode 100644
+index 0000000000..d1c8c45c51
+--- /dev/null
++++ b/chrome/browser/sync/aside_sync_refresh_watchdog.h
+@@ -0,0 +1,49 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_SYNC_ASIDE_SYNC_REFRESH_WATCHDOG_H_
++#define CHROME_BROWSER_SYNC_ASIDE_SYNC_REFRESH_WATCHDOG_H_
++
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/scoped_observation.h"
++#include "base/timer/timer.h"
++#include "components/keyed_service/core/keyed_service.h"
++#include "components/sync/service/sync_service.h"
++#include "components/sync/service/sync_service_observer.h"
++
++class Profile;
++
++// Watches the sync engine while it waits on the local daemon. When the engine
++// stays stuck in a transient state past the watchdog interval it asks the
++// auth manager for a fresh access token and nudges sync to refresh.
++// RE: chrome/browser/sync/aside_sync_refresh_watchdog.cc (Aside Framework
++// 1.0.825.1, region 0x04768830).
++class AsideSyncRefreshWatchdog : public KeyedService,
++                                 public syncer::SyncServiceObserver {
++ public:
++  explicit AsideSyncRefreshWatchdog(Profile* profile);
++  ~AsideSyncRefreshWatchdog() override;
++
++  AsideSyncRefreshWatchdog(const AsideSyncRefreshWatchdog&) = delete;
++  AsideSyncRefreshWatchdog& operator=(const AsideSyncRefreshWatchdog&) = delete;
++
++  // KeyedService:
++  void Shutdown() override;
++
++  // syncer::SyncServiceObserver:
++  void OnStateChanged(syncer::SyncService* sync) override;
++  void OnSyncShutdown(syncer::SyncService* sync) override;
++
++ private:
++  void OnWatchdogFired();
++
++  const raw_ptr<Profile> profile_;
++  base::OneShotTimer watchdog_;
++  base::ScopedObservation<syncer::SyncService, syncer::SyncServiceObserver>
++      sync_observation_{this};
++  base::WeakPtrFactory<AsideSyncRefreshWatchdog> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_SYNC_ASIDE_SYNC_REFRESH_WATCHDOG_H_
+diff --git a/chrome/browser/sync/aside_website_storage_kinds.cc b/chrome/browser/sync/aside_website_storage_kinds.cc
+new file mode 100644
+index 0000000000..5f1c272aa7
+--- /dev/null
++++ b/chrome/browser/sync/aside_website_storage_kinds.cc
+@@ -0,0 +1,57 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/sync/aside_website_storage_kinds.h"
++
++namespace aside {
++
++std::string_view WebsiteStorageKindToken(WebsiteStorageKind kind) {
++  switch (kind) {
++    case WebsiteStorageKind::kLocal:
++      return "local";
++    case WebsiteStorageKind::kSession:
++      return "session";
++    case WebsiteStorageKind::kExtensionLocal:
++      return "extension-local";
++    case WebsiteStorageKind::kExtensionSession:
++      return "extension-session";
++  }
++}
++
++std::string_view WebsiteStorageClientTagPrefix(WebsiteStorageKind kind) {
++  switch (kind) {
++    case WebsiteStorageKind::kLocal:
++      return "local:";
++    case WebsiteStorageKind::kSession:
++      return "session:";
++    case WebsiteStorageKind::kExtensionLocal:
++      return "extension-local:";
++    case WebsiteStorageKind::kExtensionSession:
++      return "extension-session:";
++  }
++}
++
++std::optional<WebsiteStorageKind> WebsiteStorageKindFromToken(
++    std::string_view token) {
++  if (token == "local") {
++    return WebsiteStorageKind::kLocal;
++  }
++  if (token == "session") {
++    return WebsiteStorageKind::kSession;
++  }
++  if (token == "extension-local") {
++    return WebsiteStorageKind::kExtensionLocal;
++  }
++  if (token == "extension-session") {
++    return WebsiteStorageKind::kExtensionSession;
++  }
++  return std::nullopt;
++}
++
++bool WebsiteStorageKindIsSessionScoped(WebsiteStorageKind kind) {
++  return kind == WebsiteStorageKind::kSession ||
++         kind == WebsiteStorageKind::kExtensionSession;
++}
++
++}  // namespace aside
+diff --git a/chrome/browser/sync/aside_website_storage_kinds.h b/chrome/browser/sync/aside_website_storage_kinds.h
+new file mode 100644
+index 0000000000..ec986688c1
+--- /dev/null
++++ b/chrome/browser/sync/aside_website_storage_kinds.h
+@@ -0,0 +1,46 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_SYNC_ASIDE_WEBSITE_STORAGE_KINDS_H_
++#define CHROME_BROWSER_SYNC_ASIDE_WEBSITE_STORAGE_KINDS_H_
++
++#include <optional>
++#include <string>
++#include <string_view>
++
++// The four kinds of website storage area that sync_pb::AsideWebsiteStorage-
++// Specifics::storage_kind can name, and the client-tag prefix each one uses.
++//
++// RE: the prefix mapper at 0x4776ed8-0x4776feb in Aside Framework 1.0.825.1
++// (inside the daemon-auth / sync region 0x04768830), which holds exactly the
++// four literals "local:", "session:", "extension-local:" and
++// "extension-session:" next to the AsideWebsiteStorageSyncService factory name.
++namespace aside {
++
++enum class WebsiteStorageKind {
++  kLocal,
++  kSession,
++  kExtensionLocal,
++  kExtensionSession,
++};
++
++// "local" / "session" / "extension-local" / "extension-session"; the value
++// that goes into AsideWebsiteStorageSpecifics::storage_kind.
++std::string_view WebsiteStorageKindToken(WebsiteStorageKind kind);
++
++// The same token followed by ':', which is how the original prefixes a
++// storage area's client tag.
++std::string_view WebsiteStorageClientTagPrefix(WebsiteStorageKind kind);
++
++// Parses a storage_kind token back into a kind; nullopt for anything else.
++std::optional<WebsiteStorageKind> WebsiteStorageKindFromToken(
++    std::string_view token);
++
++// True for the two kinds that are scoped to a DOM storage namespace, and so
++// carry AsideWebsiteStorageSpecifics::namespace_id.
++bool WebsiteStorageKindIsSessionScoped(WebsiteStorageKind kind);
++
++}  // namespace aside
++
++#endif  // CHROME_BROWSER_SYNC_ASIDE_WEBSITE_STORAGE_KINDS_H_
+diff --git a/chrome/browser/sync/sync_service_factory_unittest.cc b/chrome/browser/sync/sync_service_factory_unittest.cc
+index 5f57b3a0c9..a52dca3a39 100644
+--- a/chrome/browser/sync/sync_service_factory_unittest.cc
++++ b/chrome/browser/sync/sync_service_factory_unittest.cc
+@@ -114,7 +114,7 @@ class SyncServiceFactoryTest : public testing::Test {
+ 
+   // Returns the collection of default datatypes.
+   syncer::DataTypeSet DefaultDatatypes() {
+-    static_assert(63 == syncer::GetNumDataTypes(),
++    static_assert(64 == syncer::GetNumDataTypes(),
+                   "When adding a new type, you probably want to add it here as "
+                   "well (assuming it is already enabled). Check similar "
+                   "function in "
+diff --git a/chrome/browser/sync/test/integration/sync_test.cc b/chrome/browser/sync/test/integration/sync_test.cc
+index 312ea20e7e..d3f1199b3e 100644
+--- a/chrome/browser/sync/test/integration/sync_test.cc
++++ b/chrome/browser/sync/test/integration/sync_test.cc
+@@ -1284,7 +1284,7 @@ std::string SetupSyncModeAsString(SyncTest::SetupSyncMode sync_test_mode) {
+ // enabled by default, e.g. HISTORY requires a dedicated opt-in via
+ // SyncUserSettings::SetSelectedTypes().
+ syncer::DataTypeSet AllowedTypesInStandaloneTransportMode() {
+-  static_assert(63 == syncer::GetNumDataTypes(),
++  static_assert(64 == syncer::GetNumDataTypes(),
+                 "Add new types below if they can run in transport mode");
+ 
+ #if BUILDFLAG(IS_ANDROID)
+diff --git a/components/component_updater/component_updater_service.h b/components/component_updater/component_updater_service.h
+index 6c9bd84298..6289dbaff6 100644
+--- a/components/component_updater/component_updater_service.h
++++ b/components/component_updater/component_updater_service.h
+@@ -245,6 +245,7 @@ class OnDemandUpdater {
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+   friend class IwaKeyDistributionComponentInstallerPolicy;
+   friend class PlatformRuntimeComponentInstallerPolicy;
++  friend class AsideComponentUpdateService;
+ 
+   // Triggers an update check for a component. |id| is a value
+   // returned by GetCrxComponentID(). If an update for this component is already
+diff --git a/components/crx_file/crx_verifier.cc b/components/crx_file/crx_verifier.cc
+index 77a54cf32c..63c2854acf 100644
+--- a/components/crx_file/crx_verifier.cc
++++ b/components/crx_file/crx_verifier.cc
+@@ -47,6 +47,18 @@ constexpr KeyHash kPublisherTestKeyHash = {
+     0x5f, 0x64, 0xf3, 0xa6, 0x17, 0x03, 0x0d, 0xde, 0x21, 0x61, 0xbe,
+     0xb7, 0x95, 0x91, 0x95, 0x83, 0x68, 0x12, 0xe9, 0x78, 0x1e};
+ 
++// Aside signs its own CRXs with its own publisher key instead of Google's.
++// Every published Aside component CRX3 carries two sha256_with_rsa proofs: the
++// per-component key, and this one. Confirmed in
++// AsideAgentManager-1.26.905.904.crx and AsideDaemon-mac-x64-1.26.905.904.crx,
++// and the same 32 bytes sit in the original framework's Aside component
++// updater constant block (x86_64 0xd9c1d78, arm64 0xc7997be, read out by the
++// one-line getter at arm64 0x4075134). Folds to "pimegfdhalcfadfabeppnninhjbgnafk".
++constexpr KeyHash kAsidePublisherKeyHash = {
++    0xf8, 0xc4, 0x65, 0x37, 0x0b, 0x25, 0x03, 0x50, 0x14, 0xff, 0xdd,
++    0x8d, 0x79, 0x16, 0xd0, 0x5a, 0x7a, 0x78, 0xd4, 0xb5, 0x03, 0x59,
++    0xf6, 0x59, 0x06, 0x42, 0xef, 0x4c, 0x03, 0xe6, 0x9d, 0xd4};
++
+ constexpr auto kEocd = std::to_array<uint8_t>({'P', 'K', 0x05, 0x06});
+ constexpr auto kEocd64 = std::to_array<uint8_t>({'P', 'K', 0x06, 0x07});
+ 
+@@ -193,6 +205,7 @@ VerifierResult VerifyCrx3(
+       required_key_set.erase(key_hash);
+       found_publisher_key =
+           found_publisher_key || key_hash == kPublisherKeyHash ||
++          key_hash == kAsidePublisherKeyHash ||
+           (accept_publisher_test_key && key_hash == kPublisherTestKeyHash);
+       std::optional<crypto::keypair::PublicKey> pub_key =
+           crypto::keypair::PublicKey::FromSubjectPublicKeyInfo(
+diff --git a/components/sync/base/data_type.cc b/components/sync/base/data_type.cc
+index 11dd805860..fd12398f01 100644
+--- a/components/sync/base/data_type.cc
++++ b/components/sync/base/data_type.cc
+@@ -940,6 +940,25 @@ constexpr std::array<DataTypeInfo, syncer::GetNumDataTypes()>
+             .cross_user_sharing_policy = CrossUserSharingPolicy::kNone,
+             .local_sync_support_policy = LocalSyncSupportPolicy::kUnsupported,
+         },
++        {
++            // RE: kDataTypeInfoMap entry at 0xf51dd08 in Aside Framework
++            // 1.0.825.1 x86_64 (type 50, specifics field number 1776013,
++            // policy tuple 1,1,0,0,0,0,0).
++            .type = ASIDE_WEBSITE_STORAGE,
++            .specifics_field_number =
++                sync_pb::EntitySpecifics::kAsideWebsiteStorageFieldNumber,
++            .debug_string = "Aside Website Storage",
++            .histogram_suffix = "ASIDE_WEBSITE_STORAGE",
++            .stable_lowercase_string = "aside_website_storage",
++            .encryption_policy = EncryptionPolicy::kAlwaysEncrypted,
++            .priority = DataTypePriority::kRegular,
++            .communication_direction = CommunicationDirection::kRegularTwoWay,
++            .apply_updates_batch_policy = ApplyUpdatesBatchPolicy::kStandard,
++            .unsynced_data_check_on_signout_policy =
++                UnsyncedDataCheckOnSignoutPolicy::kNone,
++            .cross_user_sharing_policy = CrossUserSharingPolicy::kNone,
++            .local_sync_support_policy = LocalSyncSupportPolicy::kSupported,
++        },
+         {
+             .type = PLUS_ADDRESS_SETTING,
+             .specifics_field_number =
+@@ -1167,7 +1186,7 @@ constexpr std::array<DataTypeInfo, syncer::GetNumDataTypes()>
+     }};
+ 
+ // LINT.IfChange(DataTypeHistogramSuffix)
+-static_assert(GetNumDataTypes() == 63,
++static_assert(GetNumDataTypes() == 64,
+               "When adding a new type, update kDataTypeInfoTable, update "
+               "histograms.xml and follow the integration checklist in "
+               "https://www.chromium.org/developers/design-documents/sync/"
+@@ -1351,6 +1370,9 @@ void AddDefaultFieldValue(DataType type, sync_pb::EntitySpecifics* specifics) {
+     case COOKIES:
+       specifics->mutable_cookie();
+       break;
++    case ASIDE_WEBSITE_STORAGE:
++      specifics->mutable_aside_website_storage();
++      break;
+     case PLUS_ADDRESS_SETTING:
+       specifics->mutable_plus_address_setting();
+       break;
+@@ -1721,6 +1743,8 @@ DataTypeForHistograms DataTypeHistogramValue(DataType data_type) {
+       return DataTypeForHistograms::kProductComparison;
+     case COOKIES:
+       return DataTypeForHistograms::kCookies;
++    case ASIDE_WEBSITE_STORAGE:
++      return DataTypeForHistograms::kAsideWebsiteStorage;
+     case PLUS_ADDRESS_SETTING:
+       return DataTypeForHistograms::kPlusAddressSettings;
+     case AUTOFILL_VALUABLE:
+diff --git a/components/sync/base/data_type.h b/components/sync/base/data_type.h
+index 6943010c8d..97b42a9e34 100644
+--- a/components/sync/base/data_type.h
++++ b/components/sync/base/data_type.h
+@@ -159,6 +159,10 @@ enum DataType {
+   // Browser cookies, ChromeOS only.
+   COOKIES,
+ 
++  // Aside: a whole website storage area (localStorage, sessionStorage or an
++  // extension storage area) synced as one entity.
++  ASIDE_WEBSITE_STORAGE,
++
+   // Settings for PLUS_ADDRESS forwarded from the user's account. Since the
+   // settings originate from the user's account, this is not reusing any of the
+   // standard syncable prefs.
+@@ -312,7 +316,8 @@ enum class DataTypeForHistograms {
+   kThemesIos = 78,
+   // kDeprecatedAccessibilityAnnotation = 79,
+   kThemesAndroid = 80,
+-  kMaxValue = kThemesAndroid,
++  kAsideWebsiteStorage = 81,
++  kMaxValue = kAsideWebsiteStorage,
+ };
+ // LINT.ThenChange(/tools/metrics/histograms/metadata/sync/enums.xml:SyncDataTypes)
+ 
+diff --git a/components/sync/base/sync_util.cc b/components/sync/base/sync_util.cc
+index 183add7414..be3214d04a 100644
+--- a/components/sync/base/sync_util.cc
++++ b/components/sync/base/sync_util.cc
+@@ -104,16 +104,8 @@ GURL GetSyncServiceURL(const base::CommandLine& command_line,
+     }
+   }
+ 
+-  // 3. By default, dev, canary, and unbranded Chromium users will go to the
+-  // development servers. Development servers have more features than standard
+-  // sync servers. Users with officially-branded Chrome stable and beta builds
+-  // will go to the standard sync servers.
+-  if (channel == version_info::Channel::STABLE ||
+-      channel == version_info::Channel::BETA) {
+-    return GURL(internal::kSyncServerUrl);
+-  }
+-
+-  return GURL(internal::kSyncDevServerUrl);
++  // 3. Aside's own sync backend, on every channel.
++  return GURL(internal::kAsideSyncServerUrl);
+ }
+ 
+ std::string MakeUserAgentForSync(version_info::Channel channel) {
+diff --git a/components/sync/base/sync_util.h b/components/sync/base/sync_util.h
+index 7fadea3345..16f26da74d 100644
+--- a/components/sync/base/sync_util.h
++++ b/components/sync/base/sync_util.h
+@@ -26,6 +26,13 @@ inline constexpr char kSyncServerUrl[] =
+ inline constexpr char kSyncDevServerUrl[] =
+     "https://clients4.google.com/chrome-sync/dev";
+ 
++// Aside runs its own sync backend; every channel talks to it unless the user
++// passes --sync-url or a --gaia-config with a sync_url.
++// RE: "https://browser-sync.asidehq.com" (Aside Framework 1.0.825.1,
++// 0xe4bca49, in the sync factories string block).
++inline constexpr char kAsideSyncServerUrl[] =
++    "https://browser-sync.asidehq.com";
++
+ // Formats user agent string from system string and channel. Visible for
+ // testing.
+ std::string FormatUserAgentForSync(const std::string& system,
+diff --git a/components/sync/base/user_selectable_type.cc b/components/sync/base/user_selectable_type.cc
+index bcc8b1b3b3..eb18782085 100644
+--- a/components/sync/base/user_selectable_type.cc
++++ b/components/sync/base/user_selectable_type.cc
+@@ -57,7 +57,7 @@ UserSelectableTypeInfo GetUserSelectableTypeInfo(
+   // TODO(crbug.com/476335087): In CL #3, map GEMINI_THREAD to an existing
+   // selectable type or to a new one. The first option should be trivial, the
+   // second requires touching UI code across platforms.
+-  static_assert(63 == syncer::GetNumDataTypes(),
++  static_assert(64 == syncer::GetNumDataTypes(),
+                 "Almost always when adding a new Data, you must tie it to "
+                 "a UserSelectableType below (new or existing) so the user can "
+                 "disable syncing of that data. Today you must also update the "
+diff --git a/components/sync/engine/cycle/data_type_tracker.cc b/components/sync/engine/cycle/data_type_tracker.cc
+index cbc83ad686..9bd4ff75dc 100644
+--- a/components/sync/engine/cycle/data_type_tracker.cc
++++ b/components/sync/engine/cycle/data_type_tracker.cc
+@@ -52,6 +52,8 @@ base::TimeDelta GetDefaultLocalChangeNudgeDelay(DataType data_type) {
+     case SESSIONS:
+     case HISTORY:
+     case COOKIES:
++    // Aside website storage areas change as often as cookies do.
++    case ASIDE_WEBSITE_STORAGE:
+       // Sessions is the type that causes the most commit traffic. It gets a
+       // custom nudge delay, tuned for a reasonable trade-off between traffic
+       // and freshness.
+@@ -134,6 +136,9 @@ bool CanGetCommitsFromExtensions(DataType data_type) {
+     case HISTORY_DELETE_DIRECTIVES:  // chrome.history and chrome.browsingData.
+     // Accessible via navigator.credentials to both extensions and sites.
+     case WEBAUTHN_CREDENTIAL:
++    // chrome.storage.local / chrome.storage.session, and window.localStorage
++    // in any page an extension scripts.
++    case ASIDE_WEBSITE_STORAGE:
+       return true;
+     // For these types, extensions can delete existing data using a js API.
+     // However, as they cannot generate new entities, the number of deletions is
+diff --git a/components/sync/protocol/aside_website_storage_specifics.proto b/components/sync/protocol/aside_website_storage_specifics.proto
+new file mode 100644
+index 0000000000..c87d4438f9
+--- /dev/null
++++ b/components/sync/protocol/aside_website_storage_specifics.proto
+@@ -0,0 +1,46 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++syntax = "proto2";
++
++option java_multiple_files = true;
++option java_package = "org.chromium.components.sync.protocol";
++
++option optimize_for = LITE_RUNTIME;
++
++package sync_pb;
++
++// One key/value pair inside a synced website storage area.
++// RE: sync_pb.AsideWebsiteStorageEntrySpecifics (Aside 1.0.825.1).
++message AsideWebsiteStorageEntrySpecifics {
++  // The storage area key, as seen by the page.
++  optional string key = 1;
++
++  // The storage area value. DOM storage values are UTF-16 strings that may
++  // contain unpaired surrogates, so they travel as bytes.
++  optional bytes value = 2;
++}
++
++// A whole website storage area (one origin x one namespace), synced as a
++// single entity. Always encrypted (see kDataTypeInfoMap).
++// RE: sync_pb.AsideWebsiteStorageSpecifics (Aside 1.0.825.1).
++message AsideWebsiteStorageSpecifics {
++  // Which kind of storage area this is. One of the AsideWebsiteStorageKind
++  // tokens: "local", "session", "extension-local", "extension-session".
++  optional string storage_kind = 1;
++
++  // The serialized blink::StorageKey (origin plus partitioning) that owns the
++  // area. Used together with `storage_kind` to form the client tag.
++  optional bytes serialized_storage_key = 2;
++
++  // The DOM storage namespace id for session storage areas; empty for the
++  // local storage kinds.
++  optional string namespace_id = 3;
++
++  // Every key/value pair currently in the area.
++  repeated AsideWebsiteStorageEntrySpecifics entries = 4;
++
++  // When the area was last written locally.
++  optional int64 updated_at_windows_epoch_micros = 5;
++}
+diff --git a/components/sync/protocol/entity_specifics.proto b/components/sync/protocol/entity_specifics.proto
+index 90493a37b9..2cc4381118 100644
+--- a/components/sync/protocol/entity_specifics.proto
++++ b/components/sync/protocol/entity_specifics.proto
+@@ -18,6 +18,7 @@ import "components/sync/protocol/app_list_specifics.proto";
+ import "components/sync/protocol/app_setting_specifics.proto";
+ import "components/sync/protocol/app_specifics.proto";
+ import "components/sync/protocol/arc_package_specifics.proto";
++import "components/sync/protocol/aside_website_storage_specifics.proto";
+ import "components/sync/protocol/autofill_specifics.proto";
+ import "components/sync/protocol/autofill_offer_specifics.proto";
+ import "components/sync/protocol/autofill_valuable_specifics.proto";
+@@ -174,6 +175,10 @@ message EntitySpecifics {
+     AutofillValuableMetadataSpecifics autofill_valuable_metadata = 1520954;
+     SkillSpecifics skill = 1564245;
+     GeminiThreadSpecifics gemini_thread = 1569348;
++
++    // Aside: one website storage area (localStorage / sessionStorage /
++    // extension storage) synced as a single entity.
++    AsideWebsiteStorageSpecifics aside_website_storage = 1776013;
+     // When adding a new type, follow the docs below and keep this comment as
+     // the last entry.
+     // https://www.chromium.org/developers/design-documents/sync/integration-checklist/
+diff --git a/components/sync/protocol/proto_value_conversions_unittest.cc b/components/sync/protocol/proto_value_conversions_unittest.cc
+index 60b5cae7b3..2b60efefd3 100644
+--- a/components/sync/protocol/proto_value_conversions_unittest.cc
++++ b/components/sync/protocol/proto_value_conversions_unittest.cc
+@@ -71,7 +71,7 @@ using ::testing::Pointee;
+ 
+ DEFINE_SPECIFICS_TO_VALUE_TEST(encrypted)
+ 
+-static_assert(63 == syncer::GetNumDataTypes(),
++static_assert(64 == syncer::GetNumDataTypes(),
+               "When adding a new field, add a DEFINE_SPECIFICS_TO_VALUE_TEST "
+               "for your field below, and optionally a test for the specific "
+               "conversions.");
+diff --git a/components/sync/protocol/proto_visitors.h b/components/sync/protocol/proto_visitors.h
+index a2a365c291..d11467c3fa 100644
+--- a/components/sync/protocol/proto_visitors.h
++++ b/components/sync/protocol/proto_visitors.h
+@@ -165,6 +165,19 @@ VISIT_PROTO_FIELDS(const sync_pb::AppSpecifics& proto) {
+   VISIT(bookmark_app_theme_color);
+ }
+ 
++VISIT_PROTO_FIELDS(const sync_pb::AsideWebsiteStorageEntrySpecifics& proto) {
++  VISIT(key);
++  VISIT_BYTES(value);
++}
++
++VISIT_PROTO_FIELDS(const sync_pb::AsideWebsiteStorageSpecifics& proto) {
++  VISIT(storage_kind);
++  VISIT_BYTES(serialized_storage_key);
++  VISIT(namespace_id);
++  VISIT_REP(entries);
++  VISIT(updated_at_windows_epoch_micros);
++}
++
+ VISIT_PROTO_FIELDS(const sync_pb::ArcPackageSpecifics& proto) {
+   VISIT(package_name);
+   VISIT(package_version);
+@@ -740,7 +753,7 @@ VISIT_PROTO_FIELDS(
+ }
+ 
+ VISIT_PROTO_FIELDS(const sync_pb::EntitySpecifics& proto) {
+-  static_assert(63 == GetNumDataTypes(),
++  static_assert(64 == GetNumDataTypes(),
+                 "When adding a new protocol type, you will likely need to add "
+                 "it here as well.");
+   VISIT(encrypted);
+@@ -749,6 +762,7 @@ VISIT_PROTO_FIELDS(const sync_pb::EntitySpecifics& proto) {
+   VISIT(app_list);
+   VISIT(app_setting);
+   VISIT(arc_package);
++  VISIT(aside_website_storage);
+   VISIT(autofill);
+   VISIT(autofill_offer);
+   VISIT(autofill_profile);
+diff --git a/components/sync/protocol/protocol_sources.gni b/components/sync/protocol/protocol_sources.gni
+index d0ea064a23..8659171b8a 100644
+--- a/components/sync/protocol/protocol_sources.gni
++++ b/components/sync/protocol/protocol_sources.gni
+@@ -9,6 +9,7 @@ sync_protocol_sources = [
+   "app_setting_specifics.proto",
+   "app_specifics.proto",
+   "arc_package_specifics.proto",
++  "aside_website_storage_specifics.proto",
+   "autofill_offer_specifics.proto",
+   "autofill_specifics.proto",
+   "autofill_valuable_metadata_specifics.proto",
+diff --git a/ios/chrome/browser/sync/model/sync_service_factory_unittest.mm b/ios/chrome/browser/sync/model/sync_service_factory_unittest.mm
+index 5b4e4cf004..8654af7a85 100644
+--- a/ios/chrome/browser/sync/model/sync_service_factory_unittest.mm
++++ b/ios/chrome/browser/sync/model/sync_service_factory_unittest.mm
+@@ -57,7 +57,7 @@ class SyncServiceFactoryTest : public PlatformTest {
+  protected:
+   // Returns the collection of default datatypes.
+   syncer::DataTypeSet DefaultDatatypes() {
+-    static_assert(63 == syncer::GetNumDataTypes(),
++    static_assert(64 == syncer::GetNumDataTypes(),
+                   "When adding a new type, you probably want to add it here as "
+                   "well (assuming it is already enabled).");
+ 
+diff --git a/tools/metrics/histograms/metadata/sync/enums.xml b/tools/metrics/histograms/metadata/sync/enums.xml
+index 8045b77670..5aad462eff 100644
+--- a/tools/metrics/histograms/metadata/sync/enums.xml
++++ b/tools/metrics/histograms/metadata/sync/enums.xml
+@@ -1049,6 +1049,7 @@ chromium-metrics-reviews@google.com.
+   <int value="78" label="Themes (iOS)"/>
+   <int value="79" label="(Obsolete) Accessibility Annotation"/>
+   <int value="80" label="Themes (Android)"/>
++  <int value="81" label="Aside Website Storage"/>
+ </enum>
+ 
+ <!-- LINT.ThenChange(/components/sync/base/data_type.h:SyncDataTypes) -->
+diff --git a/tools/metrics/histograms/metadata/sync/histograms.xml b/tools/metrics/histograms/metadata/sync/histograms.xml
+index 9457a9d5e9..693afa8067 100644
+--- a/tools/metrics/histograms/metadata/sync/histograms.xml
++++ b/tools/metrics/histograms/metadata/sync/histograms.xml
+@@ -40,6 +40,7 @@ chromium-metrics-reviews@google.com.
+   <variant name=".APP_LIST" summary="APP_LIST"/>
+   <variant name=".APP_SETTING" summary="APP_SETTING"/>
+   <variant name=".ARC_PACKAGE" summary="ARC_PACKAGE"/>
++  <variant name=".ASIDE_WEBSITE_STORAGE" summary="ASIDE_WEBSITE_STORAGE"/>
+   <variant name=".AUTOFILL" summary="AUTOFILL"/>
+   <variant name=".AUTOFILL_OFFER" summary="AUTOFILL_OFFER"/>
+   <variant name=".AUTOFILL_PROFILE" summary="AUTOFILL_PROFILE"/>

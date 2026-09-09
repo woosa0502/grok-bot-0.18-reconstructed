@@ -1,0 +1,20 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideBookmarkShelfIcon
+
+CANVAS_DIMENSIONS, 16,
+STROKE, 1.33f,
+MOVE_TO, 3.33f, 5.2f,
+CUBIC_TO, 3.33f, 4.08f, 3.33f, 3.52f, 3.55f, 3.09f,
+CUBIC_TO, 3.74f, 2.72f, 4.05f, 2.41f, 4.43f, 2.22f,
+CUBIC_TO, 4.85f, 2, 5.41f, 2, 6.53f, 2,
+H_LINE_TO, 9.47f,
+CUBIC_TO, 10.59f, 2, 11.15f, 2, 11.57f, 2.22f,
+CUBIC_TO, 11.95f, 2.41f, 12.26f, 2.72f, 12.45f, 3.09f,
+CUBIC_TO, 12.67f, 3.52f, 12.67f, 4.08f, 12.67f, 5.2f,
+V_LINE_TO, 14,
+LINE_TO, 8, 11.33f,
+LINE_TO, 3.33f, 14,
+V_LINE_TO, 5.2f,
+CLOSE,

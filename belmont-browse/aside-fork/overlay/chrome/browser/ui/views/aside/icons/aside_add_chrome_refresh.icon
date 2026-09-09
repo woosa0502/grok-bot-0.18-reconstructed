@@ -1,0 +1,24 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideAddChromeRefreshIcon
+
+CANVAS_DIMENSIONS, 12,
+MOVE_TO, 6, 0,
+CUBIC_TO, 6.37f, 0, 6.67f, 0.3f, 6.67f, 0.67f,
+V_LINE_TO, 5.33f,
+H_LINE_TO, 11.33f,
+CUBIC_TO, 11.7f, 5.33f, 12, 5.63f, 12, 6,
+CUBIC_TO, 12, 6.37f, 11.7f, 6.67f, 11.33f, 6.67f,
+H_LINE_TO, 6.67f,
+V_LINE_TO, 11.33f,
+CUBIC_TO, 6.67f, 11.7f, 6.37f, 12, 6, 12,
+CUBIC_TO, 5.63f, 12, 5.33f, 11.7f, 5.33f, 11.33f,
+V_LINE_TO, 6.67f,
+H_LINE_TO, 0.67f,
+CUBIC_TO, 0.3f, 6.67f, 0, 6.37f, 0, 6,
+CUBIC_TO, 0, 5.63f, 0.3f, 5.33f, 0.67f, 5.33f,
+H_LINE_TO, 5.33f,
+V_LINE_TO, 0.67f,
+CUBIC_TO, 5.33f, 0.3f, 5.63f, 0, 6, 0,
+CLOSE,

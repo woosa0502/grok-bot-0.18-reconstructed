@@ -1,0 +1,2066 @@
+diff --git a/chrome/browser/devtools/BUILD.gn b/chrome/browser/devtools/BUILD.gn
+index 265dba91f9..ebd265d95a 100644
+--- a/chrome/browser/devtools/BUILD.gn
++++ b/chrome/browser/devtools/BUILD.gn
+@@ -361,6 +361,8 @@ static_library("devtools") {
+       "process_sharing_infobar_delegate.cc",
+       "process_sharing_infobar_delegate.h",
+       "remote_debugging_server.cc",
++      "secure_remote_debugging_credentials.cc",
++      "secure_remote_debugging_credentials.h",
+       "remote_debugging_server.h",
+       "serialize_host_descriptions.cc",
+       "serialize_host_descriptions.h",
+diff --git a/chrome/browser/devtools/chrome_devtools_manager_delegate.cc b/chrome/browser/devtools/chrome_devtools_manager_delegate.cc
+index c9f49cd198..4d82a6766b 100644
+--- a/chrome/browser/devtools/chrome_devtools_manager_delegate.cc
++++ b/chrome/browser/devtools/chrome_devtools_manager_delegate.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
+ 
++#include "chrome/browser/devtools/secure_remote_debugging_credentials.h"
++
+ #include <memory>
+ #include <utility>
+ 
+@@ -406,6 +408,13 @@ bool ChromeDevToolsManagerDelegate::AllowInspectingRenderFrameHost(
+                              content::WebContents::FromRenderFrameHost(rfh));
+ }
+ 
++bool ChromeDevToolsManagerDelegate::VerifySecureRemoteDebuggingSignature(
++    base::span<const uint8_t> challenge,
++    base::span<const uint8_t> signature) {
++  return SecureRemoteDebuggingCredentials::GetInstance()->Verify(challenge,
++                                                                signature);
++}
++
+ bool ChromeDevToolsManagerDelegate::AllowInspectingTarget(
+     content::DevToolsAgentHost* agent_host) {
+   // For Android, we have the same implementation
+diff --git a/chrome/browser/devtools/chrome_devtools_manager_delegate.h b/chrome/browser/devtools/chrome_devtools_manager_delegate.h
+index a48b3a9ebd..446d888008 100644
+--- a/chrome/browser/devtools/chrome_devtools_manager_delegate.h
++++ b/chrome/browser/devtools/chrome_devtools_manager_delegate.h
+@@ -87,6 +87,9 @@ class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate,
+ 
+   bool AllowInspectingRenderFrameHost(content::RenderFrameHost* rfh) override;
+   bool AllowInspectingTarget(content::DevToolsAgentHost* agent_host) override;
++  bool VerifySecureRemoteDebuggingSignature(
++      base::span<const uint8_t> challenge,
++      base::span<const uint8_t> signature) override;
+   void ClientAttached(
+       content::DevToolsAgentHostClientChannel* channel) override;
+   void ClientDetached(
+diff --git a/chrome/browser/devtools/chrome_devtools_session.cc b/chrome/browser/devtools/chrome_devtools_session.cc
+index d79c1e2c50..431abf5fe5 100644
+--- a/chrome/browser/devtools/chrome_devtools_session.cc
++++ b/chrome/browser/devtools/chrome_devtools_session.cc
+@@ -122,8 +122,9 @@ ChromeDevToolsSession::ChromeDevToolsSession(
+   }
+   if (IsDomainAvailableToUntrustedClient<BrowserHandler>() ||
+       channel->GetClient()->IsTrusted()) {
+-    browser_handler_ =
+-        std::make_unique<BrowserHandler>(&dispatcher_, agent_host->GetId());
++    browser_handler_ = std::make_unique<BrowserHandler>(
++        &dispatcher_, agent_host->GetId(),
++        channel->GetClient()->IsSecureRemoteDebuggingSession());
+   }
+   if (IsDomainAvailableToUntrustedClient<SystemInfoHandler>() ||
+       channel->GetClient()->IsTrusted()) {
+diff --git a/chrome/browser/devtools/features.cc b/chrome/browser/devtools/features.cc
+index 31f7d4e59f..60bc5b9b87 100644
+--- a/chrome/browser/devtools/features.cc
++++ b/chrome/browser/devtools/features.cc
+@@ -12,6 +12,7 @@ namespace features {
+ // Let the DevTools front-end query an AIDA endpoint for explanations and
+ // insights regarding console (error) messages.
+ BASE_FEATURE(kDevToolsConsoleInsights, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kSecureRemoteDebugging, base::FEATURE_ENABLED_BY_DEFAULT);
+ const base::FeatureParam<std::string> kDevToolsConsoleInsightsModelId{
+     &kDevToolsConsoleInsights, "aida_model_id", /*default_value=*/""};
+ const base::FeatureParam<double> kDevToolsConsoleInsightsTemperature{
+diff --git a/chrome/browser/devtools/features.h b/chrome/browser/devtools/features.h
+index 80842c85e4..5db5b29f9f 100644
+--- a/chrome/browser/devtools/features.h
++++ b/chrome/browser/devtools/features.h
+@@ -12,6 +12,10 @@
+ namespace features {
+ 
+ BASE_DECLARE_FEATURE(kDevToolsConsoleInsights);
++
++// Aside: always-on loopback DevTools server (localhost:45103) that only
++// accepts installation-signed sessions (see DevToolsHttpHandler kSecure).
++BASE_DECLARE_FEATURE(kSecureRemoteDebugging);
+ extern const base::FeatureParam<std::string> kDevToolsConsoleInsightsModelId;
+ extern const base::FeatureParam<double> kDevToolsConsoleInsightsTemperature;
+ extern const base::FeatureParam<bool> kDevToolsConsoleInsightsOptIn;
+diff --git a/chrome/browser/devtools/inspector_protocol_config.json b/chrome/browser/devtools/inspector_protocol_config.json
+index a40e58a092..23f211bcb0 100644
+--- a/chrome/browser/devtools/inspector_protocol_config.json
++++ b/chrome/browser/devtools/inspector_protocol_config.json
+@@ -17,8 +17,9 @@
+             },
+             {
+                 "domain": "Browser",
+-                "include": [ "getWindowForTarget", "getWindowBounds", "setWindowBounds", "setContentsSize", "close", "setDockTile", "executeBrowserCommand", "addPrivacySandboxEnrollmentOverride" ],
+-                "include_events": []
++                "include": [ "getWindowForTarget", "getWindowBounds", "setWindowBounds", "setContentsSize", "close", "setDockTile", "executeBrowserCommand", "addPrivacySandboxEnrollmentOverride", "ensureProfile", "setAiTabsMetadata" ],
++                "include_events": [],
++                "async": [ "ensureProfile" ]
+             },
+             {
+                 "domain": "Target",
+diff --git a/chrome/browser/devtools/protocol/browser_handler.cc b/chrome/browser/devtools/protocol/browser_handler.cc
+index ccf5dd29d8..8e63f05344 100644
+--- a/chrome/browser/devtools/protocol/browser_handler.cc
++++ b/chrome/browser/devtools/protocol/browser_handler.cc
+@@ -13,7 +13,22 @@
+ #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
+ #include "chrome/browser/devtools/devtools_dock_tile.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/profiles/profile_attributes_entry.h"
++#include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
++#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/profiles/profile_attributes_storage.h"
+ #include "chrome/browser/profiles/profile_manager.h"
++#include "chrome/browser/profiles/profile_window.h"
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/navigator/browser_navigator.h"
++#include "chrome/browser/ui/navigator/browser_navigator_params.h"
++#include "chrome/browser/browser_process.h"
++#include "base/strings/stringprintf.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/base/page_transition_types.h"
++#include "ui/base/window_open_disposition.h"
+ #include "chrome/browser/ui/browser_commands.h"
+ #include "chrome/browser/ui/browser_window.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+@@ -73,8 +88,9 @@ std::unique_ptr<protocol::Browser::Bounds> GetBrowserWindowBounds(
+ }  // namespace
+ 
+ BrowserHandler::BrowserHandler(protocol::UberDispatcher* dispatcher,
+-                               const std::string& target_id)
+-    : target_id_(target_id) {
++                               const std::string& target_id,
++                               bool secure_session)
++    : target_id_(target_id), secure_session_(secure_session) {
+   // Dispatcher can be null in tests.
+   if (dispatcher)
+     protocol::Browser::Dispatcher::wire(dispatcher, this);
+@@ -82,6 +98,161 @@ BrowserHandler::BrowserHandler(protocol::UberDispatcher* dispatcher,
+ 
+ BrowserHandler::~BrowserHandler() = default;
+ 
++// RE: original BrowserHandler::EnsureProfile (chrome/browser/devtools/
++// protocol/browser_handler.cc, strings "Profile windows are only supported
++// from secure remote debugging sessions", "Profile index must be
++// non-negative", "Profile %d does not exist", "Profile %d is locked", "URL must
++// be valid", "Failed to load profile", "Failed to open profile window",
++// "Failed to open URL"). The daemon calls it as
++// Browser.ensureProfile {profileIndex, url?, shouldFocus?}.
++void BrowserHandler::EnsureProfile(
++    int profile_index,
++    std::optional<std::string> url,
++    std::optional<bool> should_focus,
++    std::unique_ptr<EnsureProfileCallback> callback) {
++  if (!secure_session_) {
++    callback->sendFailure(protocol::Response::ServerError(
++        "Profile windows are only supported from secure remote debugging "
++        "sessions"));
++    return;
++  }
++  if (profile_index < 0) {
++    callback->sendFailure(
++        protocol::Response::InvalidParams("Profile index must be non-negative"));
++    return;
++  }
++  ProfileManager* profile_manager = g_browser_process->profile_manager();
++  std::vector<ProfileAttributesEntry*> entries;
++  if (profile_manager) {
++    entries =
++        profile_manager->GetProfileAttributesStorage().GetAllProfilesAttributes();
++  }
++  if (static_cast<size_t>(profile_index) >= entries.size()) {
++    callback->sendFailure(protocol::Response::InvalidParams(
++        base::StringPrintf("Profile %d does not exist", profile_index)));
++    return;
++  }
++  ProfileAttributesEntry* entry = entries[profile_index];
++  if (entry->IsSigninRequired()) {
++    callback->sendFailure(protocol::Response::ServerError(
++        base::StringPrintf("Profile %d is locked", profile_index)));
++    return;
++  }
++  GURL target_url;
++  if (url && !url->empty()) {
++    target_url = GURL(*url);
++    if (!target_url.is_valid()) {
++      callback->sendFailure(
++          protocol::Response::InvalidParams("URL must be valid"));
++      return;
++    }
++  }
++  profiles::LoadProfileAsync(
++      entry->GetPath(),
++      base::BindOnce(&BrowserHandler::OnProfileLoadedForEnsureProfile,
++                     weak_factory_.GetWeakPtr(), target_url,
++                     should_focus.value_or(true), std::move(callback)));
++}
++
++void BrowserHandler::OnProfileLoadedForEnsureProfile(
++    GURL url,
++    bool should_focus,
++    std::unique_ptr<EnsureProfileCallback> callback,
++    Profile* profile) {
++  if (!profile) {
++    callback->sendFailure(
++        protocol::Response::ServerError("Failed to load profile"));
++    return;
++  }
++  if (BrowserWindowInterface* existing =
++          ProfileBrowserCollection::GetForProfile(profile)
++              ->FindTabbedBrowser()) {
++    OnBrowserReadyForEnsureProfile(url, should_focus, std::move(callback),
++                                   existing->GetBrowserForMigrationOnly());
++    return;
++  }
++  profiles::OpenBrowserWindowForProfile(
++      base::BindOnce(&BrowserHandler::OnBrowserReadyForEnsureProfile,
++                     weak_factory_.GetWeakPtr(), url, should_focus,
++                     std::move(callback)),
++      /*always_create=*/false, /*is_new_profile=*/false,
++      /*open_command_line_urls=*/false, profile);
++}
++
++void BrowserHandler::OnBrowserReadyForEnsureProfile(
++    GURL url,
++    bool should_focus,
++    std::unique_ptr<EnsureProfileCallback> callback,
++    Browser* browser) {
++  if (!browser) {
++    callback->sendFailure(
++        protocol::Response::ServerError("Failed to open profile window"));
++    return;
++  }
++  if (url.is_valid()) {
++    NavigateParams params(browser, url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
++    params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
++    Navigate(&params);
++    if (!params.navigated_or_inserted_contents) {
++      callback->sendFailure(
++          protocol::Response::ServerError("Failed to open URL"));
++      return;
++    }
++  }
++  if (should_focus && browser->window()) {
++    browser->window()->Show();
++    browser->window()->Activate();
++  }
++  callback->sendSuccess(browser->session_id().id());
++}
++
++// RE: original BrowserHandler::SetAiTabsMetadata (strings "AI Tabs metadata
++// is only supported from secure remote debugging sessions", "No target with
++// given id", "No web contents in the target", "Browser window not found",
++// "Target is not in the current tab strip", "Target is not in a tab group";
++// params badgeLabel / initialOrigin).
++protocol::Response BrowserHandler::SetAiTabsMetadata(
++    const std::string& target_id,
++    std::optional<std::string> badge_label,
++    std::optional<std::string> initial_origin) {
++  if (!secure_session_) {
++    return protocol::Response::ServerError(
++        "AI Tabs metadata is only supported from secure remote debugging "
++        "sessions");
++  }
++  scoped_refptr<content::DevToolsAgentHost> host =
++      content::DevToolsAgentHost::GetForId(target_id);
++  if (!host) {
++    return protocol::Response::InvalidParams("No target with given id");
++  }
++  content::WebContents* web_contents = host->GetWebContents();
++  if (!web_contents) {
++    return protocol::Response::ServerError("No web contents in the target");
++  }
++  BrowserWindowInterface* browser_interface =
++      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents);
++  Browser* browser =
++      browser_interface ? browser_interface->GetBrowserForMigrationOnly()
++                        : nullptr;
++  if (!browser) {
++    return protocol::Response::ServerError("Browser window not found");
++  }
++  TabStripModel* model = browser->tab_strip_model();
++  const int index = model->GetIndexOfWebContents(web_contents);
++  if (index == TabStripModel::kNoTab) {
++    return protocol::Response::ServerError(
++        "Target is not in the current tab strip");
++  }
++  std::optional<tab_groups::TabGroupId> group = model->GetTabGroupForTab(index);
++  if (!group) {
++    return protocol::Response::ServerError("Target is not in a tab group");
++  }
++  aside::SetAiTabsMetadata(
++      *group, aside::AiTabsMetadata{badge_label.value_or(std::string()),
++                                    initial_origin.value_or(std::string())});
++  return protocol::Response::Success();
++}
++
+ Response BrowserHandler::GetWindowForTarget(
+     std::optional<std::string> target_id,
+     int* out_window_id,
+diff --git a/chrome/browser/devtools/protocol/browser_handler.h b/chrome/browser/devtools/protocol/browser_handler.h
+index e1424aa52c..d9a4caa52c 100644
+--- a/chrome/browser/devtools/protocol/browser_handler.h
++++ b/chrome/browser/devtools/protocol/browser_handler.h
+@@ -5,13 +5,19 @@
+ #ifndef CHROME_BROWSER_DEVTOOLS_PROTOCOL_BROWSER_HANDLER_H_
+ #define CHROME_BROWSER_DEVTOOLS_PROTOCOL_BROWSER_HANDLER_H_
+ 
++#include "base/memory/weak_ptr.h"
++#include "url/gurl.h"
+ #include "base/containers/flat_set.h"
+ #include "chrome/browser/devtools/protocol/browser.h"
+ 
++class Browser;
++class Profile;
++
+ class BrowserHandler : public protocol::Browser::Backend {
+  public:
+   BrowserHandler(protocol::UberDispatcher* dispatcher,
+-                 const std::string& target_id);
++                 const std::string& target_id,
++                 bool secure_session = false);
+ 
+   BrowserHandler(const BrowserHandler&) = delete;
+   BrowserHandler& operator=(const BrowserHandler&) = delete;
+@@ -38,12 +44,35 @@ class BrowserHandler : public protocol::Browser::Backend {
+       std::optional<protocol::Binary> image) override;
+   protocol::Response ExecuteBrowserCommand(
+       const protocol::Browser::BrowserCommandId& command_id) override;
++  // Aside (secure remote debugging sessions only).
++  void EnsureProfile(int profile_index,
++                     std::optional<std::string> url,
++                     std::optional<bool> should_focus,
++                     std::unique_ptr<EnsureProfileCallback> callback) override;
++  protocol::Response SetAiTabsMetadata(
++      const std::string& target_id,
++      std::optional<std::string> badge_label,
++      std::optional<std::string> initial_origin) override;
++
+   protocol::Response AddPrivacySandboxEnrollmentOverride(
+       const std::string& in_url) override;
+ 
+  private:
+   base::flat_set<std::string> contexts_with_overridden_permissions_;
+   std::string target_id_;
++  const bool secure_session_;
++
++  void OnProfileLoadedForEnsureProfile(
++      GURL url,
++      bool should_focus,
++      std::unique_ptr<EnsureProfileCallback> callback,
++      Profile* profile);
++  void OnBrowserReadyForEnsureProfile(
++      GURL url,
++      bool should_focus,
++      std::unique_ptr<EnsureProfileCallback> callback,
++      Browser* browser);
++  base::WeakPtrFactory<BrowserHandler> weak_factory_{this};
+ };
+ 
+ #endif  // CHROME_BROWSER_DEVTOOLS_PROTOCOL_BROWSER_HANDLER_H_
+diff --git a/chrome/browser/devtools/remote_debugging_server.cc b/chrome/browser/devtools/remote_debugging_server.cc
+index ea5ffb9a23..8fe4e99708 100644
+--- a/chrome/browser/devtools/remote_debugging_server.cc
++++ b/chrome/browser/devtools/remote_debugging_server.cc
+@@ -46,6 +46,11 @@
+ 
+ namespace {
+ 
++// RE: original RemoteDebuggingServer::GetInstance loads port 45103 (movz
++// 0xb02f) for the secure server; the daemon's ASIDE_BROWSER_CDP_HOST default
++// is localhost:45103.
++constexpr uint16_t kSecureRemoteDebuggingPort = 45103;
++
+ bool g_tethering_enabled = false;
+ 
+ #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+@@ -351,6 +356,22 @@ RemoteDebuggingServer::GetInstance(PrefService* local_state) {
+ 
+   auto server = base::WrapUnique(new RemoteDebuggingServer());
+ 
++#if !BUILDFLAG(IS_ANDROID)
++  // Aside: the daemon reaches the browser through an always-on loopback
++  // DevTools server (localhost:45103) whose sessions are gated by the
++  // installation-signed challenge handshake. Explicit --remote-debugging-*
++  // switches keep Chromium's behaviour instead.
++  if (base::FeatureList::IsEnabled(features::kSecureRemoteDebugging) &&
++      !command_line.HasSwitch(switches::kRemoteDebuggingPipe) &&
++      !command_line.HasSwitch(::switches::kRemoteDebuggingPort)) {
++    server->StartHttpServer(
++        std::make_unique<TCPServerSocketFactory>(kSecureRemoteDebuggingPort),
++        base::FilePath(), base::FilePath(),
++        content::DevToolsAgentHost::RemoteDebuggingServerMode::kSecure);
++    debugging_server_started = true;
++  }
++#endif
++
+   if (command_line.HasSwitch(switches::kRemoteDebuggingPipe)) {
+     if (const auto maybe_allow_debugging =
+             IsRemoteDebuggingAllowed(is_default_user_data_dir, local_state);
+diff --git a/chrome/browser/ui/BUILD.gn b/chrome/browser/ui/BUILD.gn
+index 017a8c3ff7..e526a3393f 100644
+--- a/chrome/browser/ui/BUILD.gn
++++ b/chrome/browser/ui/BUILD.gn
+@@ -4050,6 +4050,20 @@ static_library("ui") {
+       "views/frame/top_container_view.cc",
+       "views/frame/top_container_view.h",
+       "views/frame/top_controls_slide_controller.h",
++      "views/frame/aside_tab_search_bubble.cc",
++      "views/frame/aside_tab_search_bubble.h",
++      "views/tabs/aside_agent_tabs_button.cc",
++      "views/tabs/aside_agent_tabs_button.h",
++      "views/frame/aside_agent_control_banner.cc",
++      "views/frame/aside_agent_control_banner.h",
++      "views/frame/aside_vertical_tab_strip_additions.cc",
++      "aside/aside_agent_tabs.cc",
++      "aside/aside_agent_tabs.h",
++      "aside/aside_ai_tabs_metadata.cc",
++      "aside/aside_ai_tabs_metadata.h",
++      "aside/aside_extension_bridge.cc",
++      "aside/aside_extension_bridge.h",
++      "views/frame/aside_vertical_tab_strip_additions.h",
+       "views/frame/vertical_tab_strip_region_view.cc",
+       "views/frame/vertical_tab_strip_region_view.h",
+       "views/frame/web_contents_close_handler.cc",
+diff --git a/chrome/browser/ui/views/frame/contents_container_view.cc b/chrome/browser/ui/views/frame/contents_container_view.cc
+index 9d1cec9e85..406d6ee26a 100644
+--- a/chrome/browser/ui/views/frame/contents_container_view.cc
++++ b/chrome/browser/ui/views/frame/contents_container_view.cc
+@@ -28,6 +28,7 @@
+ #include "chrome/browser/ui/views/frame/contents_separator.h"
+ #include "chrome/browser/ui/views/frame/contents_web_view.h"
+ #include "chrome/browser/ui/views/frame/multi_contents_view_mini_toolbar.h"
++#include "chrome/browser/ui/views/frame/aside_agent_control_banner.h"
+ #include "chrome/browser/ui/views/frame/scrim_view.h"
+ #include "chrome/browser/ui/views/frame/tab_modal_dialog_host.h"
+ #include "chrome/browser/ui/views/frame/top_container_view.h"
+@@ -131,6 +132,9 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
+         AddChildView(std::move(read_anything_immersive_overlay_view));
+   }
+ 
++  aside_agent_banner_ = AddChildView(std::make_unique<AsideAgentControlBanner>(
++      browser_view_->browser(), contents_view_));
++
+   contents_scrim_view_ = AddChildView(std::make_unique<ScrimView>());
+   contents_scrim_view_->layer()->SetName("ContentsScrimView");
+ 
+@@ -531,6 +535,20 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
+                                        footer_rect);
+   }
+ 
++  gfx::Rect agent_banner_rect;
++  if (aside_agent_banner_ && aside_agent_banner_->GetVisible()) {
++    const int banner_height = aside_agent_banner_->GetPreferredSize().height();
++    agent_banner_rect =
++        gfx::Rect(contents_view_bounds.x(), contents_view_bounds.y(),
++                  contents_view_bounds.width(), banner_height);
++    contents_view_bounds.Inset(gfx::Insets::TLBR(banner_height, 0, 0, 0));
++  }
++  if (aside_agent_banner_) {
++    layouts.child_layouts.emplace_back(aside_agent_banner_.get(),
++                                       aside_agent_banner_->GetVisible(),
++                                       GetMirroredRect(agent_banner_rect));
++  }
++
+   const auto& contents_rect = GetMirroredRect(contents_view_bounds);
+   layouts.child_layouts.emplace_back(
+       contents_view_.get(), contents_view_->GetVisible(), contents_rect);
+diff --git a/chrome/browser/ui/views/frame/contents_container_view.h b/chrome/browser/ui/views/frame/contents_container_view.h
+index e3ae9d104d..88b33f90d8 100644
+--- a/chrome/browser/ui/views/frame/contents_container_view.h
++++ b/chrome/browser/ui/views/frame/contents_container_view.h
+@@ -17,6 +17,7 @@
+ #include "ui/views/layout/delegating_layout_manager.h"
+ #include "ui/views/view.h"
+ 
++class AsideAgentControlBanner;
+ class BrowserView;
+ class ContentsCaptureBorderView;
+ class ContentsContainerOutline;
+@@ -208,6 +209,9 @@ class ContentsContainerView : public views::View,
+   // open.
+   raw_ptr<ScrimView> contents_scrim_view_ = nullptr;
+ 
++  // Aside: "Aside is controlling the tab" / "Take over" strip.
++  raw_ptr<AsideAgentControlBanner> aside_agent_banner_ = nullptr;
++
+   // The view that contains the Glic Actor Overlay. The Actor Overlay is a UI
+   // overlay that is shown on top of the web contents.
+   raw_ptr<ActorOverlayWebView> actor_overlay_web_view_ = nullptr;
+diff --git a/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc b/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
+index 28fac81220..76ede74898 100644
+--- a/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
++++ b/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
+@@ -4,6 +4,14 @@
+ 
+ #include "chrome/browser/ui/views/tabs/common/tab_group_header_view.h"
+ 
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "components/tabs/public/tab_group.h"
++#include "ui/views/layout/flex_layout_view.h"
++#include "ui/views/view_class_properties.h"
++
+ #include "base/task/single_thread_task_runner.h"
+ #include "build/build_config.h"
+ #include "build/buildflag.h"
+@@ -148,6 +156,23 @@ TabGroupHeaderView::TabGroupHeaderView(
+   SetNotifyEnterExitOnChild(true);
+ 
+   ConfigureEditorBubbleButton(editor_bubble_button_);
++
++  // Aside: AiTabsCountBadgeView, placed right after the sync icon.
++  {
++    auto badge = std::make_unique<views::FlexLayoutView>();
++    badge->SetOrientation(views::LayoutOrientation::kHorizontal);
++    badge->SetCrossAxisAlignment(views::LayoutAlignment::kCenter);
++    badge->SetTooltipText(u"Tabs controlled by Aside while it works");
++    ai_badge_icon_ = badge->AddChildView(std::make_unique<views::ImageView>());
++    ai_badge_label_ = badge->AddChildView(std::make_unique<views::Label>(
++        std::u16string(), views::style::CONTEXT_LABEL,
++        views::style::STYLE_PRIMARY));
++    ai_badge_label_->SetProperty(views::kMarginsKey,
++                                 gfx::Insets::TLBR(0, 2, 0, 4));
++    ai_badge_ = AddChildView(std::move(badge));
++    ai_badge_->SetVisible(false);
++    ReorderChildView(ai_badge_, GetIndexOf(sync_icon_).value() + 1);
++  }
+   editor_bubble_opened_subscription_ =
+       editor_bubble_tracker_.RegisterOnBubbleOpened(base::BindRepeating(
+           &TabGroupHeaderView::OnBubbleOpened, base::Unretained(this)));
+@@ -467,6 +492,21 @@ void TabGroupHeaderView::OnDataChanged(
+ 
+     // Update save tab group related items, the sync icon and attention
+     // indicator.
++    const TabGroup& tab_group = delegate_->GetTabGroup();
++    const bool is_agent_group = aside::IsAgentTabsGroup(&tab_group);
++    ai_badge_->SetVisible(is_agent_group);
++    if (is_agent_group) {
++      ai_badge_icon_->SetImage(ui::ImageModel::FromVectorIcon(
++          kAsideWindowSparkleStrokeIcon, foreground_color, kIconSize));
++      std::optional<aside::AiTabsMetadata> metadata =
++          aside::GetAiTabsMetadata(tab_group.id());
++      ai_badge_label_->SetText(
++          metadata && !metadata->badge_label.empty()
++              ? base::UTF8ToUTF16(metadata->badge_label)
++              : base::NumberToString16(tab_group.tab_count()));
++      ai_badge_label_->SetEnabledColor(foreground_color);
++    }
++
+     sync_icon_->SetVisible(is_shared_);
+     if (is_shared_) {
+       sync_icon_->SetImage(ui::ImageModel::FromVectorIcon(
+diff --git a/chrome/browser/ui/views/tabs/common/tab_group_header_view.h b/chrome/browser/ui/views/tabs/common/tab_group_header_view.h
+index eab34b7c8b..36ffb7596a 100644
+--- a/chrome/browser/ui/views/tabs/common/tab_group_header_view.h
++++ b/chrome/browser/ui/views/tabs/common/tab_group_header_view.h
+@@ -136,6 +136,12 @@ class TabGroupHeaderView : public views::FlexLayoutView,
+   // the tabstrip.
+   const raw_ptr<views::ImageView> sync_icon_ = nullptr;
+ 
++  // Aside: AiTabsCountBadgeView — sparkle icon + count/badge label shown on
++  // the "Agent Tabs" group header (tooltip IDS 11708).
++  raw_ptr<views::View> ai_badge_ = nullptr;
++  raw_ptr<views::ImageView> ai_badge_icon_ = nullptr;
++  raw_ptr<views::Label> ai_badge_label_ = nullptr;
++
+   const raw_ptr<views::Label> group_header_label_ = nullptr;
+ 
+   // The circle indicator rendered after the title when a tab group needs
+diff --git a/content/browser/devtools/devtools_http_handler.cc b/content/browser/devtools/devtools_http_handler.cc
+index fbfe1abebb..3215d5e055 100644
+--- a/content/browser/devtools/devtools_http_handler.cc
++++ b/content/browser/devtools/devtools_http_handler.cc
+@@ -18,7 +18,10 @@
+ #include "base/files/file_util.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback_helpers.h"
++#include "base/base64.h"
++#include "base/json/json_reader.h"
+ #include "base/json/json_writer.h"
++#include "crypto/random.h"
+ #include "base/location.h"
+ #include "base/logging.h"
+ #include "base/memory/raw_ptr.h"
+@@ -71,6 +74,17 @@ namespace content {
+ 
+ namespace {
+ 
++constexpr char kSecureMissingAuthorizationError[] =
++    "Missing or invalid Authorization header.";
++constexpr char kSecureSessionTokenType[] = "AsideSessionToken";
++constexpr char kSecureChallengeScheme[] = "AsideSecureToken";
++constexpr base::TimeDelta kSecureChallengeTtl = base::Seconds(30);
++constexpr base::TimeDelta kSecureSessionTtl = base::Seconds(300);
++
++}  // namespace
++
++namespace {
++
+ const char kDevToolsHandlerThreadName[] = "Chrome_DevToolsHandlerThread";
+ 
+ const char kPageUrlPrefix[] = "/devtools/page/";
+@@ -328,11 +342,13 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
+       scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+       ServerWrapper* server_wrapper,
+       int connection_id,
+-      scoped_refptr<DevToolsAgentHost> agent_host)
++      scoped_refptr<DevToolsAgentHost> agent_host,
++      bool secure_session = false)
+       : task_runner_(std::move(task_runner)),
+         server_wrapper_(server_wrapper),
+         connection_id_(connection_id),
+-        agent_host_(agent_host) {
++        agent_host_(agent_host),
++        secure_session_(secure_session) {
+     DCHECK_CURRENTLY_ON(BrowserThread::UI);
+     // TODO(dgozman): handle return value of AttachClient.
+     agent_host_->AttachClient(this);
+@@ -348,6 +364,8 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
+ 
+   bool MayAccessAllCookies() override { return true; }
+ 
++  bool IsSecureRemoteDebuggingSession() override { return secure_session_; }
++
+   void AgentHostClosed(DevToolsAgentHost* agent_host) override {
+     DCHECK_CURRENTLY_ON(BrowserThread::UI);
+     DCHECK(agent_host == agent_host_.get());
+@@ -386,6 +404,7 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
+   const raw_ptr<ServerWrapper> server_wrapper_;
+   const int connection_id_;
+   scoped_refptr<DevToolsAgentHost> agent_host_;
++  const bool secure_session_;
+ };
+ 
+ static bool TimeComparator(scoped_refptr<DevToolsAgentHost> host1,
+@@ -614,6 +633,29 @@ void DevToolsHttpHandler::OnJsonRequest(
+     return;
+   }
+ 
++  if (mode_ == DevToolsAgentHost::RemoteDebuggingServerMode::kSecure) {
++    // Aside handshake: GET /json/challenge, POST /json/auth/session. Every
++    // other command needs a valid session token.
++    if (command == "challenge") {
++      OnSecureChallengeRequest(connection_id);
++      return;
++    }
++    if (command == "auth") {
++      if (target_id == "session") {
++        OnSecureSessionRequest(connection_id, info);
++        return;
++      }
++      SendJson(connection_id, net::HTTP_NOT_FOUND, std::nullopt,
++               "Unknown command: " + command + "/" + target_id);
++      return;
++    }
++    if (!IsAuthorized(info)) {
++      SendJson(connection_id, net::HTTP_UNAUTHORIZED, std::nullopt,
++               kSecureMissingAuthorizationError);
++      return;
++    }
++  }
++
+   if (command == "version") {
+     base::DictValue version;
+     version.Set("Protocol-Version", DevToolsAgentHost::GetProtocolVersion());
+@@ -758,6 +800,11 @@ void DevToolsHttpHandler::RespondToJsonList(int connection_id,
+ }
+ 
+ void DevToolsHttpHandler::OnDiscoveryPageRequest(int connection_id) {
++  if (mode_ == DevToolsAgentHost::RemoteDebuggingServerMode::kSecure) {
++    SendJson(connection_id, net::HTTP_UNAUTHORIZED, std::nullopt,
++             kSecureMissingAuthorizationError);
++    return;
++  }
+   if (mode_ ==
+       DevToolsAgentHost::RemoteDebuggingServerMode::kWithApprovalOnly) {
+     Send404(connection_id);
+@@ -810,6 +857,110 @@ void DevToolsHttpHandler::HandleDebuggingApproval(
+   }
+ }
+ 
++
++
++bool DevToolsHttpHandler::IsAuthorized(
++    const net::HttpServerRequestInfo& info) const {
++  if (mode_ != DevToolsAgentHost::RemoteDebuggingServerMode::kSecure) {
++    return true;
++  }
++  auto it = info.headers.find("authorization");
++  if (it == info.headers.end()) {
++    return false;
++  }
++  const std::string prefix = std::string(kSecureSessionTokenType) + " ";
++  std::string_view value = it->second;
++  if (!base::StartsWith(value, prefix, base::CompareCase::SENSITIVE)) {
++    return false;
++  }
++  auto token = secure_session_tokens_.find(std::string(value.substr(prefix.size())));
++  return token != secure_session_tokens_.end() &&
++         base::TimeTicks::Now() <= token->second;
++}
++
++void DevToolsHttpHandler::PruneSecureState() {
++  const base::TimeTicks now = base::TimeTicks::Now();
++  std::erase_if(secure_challenges_,
++                [now](const auto& entry) { return now > entry.second.expires; });
++  std::erase_if(secure_session_tokens_,
++                [now](const auto& entry) { return now > entry.second; });
++}
++
++void DevToolsHttpHandler::OnSecureChallengeRequest(int connection_id) {
++  PruneSecureState();
++  const std::string challenge_id =
++      base::Base64Encode(crypto::RandBytesAsVector(16));
++  PendingChallenge pending;
++  pending.bytes = crypto::RandBytesAsVector(32);
++  pending.expires = base::TimeTicks::Now() + kSecureChallengeTtl;
++  const std::string challenge = base::Base64Encode(pending.bytes);
++  secure_challenges_[challenge_id] = std::move(pending);
++
++  base::DictValue response;
++  response.Set("headerName", "Authorization");
++  response.Set("scheme", kSecureChallengeScheme);
++  response.Set("challengeId", challenge_id);
++  response.Set("challenge", challenge);
++  response.Set("expiresInSeconds",
++               static_cast<int>(kSecureChallengeTtl.InSeconds()));
++  SendJson(connection_id, net::HTTP_OK, response, "");
++}
++
++void DevToolsHttpHandler::OnSecureSessionRequest(
++    int connection_id,
++    const net::HttpServerRequestInfo& info) {
++  if (!base::EqualsCaseInsensitiveASCII(info.method,
++                                        net::HttpRequestHeaders::kPostMethod)) {
++    SendJson(connection_id, net::HTTP_METHOD_NOT_ALLOWED, std::nullopt,
++             "Using unsafe HTTP verb to invoke /json/auth/session. This "
++             "action supports only POST verb.");
++    return;
++  }
++  std::optional<base::Value> body =
++      base::JSONReader::Read(info.data, base::JSON_PARSE_RFC);
++  if (!body || !body->is_dict()) {
++    SendJson(connection_id, net::HTTP_BAD_REQUEST, std::nullopt,
++             "Malformed request body.");
++    return;
++  }
++  const std::string* challenge_id = body->GetDict().FindString("challengeId");
++  const std::string* signed_challenge =
++      body->GetDict().FindString("signedChallenge");
++  if (!challenge_id || !signed_challenge) {
++    SendJson(connection_id, net::HTTP_BAD_REQUEST, std::nullopt,
++             "Missing challengeId or signedChallenge.");
++    return;
++  }
++  PruneSecureState();
++  auto it = secure_challenges_.find(*challenge_id);
++  if (it == secure_challenges_.end()) {
++    SendJson(connection_id, net::HTTP_FORBIDDEN, std::nullopt,
++             "Invalid or expired challenge.");
++    return;
++  }
++  PendingChallenge pending = std::move(it->second);
++  secure_challenges_.erase(it);
++  std::string signature_bytes;
++  if (!base::Base64Decode(*signed_challenge, &signature_bytes) || !delegate_ ||
++      !delegate_->VerifySecureRemoteDebuggingSignature(
++          pending.bytes, base::as_byte_span(signature_bytes))) {
++    SendJson(connection_id, net::HTTP_FORBIDDEN, std::nullopt,
++             "Invalid or expired challenge.");
++    return;
++  }
++  const std::string token = base::Base64Encode(crypto::RandBytesAsVector(32));
++  secure_session_tokens_[token] = base::TimeTicks::Now() + kSecureSessionTtl;
++
++  base::DictValue response;
++  response.Set("headerName", "Authorization");
++  response.Set("token_type", kSecureSessionTokenType);
++  response.Set("scheme", kSecureSessionTokenType);
++  response.Set("access_token", token);
++  response.Set("expiresInSeconds",
++               static_cast<int>(kSecureSessionTtl.InSeconds()));
++  SendJson(connection_id, net::HTTP_OK, response, "");
++}
++
+ void DevToolsHttpHandler::OnWebSocketRequest(
+     int connection_id,
+     const net::HttpServerRequestInfo& request) {
+@@ -831,6 +982,16 @@ void DevToolsHttpHandler::OnWebSocketRequest(
+     return;
+   }
+ 
++  bool secure_session = false;
++  if (mode_ == DevToolsAgentHost::RemoteDebuggingServerMode::kSecure) {
++    if (!IsAuthorized(request)) {
++      SendJson(connection_id, net::HTTP_UNAUTHORIZED, std::nullopt,
++               kSecureMissingAuthorizationError);
++      return;
++    }
++    secure_session = true;
++  }
++
+   // If we require user approval, we do not require guid.
+   if (mode_ ==
+       DevToolsAgentHost::RemoteDebuggingServerMode::kWithApprovalOnly) {
+@@ -856,7 +1017,7 @@ void DevToolsHttpHandler::OnWebSocketRequest(
+     connection_to_client_[connection_id] =
+         std::make_unique<DevToolsAgentHostClientImpl>(
+             thread_->task_runner(), server_wrapper_.get(), connection_id,
+-            browser_agent);
++            browser_agent, secure_session);
+     AcceptWebSocket(connection_id, request);
+     return;
+   }
+diff --git a/content/browser/devtools/devtools_http_handler.h b/content/browser/devtools/devtools_http_handler.h
+index 107e08a782..fdbce9bea9 100644
+--- a/content/browser/devtools/devtools_http_handler.h
++++ b/content/browser/devtools/devtools_http_handler.h
+@@ -7,6 +7,8 @@
+ 
+ #include <map>
+ #include <memory>
++#include "base/time/time.h"
++#include <vector>
+ #include <optional>
+ #include <set>
+ #include <string>
+@@ -99,6 +101,13 @@ class DevToolsHttpHandler {
+                std::string_view data,
+                std::string_view mime_type);
+   void Send404(int connection_id);
++
++  // Aside secure remote debugging (RemoteDebuggingServerMode::kSecure).
++  bool IsAuthorized(const net::HttpServerRequestInfo& info) const;
++  void OnSecureChallengeRequest(int connection_id);
++  void OnSecureSessionRequest(int connection_id,
++                              const net::HttpServerRequestInfo& info);
++  void PruneSecureState();
+   void Send403(int connection_id, const std::string& message);
+   void Send500(int connection_id,
+                const std::string& message);
+@@ -122,6 +131,13 @@ class DevToolsHttpHandler {
+       const std::string& host);
+ 
+   DevToolsAgentHost::RemoteDebuggingServerMode mode_;
++  struct PendingChallenge {
++    std::vector<uint8_t> bytes;
++    base::TimeTicks expires;
++  };
++  std::map<std::string, PendingChallenge> secure_challenges_;
++  // Issued session tokens -> expiry.
++  std::map<std::string, base::TimeTicks> secure_session_tokens_;
+   std::set<std::string> remote_allow_origins_;
+   // The thread used by the devtools handler to run server socket.
+   std::unique_ptr<base::Thread> thread_;
+diff --git a/content/public/browser/devtools_agent_host.h b/content/public/browser/devtools_agent_host.h
+index 1748d6e330..a67b76d36d 100644
+--- a/content/public/browser/devtools_agent_host.h
++++ b/content/public/browser/devtools_agent_host.h
+@@ -54,6 +54,11 @@ class CONTENT_EXPORT DevToolsAgentHost
+     // Each debugging connection will be rejected until the user explicitly
+     // approves it.
+     kWithApprovalOnly,
++    // Aside: an always-on loopback server. Every request except the
++    // /json/challenge + /json/auth/session handshake must carry a session
++    // token issued after an installation-signed challenge
++    // (Authorization: AsideSessionToken <token>).
++    kSecure,
+   };
+ 
+   static const char kTypeTab[];
+diff --git a/content/public/browser/devtools_agent_host_client.cc b/content/public/browser/devtools_agent_host_client.cc
+index a8370fc086..c0357b0d90 100644
+--- a/content/public/browser/devtools_agent_host_client.cc
++++ b/content/public/browser/devtools_agent_host_client.cc
+@@ -20,6 +20,10 @@ bool DevToolsAgentHostClient::IsTrusted() {
+   return true;
+ }
+ 
++bool DevToolsAgentHostClient::IsSecureRemoteDebuggingSession() {
++  return false;
++}
++
+ // File access is allowed by default, only restricted clients that represent
+ // not entirely trusted protocol peers override this to false.
+ bool DevToolsAgentHostClient::MayReadLocalFiles() {
+diff --git a/content/public/browser/devtools_agent_host_client.h b/content/public/browser/devtools_agent_host_client.h
+index a05939c7f0..39572220db 100644
+--- a/content/public/browser/devtools_agent_host_client.h
++++ b/content/public/browser/devtools_agent_host_client.h
+@@ -45,6 +45,11 @@ class CONTENT_EXPORT DevToolsAgentHostClient {
+   // manipulate browser altogether.
+   virtual bool IsTrusted();
+ 
++  // Returns true if the client authenticated through the secure remote
++  // debugging handshake (Aside: /json/challenge + /json/auth/session).
++  // Aside-only Browser domain commands require this.
++  virtual bool IsSecureRemoteDebuggingSession();
++
+   // Returns true if the client has unrestricted access to all cookies
+   // (i.e., MayAttachToURL() returns true for all possible cookie domains).
+   // When true, cookie operations like clearBrowserCookies can use a more
+diff --git a/content/public/browser/devtools_manager_delegate.cc b/content/public/browser/devtools_manager_delegate.cc
+index 8257dd01a7..5a83af19d1 100644
+--- a/content/public/browser/devtools_manager_delegate.cc
++++ b/content/public/browser/devtools_manager_delegate.cc
+@@ -127,5 +127,11 @@ void DevToolsManagerDelegate::AcceptDebugging(AcceptCallback callback) {
+ 
+ void DevToolsManagerDelegate::SetActiveWebSocketConnections(size_t count) {}
+ 
++bool DevToolsManagerDelegate::VerifySecureRemoteDebuggingSignature(
++    base::span<const uint8_t> challenge,
++    base::span<const uint8_t> signature) {
++  return false;
++}
++
+ DevToolsManagerDelegate::~DevToolsManagerDelegate() = default;
+ }  // namespace content
+diff --git a/content/public/browser/devtools_manager_delegate.h b/content/public/browser/devtools_manager_delegate.h
+index f08399ea04..34e5a8d4f0 100644
+--- a/content/public/browser/devtools_manager_delegate.h
++++ b/content/public/browser/devtools_manager_delegate.h
+@@ -174,6 +174,13 @@ class CONTENT_EXPORT DevToolsManagerDelegate {
+   // Called when a new debugging connection is received if the
+   // remote debugging server is started in approval mode.
+   virtual void AcceptDebugging(AcceptCallback);
++
++  // Aside secure remote debugging: verifies `signature` over the 32-byte
++  // `challenge` with the installation verification key. The default returns
++  // false (handshake unsupported).
++  virtual bool VerifySecureRemoteDebuggingSignature(
++      base::span<const uint8_t> challenge,
++      base::span<const uint8_t> signature);
+   // Called when the number of active WebSocket connections changes
+   // The embedder can use this information to update the UI.
+   virtual void SetActiveWebSocketConnections(size_t count);
+diff --git a/third_party/blink/public/devtools_protocol/domains/Browser.pdl b/third_party/blink/public/devtools_protocol/domains/Browser.pdl
+index 6015a94554..abb95ec30f 100644
+--- a/third_party/blink/public/devtools_protocol/domains/Browser.pdl
++++ b/third_party/blink/public/devtools_protocol/domains/Browser.pdl
+@@ -333,6 +333,26 @@ domain Browser
+     parameters
+       string url
+ 
++  # Aside: makes sure the profile at `profileIndex` is loaded and has a
++  # browser window, optionally opening `url` in it. Only available to secure
++  # remote debugging sessions.
++  experimental command ensureProfile
++    parameters
++      integer profileIndex
++      optional string url
++      optional boolean shouldFocus
++    returns
++      WindowID windowId
++
++  # Aside: marks the tab group containing `targetId` as the AI ("Agent Tabs")
++  # group and stores its badge metadata. Only available to secure remote
++  # debugging sessions.
++  experimental command setAiTabsMetadata
++    parameters
++      Target.TargetID targetId
++      optional string badgeLabel
++      optional string initialOrigin
++
+   experimental type PrivacySandboxAPI extends string
+     enum
+       BiddingAndAuctionServices
+diff --git a/chrome/browser/devtools/secure_remote_debugging_credentials.h b/chrome/browser/devtools/secure_remote_debugging_credentials.h
+new file mode 100644
+index 0000000000..1d3a3da437
+--- /dev/null
++++ b/chrome/browser/devtools/secure_remote_debugging_credentials.h
+@@ -0,0 +1,70 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_DEVTOOLS_SECURE_REMOTE_DEBUGGING_CREDENTIALS_H_
++#define CHROME_BROWSER_DEVTOOLS_SECURE_REMOTE_DEBUGGING_CREDENTIALS_H_
++
++#include <cstdint>
++#include <optional>
++#include <string>
++#include <vector>
++
++#include "base/containers/span.h"
++#include "base/files/file_path.h"
++#include "base/no_destructor.h"
++
++// The installation identity used by Aside's secure remote debugging handshake
++// (RE: chrome/browser/devtools/secure_remote_debugging_credentials_mac.mm —
++// keychain items aside.install.meta / aside.install.sig, scheme p256_v1;
++// pq_v1 is macOS-26 ML-DSA and is reported as unsupported here).
++//
++// This portable implementation keeps the P-256 key in a PKCS#8 DER file:
++// $ASIDE_INSTALLATION_KEY, else <user data dir>/AsideInstallationKey, else
++// <user data dir>/Default/AsideInstallationKey (the same file the
++// asideAccount.signDaemonAuthChallenge API reads for the default profile).
++class SecureRemoteDebuggingCredentials {
++ public:
++  static SecureRemoteDebuggingCredentials* GetInstance();
++
++  SecureRemoteDebuggingCredentials(const SecureRemoteDebuggingCredentials&) =
++      delete;
++  SecureRemoteDebuggingCredentials& operator=(
++      const SecureRemoteDebuggingCredentials&) = delete;
++
++  // "p256_v1" (or "pq_v1" once supported).
++  std::string scheme() const { return "p256_v1"; }
++
++  // True once the installation key could be loaded.
++  bool IsInitialized();
++
++  // Verifies an ECDSA P-256/SHA-256 signature over `challenge`. Accepts the
++  // 64-byte raw r||s form (CryptoKit rawRepresentation, what the daemon's
++  // native helper produces) as well as DER.
++  bool Verify(base::span<const uint8_t> challenge,
++              base::span<const uint8_t> signature);
++
++  // Signs `data` with the installation private key (DER signature).
++  std::optional<std::vector<uint8_t>> Sign(base::span<const uint8_t> data);
++
++  // SubjectPublicKeyInfo of the installation verification key.
++  std::optional<std::vector<uint8_t>> ExportPublicKey();
++
++  // Last load error ("Installation security is not initialized." etc.).
++  const std::string& error() const { return error_; }
++
++ private:
++  friend class base::NoDestructor<SecureRemoteDebuggingCredentials>;
++
++  SecureRemoteDebuggingCredentials();
++  ~SecureRemoteDebuggingCredentials();
++
++  bool EnsureLoaded();
++  std::optional<base::FilePath> ResolveKeyPath() const;
++
++  bool load_attempted_ = false;
++  std::optional<std::vector<uint8_t>> private_key_der_;
++  std::string error_;
++};
++
++#endif  // CHROME_BROWSER_DEVTOOLS_SECURE_REMOTE_DEBUGGING_CREDENTIALS_H_
+diff --git a/chrome/browser/devtools/secure_remote_debugging_credentials.cc b/chrome/browser/devtools/secure_remote_debugging_credentials.cc
+new file mode 100644
+index 0000000000..e25a458e1e
+--- /dev/null
++++ b/chrome/browser/devtools/secure_remote_debugging_credentials.cc
+@@ -0,0 +1,161 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/devtools/secure_remote_debugging_credentials.h"
++
++#include <memory>
++#include <utility>
++
++#include "base/environment.h"
++#include "base/files/file_util.h"
++#include "base/no_destructor.h"
++#include "base/path_service.h"
++#include "chrome/common/chrome_paths.h"
++#include "crypto/keypair.h"
++#include "crypto/sign.h"
++
++namespace {
++
++// Encodes one big-endian unsigned integer as a DER INTEGER.
++void AppendDerInteger(base::span<const uint8_t> value,
++                      std::vector<uint8_t>* out) {
++  size_t start = 0;
++  while (start + 1 < value.size() && value[start] == 0) {
++    ++start;
++  }
++  const bool needs_pad = value[start] & 0x80;
++  const size_t len = value.size() - start + (needs_pad ? 1 : 0);
++  out->push_back(0x02);
++  out->push_back(static_cast<uint8_t>(len));
++  if (needs_pad) {
++    out->push_back(0x00);
++  }
++  out->insert(out->end(), value.begin() + start, value.end());
++}
++
++// Converts a 64-byte raw ECDSA (r || s) signature into DER.
++std::vector<uint8_t> RawEcdsaToDer(base::span<const uint8_t, 64> raw) {
++  std::vector<uint8_t> body;
++  AppendDerInteger(raw.first<32>(), &body);
++  AppendDerInteger(raw.last<32>(), &body);
++  std::vector<uint8_t> der;
++  der.push_back(0x30);
++  der.push_back(static_cast<uint8_t>(body.size()));
++  der.insert(der.end(), body.begin(), body.end());
++  return der;
++}
++
++}  // namespace
++
++// static
++SecureRemoteDebuggingCredentials* SecureRemoteDebuggingCredentials::GetInstance() {
++  static base::NoDestructor<SecureRemoteDebuggingCredentials> instance;
++  return instance.get();
++}
++
++SecureRemoteDebuggingCredentials::SecureRemoteDebuggingCredentials() = default;
++SecureRemoteDebuggingCredentials::~SecureRemoteDebuggingCredentials() = default;
++
++std::optional<base::FilePath> SecureRemoteDebuggingCredentials::ResolveKeyPath()
++    const {
++  std::unique_ptr<base::Environment> env = base::Environment::Create();
++  std::optional<std::string> env_path = env->GetVar("ASIDE_INSTALLATION_KEY");
++  if (env_path && !env_path->empty()) {
++    return base::FilePath::FromUTF8Unsafe(*env_path);
++  }
++  base::FilePath user_data_dir;
++  if (!base::PathService::Get(chrome::DIR_USER_DATA, &user_data_dir)) {
++    return std::nullopt;
++  }
++  const base::FilePath candidates[] = {
++      user_data_dir.Append(FILE_PATH_LITERAL("AsideInstallationKey")),
++      user_data_dir.Append(FILE_PATH_LITERAL("Default"))
++          .Append(FILE_PATH_LITERAL("AsideInstallationKey")),
++  };
++  for (const base::FilePath& path : candidates) {
++    if (base::PathExists(path)) {
++      return path;
++    }
++  }
++  return std::nullopt;
++}
++
++bool SecureRemoteDebuggingCredentials::EnsureLoaded() {
++  if (load_attempted_) {
++    return private_key_der_.has_value();
++  }
++  load_attempted_ = true;
++  std::optional<base::FilePath> path = ResolveKeyPath();
++  if (!path) {
++    error_ = "Installation security is not initialized.";
++    return false;
++  }
++  std::string contents;
++  if (!base::ReadFileToString(*path, &contents)) {
++    error_ = "Unable to load installation private key: " +
++             path->AsUTF8Unsafe();
++    return false;
++  }
++  std::vector<uint8_t> der(contents.begin(), contents.end());
++  if (!crypto::keypair::PrivateKey::FromPrivateKeyInfo(der)) {
++    error_ = "Unable to load installation signing key: " + path->AsUTF8Unsafe();
++    return false;
++  }
++  private_key_der_ = std::move(der);
++  return true;
++}
++
++bool SecureRemoteDebuggingCredentials::IsInitialized() {
++  return EnsureLoaded();
++}
++
++bool SecureRemoteDebuggingCredentials::Verify(
++    base::span<const uint8_t> challenge,
++    base::span<const uint8_t> signature) {
++  if (!EnsureLoaded()) {
++    return false;
++  }
++  std::optional<crypto::keypair::PrivateKey> key =
++      crypto::keypair::PrivateKey::FromPrivateKeyInfo(*private_key_der_);
++  if (!key) {
++    return false;
++  }
++  crypto::keypair::PublicKey public_key =
++      crypto::keypair::PublicKey::FromPrivateKey(*key);
++  std::vector<uint8_t> der_signature;
++  if (signature.size() == 64) {
++    der_signature = RawEcdsaToDer(signature.first<64>());
++    signature = der_signature;
++  }
++  return crypto::sign::Verify(crypto::sign::ECDSA_SHA256, public_key, challenge,
++                              signature);
++}
++
++std::optional<std::vector<uint8_t>> SecureRemoteDebuggingCredentials::Sign(
++    base::span<const uint8_t> data) {
++  if (!EnsureLoaded()) {
++    return std::nullopt;
++  }
++  std::optional<crypto::keypair::PrivateKey> key =
++      crypto::keypair::PrivateKey::FromPrivateKeyInfo(*private_key_der_);
++  if (!key) {
++    return std::nullopt;
++  }
++  return crypto::sign::Sign(crypto::sign::ECDSA_SHA256, *key, data);
++}
++
++std::optional<std::vector<uint8_t>>
++SecureRemoteDebuggingCredentials::ExportPublicKey() {
++  if (!EnsureLoaded()) {
++    return std::nullopt;
++  }
++  std::optional<crypto::keypair::PrivateKey> key =
++      crypto::keypair::PrivateKey::FromPrivateKeyInfo(*private_key_der_);
++  if (!key) {
++    error_ = "Failed to export installation public key.";
++    return std::nullopt;
++  }
++  return crypto::keypair::PublicKey::FromPrivateKey(*key)
++      .ToSubjectPublicKeyInfo();
++}
+diff --git a/chrome/browser/ui/aside/aside_ai_tabs_metadata.h b/chrome/browser/ui/aside/aside_ai_tabs_metadata.h
+new file mode 100644
+index 0000000000..fb3fd14f11
+--- /dev/null
++++ b/chrome/browser/ui/aside/aside_ai_tabs_metadata.h
+@@ -0,0 +1,41 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_ASIDE_ASIDE_AI_TABS_METADATA_H_
++#define CHROME_BROWSER_UI_ASIDE_ASIDE_AI_TABS_METADATA_H_
++
++#include <optional>
++#include <string>
++
++#include "components/tab_groups/tab_group_id.h"
++
++class TabGroup;
++
++namespace aside {
++
++// Metadata attached to the "Agent Tabs" tab group by Browser.setAiTabsMetadata
++// (RE: original strings badgeLabel / initialOrigin; AiTabsCountBadgeView).
++struct AiTabsMetadata {
++  std::string badge_label;
++  std::string initial_origin;
++};
++
++// The extension creates the agent group with this title (background.js:
++// chrome.tabGroups.update(id, {title: "Agent Tabs"})); the original browser
++// carries the same UTF-16 literal.
++inline constexpr char16_t kAgentTabsGroupTitle[] = u"Agent Tabs";
++
++void SetAiTabsMetadata(const tab_groups::TabGroupId& group,
++                       AiTabsMetadata metadata);
++std::optional<AiTabsMetadata> GetAiTabsMetadata(
++    const tab_groups::TabGroupId& group);
++void ClearAiTabsMetadata(const tab_groups::TabGroupId& group);
++
++// True for the group the agent works in: either flagged through
++// setAiTabsMetadata or titled "Agent Tabs" by the extension.
++bool IsAgentTabsGroup(const TabGroup* group);
++
++}  // namespace aside
++
++#endif  // CHROME_BROWSER_UI_ASIDE_ASIDE_AI_TABS_METADATA_H_
+diff --git a/chrome/browser/ui/aside/aside_ai_tabs_metadata.cc b/chrome/browser/ui/aside/aside_ai_tabs_metadata.cc
+new file mode 100644
+index 0000000000..5308723512
+--- /dev/null
++++ b/chrome/browser/ui/aside/aside_ai_tabs_metadata.cc
+@@ -0,0 +1,54 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++
++#include <map>
++#include <utility>
++
++#include "base/no_destructor.h"
++#include "components/tab_groups/tab_group_visual_data.h"
++#include "components/tabs/public/tab_group.h"
++
++namespace aside {
++
++namespace {
++
++std::map<tab_groups::TabGroupId, AiTabsMetadata>& Registry() {
++  static base::NoDestructor<std::map<tab_groups::TabGroupId, AiTabsMetadata>>
++      registry;
++  return *registry;
++}
++
++}  // namespace
++
++void SetAiTabsMetadata(const tab_groups::TabGroupId& group,
++                       AiTabsMetadata metadata) {
++  Registry()[group] = std::move(metadata);
++}
++
++std::optional<AiTabsMetadata> GetAiTabsMetadata(
++    const tab_groups::TabGroupId& group) {
++  auto it = Registry().find(group);
++  if (it == Registry().end()) {
++    return std::nullopt;
++  }
++  return it->second;
++}
++
++void ClearAiTabsMetadata(const tab_groups::TabGroupId& group) {
++  Registry().erase(group);
++}
++
++bool IsAgentTabsGroup(const TabGroup* group) {
++  if (!group) {
++    return false;
++  }
++  if (Registry().contains(group->id())) {
++    return true;
++  }
++  return group->visual_data()->title() == kAgentTabsGroupTitle;
++}
++
++}  // namespace aside
+diff --git a/chrome/browser/ui/aside/aside_agent_tabs.h b/chrome/browser/ui/aside/aside_agent_tabs.h
+new file mode 100644
+index 0000000000..d7ee59076f
+--- /dev/null
++++ b/chrome/browser/ui/aside/aside_agent_tabs.h
+@@ -0,0 +1,40 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_ASIDE_ASIDE_AGENT_TABS_H_
++#define CHROME_BROWSER_UI_ASIDE_ASIDE_AGENT_TABS_H_
++
++#include <vector>
++
++class Browser;
++class TabStripModel;
++
++namespace content {
++class WebContents;
++}
++
++namespace aside {
++
++// "Agent tabs" are the tabs the daemon drives inside the "Agent Tabs" group
++// (created by the extension / Browser.setAiTabsMetadata). A tab is
++// "controlled" while a DevTools client (the daemon's CDP session) is attached
++// to it — that is what the original's "Aside is controlling the tab" banner
++// and "Take over" button react to.
++bool IsAgentTab(TabStripModel* model, int index);
++bool IsAgentTab(Browser* browser, content::WebContents* web_contents);
++std::vector<int> GetAgentTabIndices(TabStripModel* model);
++int CountAgentTabs(TabStripModel* model);
++
++bool IsAgentControlled(Browser* browser, content::WebContents* web_contents);
++
++// Detaches every DevTools client from `web_contents` so the user can take
++// over the tab.
++void TakeOverTab(content::WebContents* web_contents);
++
++// Closes every agent tab in `model`.
++void CloseAllAgentTabs(TabStripModel* model);
++
++}  // namespace aside
++
++#endif  // CHROME_BROWSER_UI_ASIDE_ASIDE_AGENT_TABS_H_
+diff --git a/chrome/browser/ui/aside/aside_agent_tabs.cc b/chrome/browser/ui/aside/aside_agent_tabs.cc
+new file mode 100644
+index 0000000000..05d44c978c
+--- /dev/null
++++ b/chrome/browser/ui/aside/aside_agent_tabs.cc
+@@ -0,0 +1,82 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/aside/aside_agent_tabs.h"
++
++#include <algorithm>
++
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/tabs/tab_enums.h"
++#include "chrome/browser/ui/tabs/tab_group_model.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "components/tabs/public/tab_group.h"
++#include "content/public/browser/devtools_agent_host.h"
++#include "content/public/browser/web_contents.h"
++
++namespace aside {
++
++bool IsAgentTab(TabStripModel* model, int index) {
++  if (!model || index < 0 || index >= model->count()) {
++    return false;
++  }
++  std::optional<tab_groups::TabGroupId> group = model->GetTabGroupForTab(index);
++  if (!group || !model->SupportsTabGroups()) {
++    return false;
++  }
++  return IsAgentTabsGroup(model->group_model()->GetTabGroup(*group));
++}
++
++bool IsAgentTab(Browser* browser, content::WebContents* web_contents) {
++  if (!browser || !web_contents) {
++    return false;
++  }
++  TabStripModel* model = browser->tab_strip_model();
++  return IsAgentTab(model, model->GetIndexOfWebContents(web_contents));
++}
++
++std::vector<int> GetAgentTabIndices(TabStripModel* model) {
++  std::vector<int> indices;
++  if (!model) {
++    return indices;
++  }
++  for (int i = 0; i < model->count(); ++i) {
++    if (IsAgentTab(model, i)) {
++      indices.push_back(i);
++    }
++  }
++  return indices;
++}
++
++int CountAgentTabs(TabStripModel* model) {
++  return static_cast<int>(GetAgentTabIndices(model).size());
++}
++
++bool IsAgentControlled(Browser* browser, content::WebContents* web_contents) {
++  if (!IsAgentTab(browser, web_contents)) {
++    return false;
++  }
++  if (!content::DevToolsAgentHost::HasFor(web_contents)) {
++    return false;
++  }
++  return content::DevToolsAgentHost::GetOrCreateFor(web_contents)->IsAttached();
++}
++
++void TakeOverTab(content::WebContents* web_contents) {
++  if (!web_contents || !content::DevToolsAgentHost::HasFor(web_contents)) {
++    return;
++  }
++  content::DevToolsAgentHost::GetOrCreateFor(web_contents)
++      ->ForceDetachAllSessions();
++}
++
++void CloseAllAgentTabs(TabStripModel* model) {
++  std::vector<int> indices = GetAgentTabIndices(model);
++  std::sort(indices.rbegin(), indices.rend());
++  for (int index : indices) {
++    model->CloseWebContentsAt(index, TabCloseTypes::CLOSE_USER_GESTURE);
++  }
++}
++
++}  // namespace aside
+diff --git a/chrome/browser/ui/views/frame/aside_agent_control_banner.h b/chrome/browser/ui/views/frame/aside_agent_control_banner.h
+new file mode 100644
+index 0000000000..2cc4fc458f
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_agent_control_banner.h
+@@ -0,0 +1,66 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_AGENT_CONTROL_BANNER_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_AGENT_CONTROL_BANNER_H_
++
++#include "base/memory/raw_ptr.h"
++#include "base/scoped_observation.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "content/public/browser/devtools_agent_host.h"
++#include "content/public/browser/devtools_agent_host_observer.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/view.h"
++
++class Browser;
++class ContentsWebView;
++class TabStripModel;
++
++namespace views {
++class Label;
++class MdTextButton;
++}  // namespace views
++
++// The "Aside is controlling the tab" strip shown above the web contents while
++// the daemon's DevTools session drives an agent tab; "Take over" detaches it.
++// RE: original multi_contents_view.cc (IDS 11706 / 11707).
++class AsideAgentControlBanner : public views::View,
++                                public TabStripModelObserver,
++                                public content::DevToolsAgentHostObserver {
++  METADATA_HEADER(AsideAgentControlBanner, views::View)
++
++ public:
++  AsideAgentControlBanner(Browser* browser, ContentsWebView* contents_view);
++  ~AsideAgentControlBanner() override;
++
++  // Recomputes visibility for the hosted contents.
++  void Update();
++
++  // TabStripModelObserver:
++  void OnTabStripModelChanged(
++      TabStripModel* tab_strip_model,
++      const TabStripModelChange& change,
++      const TabStripSelectionChange& selection) override;
++  void TabGroupedStateChanged(
++      TabStripModel* tab_strip_model,
++      std::optional<tab_groups::TabGroupId> old_group,
++      std::optional<tab_groups::TabGroupId> new_group,
++      tabs::TabInterface* tab,
++      int index) override;
++  void OnTabGroupChanged(const TabGroupChange& change) override;
++
++  // content::DevToolsAgentHostObserver:
++  void DevToolsAgentHostAttached(content::DevToolsAgentHost* host) override;
++  void DevToolsAgentHostDetached(content::DevToolsAgentHost* host) override;
++
++ private:
++  void OnTakeOverPressed();
++
++  raw_ptr<Browser> browser_;
++  raw_ptr<ContentsWebView> contents_view_;
++  raw_ptr<views::Label> label_ = nullptr;
++  raw_ptr<views::MdTextButton> take_over_button_ = nullptr;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_AGENT_CONTROL_BANNER_H_
+diff --git a/chrome/browser/ui/views/frame/aside_agent_control_banner.cc b/chrome/browser/ui/views/frame/aside_agent_control_banner.cc
+new file mode 100644
+index 0000000000..558dfe3331
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_agent_control_banner.cc
+@@ -0,0 +1,120 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_agent_control_banner.h"
++
++#include <memory>
++
++#include "base/functional/bind.h"
++#include "chrome/browser/ui/aside/aside_agent_tabs.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "chrome/browser/ui/views/frame/contents_web_view.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/color/color_id.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/views/background.h"
++#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/controls/image_view.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/layout/box_layout.h"
++
++namespace {
++
++// Aside-only strings (aside_resources): IDS 11706 / 11707.
++constexpr char16_t kControllingLabel[] = u"Aside is controlling the tab";
++constexpr char16_t kTakeOverLabel[] = u"Take over";
++
++}  // namespace
++
++AsideAgentControlBanner::AsideAgentControlBanner(Browser* browser,
++                                                 ContentsWebView* contents_view)
++    : browser_(browser), contents_view_(contents_view) {
++  auto* layout = SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kHorizontal, gfx::Insets::VH(6, 12), 8));
++  layout->set_cross_axis_alignment(views::BoxLayout::CrossAxisAlignment::kCenter);
++  SetBackground(
++      views::CreateSolidBackground(ui::kColorSubtleEmphasisBackground));
++
++  auto icon = std::make_unique<views::ImageView>(ui::ImageModel::FromVectorIcon(
++      kAsideWindowSparkleStrokeIcon, ui::kColorIcon, 16));
++  AddChildView(std::move(icon));
++  label_ = AddChildView(std::make_unique<views::Label>(
++      kControllingLabel, views::style::CONTEXT_LABEL,
++      views::style::STYLE_PRIMARY));
++  label_->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  layout->SetFlexForView(label_, 1);
++  take_over_button_ = AddChildView(std::make_unique<views::MdTextButton>(
++      base::BindRepeating(&AsideAgentControlBanner::OnTakeOverPressed,
++                          base::Unretained(this)),
++      kTakeOverLabel));
++  take_over_button_->SetStyle(ui::ButtonStyle::kProminent);
++
++  SetVisible(false);
++  if (browser_) {
++    browser_->tab_strip_model()->AddObserver(this);
++  }
++  content::DevToolsAgentHost::AddObserver(this);
++}
++
++AsideAgentControlBanner::~AsideAgentControlBanner() {
++  content::DevToolsAgentHost::RemoveObserver(this);
++  if (browser_) {
++    browser_->tab_strip_model()->RemoveObserver(this);
++  }
++}
++
++void AsideAgentControlBanner::Update() {
++  content::WebContents* contents =
++      contents_view_ ? contents_view_->web_contents() : nullptr;
++  const bool visible = aside::IsAgentControlled(browser_, contents);
++  if (visible != GetVisible()) {
++    SetVisible(visible);
++    if (parent()) {
++      parent()->InvalidateLayout();
++    }
++  }
++}
++
++void AsideAgentControlBanner::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  Update();
++}
++
++void AsideAgentControlBanner::TabGroupedStateChanged(
++    TabStripModel* tab_strip_model,
++    std::optional<tab_groups::TabGroupId> old_group,
++    std::optional<tab_groups::TabGroupId> new_group,
++    tabs::TabInterface* tab,
++    int index) {
++  Update();
++}
++
++void AsideAgentControlBanner::OnTabGroupChanged(const TabGroupChange& change) {
++  Update();
++}
++
++void AsideAgentControlBanner::DevToolsAgentHostAttached(
++    content::DevToolsAgentHost* host) {
++  Update();
++}
++
++void AsideAgentControlBanner::DevToolsAgentHostDetached(
++    content::DevToolsAgentHost* host) {
++  Update();
++}
++
++void AsideAgentControlBanner::OnTakeOverPressed() {
++  if (contents_view_) {
++    aside::TakeOverTab(contents_view_->web_contents());
++  }
++  Update();
++}
++
++BEGIN_METADATA(AsideAgentControlBanner)
++END_METADATA
+diff --git a/chrome/browser/ui/views/tabs/aside_agent_tabs_button.h b/chrome/browser/ui/views/tabs/aside_agent_tabs_button.h
+new file mode 100644
+index 0000000000..07c0f99056
+--- /dev/null
++++ b/chrome/browser/ui/views/tabs/aside_agent_tabs_button.h
+@@ -0,0 +1,88 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_TABS_ASIDE_AGENT_TABS_BUTTON_H_
++#define CHROME_BROWSER_UI_VIEWS_TABS_ASIDE_AGENT_TABS_BUTTON_H_
++
++#include "base/memory/raw_ptr.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/controls/button/label_button.h"
++#include "ui/views/view.h"
++
++class Browser;
++class TabStripModel;
++
++// Vertical tab strip button that counts the tabs in the "Agent Tabs" group
++// and opens AsideAgentTabsBubbleView. RE: original
++// chrome/browser/ui/views/tabs/aside_agent_tabs_button.cc
++// (kAsideWindowSparkleStrokeIcon; strings "Agent Tabs",
++// "Background tabs Aside opened", "Background tabs opened for work",
++// "Close all", "Configure auto close"; bubble rows use kAsideGlobeIcon and
++// kCloseIcon).
++class AsideAgentTabsButton : public views::LabelButton,
++                             public TabStripModelObserver {
++  METADATA_HEADER(AsideAgentTabsButton, views::LabelButton)
++
++ public:
++  explicit AsideAgentTabsButton(Browser* browser);
++  ~AsideAgentTabsButton() override;
++
++  void UpdateState();
++
++  // TabStripModelObserver:
++  void OnTabStripModelChanged(
++      TabStripModel* tab_strip_model,
++      const TabStripModelChange& change,
++      const TabStripSelectionChange& selection) override;
++  void TabGroupedStateChanged(
++      TabStripModel* tab_strip_model,
++      std::optional<tab_groups::TabGroupId> old_group,
++      std::optional<tab_groups::TabGroupId> new_group,
++      tabs::TabInterface* tab,
++      int index) override;
++  void OnTabGroupChanged(const TabGroupChange& change) override;
++
++ private:
++  void OnPressed();
++
++  raw_ptr<Browser> browser_;
++};
++
++// Contents of the agent tabs bubble: title, subtitle, one AgentTabsRowView per
++// agent tab and an AgentTabsCommandRowView ("Close all",
++// "Configure auto close").
++class AsideAgentTabsBubbleView : public views::View,
++                                 public TabStripModelObserver {
++  METADATA_HEADER(AsideAgentTabsBubbleView, views::View)
++
++ public:
++  explicit AsideAgentTabsBubbleView(Browser* browser);
++  ~AsideAgentTabsBubbleView() override;
++
++  // Shows the bubble anchored at `anchor` (self-owning widget).
++  static void Show(views::View* anchor, Browser* browser);
++
++  // TabStripModelObserver:
++  void OnTabStripModelChanged(
++      TabStripModel* tab_strip_model,
++      const TabStripModelChange& change,
++      const TabStripSelectionChange& selection) override;
++  void TabGroupedStateChanged(
++      TabStripModel* tab_strip_model,
++      std::optional<tab_groups::TabGroupId> old_group,
++      std::optional<tab_groups::TabGroupId> new_group,
++      tabs::TabInterface* tab,
++      int index) override;
++
++ private:
++  void RebuildRows();
++  void OnCloseAllPressed();
++  void OnConfigureAutoClosePressed();
++
++  raw_ptr<Browser> browser_;
++  raw_ptr<views::View> rows_ = nullptr;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_TABS_ASIDE_AGENT_TABS_BUTTON_H_
+diff --git a/chrome/browser/ui/views/tabs/aside_agent_tabs_button.cc b/chrome/browser/ui/views/tabs/aside_agent_tabs_button.cc
+new file mode 100644
+index 0000000000..2d55f1f541
+--- /dev/null
++++ b/chrome/browser/ui/views/tabs/aside_agent_tabs_button.cc
+@@ -0,0 +1,300 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/tabs/aside_agent_tabs_button.h"
++
++#include <memory>
++#include <string>
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/strings/string_number_conversions.h"
++#include "chrome/browser/ui/aside/aside_agent_tabs.h"
++#include "chrome/browser/ui/aside/aside_extension_bridge.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/tabs/tab_enums.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "components/favicon/content/content_favicon_driver.h"
++#include "components/vector_icons/vector_icons.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/base/mojom/dialog_button.mojom.h"
++#include "ui/base/mojom/ui_base_types.mojom.h"
++#include "ui/color/color_id.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/views/bubble/bubble_border.h"
++#include "ui/views/bubble/bubble_dialog_delegate_view.h"
++#include "ui/views/controls/button/image_button.h"
++#include "ui/views/controls/button/image_button_factory.h"
++#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/controls/image_view.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/layout/box_layout.h"
++#include "ui/views/layout/box_layout_view.h"
++#include "ui/views/widget/widget.h"
++
++namespace {
++
++// UTF-16 literals carried by the original binary (0xcf65f66..0xcf66040).
++constexpr char16_t kAgentTabsTitle[] = u"Agent Tabs";
++constexpr char16_t kButtonTooltip[] = u"Background tabs Aside opened";
++constexpr char16_t kBubbleSubtitle[] = u"Background tabs opened for work";
++constexpr char16_t kCloseAll[] = u"Close all";
++constexpr char16_t kConfigureAutoClose[] = u"Configure auto close";
++
++// One agent tab: favicon (kAsideGlobeIcon fallback) + title; click activates
++// the tab; the trailing kCloseIcon button closes it.
++class AgentTabsRowView : public views::BoxLayoutView {
++  METADATA_HEADER(AgentTabsRowView, views::BoxLayoutView)
++
++ public:
++  AgentTabsRowView(Browser* browser, int index) : browser_(browser) {
++    SetOrientation(views::BoxLayout::Orientation::kHorizontal);
++    SetBetweenChildSpacing(4);
++    TabStripModel* model = browser_->tab_strip_model();
++    content::WebContents* contents = model->GetWebContentsAt(index);
++    ui::ImageModel favicon = ui::ImageModel::FromVectorIcon(
++        kAsideGlobeIcon, ui::kColorIcon, 16);
++    if (auto* driver = favicon::ContentFaviconDriver::FromWebContents(contents);
++        driver && !driver->GetFavicon().IsEmpty()) {
++      favicon = ui::ImageModel::FromImage(driver->GetFavicon());
++    }
++    auto* activate = AddChildView(std::make_unique<views::MdTextButton>(
++        base::BindRepeating(&AgentTabsRowView::Activate,
++                            base::Unretained(this)),
++        contents->GetTitle()));
++    activate->SetStyle(ui::ButtonStyle::kText);
++    activate->SetImageModel(views::Button::STATE_NORMAL, favicon);
++    activate->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    activate->SetCustomPadding(gfx::Insets::VH(4, 8));
++    activate->SetImageLabelSpacing(8);
++    activate->SetTooltipText(contents->GetTitle());
++    SetFlexForView(activate, 1);
++    auto close = views::CreateVectorImageButtonWithNativeTheme(
++        base::BindRepeating(&AgentTabsRowView::Close, base::Unretained(this)),
++        vector_icons::kCloseIcon, 16);
++    close->SetTooltipText(u"Close");
++    AddChildView(std::move(close));
++    web_contents_ = contents;
++  }
++
++ private:
++  int IndexOfContents() const {
++    return browser_->tab_strip_model()->GetIndexOfWebContents(web_contents_);
++  }
++  void Activate() {
++    const int index = IndexOfContents();
++    if (index != TabStripModel::kNoTab) {
++      browser_->tab_strip_model()->ActivateTabAt(index);
++    }
++  }
++  void Close() {
++    const int index = IndexOfContents();
++    if (index != TabStripModel::kNoTab) {
++      browser_->tab_strip_model()->CloseWebContentsAt(
++          index, TabCloseTypes::CLOSE_USER_GESTURE);
++    }
++  }
++
++  raw_ptr<Browser> browser_;
++  raw_ptr<content::WebContents> web_contents_ = nullptr;
++};
++
++BEGIN_METADATA(AgentTabsRowView)
++END_METADATA
++
++// Owns the delegate + widget for one bubble (CLIENT_OWNS_WIDGET).
++class AgentTabsBubbleController {
++ public:
++  AgentTabsBubbleController(views::View* anchor, Browser* browser) {
++    delegate_ = std::make_unique<views::BubbleDialogDelegate>(
++        anchor, views::BubbleBorder::TOP_LEFT);
++    delegate_->SetButtons(static_cast<int>(ui::mojom::DialogButton::kNone));
++    delegate_->SetShowCloseButton(false);
++    delegate_->SetShowTitle(false);
++    delegate_->set_margins(gfx::Insets(12));
++    delegate_->SetContentsView(
++        std::make_unique<AsideAgentTabsBubbleView>(browser));
++    widget_ = views::BubbleDialogDelegate::CreateBubble(
++        delegate_.get(),
++        base::BindOnce(&AgentTabsBubbleController::OnClosed,
++                       base::Unretained(this)));
++    widget_->Show();
++  }
++
++ private:
++  void OnClosed(views::Widget::ClosedReason) { delete this; }
++
++  std::unique_ptr<views::BubbleDialogDelegate> delegate_;
++  std::unique_ptr<views::Widget> widget_;
++};
++
++}  // namespace
++
++// AsideAgentTabsButton ------------------------------------------------------
++
++AsideAgentTabsButton::AsideAgentTabsButton(Browser* browser)
++    : views::LabelButton(
++          base::BindRepeating(&AsideAgentTabsButton::OnPressed,
++                              base::Unretained(this)),
++          std::u16string()),
++      browser_(browser) {
++  SetImageModel(views::Button::STATE_NORMAL,
++                ui::ImageModel::FromVectorIcon(kAsideWindowSparkleStrokeIcon,
++                                               ui::kColorIcon, 16));
++  SetTooltipText(kButtonTooltip);
++  SetImageLabelSpacing(4);
++  SetBorder(views::CreateEmptyBorder(gfx::Insets::VH(4, 4)));
++  if (browser_) {
++    browser_->tab_strip_model()->AddObserver(this);
++  }
++  UpdateState();
++}
++
++AsideAgentTabsButton::~AsideAgentTabsButton() {
++  if (browser_) {
++    browser_->tab_strip_model()->RemoveObserver(this);
++  }
++}
++
++void AsideAgentTabsButton::UpdateState() {
++  const int count =
++      browser_ ? aside::CountAgentTabs(browser_->tab_strip_model()) : 0;
++  SetText(count > 0 ? base::NumberToString16(count) : std::u16string());
++  SetVisible(count > 0);
++  if (parent()) {
++    parent()->InvalidateLayout();
++  }
++}
++
++void AsideAgentTabsButton::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  UpdateState();
++}
++
++void AsideAgentTabsButton::TabGroupedStateChanged(
++    TabStripModel* tab_strip_model,
++    std::optional<tab_groups::TabGroupId> old_group,
++    std::optional<tab_groups::TabGroupId> new_group,
++    tabs::TabInterface* tab,
++    int index) {
++  UpdateState();
++}
++
++void AsideAgentTabsButton::OnTabGroupChanged(const TabGroupChange& change) {
++  UpdateState();
++}
++
++void AsideAgentTabsButton::OnPressed() {
++  AsideAgentTabsBubbleView::Show(this, browser_);
++}
++
++BEGIN_METADATA(AsideAgentTabsButton)
++END_METADATA
++
++// AsideAgentTabsBubbleView --------------------------------------------------
++
++AsideAgentTabsBubbleView::AsideAgentTabsBubbleView(Browser* browser)
++    : browser_(browser) {
++  SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kVertical, gfx::Insets(), 6));
++  auto* title = AddChildView(std::make_unique<views::Label>(
++      kAgentTabsTitle, views::style::CONTEXT_DIALOG_TITLE,
++      views::style::STYLE_PRIMARY));
++  title->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  auto* subtitle = AddChildView(std::make_unique<views::Label>(
++      kBubbleSubtitle, views::style::CONTEXT_LABEL,
++      views::style::STYLE_SECONDARY));
++  subtitle->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++
++  auto rows = std::make_unique<views::BoxLayoutView>();
++  rows->SetOrientation(views::BoxLayout::Orientation::kVertical);
++  rows->SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++  rows_ = AddChildView(std::move(rows));
++
++  // AgentTabsCommandRowView.
++  auto* command_row = AddChildView(std::make_unique<views::BoxLayoutView>());
++  command_row->SetOrientation(views::BoxLayout::Orientation::kHorizontal);
++  command_row->SetBetweenChildSpacing(8);
++  command_row->SetMainAxisAlignment(views::LayoutAlignment::kEnd);
++  auto* configure = command_row->AddChildView(std::make_unique<views::MdTextButton>(
++      base::BindRepeating(&AsideAgentTabsBubbleView::OnConfigureAutoClosePressed,
++                          base::Unretained(this)),
++      kConfigureAutoClose));
++  configure->SetStyle(ui::ButtonStyle::kText);
++  auto* close_all = command_row->AddChildView(std::make_unique<views::MdTextButton>(
++      base::BindRepeating(&AsideAgentTabsBubbleView::OnCloseAllPressed,
++                          base::Unretained(this)),
++      kCloseAll));
++  close_all->SetStyle(ui::ButtonStyle::kTonal);
++
++  SetPreferredSize(gfx::Size(320, 0));
++  RebuildRows();
++  if (browser_) {
++    browser_->tab_strip_model()->AddObserver(this);
++  }
++}
++
++AsideAgentTabsBubbleView::~AsideAgentTabsBubbleView() {
++  if (browser_) {
++    browser_->tab_strip_model()->RemoveObserver(this);
++  }
++}
++
++// static
++void AsideAgentTabsBubbleView::Show(views::View* anchor, Browser* browser) {
++  if (!anchor || !browser) {
++    return;
++  }
++  new AgentTabsBubbleController(anchor, browser);  // self-deleting
++}
++
++void AsideAgentTabsBubbleView::RebuildRows() {
++  rows_->RemoveAllChildViews();
++  for (int index : aside::GetAgentTabIndices(browser_->tab_strip_model())) {
++    rows_->AddChildView(std::make_unique<AgentTabsRowView>(browser_, index));
++  }
++  SetPreferredSize(std::nullopt);
++  PreferredSizeChanged();
++  if (GetWidget()) {
++    GetWidget()->SetSize(GetWidget()->GetContentsView()->GetPreferredSize());
++  }
++}
++
++void AsideAgentTabsBubbleView::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  RebuildRows();
++}
++
++void AsideAgentTabsBubbleView::TabGroupedStateChanged(
++    TabStripModel* tab_strip_model,
++    std::optional<tab_groups::TabGroupId> old_group,
++    std::optional<tab_groups::TabGroupId> new_group,
++    tabs::TabInterface* tab,
++    int index) {
++  RebuildRows();
++}
++
++void AsideAgentTabsBubbleView::OnCloseAllPressed() {
++  aside::CloseAllAgentTabs(browser_->tab_strip_model());
++}
++
++void AsideAgentTabsBubbleView::OnConfigureAutoClosePressed() {
++  // RE: the button file builds "/newtab.html#/u/<uid>" + "/settings/general".
++  aside::ShowExtensionPage(
++      browser_, aside::ExtensionPageUrl(browser_->profile(), "newtab.html",
++                                        "/settings/general"));
++  if (GetWidget()) {
++    GetWidget()->Close();
++  }
++}
++
++BEGIN_METADATA(AsideAgentTabsBubbleView)
++END_METADATA

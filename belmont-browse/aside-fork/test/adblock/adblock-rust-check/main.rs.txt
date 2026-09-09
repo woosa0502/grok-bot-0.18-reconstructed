@@ -1,0 +1,34 @@
+use adblock::lists::{parse_filter, FilterSet, ParseOptions};
+use adblock::Engine;
+use std::io::BufRead;
+
+fn main() {
+    let path = std::env::args().nth(1).expect("rules file");
+    let lines: Vec<String> = std::io::BufReader::new(std::fs::File::open(&path).unwrap())
+        .lines().map(|l| l.unwrap()).filter(|l| !l.trim().is_empty()).collect();
+    let mut set = FilterSet::new(true);
+    let mut ok = 0usize; let mut err = 0usize;
+    let mut accepted: Vec<String> = Vec::new();
+    for l in &lines {
+        match parse_filter(l, true, ParseOptions::default()) {
+            Ok(_) => { ok += 1; accepted.push(l.clone()); }
+            Err(e) => { err += 1; println!("PARSE_ERR {:?} | {}", e, &l[..l.len().min(110)]); }
+        }
+    }
+    println!("adblock-rust 0.13.3: accepted={} rejected={}", ok, err);
+    set.add_filter_list(accepted.join("\n"), ParseOptions::default());
+    let engine = Engine::new_with_filter_set(set);
+    let mut shown = 0;
+    for l in accepted.iter() {
+        let dom = l.split('#').next().unwrap_or("").split(',').next().unwrap_or("").replace("*", "com");
+        if dom.is_empty() { continue; }
+        let res = engine.url_cosmetic_resources(&format!("https://{}/", dom));
+        shown += 1;
+        let sel = l.splitn(2, "#?#").nth(1).or_else(|| l.splitn(2, "##").nth(1)).unwrap_or("");
+        let mut hs: Vec<&String> = res.hide_selectors.iter().collect(); hs.sort();
+        let matched: Vec<&&String> = hs.iter().filter(|h| h.len() > 8 && (sel.contains(&h[..8]) || h.contains(&sel[..sel.len().min(8)]))).collect();
+        println!("RULE {} => hide_selectors={} procedural={} | {}", &l[..l.len().min(70)], res.hide_selectors.len(), res.procedural_actions.len(), matched.first().map(|s| s.as_str()).unwrap_or("-"));
+        for a in res.procedural_actions.iter() { println!("   PROCEDURAL {}", a); }
+    }
+    println!("done");
+}

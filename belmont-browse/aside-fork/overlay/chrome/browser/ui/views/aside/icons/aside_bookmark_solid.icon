@@ -1,0 +1,19 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideBookmarkSolidIcon
+
+CANVAS_DIMENSIONS, 18,
+FILL_RULE_NONZERO,
+MOVE_TO, 6.0006f, 1.4994f,
+CUBIC_TO, 4.3437f, 1.4994f, 3.0006f, 2.8425f, 3.0006f, 4.4994f,
+V_LINE_TO, 14.9955f,
+CUBIC_TO, 3.0006f, 16.2104f, 4.3692f, 16.9213f, 5.3632f, 16.2227f,
+LINE_TO, 8.138f, 14.2723f,
+CUBIC_TO, 8.6556f, 13.9086f, 9.3456f, 13.9086f, 9.8632f, 14.2723f,
+LINE_TO, 12.638f, 16.2227f,
+CUBIC_TO, 13.6319f, 16.9213f, 15.0006f, 16.2104f, 15.0006f, 14.9955f,
+V_LINE_TO, 4.4994f,
+CUBIC_TO, 15.0006f, 2.8425f, 13.6574f, 1.4994f, 12.0006f, 1.4994f,
+H_LINE_TO, 6.0006f,
+CLOSE,

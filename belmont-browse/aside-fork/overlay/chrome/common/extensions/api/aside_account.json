@@ -1,0 +1,85 @@
+[
+  {
+    "namespace": "asideAccount",
+    "types": [
+      {
+        "id": "JsonObject",
+        "type": "object",
+        "additionalProperties": {
+          "type": "any"
+        }
+      },
+      {
+        "id": "ProfileInfo",
+        "type": "object",
+        "properties": {
+          "profileIndex": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isCurrent": {
+            "type": "boolean"
+          },
+          "isLocked": {
+            "type": "boolean"
+          }
+        }
+      }
+    ],
+    "functions": [
+      {
+        "name": "getProfileContext",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getProfiles",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "profiles",
+              "type": "array",
+              "items": {
+                "$ref": "ProfileInfo"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "signDaemonAuthChallenge",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "challenge",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      }
+    ],
+    "description": "Aside private API: profile context and daemon auth signing (trusted bundled extensions only)."
+  }
+]

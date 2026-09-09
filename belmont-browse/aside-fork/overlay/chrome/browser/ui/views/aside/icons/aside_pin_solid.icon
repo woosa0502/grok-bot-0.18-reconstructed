@@ -1,0 +1,26 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsidePinSolidIcon
+
+CANVAS_DIMENSIONS, 18,
+FILL_RULE_NONZERO,
+MOVE_TO, 7.6979f, 14.7591f,
+LINE_TO, 6, 13.0613f,
+LINE_TO, 3.5303f, 15.531f,
+CUBIC_TO, 3.2374f, 15.8239f, 2.7626f, 15.8239f, 2.4697f, 15.531f,
+CUBIC_TO, 2.1768f, 15.2381f, 2.1768f, 14.7632f, 2.4697f, 14.4703f,
+LINE_TO, 4.9393f, 12.0007f,
+LINE_TO, 3.2415f, 10.3028f,
+CUBIC_TO, 1.443f, 8.5043f, 2.5582f, 5.4241f, 5.0912f, 5.1938f,
+LINE_TO, 7.353f, 4.9882f,
+CUBIC_TO, 7.8542f, 4.9426f, 8.2993f, 4.6487f, 8.5379f, 4.2055f,
+LINE_TO, 9.1559f, 3.0577f,
+CUBIC_TO, 10.1087f, 1.2883f, 12.4977f, 0.9377f, 13.9187f, 2.3587f,
+LINE_TO, 15.642f, 4.082f,
+CUBIC_TO, 17.063f, 5.503f, 16.7123f, 7.892f, 14.943f, 8.8447f,
+LINE_TO, 13.7951f, 9.4628f,
+CUBIC_TO, 13.3519f, 9.7014f, 13.058f, 10.1464f, 13.0124f, 10.6477f,
+LINE_TO, 12.8068f, 12.9095f,
+CUBIC_TO, 12.5765f, 15.4425f, 9.4964f, 16.5577f, 7.6979f, 14.7591f,
+CLOSE,

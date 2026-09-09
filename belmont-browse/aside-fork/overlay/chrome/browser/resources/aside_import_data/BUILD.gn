@@ -1,0 +1,39 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# chrome://aside-import-data page assets (original aside_resources.pak entries
+# 16130-16141: index.html, app.js and the browser icons). Served from
+# <exe dir>/aside_resources/import_data by AsideImportDataUI.
+copy("aside_import_data_resources") {
+  sources = [
+    "app.js",
+    "index.html",
+  ]
+  outputs = [ "$root_out_dir/aside_resources/import_data/{{source_file_part}}" ]
+}
+
+copy("aside_import_data_icons") {
+  sources = [
+    "icons/arc.svg",
+    "icons/atlas.png",
+    "icons/check.svg",
+    "icons/chrome.svg",
+    "icons/comet.png",
+    "icons/dia.png",
+    "icons/edge.svg",
+    "icons/firefox.svg",
+    "icons/safari.png",
+    "icons/safari_import_guide.png",
+  ]
+  outputs = [
+    "$root_out_dir/aside_resources/import_data/icons/{{source_file_part}}",
+  ]
+}
+
+group("aside_import_data") {
+  data_deps = [
+    ":aside_import_data_icons",
+    ":aside_import_data_resources",
+  ]
+}

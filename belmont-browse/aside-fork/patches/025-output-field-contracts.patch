@@ -1,0 +1,72 @@
+# 025 — output field-contract byte-identity corrections
+#
+# Comparison of my function OUTPUT dict keys against the original's real field
+# contract (RE'd from aside-arm64.bin machine code + confirmed by the extension
+# consumer, which was written against the original API) found 7 functions whose
+# output field names/shapes did NOT match the original. All corrected:
+#
+# 1) getLanguageSettings
+#    was: {acceptLanguages, selectedLanguages}
+#    now: {preferredLanguages:[...], spellCheckEnabled, spellCheckSupported}
+#    (RE 0x406ed48: fields preferredLanguages/spellCheckEnabled/spellCheckSupported;
+#     spellCheckEnabled read from Chromium pref browser.enable_spellchecking)
+#
+# 2) getSupportedLanguages item
+#    was: {languageCode, displayName}
+#    now: {code, displayName, nativeDisplayName}
+#    (ext matcher He/E: item.code, item.displayName, item.nativeDisplayName;
+#     "languageCode" in binary is billing/offer code, unrelated)
+#
+# 3) getDefaultBrowserState
+#    was: {isDefault, canBeDefault}
+#    now: {isDefault, canSet, policyDisabled}
+#    (ext reads t?.isDefault, n?.canSet, t?.policyDisabled)
+#
+# 4) setAsDefaultBrowser
+#    was: {isDefault}
+#    now: {isDefault, canSet, policyDisabled}   (same shape as getDefaultBrowserState;
+#          ext replaces defaultBrowserState with this result)
+#
+# 5) getDockState / addToDock
+#    was: {isInDock, supported}
+#    now: {isAdded, canAdd}
+#    ("isInDock" absent from binary; ext reads i.isAdded, i.canAdd)
+#
+# 6) getSearchEngines (asideBrowserPreferences)
+#    was: {engines:[{id,name,keyword,isDefault}]}
+#    now: {searchEngines:[{id,shortName,keyword,isDefault}], defaultEngineId}
+#    (ext reads n?.searchEngines, n?.defaultEngineId, engine.id/.isDefault/.keyword)
+#
+# 7) getSearchEngines (asideOmnibox) — rich engine objects
+#    was: {engines:[{id,name,keyword,isDefault}]}
+#    now: {engines:[{id,shortName,keyword,isDefault,featuredByPolicy,faviconUrl,
+#          searchUrlTemplate,suggestUrlTemplate,imageUrlTemplate,
+#          imageTranslateUrlTemplate,newTabUrl,contextualSearchUrl}],
+#          defaultEngineId, loaded}
+#    (RE 0x405aef8: engines/defaultEngineId/loaded + these engine fields; shortName not name)
+#
+# Confirmed already correct (no change): getSyncStatus {isSyncing},
+#   getKeepTasksRunningState {enabled}, getProfileContext
+#   {profileId,profilePath,profileIndex,boundUserId,boundAccountId}.
+#
+# Platform note: checkForUpdates has no Linux original (macOS Sparkle-style
+#   updater only). Field vocabulary aligned to the binary ({state, available});
+#   true byte-identity is not achievable for an OS-specific updater on Linux.
+#
+# id types unified to string (base::NumberToString) to match the string
+#   engineId param of setDefaultSearchEngine and the ext's id comparisons.
+#
+# See overlay/ for the full post-change files.
+
+# 8) omnibox addFileContext / addTabContext result
+#    was: addFileContext {contextToken};  addTabContext {contextToken, tabId}
+#    now: both {ok:true, contextToken}   (shared context-add result {ok,contextToken,errorType?}, RE 0x406a7c8)
+#    (ext gates on (await addFileContext(...))?.ok; result builder has no tabId)
+
+# 9) browser_import getImportSources / getImportProgress
+#    getImportSources: was {name, importerType, importItems}  (importerType/importItems ABSENT from binary)
+#                      now {id, name, profiles:[{id, name, lastUsedAt?}]}  (RE: id/name/profiles present)
+#    getImportProgress: was {jobId, completed, progress:100}
+#                       now {jobId, progress, state}  (RE 0x4051430: jobId/progress/state/currentDataKind/errorMessage/sourceId;
+#                       ext checks state==="succeeded"; "completed" is not a field)
+#    getProfiles (asideAccount): CONFIRMED correct — schema ProfileInfo {profileIndex,name,isCurrent,isLocked} byte-identical.

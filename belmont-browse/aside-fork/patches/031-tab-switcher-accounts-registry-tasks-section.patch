@@ -1,0 +1,1934 @@
+diff --git a/chrome/browser/prefs/browser_prefs.cc b/chrome/browser/prefs/browser_prefs.cc
+index 48394ef7d6..15a5fcee6c 100644
+--- a/chrome/browser/prefs/browser_prefs.cc
++++ b/chrome/browser/prefs/browser_prefs.cc
+@@ -1484,6 +1484,14 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
+ 
+ #if BUILDFLAG(ENABLE_BACKGROUND_MODE)
+   BackgroundModeManager::RegisterPrefs(registry);
++  // Aside private browser-global preferences (RE: registered in the original's
++  // RegisterLocalState at 0x22c97b8; defaults read from the base::Value payloads).
++  registry->RegisterIntegerPref("aside.browser_preferences.browser_color_scheme", 0);
++  registry->RegisterBooleanPref(
++      "aside.browser_preferences.horizontal_tab_strip_shrink_to_fit_enabled", false);
++  registry->RegisterStringPref("aside.mini_popup.shortcut", "Alt+Space");
++  registry->RegisterBooleanPref("aside.mini_popup.enabled", false);
++  registry->RegisterBooleanPref("aside.browser_preferences.vertical_tabs_enabled", true);
+ #endif
+ 
+ #if BUILDFLAG(IS_ANDROID)
+@@ -1715,6 +1723,36 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
+   accessibility_annotator::prefs::RegisterProfilePrefs(registry);
+   AimEligibilityService::RegisterProfilePrefs(registry);
+   AnnouncementNotificationService::RegisterProfilePrefs(registry);
++  // Aside private per-profile preferences (RE: registered next to ntp.* in the
++  // original's RegisterProfilePrefs). Browser-global aside.* keys live in
++  // RegisterLocalState below.
++  // RE 0x336fd94: default true.
++  registry->RegisterBooleanPref("aside.tab_switcher.sort_by_recently_used", true);
++  registry->RegisterBooleanPref("aside.auto_pip.enabled", false);
++  // RE 0x336fdc4: default true.
++  registry->RegisterBooleanPref("aside.vertical_tabs.bookmarks_section_enabled",
++                                true);
++  // RE 0x336fa04: default -1 (no bound account).
++  registry->RegisterIntegerPref("aside.account_id", -1);
++  registry->RegisterStringPref("aside.account_user_id", std::string());
++  registry->RegisterStringPref("aside.profile_id", std::string());
++  registry->RegisterStringPref("aside.account_email", std::string());
++  registry->RegisterStringPref("aside.account_display_name", std::string());
++  registry->RegisterStringPref("aside.account_profile_url", std::string());
++  registry->RegisterBooleanPref("aside.account_auth_paused", false);
++  registry->RegisterBooleanPref("aside.account_has_persisted_session", false);
++  registry->RegisterBooleanPref("aside.bootstrap_complete", false);
++  registry->RegisterStringPref("aside.sync_auth_diagnostic_message",
++                               std::string());
++  registry->RegisterStringPref("aside.sync_encryption_diagnostic_message",
++                               std::string());
++  // Aside per-profile tab-strip pref (RE 0x31d56c4: bool, default false).
++  // vertical_tabs.enabled is registered by tab_strip_prefs.cc (default true in
++  // the Aside fork, RE 0x31d56e8).
++  registry->RegisterBooleanPref("horizontal_tab_strip.shrink_to_fit_enabled", false);
++  // Aside notification permission ledger (RE 0x3f39714): origin -> delivery mode.
++  registry->RegisterDictionaryPref(
++      "persistent_notifications.ai_delivery_mode_by_origin");
+   autofill::prefs::RegisterProfilePrefs(registry);
+   browsing_data::prefs::RegisterBrowserUserPrefs(registry);
+   capture_policy::RegisterProfilePrefs(registry);
+diff --git a/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc b/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc
+index faa78dde10..4d521a142c 100644
+--- a/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc
++++ b/chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.cc
+@@ -4,6 +4,9 @@
+ 
+ #include "chrome/browser/profiles/chrome_browser_main_extra_parts_profiles.h"
+ 
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service_factory.h"
++#include "chrome/browser/extensions/api/aside_omnibox/aside_omnibox_service_factory.h"
++
+ #include <memory>
+ #include <utility>
+ 
+@@ -233,6 +236,7 @@
+ #include "chrome/browser/signin/identity_manager_factory.h"
+ #include "chrome/browser/signin/signin_metrics_service_factory.h"
+ #include "chrome/browser/signin/signin_policy_service_factory.h"
++#include "chrome/browser/signin/aside_profile_attributes_updater_factory.h"
+ #include "chrome/browser/signin/signin_profile_attributes_updater_factory.h"
+ #include "chrome/browser/site_cookie_provider/site_cookie_provider_service_factory.h"
+ #include "chrome/browser/ssl/https_first_mode_settings_tracker.h"
+@@ -722,6 +726,8 @@ void ChromeBrowserMainExtraPartsProfiles::
+   // Common factory registrations (Please keep this list ordered without taking
+   // into consideration buildflags, repeating buildflags is ok):
+   AboutSigninInternalsFactory::GetInstance();
++  extensions::MiniPopupServiceFactory::GetInstance();
++  extensions::AsideOmniboxServiceFactory::GetInstance();
+   AboutThisSiteServiceFactory::GetInstance();
+   AcceptLanguagesServiceFactory::GetInstance();
+   AccessibilityAnnotatorBackendFactory::GetInstance();
+@@ -1492,6 +1498,7 @@ void ChromeBrowserMainExtraPartsProfiles::
+ #endif
+   SigninMetricsServiceFactory::GetInstance();
+   SigninPolicyServiceFactory::GetInstance();
++  AsideProfileAttributesUpdaterFactory::GetInstance();
+   SigninProfileAttributesUpdaterFactory::GetInstance();
+   if (base::FeatureList::IsEnabled(
+           site_cookie_provider::features::kSiteCookieProviderEnabled)) {
+diff --git a/chrome/browser/signin/BUILD.gn b/chrome/browser/signin/BUILD.gn
+index e514cc8876..1c9677cbc8 100644
+--- a/chrome/browser/signin/BUILD.gn
++++ b/chrome/browser/signin/BUILD.gn
+@@ -202,6 +202,12 @@ source_set("impl") {
+     "signin_metrics_service_factory.cc",
+     "signin_policy_service.cc",
+     "signin_policy_service_factory.cc",
++    "aside_daemon_authorizer.cc",
++    "aside_daemon_authorizer.h",
++    "aside_profile_attributes_updater.cc",
++    "aside_profile_attributes_updater.h",
++    "aside_profile_attributes_updater_factory.cc",
++    "aside_profile_attributes_updater_factory.h",
+     "signin_profile_attributes_updater.cc",
+     "signin_profile_attributes_updater_factory.cc",
+     "signin_util.cc",
+diff --git a/chrome/browser/ui/BUILD.gn b/chrome/browser/ui/BUILD.gn
+index 017a8c3ff7..956b1328f9 100644
+--- a/chrome/browser/ui/BUILD.gn
++++ b/chrome/browser/ui/BUILD.gn
+@@ -4050,6 +4050,28 @@ static_library("ui") {
+       "views/frame/top_container_view.cc",
+       "views/frame/top_container_view.h",
+       "views/frame/top_controls_slide_controller.h",
++      "views/frame/aside_tab_search_bubble.cc",
++      "views/frame/aside_tab_search_bubble.h",
++      "views/tabs/aside_agent_tabs_button.cc",
++      "views/tabs/aside_agent_tabs_button.h",
++      "views/frame/aside_task_views.cc",
++      "views/frame/aside_task_views.h",
++      "views/frame/aside_tab_switcher.cc",
++      "views/frame/aside_tab_switcher.h",
++      "views/frame/aside_tab_switcher_view.cc",
++      "views/frame/aside_tab_switcher_view.h",
++      "views/frame/aside_agent_control_banner.cc",
++      "views/frame/aside_agent_control_banner.h",
++      "views/frame/aside_vertical_tab_strip_additions.cc",
++      "aside/aside_tasks_client.cc",
++      "aside/aside_tasks_client.h",
++      "aside/aside_agent_tabs.cc",
++      "aside/aside_agent_tabs.h",
++      "aside/aside_ai_tabs_metadata.cc",
++      "aside/aside_ai_tabs_metadata.h",
++      "aside/aside_extension_bridge.cc",
++      "aside/aside_extension_bridge.h",
++      "views/frame/aside_vertical_tab_strip_additions.h",
+       "views/frame/vertical_tab_strip_region_view.cc",
+       "views/frame/vertical_tab_strip_region_view.h",
+       "views/frame/web_contents_close_handler.cc",
+diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
+index a457075948..48326b5144 100644
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "chrome/browser/ui/browser_command_controller.h"
+ 
++#include "chrome/browser/ui/views/frame/aside_tab_switcher.h"
++
+ #include <stddef.h>
+ 
+ #include <algorithm>
+@@ -734,6 +736,9 @@ void BrowserCommandController::HandleCommandWithDisposition(
+       CloseTab(browser_);
+       break;
+     case IDC_SELECT_NEXT_TAB:
++      if (AsideTabSwitcher::HandleTabAccelerator(browser_, /*forward=*/true)) {
++        break;
++      }
+       base::RecordAction(base::UserMetricsAction("Accel_SelectNextTab"));
+       SelectNextTab(
+           browser_,
+@@ -741,6 +746,9 @@ void BrowserCommandController::HandleCommandWithDisposition(
+               TabStripUserGestureDetails::GestureType::kKeyboard, time_stamp));
+       break;
+     case IDC_SELECT_PREVIOUS_TAB:
++      if (AsideTabSwitcher::HandleTabAccelerator(browser_, /*forward=*/false)) {
++        break;
++      }
+       base::RecordAction(base::UserMetricsAction("Accel_SelectPreviousTab"));
+       SelectPreviousTab(
+           browser_,
+diff --git a/chrome/browser/ui/views/frame/aside_tab_switcher.h b/chrome/browser/ui/views/frame/aside_tab_switcher.h
+new file mode 100644
+index 0000000000..ebe66840f1
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_tab_switcher.h
+@@ -0,0 +1,76 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TAB_SWITCHER_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TAB_SWITCHER_H_
++
++#include <list>
++#include <memory>
++#include <vector>
++
++#include "base/memory/raw_ptr.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "ui/events/event_handler.h"
++
++class AsideTabSwitcherView;
++class Browser;
++
++namespace content {
++class WebContents;
++}
++
++namespace views {
++class Widget;
++}
++
++// Ctrl+Tab / Ctrl+Shift+Tab switcher. The first press opens a HUD listing the
++// tabs (most-recently-used order when aside.tab_switcher.sort_by_recently_used
++// is set, else strip order), further presses move the selection, releasing
++// Ctrl activates the selected tab; Esc cancels. RE: original
++// chrome/browser/ui/views/frame/aside_tab_switcher.cc (HandleTabAccelerator,
++// user actions Accel_SelectNextTab / SelectNextTab, observes
++// Browser::OnActiveTabChanged).
++class AsideTabSwitcher : public TabStripModelObserver,
++                         public ui::EventHandler {
++ public:
++  // Called from the browser command controller for IDC_SELECT_NEXT_TAB /
++  // IDC_SELECT_PREVIOUS_TAB. Returns true when the switcher consumed the
++  // accelerator.
++  static bool HandleTabAccelerator(Browser* browser, bool forward);
++
++  static AsideTabSwitcher* FromBrowser(Browser* browser);
++
++  ~AsideTabSwitcher() override;
++
++  bool is_showing() const { return widget_ != nullptr; }
++
++  // TabStripModelObserver:
++  void OnTabStripModelChanged(
++      TabStripModel* tab_strip_model,
++      const TabStripModelChange& change,
++      const TabStripSelectionChange& selection) override;
++
++  void OnTabStripModelDestroyed(TabStripModel* tab_strip_model) override;
++
++  // ui::EventHandler:
++  void OnKeyEvent(ui::KeyEvent* event) override;
++
++ private:
++  explicit AsideTabSwitcher(Browser* browser);
++
++  std::vector<content::WebContents*> OrderedTabs() const;
++  void Show(bool forward);
++  void Commit();
++  void Cancel();
++  void CloseWidget();
++  void ActivateContents(content::WebContents* contents);
++
++  raw_ptr<Browser> browser_;
++  std::list<raw_ptr<content::WebContents>> mru_;
++  std::unique_ptr<views::Widget> widget_;
++  raw_ptr<AsideTabSwitcherView> view_ = nullptr;
++  bool key_handler_installed_ = false;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TAB_SWITCHER_H_
+diff --git a/chrome/browser/ui/views/frame/aside_tab_switcher.cc b/chrome/browser/ui/views/frame/aside_tab_switcher.cc
+new file mode 100644
+index 0000000000..e884f6cc2a
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_tab_switcher.cc
+@@ -0,0 +1,241 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_tab_switcher.h"
++
++#include <algorithm>
++#include <map>
++
++#include "base/functional/bind.h"
++#include "base/metrics/user_metrics.h"
++#include "base/no_destructor.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/browser_window.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
++#include "chrome/browser/ui/views/frame/aside_tab_switcher_view.h"
++#include "components/prefs/pref_service.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/aura/window.h"
++#include "ui/events/event.h"
++#include "ui/events/keycodes/keyboard_codes.h"
++#include "ui/gfx/geometry/rect.h"
++#include "ui/views/widget/widget.h"
++
++namespace {
++
++constexpr char kSortByRecentlyUsedPref[] =
++    "aside.tab_switcher.sort_by_recently_used";
++
++std::map<Browser*, std::unique_ptr<AsideTabSwitcher>>& Switchers() {
++  static base::NoDestructor<std::map<Browser*, std::unique_ptr<AsideTabSwitcher>>>
++      map;
++  return *map;
++}
++
++}  // namespace
++
++// static
++AsideTabSwitcher* AsideTabSwitcher::FromBrowser(Browser* browser) {
++  if (!browser) {
++    return nullptr;
++  }
++  auto& map = Switchers();
++  auto it = map.find(browser);
++  if (it == map.end()) {
++    it = map.emplace(browser, base::WrapUnique(new AsideTabSwitcher(browser)))
++             .first;
++  }
++  return it->second.get();
++}
++
++// static
++bool AsideTabSwitcher::HandleTabAccelerator(Browser* browser, bool forward) {
++  AsideTabSwitcher* switcher = FromBrowser(browser);
++  if (!switcher || browser->tab_strip_model()->count() < 2) {
++    return false;
++  }
++  base::RecordAction(base::UserMetricsAction(
++      forward ? "Accel_SelectNextTab" : "Accel_SelectPreviousTab"));
++  if (!switcher->is_showing()) {
++    switcher->Show(forward);
++  } else {
++    switcher->view_->Advance(forward ? 1 : -1);
++  }
++  return true;
++}
++
++AsideTabSwitcher::AsideTabSwitcher(Browser* browser) : browser_(browser) {
++  browser_->tab_strip_model()->AddObserver(this);
++  for (int i = 0; i < browser_->tab_strip_model()->count(); ++i) {
++    mru_.push_back(browser_->tab_strip_model()->GetWebContentsAt(i));
++  }
++  if (content::WebContents* active =
++          browser_->tab_strip_model()->GetActiveWebContents()) {
++    mru_.remove(active);
++    mru_.push_front(active);
++  }
++}
++
++AsideTabSwitcher::~AsideTabSwitcher() {
++  CloseWidget();
++  if (browser_) {
++    browser_->tab_strip_model()->RemoveObserver(this);
++  }
++}
++
++std::vector<content::WebContents*> AsideTabSwitcher::OrderedTabs() const {
++  std::vector<content::WebContents*> tabs;
++  TabStripModel* model = browser_->tab_strip_model();
++  const bool mru = browser_->profile()->GetPrefs()->GetBoolean(
++      kSortByRecentlyUsedPref);
++  if (mru) {
++    for (content::WebContents* contents : mru_) {
++      if (model->GetIndexOfWebContents(contents) != TabStripModel::kNoTab) {
++        tabs.push_back(contents);
++      }
++    }
++    for (int i = 0; i < model->count(); ++i) {
++      content::WebContents* contents = model->GetWebContentsAt(i);
++      if (!std::ranges::contains(tabs, contents)) {
++        tabs.push_back(contents);
++      }
++    }
++  } else {
++    for (int i = 0; i < model->count(); ++i) {
++      tabs.push_back(model->GetWebContentsAt(i));
++    }
++  }
++  return tabs;
++}
++
++void AsideTabSwitcher::Show(bool forward) {
++  std::vector<content::WebContents*> tabs = OrderedTabs();
++  if (tabs.size() < 2) {
++    return;
++  }
++  auto view = std::make_unique<AsideTabSwitcherView>(
++      tabs, base::BindRepeating(&AsideTabSwitcher::ActivateContents,
++                                base::Unretained(this)));
++  view_ = view.get();
++
++  const bool mru = browser_->profile()->GetPrefs()->GetBoolean(
++      kSortByRecentlyUsedPref);
++  content::WebContents* active =
++      browser_->tab_strip_model()->GetActiveWebContents();
++  int start = 0;
++  auto it = std::ranges::find(tabs, active);
++  if (it != tabs.end()) {
++    start = static_cast<int>(it - tabs.begin());
++  }
++  // MRU: the first press lands on the previously used tab; strip order:
++  // the neighbour of the active tab.
++  view_->SelectIndex(mru ? (forward ? start + 1 : start - 1)
++                         : (forward ? start + 1 : start - 1));
++
++  views::Widget::InitParams params(
++      views::Widget::InitParams::CLIENT_OWNS_WIDGET,
++      views::Widget::InitParams::TYPE_POPUP);
++  params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
++  params.shadow_type = views::Widget::InitParams::ShadowType::kDrop;
++  params.activatable = views::Widget::InitParams::Activatable::kNo;
++  params.parent = browser_->window()->GetNativeWindow();
++  const gfx::Rect browser_bounds = browser_->window()->GetBounds();
++  const gfx::Size size = view_->GetPreferredSize();
++  params.bounds = gfx::Rect(
++      browser_bounds.x() + (browser_bounds.width() - size.width()) / 2,
++      browser_bounds.y() + (browser_bounds.height() - size.height()) / 2,
++      size.width(), size.height());
++  widget_ = std::make_unique<views::Widget>();
++  widget_->Init(std::move(params));
++  widget_->SetContentsView(std::move(view));
++  widget_->ShowInactive();
++
++  if (aura::Window* window = browser_->window()->GetNativeWindow()) {
++    window->AddPreTargetHandler(this);
++    key_handler_installed_ = true;
++  }
++}
++
++void AsideTabSwitcher::Commit() {
++  content::WebContents* contents = view_ ? view_->selected_contents() : nullptr;
++  CloseWidget();
++  if (contents) {
++    ActivateContents(contents);
++  }
++}
++
++void AsideTabSwitcher::Cancel() {
++  CloseWidget();
++}
++
++void AsideTabSwitcher::CloseWidget() {
++  if (key_handler_installed_) {
++    if (aura::Window* window = browser_->window()->GetNativeWindow()) {
++      window->RemovePreTargetHandler(this);
++    }
++    key_handler_installed_ = false;
++  }
++  view_ = nullptr;
++  widget_.reset();
++}
++
++void AsideTabSwitcher::ActivateContents(content::WebContents* contents) {
++  TabStripModel* model = browser_->tab_strip_model();
++  const int index = model->GetIndexOfWebContents(contents);
++  if (index == TabStripModel::kNoTab) {
++    return;
++  }
++  base::RecordAction(base::UserMetricsAction("SelectNextTab"));
++  model->ActivateTabAt(index, TabStripUserGestureDetails(
++                                  TabStripUserGestureDetails::GestureType::
++                                      kKeyboard));
++  if (is_showing()) {
++    CloseWidget();
++  }
++}
++
++void AsideTabSwitcher::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  if (change.type() == TabStripModelChange::kRemoved) {
++    for (const auto& removed : change.GetRemove()->contents) {
++      mru_.remove(removed.contents);
++    }
++    if (is_showing()) {
++      CloseWidget();
++    }
++  }
++  if (selection.active_tab_changed() && selection.new_contents) {
++    mru_.remove(selection.new_contents);
++    mru_.push_front(selection.new_contents);
++  }
++}
++
++void AsideTabSwitcher::OnTabStripModelDestroyed(
++    TabStripModel* tab_strip_model) {
++  CloseWidget();
++  Browser* browser = browser_;
++  browser_ = nullptr;
++  Switchers().erase(browser);  // deletes this
++}
++
++void AsideTabSwitcher::OnKeyEvent(ui::KeyEvent* event) {
++  if (!is_showing()) {
++    return;
++  }
++  if (event->type() == ui::EventType::kKeyReleased &&
++      event->key_code() == ui::VKEY_CONTROL) {
++    Commit();
++    event->StopPropagation();
++    return;
++  }
++  if (event->type() == ui::EventType::kKeyPressed &&
++      event->key_code() == ui::VKEY_ESCAPE) {
++    Cancel();
++    event->StopPropagation();
++  }
++}
+diff --git a/chrome/browser/ui/views/frame/aside_tab_switcher_view.h b/chrome/browser/ui/views/frame/aside_tab_switcher_view.h
+new file mode 100644
+index 0000000000..6d8960322e
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_tab_switcher_view.h
+@@ -0,0 +1,76 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TAB_SWITCHER_VIEW_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TAB_SWITCHER_VIEW_H_
++
++#include <vector>
++
++#include "base/memory/raw_ptr.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/controls/button/button.h"
++#include "ui/views/view.h"
++
++namespace content {
++class WebContents;
++}
++
++namespace views {
++class ImageView;
++class Label;
++}  // namespace views
++
++// One row of the Ctrl+Tab switcher (favicon + title); the selected row paints
++// a rounded translucent highlight. RE: original AsideTabSwitcherItemView
++// (OnPaintBackground radius 14 / alpha 0.25; icon 24; row height 40).
++class AsideTabSwitcherItemView : public views::Button {
++  METADATA_HEADER(AsideTabSwitcherItemView, views::Button)
++
++ public:
++  AsideTabSwitcherItemView(content::WebContents* contents,
++                           PressedCallback callback);
++  ~AsideTabSwitcherItemView() override;
++
++  void SetSelected(bool selected);
++  content::WebContents* contents() const { return contents_; }
++
++  // views::View:
++  void OnPaintBackground(gfx::Canvas* canvas) override;
++
++ private:
++  raw_ptr<content::WebContents> contents_;
++  raw_ptr<views::ImageView> icon_ = nullptr;
++  raw_ptr<views::Label> title_ = nullptr;
++  bool selected_ = false;
++};
++
++// The translucent HUD listing the tabs to cycle through. RE: original
++// AsideTabSwitcherView (panel width 336, corner radius 14).
++class AsideTabSwitcherView : public views::View {
++  METADATA_HEADER(AsideTabSwitcherView, views::View)
++
++ public:
++  using ActivateCallback =
++      base::RepeatingCallback<void(content::WebContents*)>;
++
++  AsideTabSwitcherView(const std::vector<content::WebContents*>& tabs,
++                       ActivateCallback activate);
++  ~AsideTabSwitcherView() override;
++
++  void SelectIndex(int index);
++  void Advance(int delta);
++  int selected_index() const { return selected_index_; }
++  content::WebContents* selected_contents() const;
++  size_t item_count() const { return items_.size(); }
++
++  // views::View:
++  void OnPaintBackground(gfx::Canvas* canvas) override;
++
++ private:
++  std::vector<raw_ptr<AsideTabSwitcherItemView>> items_;
++  ActivateCallback activate_;
++  int selected_index_ = 0;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TAB_SWITCHER_VIEW_H_
+diff --git a/chrome/browser/ui/views/frame/aside_tab_switcher_view.cc b/chrome/browser/ui/views/frame/aside_tab_switcher_view.cc
+new file mode 100644
+index 0000000000..8d9c61e000
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_tab_switcher_view.cc
+@@ -0,0 +1,150 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_tab_switcher_view.h"
++
++#include <memory>
++
++#include "base/functional/bind.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "components/favicon/content/content_favicon_driver.h"
++#include "content/public/browser/web_contents.h"
++#include "third_party/skia/include/core/SkColor.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/color/color_id.h"
++#include "ui/color/color_provider.h"
++#include "ui/gfx/canvas.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/gfx/geometry/rect_f.h"
++#include "ui/views/controls/image_view.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/layout/box_layout.h"
++
++namespace {
++
++constexpr int kPanelWidth = 336;
++constexpr int kPanelRadius = 14;
++constexpr int kItemRadius = 12;
++constexpr int kItemHeight = 40;
++constexpr int kIconSize = 24;
++constexpr int kPadding = 8;
++constexpr float kSelectedAlpha = 0.25f;
++constexpr float kPanelAlpha = 0.85f;
++
++}  // namespace
++
++// AsideTabSwitcherItemView --------------------------------------------------
++
++AsideTabSwitcherItemView::AsideTabSwitcherItemView(
++    content::WebContents* contents,
++    PressedCallback callback)
++    : views::Button(std::move(callback)), contents_(contents) {
++  auto* layout = SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kHorizontal, gfx::Insets::VH(0, kPadding),
++      kPadding));
++  layout->set_cross_axis_alignment(
++      views::BoxLayout::CrossAxisAlignment::kCenter);
++  icon_ = AddChildView(std::make_unique<views::ImageView>());
++  ui::ImageModel favicon = ui::ImageModel::FromVectorIcon(
++      kAsideGlobeIcon, ui::kColorIconSecondary, kIconSize);
++  if (auto* driver = favicon::ContentFaviconDriver::FromWebContents(contents);
++      driver && !driver->GetFavicon().IsEmpty()) {
++    favicon = ui::ImageModel::FromImage(driver->GetFavicon());
++  }
++  icon_->SetImage(favicon);
++  icon_->SetImageSize(gfx::Size(kIconSize, kIconSize));
++  title_ = AddChildView(std::make_unique<views::Label>(
++      contents->GetTitle(), views::style::CONTEXT_LABEL,
++      views::style::STYLE_PRIMARY));
++  title_->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  title_->SetElideBehavior(gfx::ELIDE_TAIL);
++  layout->SetFlexForView(title_, 1);
++  SetPreferredSize(gfx::Size(kPanelWidth - 2 * kPadding, kItemHeight));
++  SetTooltipText(contents->GetTitle());
++}
++
++AsideTabSwitcherItemView::~AsideTabSwitcherItemView() = default;
++
++void AsideTabSwitcherItemView::SetSelected(bool selected) {
++  if (selected_ == selected) {
++    return;
++  }
++  selected_ = selected;
++  SchedulePaint();
++}
++
++void AsideTabSwitcherItemView::OnPaintBackground(gfx::Canvas* canvas) {
++  if (!selected_) {
++    return;
++  }
++  cc::PaintFlags flags;
++  flags.setAntiAlias(true);
++  flags.setColor(SkColorSetA(
++      GetColorProvider()->GetColor(ui::kColorSysOnSurface),
++      static_cast<U8CPU>(kSelectedAlpha * 255)));
++  canvas->DrawRoundRect(gfx::RectF(GetLocalBounds()), kItemRadius, flags);
++}
++
++BEGIN_METADATA(AsideTabSwitcherItemView)
++END_METADATA
++
++// AsideTabSwitcherView ------------------------------------------------------
++
++AsideTabSwitcherView::AsideTabSwitcherView(
++    const std::vector<content::WebContents*>& tabs,
++    ActivateCallback activate)
++    : activate_(std::move(activate)) {
++  SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kVertical, gfx::Insets(kPadding), 2));
++  for (content::WebContents* contents : tabs) {
++    auto* item = AddChildView(std::make_unique<AsideTabSwitcherItemView>(
++        contents, base::BindRepeating(
++                      [](AsideTabSwitcherView* view, content::WebContents* wc) {
++                        view->activate_.Run(wc);
++                      },
++                      base::Unretained(this), contents)));
++    items_.push_back(item);
++  }
++  SetPreferredSize(gfx::Size(
++      kPanelWidth,
++      2 * kPadding + static_cast<int>(items_.size()) * (kItemHeight + 2)));
++  SelectIndex(0);
++}
++
++AsideTabSwitcherView::~AsideTabSwitcherView() = default;
++
++void AsideTabSwitcherView::SelectIndex(int index) {
++  if (items_.empty()) {
++    return;
++  }
++  const int count = static_cast<int>(items_.size());
++  selected_index_ = ((index % count) + count) % count;
++  for (int i = 0; i < count; ++i) {
++    items_[i]->SetSelected(i == selected_index_);
++  }
++}
++
++void AsideTabSwitcherView::Advance(int delta) {
++  SelectIndex(selected_index_ + delta);
++}
++
++content::WebContents* AsideTabSwitcherView::selected_contents() const {
++  if (items_.empty()) {
++    return nullptr;
++  }
++  return items_[selected_index_]->contents();
++}
++
++void AsideTabSwitcherView::OnPaintBackground(gfx::Canvas* canvas) {
++  cc::PaintFlags flags;
++  flags.setAntiAlias(true);
++  flags.setColor(SkColorSetA(
++      GetColorProvider()->GetColor(ui::kColorSysSurface),
++      static_cast<U8CPU>(kPanelAlpha * 255)));
++  canvas->DrawRoundRect(gfx::RectF(GetLocalBounds()), kPanelRadius, flags);
++}
++
++BEGIN_METADATA(AsideTabSwitcherView)
++END_METADATA
+diff --git a/chrome/browser/signin/aside_daemon_authorizer.h b/chrome/browser/signin/aside_daemon_authorizer.h
+new file mode 100644
+index 0000000000..f7f4502e00
+--- /dev/null
++++ b/chrome/browser/signin/aside_daemon_authorizer.h
+@@ -0,0 +1,79 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_SIGNIN_ASIDE_DAEMON_AUTHORIZER_H_
++#define CHROME_BROWSER_SIGNIN_ASIDE_DAEMON_AUTHORIZER_H_
++
++#include <memory>
++#include <optional>
++#include <string>
++#include <vector>
++
++#include "base/functional/callback.h"
++#include "base/memory/scoped_refptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/no_destructor.h"
++#include "base/time/time.h"
++
++namespace network {
++class SharedURLLoaderFactory;
++class SimpleURLLoader;
++}  // namespace network
++
++// Obtains a daemon session token for the browser (clientKind=chromium):
++// GET <daemon>/auth/daemon/challenge?clientKind=chromium ->
++// sign "Aside Daemon Auth v1\0" || challenge with the installation key ->
++// POST <daemon>/auth/daemon/session {challengeId, signedChallenge} ->
++// {token_type:"AsideDaemonSessionToken", access_token, expiresInSeconds}.
++// RE: original chrome/browser/signin/aside_daemon_authorizer.cc.
++class AsideDaemonAuthorizer {
++ public:
++  using TokenCallback =
++      base::OnceCallback<void(std::optional<std::string> authorization)>;
++
++  static AsideDaemonAuthorizer* GetInstance();
++  static std::string DaemonBaseUrl();
++
++  // Runs `callback` with "AsideDaemonSessionToken <token>" (cached until
++  // shortly before expiry) or nullopt on failure.
++  void GetAuthorization(
++      scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
++      TokenCallback callback);
++
++  // Performs an authorized POST of `json_body` to <daemon><path>; the
++  // callback receives the response body (nullopt on transport failure).
++  void PostJsonWithAuthorization(
++      scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
++      const std::string& path,
++      std::string json_body,
++      base::OnceCallback<void(std::optional<std::string>)> callback);
++
++ private:
++  AsideDaemonAuthorizer();
++  ~AsideDaemonAuthorizer();
++  friend class base::NoDestructor<AsideDaemonAuthorizer>;
++
++  void OnChallengeFetched(
++      scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
++      TokenCallback callback,
++      std::unique_ptr<network::SimpleURLLoader> loader,
++      std::optional<std::string> body);
++  void OnSessionFetched(TokenCallback callback,
++                        std::unique_ptr<network::SimpleURLLoader> loader,
++                        std::optional<std::string> body);
++  void OnPostDone(base::OnceCallback<void(std::optional<std::string>)> callback,
++                  std::unique_ptr<network::SimpleURLLoader> loader,
++                  std::optional<std::string> body);
++  void DoPost(scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
++              const std::string& path,
++              std::string json_body,
++              base::OnceCallback<void(std::optional<std::string>)> callback,
++              std::optional<std::string> authorization);
++
++  std::string cached_authorization_;
++  base::TimeTicks cached_expiry_;
++  base::WeakPtrFactory<AsideDaemonAuthorizer> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_SIGNIN_ASIDE_DAEMON_AUTHORIZER_H_
+diff --git a/chrome/browser/signin/aside_daemon_authorizer.cc b/chrome/browser/signin/aside_daemon_authorizer.cc
+new file mode 100644
+index 0000000000..c46ff744f3
+--- /dev/null
++++ b/chrome/browser/signin/aside_daemon_authorizer.cc
+@@ -0,0 +1,230 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/signin/aside_daemon_authorizer.h"
++
++#include <utility>
++
++#include "base/base64.h"
++#include "base/environment.h"
++#include "base/functional/bind.h"
++#include "base/json/json_reader.h"
++#include "base/json/json_writer.h"
++#include "base/logging.h"
++#include "base/no_destructor.h"
++#include "base/strings/stringprintf.h"
++#include "base/values.h"
++#include "chrome/browser/devtools/secure_remote_debugging_credentials.h"
++#include "net/base/load_flags.h"
++#include "net/http/http_request_headers.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
++#include "services/network/public/cpp/resource_request.h"
++#include "services/network/public/cpp/shared_url_loader_factory.h"
++#include "services/network/public/cpp/simple_url_loader.h"
++#include "url/gurl.h"
++
++namespace {
++
++constexpr char kDefaultDaemonBaseUrl[] = "http://127.0.0.1:21420";
++constexpr char kTokenType[] = "AsideDaemonSessionToken";
++// Signing input prefix shared with asideAccount.signDaemonAuthChallenge.
++constexpr char kDaemonAuthPrefix[] = "Aside Daemon Auth v1";
++constexpr base::TimeDelta kExpiryMargin = base::Seconds(30);
++constexpr size_t kMaxBody = 1024 * 1024;
++
++constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotation =
++    net::DefineNetworkTrafficAnnotation("aside_daemon_authorizer", R"(
++        semantics {
++          sender: "Aside daemon authorizer"
++          description: "Authenticates the browser with the local Aside daemon."
++          trigger: "Profile/account state synchronisation."
++          data: "Installation-signed challenge."
++          destination: LOCAL
++        }
++        policy {
++          cookies_allowed: NO
++          setting: "Not user controllable."
++          policy_exception_justification: "Loopback only."
++        })");
++
++std::unique_ptr<network::SimpleURLLoader> MakeLoader(
++    const std::string& url,
++    const std::string& method,
++    const std::optional<std::string>& body,
++    const std::optional<std::string>& authorization) {
++  auto request = std::make_unique<network::ResourceRequest>();
++  request->url = GURL(url);
++  request->method = method;
++  request->load_flags = net::LOAD_DISABLE_CACHE | net::LOAD_BYPASS_CACHE;
++  request->credentials_mode = network::mojom::CredentialsMode::kOmit;
++  if (authorization) {
++    request->headers.SetHeader(net::HttpRequestHeaders::kAuthorization,
++                               *authorization);
++  }
++  auto loader =
++      network::SimpleURLLoader::Create(std::move(request), kTrafficAnnotation);
++  loader->SetAllowHttpErrorResults(true);
++  if (body) {
++    loader->AttachStringForUpload(*body, "application/json");
++  }
++  return loader;
++}
++
++}  // namespace
++
++// static
++AsideDaemonAuthorizer* AsideDaemonAuthorizer::GetInstance() {
++  static base::NoDestructor<AsideDaemonAuthorizer> instance;
++  return instance.get();
++}
++
++// static
++std::string AsideDaemonAuthorizer::DaemonBaseUrl() {
++  std::unique_ptr<base::Environment> env = base::Environment::Create();
++  std::optional<std::string> override = env->GetVar("ASIDE_DAEMON_BASE_URL");
++  if (override && !override->empty()) {
++    return *override;
++  }
++  return kDefaultDaemonBaseUrl;
++}
++
++AsideDaemonAuthorizer::AsideDaemonAuthorizer() = default;
++AsideDaemonAuthorizer::~AsideDaemonAuthorizer() = default;
++
++void AsideDaemonAuthorizer::GetAuthorization(
++    scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
++    TokenCallback callback) {
++  if (!cached_authorization_.empty() &&
++      base::TimeTicks::Now() + kExpiryMargin < cached_expiry_) {
++    std::move(callback).Run(cached_authorization_);
++    return;
++  }
++  // RE: "%s/auth/daemon/challenge?clientKind=chromium".
++  auto loader = MakeLoader(
++      base::StringPrintf("%s/auth/daemon/challenge?clientKind=chromium",
++                         DaemonBaseUrl().c_str()),
++      "GET", std::nullopt, std::nullopt);
++  network::SimpleURLLoader* raw = loader.get();
++  raw->DownloadToString(
++      loader_factory.get(),
++      base::BindOnce(&AsideDaemonAuthorizer::OnChallengeFetched,
++                     weak_factory_.GetWeakPtr(), loader_factory,
++                     std::move(callback), std::move(loader)),
++      kMaxBody);
++}
++
++void AsideDaemonAuthorizer::OnChallengeFetched(
++    scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
++    TokenCallback callback,
++    std::unique_ptr<network::SimpleURLLoader> loader,
++    std::optional<std::string> body) {
++  std::optional<base::Value> json =
++      body ? base::JSONReader::Read(*body, base::JSON_PARSE_RFC)
++           : std::nullopt;
++  if (!json || !json->is_dict()) {
++    VLOG(1) << "aside: daemon challenge response invalid: "
++            << body.value_or("<none>");
++    std::move(callback).Run(std::nullopt);
++    return;
++  }
++  const std::string* challenge_id = json->GetDict().FindString("challengeId");
++  const std::string* challenge = json->GetDict().FindString("challenge");
++  std::string challenge_bytes;
++  if (!challenge_id || !challenge ||
++      !base::Base64Decode(*challenge, &challenge_bytes)) {
++    std::move(callback).Run(std::nullopt);
++    return;
++  }
++  std::vector<uint8_t> input;
++  std::string_view prefix(kDaemonAuthPrefix);
++  input.insert(input.end(), prefix.begin(), prefix.end());
++  input.push_back(0);
++  input.insert(input.end(), challenge_bytes.begin(), challenge_bytes.end());
++  std::optional<std::vector<uint8_t>> signature =
++      SecureRemoteDebuggingCredentials::GetInstance()->Sign(input);
++  if (!signature) {
++    std::move(callback).Run(std::nullopt);
++    return;
++  }
++  base::DictValue request;
++  request.Set("challengeId", *challenge_id);
++  request.Set("signedChallenge", base::Base64Encode(*signature));
++  std::string request_body;
++  base::JSONWriter::Write(request, &request_body);
++  auto session_loader =
++      MakeLoader(DaemonBaseUrl() + "/auth/daemon/session", "POST",
++                 request_body, std::nullopt);
++  network::SimpleURLLoader* raw = session_loader.get();
++  raw->DownloadToString(
++      loader_factory.get(),
++      base::BindOnce(&AsideDaemonAuthorizer::OnSessionFetched,
++                     weak_factory_.GetWeakPtr(), std::move(callback),
++                     std::move(session_loader)),
++      kMaxBody);
++}
++
++void AsideDaemonAuthorizer::OnSessionFetched(
++    TokenCallback callback,
++    std::unique_ptr<network::SimpleURLLoader> loader,
++    std::optional<std::string> body) {
++  std::optional<base::Value> json =
++      body ? base::JSONReader::Read(*body, base::JSON_PARSE_RFC)
++           : std::nullopt;
++  if (!json || !json->is_dict()) {
++    VLOG(1) << "aside: daemon session response invalid: "
++            << body.value_or("<none>");
++    std::move(callback).Run(std::nullopt);
++    return;
++  }
++  const std::string* token = json->GetDict().FindString("access_token");
++  const std::string* type = json->GetDict().FindString("token_type");
++  if (!token || !type || *type != kTokenType) {
++    std::move(callback).Run(std::nullopt);
++    return;
++  }
++  const int expires = json->GetDict().FindInt("expiresInSeconds").value_or(300);
++  cached_authorization_ = *type + " " + *token;
++  cached_expiry_ = base::TimeTicks::Now() + base::Seconds(expires);
++  std::move(callback).Run(cached_authorization_);
++}
++
++void AsideDaemonAuthorizer::PostJsonWithAuthorization(
++    scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
++    const std::string& path,
++    std::string json_body,
++    base::OnceCallback<void(std::optional<std::string>)> callback) {
++  GetAuthorization(
++      loader_factory,
++      base::BindOnce(&AsideDaemonAuthorizer::DoPost, weak_factory_.GetWeakPtr(),
++                     loader_factory, path, std::move(json_body),
++                     std::move(callback)));
++}
++
++void AsideDaemonAuthorizer::DoPost(
++    scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
++    const std::string& path,
++    std::string json_body,
++    base::OnceCallback<void(std::optional<std::string>)> callback,
++    std::optional<std::string> authorization) {
++  if (!authorization) {
++    std::move(callback).Run(std::nullopt);
++    return;
++  }
++  auto loader = MakeLoader(DaemonBaseUrl() + path, "POST", json_body,
++                           authorization);
++  network::SimpleURLLoader* raw = loader.get();
++  raw->DownloadToString(
++      loader_factory.get(),
++      base::BindOnce(&AsideDaemonAuthorizer::OnPostDone,
++                     weak_factory_.GetWeakPtr(), std::move(callback),
++                     std::move(loader)),
++      kMaxBody);
++}
++
++void AsideDaemonAuthorizer::OnPostDone(
++    base::OnceCallback<void(std::optional<std::string>)> callback,
++    std::unique_ptr<network::SimpleURLLoader> loader,
++    std::optional<std::string> body) {
++  std::move(callback).Run(std::move(body));
++}
+diff --git a/chrome/browser/signin/aside_profile_attributes_updater.h b/chrome/browser/signin/aside_profile_attributes_updater.h
+new file mode 100644
+index 0000000000..7cf4d00a83
+--- /dev/null
++++ b/chrome/browser/signin/aside_profile_attributes_updater.h
+@@ -0,0 +1,56 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_SIGNIN_ASIDE_PROFILE_ATTRIBUTES_UPDATER_H_
++#define CHROME_BROWSER_SIGNIN_ASIDE_PROFILE_ATTRIBUTES_UPDATER_H_
++
++#include <memory>
++#include <optional>
++#include <string>
++
++#include "base/files/file_path.h"
++#include "base/files/file_path_watcher.h"
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/threading/sequence_bound.h"
++#include "components/keyed_service/core/keyed_service.h"
++
++class Profile;
++
++// Mirrors the Aside daemon's account registry (~/.aside/accounts.json) into
++// the profile's aside.account_* prefs and registers this profile with the
++// daemon (/accounts/profile-binding). RE: original
++// chrome/browser/signin/aside_profile_attributes_updater.cc
++// (StartWatchingAccountsState, RefreshAccountsState,
++// PostJsonToDaemonWithAuthorization, "/accounts/profile-binding",
++// "/accounts/profile-binding/delete", "profileIndex").
++class AsideProfileAttributesUpdater : public KeyedService {
++ public:
++  explicit AsideProfileAttributesUpdater(Profile* profile);
++  ~AsideProfileAttributesUpdater() override;
++
++  static base::FilePath AccountsJsonPath();
++
++  // Re-reads accounts.json and updates the prefs.
++  void RefreshAccountsState();
++
++  // KeyedService:
++  void Shutdown() override;
++
++ private:
++  void StartWatchingAccountsState();
++  void OnAccountsFileChanged(const base::FilePath& path, bool error);
++  void OnAccountsRead(std::optional<std::string> contents);
++  void MaybePostProfileBinding(const std::string& user_id,
++                               int account_id,
++                               bool already_bound);
++  void OnBindingPosted(std::optional<std::string> body);
++
++  raw_ptr<Profile> profile_;
++  base::SequenceBound<base::FilePathWatcher> watcher_;
++  std::string last_posted_binding_;
++  base::WeakPtrFactory<AsideProfileAttributesUpdater> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_SIGNIN_ASIDE_PROFILE_ATTRIBUTES_UPDATER_H_
+diff --git a/chrome/browser/signin/aside_profile_attributes_updater.cc b/chrome/browser/signin/aside_profile_attributes_updater.cc
+new file mode 100644
+index 0000000000..74666d4f4d
+--- /dev/null
++++ b/chrome/browser/signin/aside_profile_attributes_updater.cc
+@@ -0,0 +1,249 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/signin/aside_profile_attributes_updater.h"
++
++#include <utility>
++
++#include "base/environment.h"
++#include "base/files/file_util.h"
++#include "base/functional/bind.h"
++#include "base/json/json_reader.h"
++#include "base/logging.h"
++#include "base/task/bind_post_task.h"
++#include "base/json/json_writer.h"
++#include "base/path_service.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/task/sequenced_task_runner.h"
++#include "base/task/thread_pool.h"
++#include "base/uuid.h"
++#include "base/values.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/profiles/profile_attributes_entry.h"
++#include "chrome/browser/profiles/profile_attributes_storage.h"
++#include "chrome/browser/profiles/profile_manager.h"
++#include "chrome/browser/signin/aside_daemon_authorizer.h"
++#include "components/prefs/pref_service.h"
++#include "content/public/browser/browser_context.h"
++#include "content/public/browser/storage_partition.h"
++
++namespace {
++
++constexpr char kProfileIdPref[] = "aside.profile_id";
++constexpr char kAccountIdPref[] = "aside.account_id";
++constexpr char kAccountUserIdPref[] = "aside.account_user_id";
++constexpr char kAccountEmailPref[] = "aside.account_email";
++constexpr char kAccountDisplayNamePref[] = "aside.account_display_name";
++constexpr char kAccountProfileUrlPref[] = "aside.account_profile_url";
++constexpr char kAccountAuthPausedPref[] = "aside.account_auth_paused";
++constexpr char kAccountHasPersistedSessionPref[] =
++    "aside.account_has_persisted_session";
++constexpr char kBootstrapCompletePref[] = "aside.bootstrap_complete";
++
++std::optional<std::string> ReadFile(const base::FilePath& path) {
++  std::string contents;
++  if (!base::ReadFileToString(path, &contents)) {
++    return std::nullopt;
++  }
++  return contents;
++}
++
++std::optional<int> ProfileIndexFor(const base::FilePath& profile_path) {
++  ProfileManager* manager = g_browser_process->profile_manager();
++  if (!manager) {
++    return std::nullopt;
++  }
++  int index = 0;
++  for (ProfileAttributesEntry* entry :
++       manager->GetProfileAttributesStorage().GetAllProfilesAttributes()) {
++    if (entry->GetPath() == profile_path) {
++      return index;
++    }
++    ++index;
++  }
++  return std::nullopt;
++}
++
++}  // namespace
++
++AsideProfileAttributesUpdater::AsideProfileAttributesUpdater(Profile* profile)
++    : profile_(profile),
++      watcher_(base::ThreadPool::CreateSequencedTaskRunner(
++          {base::MayBlock(), base::TaskPriority::BEST_EFFORT})) {
++  PrefService* prefs = profile_->GetPrefs();
++  if (prefs->GetString(kProfileIdPref).empty()) {
++    prefs->SetString(kProfileIdPref,
++                     base::Uuid::GenerateRandomV4().AsLowercaseString());
++  }
++  StartWatchingAccountsState();
++  RefreshAccountsState();
++}
++
++AsideProfileAttributesUpdater::~AsideProfileAttributesUpdater() = default;
++
++void AsideProfileAttributesUpdater::Shutdown() {
++  watcher_.Reset();
++  profile_ = nullptr;
++}
++
++// static
++base::FilePath AsideProfileAttributesUpdater::AccountsJsonPath() {
++  std::unique_ptr<base::Environment> env = base::Environment::Create();
++  std::optional<std::string> home = env->GetVar("ASIDE_HOME");
++  base::FilePath dir;
++  if (home && !home->empty()) {
++    dir = base::FilePath::FromUTF8Unsafe(*home);
++  } else {
++    base::PathService::Get(base::DIR_HOME, &dir);
++    dir = dir.Append(FILE_PATH_LITERAL(".aside"));
++  }
++  return dir.Append(FILE_PATH_LITERAL("accounts.json"));
++}
++
++void AsideProfileAttributesUpdater::StartWatchingAccountsState() {
++  // The parent directory is watched so the file appearing later is noticed.
++  watcher_.AsyncCall(&base::FilePathWatcher::Watch)
++      .WithArgs(AccountsJsonPath().DirName(),
++                base::FilePathWatcher::Type::kNonRecursive,
++                base::BindPostTask(
++                    base::SequencedTaskRunner::GetCurrentDefault(),
++                    base::BindRepeating(
++                        &AsideProfileAttributesUpdater::OnAccountsFileChanged,
++                        weak_factory_.GetWeakPtr())))
++      .Then(base::BindOnce([](bool ok) {
++        VLOG_IF(1, !ok) << "aside: accounts.json watch failed";
++      }));
++}
++
++void AsideProfileAttributesUpdater::OnAccountsFileChanged(
++    const base::FilePath& path,
++    bool error) {
++  RefreshAccountsState();
++}
++
++void AsideProfileAttributesUpdater::RefreshAccountsState() {
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++      base::BindOnce(&ReadFile, AccountsJsonPath()),
++      base::BindOnce(&AsideProfileAttributesUpdater::OnAccountsRead,
++                     weak_factory_.GetWeakPtr()));
++}
++
++void AsideProfileAttributesUpdater::OnAccountsRead(
++    std::optional<std::string> contents) {
++  if (!profile_) {
++    return;
++  }
++  PrefService* prefs = profile_->GetPrefs();
++  std::optional<base::Value> json =
++      contents ? base::JSONReader::Read(*contents, base::JSON_PARSE_RFC)
++               : std::nullopt;
++  if (!json || !json->is_dict()) {
++    // No registry: signed out.
++    prefs->SetInteger(kAccountIdPref, -1);
++    prefs->SetString(kAccountUserIdPref, std::string());
++    prefs->SetString(kAccountEmailPref, std::string());
++    prefs->SetString(kAccountDisplayNamePref, std::string());
++    prefs->SetString(kAccountProfileUrlPref, std::string());
++    prefs->SetBoolean(kAccountAuthPausedPref, false);
++    prefs->SetBoolean(kAccountHasPersistedSessionPref, false);
++    prefs->SetBoolean(kBootstrapCompletePref, false);
++    return;
++  }
++  const base::DictValue& registry = json->GetDict();
++  VLOG(1) << "aside: accounts.json loaded (" << contents->size() << " bytes)";
++  const std::string profile_id = prefs->GetString(kProfileIdPref);
++
++  // A binding recorded for this profile wins over the daemon's current
++  // account (profiles can be bound to different accounts).
++  int account_id = registry.FindInt("currentAccountId").value_or(0);
++  bool already_bound = false;
++  if (const base::DictValue* bindings =
++          registry.FindDict("profileAccountBindings")) {
++    if (const base::DictValue* binding = bindings->FindDict(profile_id)) {
++      account_id = binding->FindInt("accountId").value_or(account_id);
++      already_bound = true;
++    }
++  }
++
++  const base::DictValue* account = nullptr;
++  if (const base::ListValue* accounts = registry.FindList("accounts")) {
++    for (const base::Value& entry : *accounts) {
++      if (entry.is_dict() &&
++          entry.GetDict().FindInt("id").value_or(-1) == account_id) {
++        account = &entry.GetDict();
++        break;
++      }
++    }
++  }
++  if (!account) {
++    prefs->SetInteger(kAccountIdPref, -1);
++    prefs->SetString(kAccountUserIdPref, std::string());
++    return;
++  }
++  const std::string key = base::NumberToString(account_id);
++  const std::string* user_id = account->FindString("userId");
++  const std::string* email = account->FindString("email");
++  const std::string* name = account->FindString("name");
++  const std::string* profile_url = account->FindString("profileUrl");
++  const std::string* auth_status = account->FindString("authStatus");
++  bool has_session = false;
++  if (const base::DictValue* sessions = registry.FindDict("sessions")) {
++    has_session = sessions->FindDict(key) != nullptr;
++  }
++  bool bootstrap_complete = false;
++  if (const base::DictValue* bootstraps = registry.FindDict("localBootstraps")) {
++    if (const base::DictValue* bootstrap = bootstraps->FindDict(key)) {
++      bootstrap_complete = bootstrap->FindBool("isComplete").value_or(false);
++    }
++  }
++
++  prefs->SetInteger(kAccountIdPref, account_id);
++  prefs->SetString(kAccountUserIdPref, user_id ? *user_id : std::string());
++  prefs->SetString(kAccountEmailPref, email ? *email : std::string());
++  prefs->SetString(kAccountDisplayNamePref, name ? *name : std::string());
++  prefs->SetString(kAccountProfileUrlPref,
++                   profile_url ? *profile_url : std::string());
++  prefs->SetBoolean(kAccountAuthPausedPref,
++                    auth_status && *auth_status == "paused");
++  prefs->SetBoolean(kAccountHasPersistedSessionPref, has_session);
++  prefs->SetBoolean(kBootstrapCompletePref, bootstrap_complete);
++
++  if (user_id && !user_id->empty()) {
++    MaybePostProfileBinding(*user_id, account_id, already_bound);
++  }
++}
++
++void AsideProfileAttributesUpdater::MaybePostProfileBinding(
++    const std::string& user_id,
++    int account_id,
++    bool already_bound) {
++  base::DictValue body;
++  body.Set("profileId", profile_->GetPrefs()->GetString(kProfileIdPref));
++  body.Set("userId", user_id);
++  body.Set("accountId", account_id);
++  if (std::optional<int> index = ProfileIndexFor(profile_->GetPath())) {
++    body.Set("profileIndex", *index);
++  }
++  body.Set("profilePath", profile_->GetPath().AsUTF8Unsafe());
++  std::string json;
++  base::JSONWriter::Write(body, &json);
++  if (already_bound && json == last_posted_binding_) {
++    return;
++  }
++  last_posted_binding_ = json;
++  VLOG(1) << "aside: posting profile-binding " << json;
++  AsideDaemonAuthorizer::GetInstance()->PostJsonWithAuthorization(
++      profile_->GetDefaultStoragePartition()
++          ->GetURLLoaderFactoryForBrowserProcess(),
++      "/accounts/profile-binding", std::move(json),
++      base::BindOnce(&AsideProfileAttributesUpdater::OnBindingPosted,
++                     weak_factory_.GetWeakPtr()));
++}
++
++void AsideProfileAttributesUpdater::OnBindingPosted(
++    std::optional<std::string> body) {
++  VLOG(1) << "aside: profile-binding response " << body.value_or("<none>");
++}
+diff --git a/chrome/browser/signin/aside_profile_attributes_updater_factory.h b/chrome/browser/signin/aside_profile_attributes_updater_factory.h
+new file mode 100644
+index 0000000000..cfa0b4dd9f
+--- /dev/null
++++ b/chrome/browser/signin/aside_profile_attributes_updater_factory.h
+@@ -0,0 +1,29 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_SIGNIN_ASIDE_PROFILE_ATTRIBUTES_UPDATER_FACTORY_H_
++#define CHROME_BROWSER_SIGNIN_ASIDE_PROFILE_ATTRIBUTES_UPDATER_FACTORY_H_
++
++#include "base/no_destructor.h"
++#include "chrome/browser/profiles/profile_keyed_service_factory.h"
++
++class AsideProfileAttributesUpdater;
++class Profile;
++
++class AsideProfileAttributesUpdaterFactory : public ProfileKeyedServiceFactory {
++ public:
++  static AsideProfileAttributesUpdater* GetForProfile(Profile* profile);
++  static AsideProfileAttributesUpdaterFactory* GetInstance();
++
++ private:
++  friend base::NoDestructor<AsideProfileAttributesUpdaterFactory>;
++  AsideProfileAttributesUpdaterFactory();
++  ~AsideProfileAttributesUpdaterFactory() override;
++
++  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
++      content::BrowserContext* context) const override;
++  bool ServiceIsCreatedWithBrowserContext() const override;
++};
++
++#endif  // CHROME_BROWSER_SIGNIN_ASIDE_PROFILE_ATTRIBUTES_UPDATER_FACTORY_H_
+diff --git a/chrome/browser/signin/aside_profile_attributes_updater_factory.cc b/chrome/browser/signin/aside_profile_attributes_updater_factory.cc
+new file mode 100644
+index 0000000000..6fb196172c
+--- /dev/null
++++ b/chrome/browser/signin/aside_profile_attributes_updater_factory.cc
+@@ -0,0 +1,44 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/signin/aside_profile_attributes_updater_factory.h"
++
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/signin/aside_profile_attributes_updater.h"
++
++// static
++AsideProfileAttributesUpdater*
++AsideProfileAttributesUpdaterFactory::GetForProfile(Profile* profile) {
++  return static_cast<AsideProfileAttributesUpdater*>(
++      GetInstance()->GetServiceForBrowserContext(profile, true));
++}
++
++// static
++AsideProfileAttributesUpdaterFactory*
++AsideProfileAttributesUpdaterFactory::GetInstance() {
++  static base::NoDestructor<AsideProfileAttributesUpdaterFactory> instance;
++  return instance.get();
++}
++
++AsideProfileAttributesUpdaterFactory::AsideProfileAttributesUpdaterFactory()
++    : ProfileKeyedServiceFactory(
++          "AsideProfileAttributesUpdater",
++          ProfileSelections::Builder()
++              .WithRegular(ProfileSelection::kOriginalOnly)
++              .Build()) {}
++
++AsideProfileAttributesUpdaterFactory::~AsideProfileAttributesUpdaterFactory() =
++    default;
++
++std::unique_ptr<KeyedService>
++AsideProfileAttributesUpdaterFactory::BuildServiceInstanceForBrowserContext(
++    content::BrowserContext* context) const {
++  return std::make_unique<AsideProfileAttributesUpdater>(
++      Profile::FromBrowserContext(context));
++}
++
++bool AsideProfileAttributesUpdaterFactory::ServiceIsCreatedWithBrowserContext()
++    const {
++  return true;
++}
+diff --git a/chrome/browser/ui/aside/aside_tasks_client.h b/chrome/browser/ui/aside/aside_tasks_client.h
+new file mode 100644
+index 0000000000..a4f3e37bee
+--- /dev/null
++++ b/chrome/browser/ui/aside/aside_tasks_client.h
+@@ -0,0 +1,64 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_ASIDE_ASIDE_TASKS_CLIENT_H_
++#define CHROME_BROWSER_UI_ASIDE_ASIDE_TASKS_CLIENT_H_
++
++#include <list>
++#include <memory>
++#include <optional>
++#include <string>
++
++#include "base/functional/callback.h"
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++
++class Profile;
++
++namespace network {
++class SimpleURLLoader;
++}
++
++namespace aside {
++
++// Loopback client for the daemon's chrome-sidebar routes
++// (/session/for-chrome/*). These routes are public on loopback; the account
++// is selected with ?accountId=<aside.account_id>. RE: original
++// vertical_tab_strip_region_view.cc (ScheduleAsideTasksPoll, commands
++// nameChat / mark-read / mark-all-read / archive-all-chats / open-folder,
++// resolve-popover-action {popoverId, actionId} -> {clientAction, url}).
++class TasksClient {
++ public:
++  using BodyCallback = base::OnceCallback<void(std::optional<std::string>)>;
++
++  explicit TasksClient(Profile* profile);
++  ~TasksClient();
++
++  // "/session/for-chrome/recents" etc. relative to the daemon base URL; the
++  // accountId query is appended automatically.
++  void Get(const std::string& path, BodyCallback callback);
++  void PostJson(const std::string& path,
++                std::string json_body,
++                BodyCallback callback);
++
++  std::string AccountQuery() const;
++  int account_id() const;
++
++ private:
++  void Send(const std::string& path,
++            const std::string& method,
++            std::optional<std::string> body,
++            BodyCallback callback);
++  void OnDone(std::list<std::unique_ptr<network::SimpleURLLoader>>::iterator it,
++              BodyCallback callback,
++              std::optional<std::string> body);
++
++  raw_ptr<Profile> profile_;
++  std::list<std::unique_ptr<network::SimpleURLLoader>> loaders_;
++  base::WeakPtrFactory<TasksClient> weak_factory_{this};
++};
++
++}  // namespace aside
++
++#endif  // CHROME_BROWSER_UI_ASIDE_ASIDE_TASKS_CLIENT_H_
+diff --git a/chrome/browser/ui/aside/aside_tasks_client.cc b/chrome/browser/ui/aside/aside_tasks_client.cc
+new file mode 100644
+index 0000000000..3f7ad1c3a4
+--- /dev/null
++++ b/chrome/browser/ui/aside/aside_tasks_client.cc
+@@ -0,0 +1,104 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/aside/aside_tasks_client.h"
++
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/strings/string_number_conversions.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/signin/aside_daemon_authorizer.h"
++#include "components/prefs/pref_service.h"
++#include "content/public/browser/storage_partition.h"
++#include "net/base/load_flags.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
++#include "services/network/public/cpp/resource_request.h"
++#include "services/network/public/cpp/shared_url_loader_factory.h"
++#include "services/network/public/cpp/simple_url_loader.h"
++#include "url/gurl.h"
++
++namespace aside {
++
++namespace {
++
++constexpr net::NetworkTrafficAnnotationTag kAnnotation =
++    net::DefineNetworkTrafficAnnotation("aside_daemon_tasks", R"(
++        semantics {
++          sender: "Aside vertical tab strip"
++          description: "Reads and updates the local Aside daemon's tasks."
++          trigger: "Sidebar refresh or user action on a task row."
++          data: "Session ids and titles."
++          destination: LOCAL
++        }
++        policy {
++          cookies_allowed: NO
++          setting: "Not user controllable."
++          policy_exception_justification: "Loopback only."
++        })");
++
++}  // namespace
++
++TasksClient::TasksClient(Profile* profile) : profile_(profile) {}
++TasksClient::~TasksClient() = default;
++
++int TasksClient::account_id() const {
++  return profile_ ? profile_->GetPrefs()->GetInteger("aside.account_id") : -1;
++}
++
++std::string TasksClient::AccountQuery() const {
++  const int id = account_id();
++  return id >= 0 ? "?accountId=" + base::NumberToString(id) : std::string();
++}
++
++void TasksClient::Get(const std::string& path, BodyCallback callback) {
++  Send(path, "GET", std::nullopt, std::move(callback));
++}
++
++void TasksClient::PostJson(const std::string& path,
++                           std::string json_body,
++                           BodyCallback callback) {
++  Send(path, "POST", std::move(json_body), std::move(callback));
++}
++
++void TasksClient::Send(const std::string& path,
++                       const std::string& method,
++                       std::optional<std::string> body,
++                       BodyCallback callback) {
++  if (!profile_) {
++    std::move(callback).Run(std::nullopt);
++    return;
++  }
++  auto request = std::make_unique<network::ResourceRequest>();
++  request->url =
++      GURL(AsideDaemonAuthorizer::DaemonBaseUrl() + path + AccountQuery());
++  request->method = method;
++  request->load_flags = net::LOAD_DISABLE_CACHE | net::LOAD_BYPASS_CACHE;
++  request->credentials_mode = network::mojom::CredentialsMode::kOmit;
++  auto loader = network::SimpleURLLoader::Create(std::move(request), kAnnotation);
++  loader->SetTimeoutDuration(base::Seconds(8));
++  loader->SetAllowHttpErrorResults(true);
++  if (body) {
++    loader->AttachStringForUpload(*body, "application/json");
++  }
++  loaders_.push_back(std::move(loader));
++  auto it = std::prev(loaders_.end());
++  (*it)->DownloadToString(
++      profile_->GetDefaultStoragePartition()
++          ->GetURLLoaderFactoryForBrowserProcess()
++          .get(),
++      base::BindOnce(&TasksClient::OnDone, weak_factory_.GetWeakPtr(), it,
++                     std::move(callback)),
++      512 * 1024);
++}
++
++void TasksClient::OnDone(
++    std::list<std::unique_ptr<network::SimpleURLLoader>>::iterator it,
++    BodyCallback callback,
++    std::optional<std::string> body) {
++  loaders_.erase(it);
++  std::move(callback).Run(std::move(body));
++}
++
++}  // namespace aside
+diff --git a/chrome/browser/ui/views/frame/aside_task_views.h b/chrome/browser/ui/views/frame/aside_task_views.h
+new file mode 100644
+index 0000000000..cb540a10ea
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_task_views.h
+@@ -0,0 +1,49 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TASK_VIEWS_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TASK_VIEWS_H_
++
++#include <string>
++
++#include "base/functional/callback.h"
++#include "base/values.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/view.h"
++
++namespace views {
++class View;
++}
++
++// Small status dot for a task row (RE: AsideTaskStatusDotView; colours by
++// status: awaiting-approval / awaiting-answer / error / finished-unread).
++class AsideTaskStatusDotView : public views::View {
++  METADATA_HEADER(AsideTaskStatusDotView, views::View)
++
++ public:
++  explicit AsideTaskStatusDotView(const std::string& status);
++  ~AsideTaskStatusDotView() override;
++
++  void OnPaint(gfx::Canvas* canvas) override;
++
++ private:
++  std::string status_;
++};
++
++// Task popover (RE: AsideTaskPopoverContentController /
++// MaybeShowNewAsideTaskPopover): title, body and action buttons from the
++// daemon's `popover` {id, kind, title, body, actions:[{id,label,primary}]}.
++// `on_action` receives the chosen actionId.
++// Rename dialog for a chat row ("nameChat"): a textfield prefilled with the
++// current title; Enter/OK submits.
++void ShowAsideTaskRenameBubble(
++    views::View* anchor,
++    const std::u16string& initial_title,
++    base::OnceCallback<void(const std::u16string&)> on_submit);
++
++void ShowAsideTaskPopover(views::View* anchor,
++                          const base::DictValue& popover,
++                          base::RepeatingCallback<void(const std::string&)> on_action);
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TASK_VIEWS_H_
+diff --git a/chrome/browser/ui/views/frame/aside_task_views.cc b/chrome/browser/ui/views/frame/aside_task_views.cc
+new file mode 100644
+index 0000000000..fc714724ed
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_task_views.cc
+@@ -0,0 +1,225 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_task_views.h"
++
++#include <memory>
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/strings/utf_string_conversions.h"
++#include "third_party/skia/include/core/SkColor.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/mojom/dialog_button.mojom.h"
++#include "ui/color/color_id.h"
++#include "ui/color/color_provider.h"
++#include "ui/gfx/canvas.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/gfx/geometry/rect_f.h"
++#include "ui/views/bubble/bubble_border.h"
++#include "ui/views/bubble/bubble_dialog_delegate_view.h"
++#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/controls/textfield/textfield.h"
++#include "ui/views/controls/textfield/textfield_controller.h"
++#include "ui/events/event.h"
++#include "ui/events/keycodes/keyboard_codes.h"
++#include "base/memory/raw_ptr.h"
++#include "ui/views/layout/box_layout.h"
++#include "ui/views/layout/box_layout_view.h"
++#include "ui/views/widget/widget.h"
++
++namespace {
++
++constexpr int kDotSize = 8;
++
++class PopoverController {
++ public:
++  PopoverController(views::View* anchor,
++                    const base::DictValue& popover,
++                    base::RepeatingCallback<void(const std::string&)> on_action)
++      : on_action_(std::move(on_action)) {
++    delegate_ = std::make_unique<views::BubbleDialogDelegate>(
++        anchor, views::BubbleBorder::LEFT_TOP);
++    delegate_->SetButtons(static_cast<int>(ui::mojom::DialogButton::kNone));
++    delegate_->SetShowCloseButton(true);
++    delegate_->SetShowTitle(false);
++    delegate_->set_margins(gfx::Insets(12));
++
++    auto contents = std::make_unique<views::BoxLayoutView>();
++    contents->SetOrientation(views::BoxLayout::Orientation::kVertical);
++    contents->SetBetweenChildSpacing(8);
++    const std::string* title = popover.FindString("title");
++    const std::string* body = popover.FindString("body");
++    auto* title_label = contents->AddChildView(std::make_unique<views::Label>(
++        base::UTF8ToUTF16(title ? *title : std::string()),
++        views::style::CONTEXT_DIALOG_TITLE, views::style::STYLE_PRIMARY));
++    title_label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    title_label->SetMultiLine(true);
++    title_label->SetMaximumWidth(280);
++    auto* body_label = contents->AddChildView(std::make_unique<views::Label>(
++        base::UTF8ToUTF16(body ? *body : std::string()),
++        views::style::CONTEXT_LABEL, views::style::STYLE_SECONDARY));
++    body_label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    body_label->SetMultiLine(true);
++    body_label->SetMaximumWidth(280);
++    auto* actions = contents->AddChildView(std::make_unique<views::BoxLayoutView>());
++    actions->SetOrientation(views::BoxLayout::Orientation::kHorizontal);
++    actions->SetMainAxisAlignment(views::LayoutAlignment::kEnd);
++    actions->SetBetweenChildSpacing(8);
++    if (const base::ListValue* list = popover.FindList("actions")) {
++      for (const base::Value& action : *list) {
++        const base::DictValue* d = action.GetIfDict();
++        if (!d) {
++          continue;
++        }
++        const std::string* id = d->FindString("id");
++        const std::string* label = d->FindString("label");
++        if (!id || !label) {
++          continue;
++        }
++        auto* button = actions->AddChildView(std::make_unique<views::MdTextButton>(
++            base::BindRepeating(&PopoverController::OnAction,
++                                base::Unretained(this), *id),
++            base::UTF8ToUTF16(*label)));
++        button->SetStyle(d->FindBool("primary").value_or(false)
++                             ? ui::ButtonStyle::kProminent
++                             : ui::ButtonStyle::kTonal);
++      }
++    }
++    delegate_->SetContentsView(std::move(contents));
++    widget_ = views::BubbleDialogDelegate::CreateBubble(
++        delegate_.get(), base::BindOnce(&PopoverController::OnClosed,
++                                        base::Unretained(this)));
++    widget_->Show();
++  }
++
++ private:
++  void OnAction(const std::string& action_id) {
++    on_action_.Run(action_id);
++    if (widget_) {
++      widget_->Close();
++    }
++  }
++  void OnClosed(views::Widget::ClosedReason) { delete this; }
++
++  base::RepeatingCallback<void(const std::string&)> on_action_;
++  std::unique_ptr<views::BubbleDialogDelegate> delegate_;
++  std::unique_ptr<views::Widget> widget_;
++};
++
++}  // namespace
++
++AsideTaskStatusDotView::AsideTaskStatusDotView(const std::string& status)
++    : status_(status) {
++  SetPreferredSize(gfx::Size(kDotSize + 4, kDotSize + 4));
++}
++
++AsideTaskStatusDotView::~AsideTaskStatusDotView() = default;
++
++void AsideTaskStatusDotView::OnPaint(gfx::Canvas* canvas) {
++  const ui::ColorProvider* provider = GetColorProvider();
++  SkColor color = provider->GetColor(ui::kColorSysPrimary);
++  if (status_ == "error") {
++    color = provider->GetColor(ui::kColorAlertHighSeverity);
++  } else if (status_ == "awaiting-approval" || status_ == "awaiting-answer") {
++    color = provider->GetColor(ui::kColorAlertMediumSeverityIcon);
++  } else if (status_ == "finished-unread") {
++    color = provider->GetColor(ui::kColorSysPrimary);
++  }
++  cc::PaintFlags flags;
++  flags.setAntiAlias(true);
++  flags.setColor(color);
++  gfx::RectF bounds(GetLocalBounds());
++  bounds.Inset(2);
++  canvas->DrawCircle(bounds.CenterPoint(), kDotSize / 2.0f, flags);
++}
++
++BEGIN_METADATA(AsideTaskStatusDotView)
++END_METADATA
++
++namespace {
++
++class RenameController : public views::TextfieldController {
++ public:
++  RenameController(views::View* anchor,
++                   const std::u16string& initial_title,
++                   base::OnceCallback<void(const std::u16string&)> on_submit)
++      : on_submit_(std::move(on_submit)) {
++    delegate_ = std::make_unique<views::BubbleDialogDelegate>(
++        anchor, views::BubbleBorder::LEFT_TOP);
++    delegate_->SetButtons(static_cast<int>(ui::mojom::DialogButton::kOk) |
++                          static_cast<int>(ui::mojom::DialogButton::kCancel));
++    delegate_->SetShowTitle(false);
++    delegate_->set_margins(gfx::Insets(12));
++    delegate_->SetAcceptCallback(base::BindOnce(&RenameController::Submit,
++                                                base::Unretained(this)));
++    auto contents = std::make_unique<views::BoxLayoutView>();
++    contents->SetOrientation(views::BoxLayout::Orientation::kVertical);
++    contents->SetBetweenChildSpacing(8);
++    auto* label = contents->AddChildView(std::make_unique<views::Label>(
++        u"Rename Chat", views::style::CONTEXT_DIALOG_TITLE,
++        views::style::STYLE_PRIMARY));
++    label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    auto textfield = std::make_unique<views::Textfield>();
++    textfield->SetText(initial_title);
++    textfield->SetDefaultWidthInChars(32);
++    textfield->set_controller(this);
++    textfield_ = contents->AddChildView(std::move(textfield));
++    delegate_->SetInitiallyFocusedView(textfield_);
++    delegate_->SetContentsView(std::move(contents));
++    widget_ = views::BubbleDialogDelegate::CreateBubble(
++        delegate_.get(), base::BindOnce(&RenameController::OnClosed,
++                                        base::Unretained(this)));
++    widget_->Show();
++  }
++
++  bool HandleKeyEvent(views::Textfield* sender,
++                      const ui::KeyEvent& key_event) override {
++    if (key_event.type() == ui::EventType::kKeyPressed &&
++        key_event.key_code() == ui::VKEY_RETURN) {
++      Submit();
++      if (widget_) {
++        widget_->Close();
++      }
++      return true;
++    }
++    return false;
++  }
++
++ private:
++  void Submit() {
++    if (on_submit_ && textfield_) {
++      std::move(on_submit_).Run(std::u16string(textfield_->GetText()));
++    }
++  }
++  void OnClosed(views::Widget::ClosedReason) { delete this; }
++
++  base::OnceCallback<void(const std::u16string&)> on_submit_;
++  std::unique_ptr<views::BubbleDialogDelegate> delegate_;
++  std::unique_ptr<views::Widget> widget_;
++  raw_ptr<views::Textfield> textfield_ = nullptr;
++};
++
++}  // namespace
++
++void ShowAsideTaskRenameBubble(
++    views::View* anchor,
++    const std::u16string& initial_title,
++    base::OnceCallback<void(const std::u16string&)> on_submit) {
++  if (!anchor) {
++    return;
++  }
++  new RenameController(anchor, initial_title, std::move(on_submit));
++}
++
++void ShowAsideTaskPopover(
++    views::View* anchor,
++    const base::DictValue& popover,
++    base::RepeatingCallback<void(const std::string&)> on_action) {
++  if (!anchor) {
++    return;
++  }
++  new PopoverController(anchor, popover, std::move(on_action));  // self-owned
++}

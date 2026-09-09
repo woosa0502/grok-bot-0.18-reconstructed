@@ -1,0 +1,449 @@
+diff --git a/chrome/browser/extensions/api/BUILD.gn b/chrome/browser/extensions/api/BUILD.gn
+index 89e9b8c6ff..a4ad32ca71 100644
+--- a/chrome/browser/extensions/api/BUILD.gn
++++ b/chrome/browser/extensions/api/BUILD.gn
+@@ -29,6 +29,7 @@ group("api_implementations") {
+   # TODO(https://crbug.com/356905053): Add more APIs here.
+   public_deps = [
+     "//chrome/browser/extensions/api/activity_log_private",
++    "//chrome/browser/extensions/api/aside_account",
+     "//chrome/browser/extensions/api/browsing_data",
+     "//chrome/browser/extensions/api/commands",
+     "//chrome/browser/extensions/api/content_settings",
+diff --git a/chrome/browser/extensions/api/aside_account/BUILD.gn b/chrome/browser/extensions/api/aside_account/BUILD.gn
+new file mode 100644
+index 0000000000..bf307d7f7a
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_account/BUILD.gn
+@@ -0,0 +1,25 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++import("//extensions/buildflags/buildflags.gni")
++
++assert(enable_extensions)
++
++source_set("aside_account") {
++  sources = [
++    "aside_account_api.cc",
++    "aside_account_api.h",
++  ]
++  configs += [ "//build/config/compiler:wexit_time_destructors" ]
++  public_deps = [
++    "//chrome/browser/extensions",
++    "//chrome/common/extensions/api",
++    "//content/public/browser",
++    "//extensions/browser",
++  ]
++  deps = [
++    "//base",
++    "//chrome/browser/profiles:profile",
++  ]
++}
+diff --git a/chrome/browser/extensions/api/aside_account/aside_account_api.cc b/chrome/browser/extensions/api/aside_account/aside_account_api.cc
+new file mode 100644
+index 0000000000..30bd0e4f66
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_account/aside_account_api.cc
+@@ -0,0 +1,85 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_account/aside_account_api.h"
++
++#include <optional>
++#include <string>
++#include <utility>
++#include <vector>
++
++#include "base/files/file_path.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/values.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/profiles/profile_attributes_entry.h"
++#include "chrome/browser/profiles/profile_attributes_storage.h"
++#include "chrome/browser/profiles/profile_manager.h"
++#include "chrome/common/extensions/api/aside_account.h"
++
++namespace extensions {
++
++namespace {
++namespace aside_account = api::aside_account;
++}  // namespace
++
++ExtensionFunction::ResponseAction
++AsideAccountGetProfileContextFunction::Run() {
++  base::DictValue dict;
++  Profile* profile = Profile::FromBrowserContext(browser_context());
++  if (profile) {
++    dict.Set("profilePath", profile->GetPath().AsUTF8Unsafe());
++    dict.Set("isOffTheRecord", profile->IsOffTheRecord());
++    ProfileManager* profile_manager = g_browser_process->profile_manager();
++    if (profile_manager) {
++      ProfileAttributesEntry* entry =
++          profile_manager->GetProfileAttributesStorage()
++              .GetProfileAttributesWithPath(profile->GetPath());
++      if (entry) {
++        dict.Set("name", base::UTF16ToUTF8(entry->GetName()));
++        dict.Set("isCurrent", true);
++      }
++    }
++  }
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++ExtensionFunction::ResponseAction AsideAccountGetProfilesFunction::Run() {
++  std::vector<aside_account::ProfileInfo> profiles;
++  ProfileManager* profile_manager = g_browser_process->profile_manager();
++  if (profile_manager) {
++    ProfileAttributesStorage& storage =
++        profile_manager->GetProfileAttributesStorage();
++    Profile* current = Profile::FromBrowserContext(browser_context());
++    base::FilePath current_path =
++        current ? current->GetPath() : base::FilePath();
++    int index = 0;
++    for (ProfileAttributesEntry* entry : storage.GetAllProfilesAttributes()) {
++      aside_account::ProfileInfo info;
++      info.profile_index = index++;
++      info.name = base::UTF16ToUTF8(entry->GetName());
++      info.is_current = entry->GetPath() == current_path;
++      info.is_locked = entry->IsSigninRequired();
++      profiles.push_back(std::move(info));
++    }
++  }
++  return RespondNow(
++      ArgumentList(aside_account::GetProfiles::Results::Create(profiles)));
++}
++
++ExtensionFunction::ResponseAction
++AsideAccountSignDaemonAuthChallengeFunction::Run() {
++  std::optional<aside_account::SignDaemonAuthChallenge::Params> params =
++      aside_account::SignDaemonAuthChallenge::Params::Create(args());
++  EXTENSION_FUNCTION_VALIDATE(params);
++  base::DictValue dict;
++  dict.Set("challenge", params->challenge);
++  // Faithful daemon-auth signing uses the per-installation P-256 key and is
++  // reproduced separately; expose a structured result placeholder for now.
++  dict.Set("signed", false);
++  return RespondNow(WithArguments(std::move(dict)));
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/extensions/api/aside_account/aside_account_api.h b/chrome/browser/extensions/api/aside_account/aside_account_api.h
+new file mode 100644
+index 0000000000..bd43cf4f9f
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_account/aside_account_api.h
+@@ -0,0 +1,44 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_ACCOUNT_ASIDE_ACCOUNT_API_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_ACCOUNT_ASIDE_ACCOUNT_API_H_
++
++#include "extensions/browser/extension_function.h"
++
++namespace extensions {
++
++class AsideAccountGetProfileContextFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideAccount.getProfileContext",
++                             ASIDEACCOUNT_GETPROFILECONTEXT)
++
++ private:
++  ~AsideAccountGetProfileContextFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideAccountGetProfilesFunction final : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideAccount.getProfiles", ASIDEACCOUNT_GETPROFILES)
++
++ private:
++  ~AsideAccountGetProfilesFunction() final = default;
++  ResponseAction Run() final;
++};
++
++class AsideAccountSignDaemonAuthChallengeFunction final
++    : public ExtensionFunction {
++ public:
++  DECLARE_EXTENSION_FUNCTION("asideAccount.signDaemonAuthChallenge",
++                             ASIDEACCOUNT_SIGNDAEMONAUTHCHALLENGE)
++
++ private:
++  ~AsideAccountSignDaemonAuthChallengeFunction() final = default;
++  ResponseAction Run() final;
++};
++
++}  // namespace extensions
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_ACCOUNT_ASIDE_ACCOUNT_API_H_
+diff --git a/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc b/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc
+index 77b95c43ee..4d7f37ff36 100644
+--- a/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc
++++ b/chrome/browser/extensions/api/tab_capture/tab_capture_api.cc
+@@ -179,7 +179,11 @@ ExtensionFunction::ResponseAction TabCaptureCaptureFunction::Run() {
+   if (!extension()->permissions_data()->HasAPIPermissionForTab(
+           sessions::SessionTabHelper::IdForTab(target_contents).id(),
+           mojom::APIPermissionID::kTabCaptureForTab) &&
+-      (GetAllowlistedExtensionID() != extension_id)) {
++      (GetAllowlistedExtensionID() != extension_id) &&
++      // Aside: a trusted extension holding this permission may capture without
++      // a user gesture (used for background tab previews).
++      !extension()->permissions_data()->HasAPIPermission(
++          mojom::APIPermissionID::kAsideCaptureTabWithoutUserInteraction)) {
+     return RespondNow(Error(kGrantError));
+   }
+ 
+@@ -257,7 +261,11 @@ ExtensionFunction::ResponseAction TabCaptureGetMediaStreamIdFunction::Run() {
+   if (!extension()->permissions_data()->HasAPIPermissionForTab(
+           sessions::SessionTabHelper::IdForTab(target_contents).id(),
+           mojom::APIPermissionID::kTabCaptureForTab) &&
+-      (GetAllowlistedExtensionID() != extension_id)) {
++      (GetAllowlistedExtensionID() != extension_id) &&
++      // Aside: a trusted extension holding this permission may capture without
++      // a user gesture (used for background tab previews).
++      !extension()->permissions_data()->HasAPIPermission(
++          mojom::APIPermissionID::kAsideCaptureTabWithoutUserInteraction)) {
+     return RespondNow(Error(kGrantError));
+   }
+ 
+diff --git a/chrome/common/extensions/api/_api_features.json b/chrome/common/extensions/api/_api_features.json
+index 79ef33aa4b..65e4875607 100644
+--- a/chrome/common/extensions/api/_api_features.json
++++ b/chrome/common/extensions/api/_api_features.json
+@@ -11,6 +11,13 @@
+ // renderer.
+ 
+ {
++  "asideAccount": {
++    "channel": "stable",
++    "contexts": ["privileged_extension"],
++    "extension_types": ["extension"],
++    "dependencies": ["permission:at.studio.Aside.ext.private.account"],
++    "allowlist": ["4A76B267556C299D3719FF535FC6011CF9674AC0"]
++  },
+   "accessibilityFeatures": [{
+     "dependencies": ["permission:accessibilityFeatures.modify"],
+     "contexts": ["privileged_extension"]
+diff --git a/chrome/common/extensions/api/_permission_features.json b/chrome/common/extensions/api/_permission_features.json
+index be9119db6f..1b46606440 100644
+--- a/chrome/common/extensions/api/_permission_features.json
++++ b/chrome/common/extensions/api/_permission_features.json
+@@ -1184,5 +1184,54 @@
+       "7D5A66C88A25019F997E548DEC5E0011E2855591",  // http://crbug.com/40181096
+       "F740D260E7E2107B3AE454F512B65AE6CF244433"   // http://b/273392894
+     ]
++  },
++  "at.studio.Aside.ext.private.capture-tab-without-userinteraction": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.account": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.browser-import": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.notification": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.omnibox": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.pref-get-set": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
++  },
++  "at.studio.Aside.ext.private.launch-extension": {
++    "channel": "stable",
++    "extension_types": ["extension"],
++    "allowlist": [
++      "4A76B267556C299D3719FF535FC6011CF9674AC0"
++    ]
+   }
+ }
+diff --git a/chrome/common/extensions/api/api_sources.gni b/chrome/common/extensions/api/api_sources.gni
+index 5357482de4..f7498e6295 100644
+--- a/chrome/common/extensions/api/api_sources.gni
++++ b/chrome/common/extensions/api/api_sources.gni
+@@ -13,6 +13,7 @@ assert(enable_extensions_core)
+ # TODO(https://crbug.com/356905053): Continue moving more here.
+ schema_sources_ = [
+   "activity_log_private.json",
++  "aside_account.json",
+   "bookmarks.json",
+   "content_settings.json",
+   "context_menus.json",
+diff --git a/chrome/common/extensions/api/aside_account.json b/chrome/common/extensions/api/aside_account.json
+new file mode 100644
+index 0000000000..88c74732bd
+--- /dev/null
++++ b/chrome/common/extensions/api/aside_account.json
+@@ -0,0 +1,85 @@
++[
++  {
++    "namespace": "asideAccount",
++    "types": [
++      {
++        "id": "JsonObject",
++        "type": "object",
++        "additionalProperties": {
++          "type": "any"
++        }
++      },
++      {
++        "id": "ProfileInfo",
++        "type": "object",
++        "properties": {
++          "profileIndex": {
++            "type": "integer"
++          },
++          "name": {
++            "type": "string"
++          },
++          "isCurrent": {
++            "type": "boolean"
++          },
++          "isLocked": {
++            "type": "boolean"
++          }
++        }
++      }
++    ],
++    "functions": [
++      {
++        "name": "getProfileContext",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      },
++      {
++        "name": "getProfiles",
++        "type": "function",
++        "parameters": [],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "profiles",
++              "type": "array",
++              "items": {
++                "$ref": "ProfileInfo"
++              }
++            }
++          ]
++        }
++      },
++      {
++        "name": "signDaemonAuthChallenge",
++        "type": "function",
++        "parameters": [
++          {
++            "name": "challenge",
++            "type": "string"
++          }
++        ],
++        "returns_async": {
++          "name": "callback",
++          "parameters": [
++            {
++              "name": "result",
++              "$ref": "JsonObject"
++            }
++          ]
++        }
++      }
++    ],
++    "description": "Aside private API: profile context and daemon auth signing (trusted bundled extensions only)."
++  }
++]
+\ No newline at end of file
+diff --git a/chrome/common/extensions/permissions/chrome_api_permissions.cc b/chrome/common/extensions/permissions/chrome_api_permissions.cc
+index 8e93fc106c..b34bba16da 100644
+--- a/chrome/common/extensions/permissions/chrome_api_permissions.cc
++++ b/chrome/common/extensions/permissions/chrome_api_permissions.cc
+@@ -221,6 +221,15 @@ constexpr APIPermissionInfo::InitInfo permissions_to_register[] = {
+      APIPermissionInfo::kFlagImpliesFullURLAccess},
+     {APIPermissionID::kTabCaptureForTab, "tabCaptureForTab",
+      APIPermissionInfo::kFlagInternal},
++    // Aside private permission: capture a tab without a user gesture.
++    {APIPermissionID::kAsideCaptureTabWithoutUserInteraction,
++     "at.studio.Aside.ext.private.capture-tab-without-userinteraction"},
++    {APIPermissionID::kAsideAccount, "at.studio.Aside.ext.private.account"},
++    {APIPermissionID::kAsideBrowserImport, "at.studio.Aside.ext.private.browser-import"},
++    {APIPermissionID::kAsideNotification, "at.studio.Aside.ext.private.notification"},
++    {APIPermissionID::kAsideOmnibox, "at.studio.Aside.ext.private.omnibox"},
++    {APIPermissionID::kAsidePrefGetSet, "at.studio.Aside.ext.private.pref-get-set"},
++    {APIPermissionID::kAsideLaunchExtension, "at.studio.Aside.ext.private.launch-extension"},
+ 
+     // Platform-app permissions.
+     {APIPermissionID::kFileSystemProvider, "fileSystemProvider",
+diff --git a/extensions/browser/extension_function_histogram_value.h b/extensions/browser/extension_function_histogram_value.h
+index 8cb9d5c891..609b44a2a4 100644
+--- a/extensions/browser/extension_function_histogram_value.h
++++ b/extensions/browser/extension_function_histogram_value.h
+@@ -2040,6 +2040,9 @@ enum HistogramValue {
+   CONTEXTUALTASKSPRIVATE_LAUNCHPANELINNEWTAB = 1975,
+   DICTATIONPRIVATE_UPDATETRANSCRIPTION = 1976,
+   DICTATIONPRIVATE_SETSTREAMSTATE = 1977,
++  ASIDEACCOUNT_GETPROFILECONTEXT = 1978,
++  ASIDEACCOUNT_GETPROFILES = 1979,
++  ASIDEACCOUNT_SIGNDAEMONAUTHCHALLENGE = 1980,
+   // Last entry: Add new entries above, then run:
+   // tools/metrics/histograms/update_extension_histograms.py
+   ENUM_BOUNDARY
+diff --git a/extensions/common/mojom/api_permission_id.mojom b/extensions/common/mojom/api_permission_id.mojom
+index 4e1045188b..3f4bc7c9d7 100644
+--- a/extensions/common/mojom/api_permission_id.mojom
++++ b/extensions/common/mojom/api_permission_id.mojom
+@@ -294,6 +294,15 @@ enum APIPermissionID {
+   kIndigoPrivate = 267,
+   kContextualTasksPrivate = 268,
+   kDictationPrivate = 269,
++  // Aside: allows a trusted extension to capture a tab without a user gesture.
++  kAsideCaptureTabWithoutUserInteraction = 270,
++  // Aside: private permissions for trusted bundled extensions.
++  kAsideAccount = 271,
++  kAsideBrowserImport = 272,
++  kAsideNotification = 273,
++  kAsideOmnibox = 274,
++  kAsidePrefGetSet = 275,
++  kAsideLaunchExtension = 276,
+ 
+   // Add new entries at the end of the enum and be sure to update the
+   // "ExtensionPermission3" enum in

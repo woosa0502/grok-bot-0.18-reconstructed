@@ -1,0 +1,625 @@
+diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.cc b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.cc
+new file mode 100644
+index 0000000000..b1f38b7ce8
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.cc
+@@ -0,0 +1,45 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_mini_popup/mini_popup_view.h"
++
++#include <utility>
++
++#include "chrome/browser/extensions/extension_view_host.h"
++#include "ui/views/layout/fill_layout.h"
++
++namespace extensions {
++
++MiniPopupView::MiniPopupView(Profile* profile,
++                             std::unique_ptr<ExtensionViewHost> host)
++    : host_(std::move(host)) {
++  SetLayoutManager(std::make_unique<views::FillLayout>());
++  extension_view_ =
++      AddChildView(std::make_unique<ExtensionViewViews>(profile, host_.get()));
++  extension_view_->SetContainer(this);
++  // Deliberately no ExtensionViewViews::Init(): for a popup host that only
++  // turns on auto-resize, which makes the page's own layout drive the view and
++  // pins it at GetMinBounds(). The mini popup is a fixed-size window whose size
++  // comes from asideMiniPopup.setState / setSize, so the FillLayout above must
++  // be what sizes the contents.
++}
++
++MiniPopupView::~MiniPopupView() {
++  if (extension_view_) {
++    std::unique_ptr<views::View> owned =
++        RemoveChildViewT(extension_view_.get());
++    extension_view_ = nullptr;
++  }
++  host_.reset();
++}
++
++gfx::Size MiniPopupView::GetMinBounds() {
++  return gfx::Size(200, 120);
++}
++
++gfx::Size MiniPopupView::GetMaxBounds() {
++  return gfx::Size(1200, 900);
++}
++
++}  // namespace extensions
+diff --git a/chrome/browser/ui/views/frame/multi_contents_view.cc b/chrome/browser/ui/views/frame/multi_contents_view.cc
+index 86edc89c5c..f28fe3cf08 100644
+--- a/chrome/browser/ui/views/frame/multi_contents_view.cc
++++ b/chrome/browser/ui/views/frame/multi_contents_view.cc
+@@ -8,9 +8,18 @@
+ #include <cstdlib>
+ 
+ #include "base/check_deref.h"
++#include "base/containers/span.h"
+ #include "base/feature_list.h"
+ #include "base/i18n/rtl.h"
++#include "base/json/json_writer.h"
+ #include "base/notreached.h"
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/tabs/tab_group_model.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "components/tabs/public/tab_group.h"
++#include "ui/compositor/compositor.h"
++#include "ui/views/widget/widget.h"
+ #include "chrome/browser/actor/ui/actor_overlay_web_view.h"
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/profiles/profile.h"
+@@ -98,6 +107,18 @@ MultiContentsView::MultiContentsView(
+       AddChildView(std::make_unique<ContentsContainerView>(browser_view_)));
+   contents_container_views_[1]->SetVisible(false);
+ 
++  // Aside: the size that hidden agent tabs render at.
++  ai_tabs_viewport_ = AddChildView(std::make_unique<AsideAiTabsViewport>());
++  // The normal active-tab switch goes straight to
++  // GetActiveContentsView()->SetWebContents() and never reaches
++  // SetWebContentsAtIndex(), so watch the strip instead of relying on it.
++  if (browser_view_) {
++    if (TabStripModel* const model =
++            browser_view_->browser()->tab_strip_model()) {
++      ai_tabs_tab_strip_observation_.Observe(model);
++    }
++  }
++
+   drop_target_view_ =
+       AddChildView(std::make_unique<MultiContentsDropTargetView>());
+   drop_target_controller_ =
+@@ -183,6 +204,10 @@ MultiContentsView::~MultiContentsView() {
+   if (drop_target_controller_) {
+     drop_target_controller_.reset();
+   }
++  if (ai_tabs_viewport_) {
++    ai_tabs_viewport_->SetSizedWebContents(nullptr);
++    ai_tabs_viewport_ = nullptr;
++  }
+   drop_target_view_ = nullptr;
+   resize_area_ = nullptr;
+   contents_separators_.Reset();
+@@ -269,6 +294,10 @@ void MultiContentsView::SetWebContentsAtIndex(
+       sad_tab_helper->ReinstallInWebView();
+     }
+   }
++
++  // Aside: a tab that just came on screen no longer needs its own viewport,
++  // and the tab it replaced may now need one.
++  UpdateAiTabsViewport();
+ }
+ 
+ void MultiContentsView::ShowSplitView(
+@@ -305,6 +334,8 @@ void MultiContentsView::CloseSplitView() {
+       sad_tab_helper->ReinstallInWebView();
+     }
+   }
++
++  UpdateAiTabsViewport();
+ }
+ 
+ void MultiContentsView::SwapContentsInSplitView() {
+@@ -332,6 +363,7 @@ void MultiContentsView::SetActiveIndex(int index) {
+   GetActiveContentsView()->set_is_primary_web_contents_for_window(true);
+   GetInactiveContentsView()->set_is_primary_web_contents_for_window(false);
+   UpdateContentsBorderAndOverlay();
++  UpdateAiTabsViewport();
+ }
+ 
+ void MultiContentsView::UpdateSplitVisualData(
+@@ -503,6 +535,13 @@ views::ProposedLayout MultiContentsView::CalculateProposedLayout(
+   layouts.child_layouts.emplace_back(background_view_.get(), show_background,
+                                      available_space);
+ 
++  // Aside: the agent-tab viewport is never shown, but it carries the bounds a
++  // hidden agent tab is rendered at, so it spans the whole contents area.
++  if (ai_tabs_viewport_) {
++    layouts.child_layouts.emplace_back(ai_tabs_viewport_.get(), false,
++                                       available_space);
++  }
++
+   if (IsDragAndDropEnabled()) {
+     available_space =
+         CalculateDropTargetLayout(available_space, layouts.child_layouts);
+@@ -849,5 +888,211 @@ int MultiContentsView::GetResizeAxisComponent(const gfx::Size& size) const {
+              : size.height();
+ }
+ 
++// --- Aside restoration: AsideAiTabsViewport --------------------------------
++
++AsideAiTabsViewport::AsideAiTabsViewport() {
++  // The viewport carries bounds only. It never paints and never takes events.
++  SetVisible(false);
++  SetCanProcessEventsWithinSubtree(false);
++}
++
++AsideAiTabsViewport::~AsideAiTabsViewport() {
++  SetSizedWebContents(nullptr);
++}
++
++void AsideAiTabsViewport::SetSizedWebContents(
++    content::WebContents* web_contents) {
++  if (sized_web_contents_ == web_contents) {
++    return;
++  }
++  if (sized_web_contents_) {
++    ClearDeviceMetricsOverride();
++    Detach();
++  }
++  sized_web_contents_ = web_contents;
++  Observe(web_contents);
++  if (sized_web_contents_) {
++    ApplyViewportToContents();
++  }
++}
++
++void AsideAiTabsViewport::OnBoundsChanged(const gfx::Rect& previous_bounds) {
++  views::View::OnBoundsChanged(previous_bounds);
++  ApplyViewportToContents();
++}
++
++void AsideAiTabsViewport::WebContentsDestroyed() {
++  // The session is gone with the contents; drop it without talking to it.
++  sized_web_contents_ = nullptr;
++  Observe(nullptr);
++  metrics_override_applied_ = false;
++  applied_size_ = gfx::Size();
++  Detach();
++}
++
++void AsideAiTabsViewport::DispatchProtocolMessage(
++    content::DevToolsAgentHost* agent_host,
++    base::span<const uint8_t> message) {
++  // The viewport only sends; replies and events are of no interest.
++}
++
++void AsideAiTabsViewport::AgentHostClosed(
++    content::DevToolsAgentHost* agent_host) {
++  agent_host_ = nullptr;
++  metrics_override_applied_ = false;
++  applied_size_ = gfx::Size();
++}
++
++bool AsideAiTabsViewport::IsTrusted() {
++  // A browser-internal client: the Emulation domain is only reachable from a
++  // trusted session.
++  return true;
++}
++
++void AsideAiTabsViewport::ApplyViewportToContents() {
++  if (!sized_web_contents_) {
++    return;
++  }
++  const gfx::Rect bounds = GetLocalBounds();
++  if (bounds.IsEmpty()) {
++    return;
++  }
++  sized_web_contents_->Resize(bounds);
++  if (metrics_override_applied_ && applied_size_ == bounds.size()) {
++    return;
++  }
++  SendDeviceMetricsOverride(bounds.size());
++}
++
++void AsideAiTabsViewport::SendDeviceMetricsOverride(const gfx::Size& size) {
++  if (!EnsureAttached()) {
++    return;
++  }
++  float device_scale_factor = 1.0f;
++  if (const views::Widget* const widget = GetWidget()) {
++    if (const ui::Compositor* const compositor = widget->GetCompositor()) {
++      device_scale_factor = compositor->device_scale_factor();
++    }
++  }
++
++  base::DictValue params;
++  params.Set("width", size.width());
++  params.Set("height", size.height());
++  params.Set("deviceScaleFactor", static_cast<double>(device_scale_factor));
++  params.Set("mobile", false);
++  params.Set("scale", 1.0);
++  params.Set("screenWidth", size.width());
++  params.Set("screenHeight", size.height());
++  params.Set("positionX", 0);
++  params.Set("positionY", 0);
++  params.Set("dontSetVisibleSize", false);
++  SendCommand("Emulation.setDeviceMetricsOverride", std::move(params));
++
++  metrics_override_applied_ = true;
++  applied_size_ = size;
++}
++
++void AsideAiTabsViewport::ClearDeviceMetricsOverride() {
++  if (!metrics_override_applied_) {
++    return;
++  }
++  if (agent_host_) {
++    SendCommand("Emulation.clearDeviceMetricsOverride", base::DictValue());
++  }
++  metrics_override_applied_ = false;
++  applied_size_ = gfx::Size();
++}
++
++void AsideAiTabsViewport::SendCommand(std::string_view method,
++                                      base::DictValue params) {
++  if (!agent_host_) {
++    return;
++  }
++  base::DictValue command;
++  command.Set("id", next_command_id_++);
++  command.Set("method", std::string(method));
++  command.Set("params", std::move(params));
++
++  std::string json;
++  if (!base::JSONWriter::Write(command, &json)) {
++    return;
++  }
++  agent_host_->DispatchProtocolMessage(this, base::as_byte_span(json));
++}
++
++bool AsideAiTabsViewport::EnsureAttached() {
++  if (agent_host_) {
++    return true;
++  }
++  if (!sized_web_contents_) {
++    return false;
++  }
++  scoped_refptr<content::DevToolsAgentHost> host =
++      content::DevToolsAgentHost::GetOrCreateFor(sized_web_contents_);
++  if (!host || !host->AttachClient(this)) {
++    return false;
++  }
++  agent_host_ = std::move(host);
++  return true;
++}
++
++void AsideAiTabsViewport::Detach() {
++  if (!agent_host_) {
++    return;
++  }
++  agent_host_->DetachClient(this);
++  agent_host_ = nullptr;
++}
++
++BEGIN_METADATA(AsideAiTabsViewport)
++END_METADATA
++
++void MultiContentsView::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  UpdateAiTabsViewport();
++}
++
++void MultiContentsView::OnTabGroupChanged(const TabGroupChange& change) {
++  UpdateAiTabsViewport();
++}
++
++void MultiContentsView::UpdateAiTabsViewport() {
++  if (!ai_tabs_viewport_) {
++    return;
++  }
++  content::WebContents* agent_contents = nullptr;
++
++  Browser* const browser = browser_view_ ? browser_view_->browser() : nullptr;
++  TabStripModel* const model = browser ? browser->tab_strip_model() : nullptr;
++  if (model && model->SupportsTabGroups()) {
++    content::WebContents* const shown[] = {
++        contents_container_views_[0]->contents_view()->web_contents(),
++        contents_container_views_[1]->GetVisible()
++            ? contents_container_views_[1]->contents_view()->web_contents()
++            : nullptr};
++    for (int i = 0; i < model->count() && !agent_contents; ++i) {
++      const std::optional<tab_groups::TabGroupId> group_id =
++          model->GetTabGroupForTab(i);
++      if (!group_id.has_value()) {
++        continue;
++      }
++      const TabGroup* const group =
++          model->group_model()->GetTabGroup(group_id.value());
++      if (!aside::IsAgentTabsGroup(group)) {
++        continue;
++      }
++      content::WebContents* const contents = model->GetWebContentsAt(i);
++      // Only a tab that is not on screen needs a viewport of its own.
++      if (contents && contents != shown[0] && contents != shown[1]) {
++        agent_contents = contents;
++      }
++    }
++  }
++
++  ai_tabs_viewport_->SetSizedWebContents(agent_contents);
++}
++
+ BEGIN_METADATA(MultiContentsView)
+ END_METADATA
+diff --git a/chrome/browser/ui/views/frame/multi_contents_view.h b/chrome/browser/ui/views/frame/multi_contents_view.h
+index 12511f171b..ae756784d8 100644
+--- a/chrome/browser/ui/views/frame/multi_contents_view.h
++++ b/chrome/browser/ui/views/frame/multi_contents_view.h
+@@ -9,11 +9,20 @@
+ #include <optional>
+ 
+ #include "base/callback_list.h"
++#include "base/containers/span.h"
+ #include "base/functional/callback_forward.h"
+ #include "base/gtest_prod_util.h"
+ #include "base/memory/raw_ptr.h"
++#include "base/memory/scoped_refptr.h"
++#include "base/scoped_observation.h"
++#include "base/values.h"
++#include "content/public/browser/devtools_agent_host.h"
++#include "content/public/browser/devtools_agent_host_client.h"
++#include "content/public/browser/web_contents_observer.h"
+ #include "chrome/browser/ui/tabs/split_tab_highlight_controller.h"
+ #include "chrome/browser/ui/ui_features.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
+ #include "chrome/browser/ui/views/frame/contents_container_view.h"
+ #include "components/prefs/pref_change_registrar.h"
+ #include "components/split_tabs/split_tab_visual_data.h"
+@@ -45,12 +54,85 @@ namespace views {
+ class WebView;
+ }  // namespace views
+ 
++// Aside: the viewport that agent ("AI") tabs are rendered into while the agent
++// is working in them.  An agent tab is not the visible tab, so its renderer has
++// no size of its own and would keep whatever size it last had (or none at all).
++// The original browser therefore hands such a tab the size of the visible
++// contents area: it resizes the WebContents to this view's bounds and pushes
++// Emulation.setDeviceMetricsOverride over the tab's own DevTools session,
++// clearing the override again when the tab stops being driven.
++//
++// Restores the original browser's AsideAiTabsViewport, declared in
++// multi_contents_view.h (class name @0xe8d67d9; the update path that resizes
++// the contents and sends the override is @0x04c78900, the two protocol helpers
++// are @0x04c7dbd0 "Emulation.clearDeviceMetricsOverride" and @0x04c7dee0
++// "Emulation.setDeviceMetricsOverride" with width / height /
++// deviceScaleFactor / mobile / scale / screenWidth / screenHeight / positionX /
++// positionY / dontSetVisibleSize).
++class AsideAiTabsViewport : public views::View,
++                            public content::WebContentsObserver,
++                            public content::DevToolsAgentHostClient {
++  METADATA_HEADER(AsideAiTabsViewport, views::View)
++
++ public:
++  AsideAiTabsViewport();
++  AsideAiTabsViewport(const AsideAiTabsViewport&) = delete;
++  AsideAiTabsViewport& operator=(const AsideAiTabsViewport&) = delete;
++  ~AsideAiTabsViewport() override;
++
++  // Starts sizing `web_contents` to this viewport, or stops doing so when
++  // given nullptr. Passing the contents that is already being sized is a
++  // no-op.
++  void SetSizedWebContents(content::WebContents* web_contents);
++  content::WebContents* sized_web_contents() const {
++    return sized_web_contents_;
++  }
++
++  bool has_metrics_override_for_testing() const {
++    return metrics_override_applied_;
++  }
++  const gfx::Size& applied_size_for_testing() const { return applied_size_; }
++
++  // views::View:
++  void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
++
++  // content::WebContentsObserver:
++  void WebContentsDestroyed() override;
++
++  // content::DevToolsAgentHostClient:
++  void DispatchProtocolMessage(content::DevToolsAgentHost* agent_host,
++                               base::span<const uint8_t> message) override;
++  void AgentHostClosed(content::DevToolsAgentHost* agent_host) override;
++  bool IsTrusted() override;
++
++ private:
++  // Resizes the sized contents and (re-)applies the metrics override for the
++  // current bounds. Does nothing while the bounds are empty.
++  void ApplyViewportToContents();
++  void SendDeviceMetricsOverride(const gfx::Size& size);
++  void ClearDeviceMetricsOverride();
++  // Serializes {"id":<n>,"method":<method>,"params":<params>} and sends it on
++  // the attached session.
++  void SendCommand(std::string_view method, base::DictValue params);
++  bool EnsureAttached();
++  void Detach();
++
++  raw_ptr<content::WebContents> sized_web_contents_ = nullptr;
++  scoped_refptr<content::DevToolsAgentHost> agent_host_;
++  int next_command_id_ = 1;
++  bool metrics_override_applied_ = false;
++  gfx::Size applied_size_;
++};
++
+ // MultiContentsView shows up to two contents web views side by side, and
+ // manages their layout relative to each other.
+ class MultiContentsView
+     : public views::View,
+       public views::ResizeAreaDelegate,
+       public views::LayoutDelegate,
++      // Aside: the agent-tab viewport has to be recomputed whenever the strip
++      // changes, not only when a split view is built.
++      public TabStripModelObserver,
+       public split_tabs::SplitTabHighlightController::Delegate {
+   METADATA_HEADER(MultiContentsView, views::View)
+ 
+@@ -171,6 +253,14 @@ class MultiContentsView
+   // views::View:
+   void OnThemeChanged() override;
+ 
++  // TabStripModelObserver: (Aside) both the active tab and the membership of
++  // the agent tab group decide which hidden tab needs its own viewport.
++  void OnTabStripModelChanged(
++      TabStripModel* tab_strip_model,
++      const TabStripModelChange& change,
++      const TabStripSelectionChange& selection) override;
++  void OnTabGroupChanged(const TabGroupChange& change) override;
++
+   const std::vector<ContentsContainerView*>& contents_container_views() const {
+     return contents_container_views_;
+   }
+@@ -212,6 +302,12 @@ class MultiContentsView
+ 
+   MultiContentsViewDelegate* delegate_for_testing() { return delegate_.get(); }
+ 
++  // Aside: the viewport that gives hidden agent tabs a size (see
++  // AsideAiTabsViewport above).
++  AsideAiTabsViewport* ai_tabs_viewport_for_testing() {
++    return ai_tabs_viewport_;
++  }
++
+   const FocusableViewMap* GetFocusableViewsMapFor(
+       const ContentsContainerView* container) const;
+ 
+@@ -276,6 +372,11 @@ class MultiContentsView
+ 
+   void UpdateContentsBorderAndOverlay();
+ 
++  // Aside: points `ai_tabs_viewport_` at the agent tab that is currently
++  // working but not on screen, so it keeps rendering at the size of the
++  // contents area. Points it at nothing when no such tab exists.
++  void UpdateAiTabsViewport();
++
+   double CalculateRatioWithSnapPoints(double start_size,
+                                       double total_size) const;
+ 
+@@ -309,6 +410,14 @@ class MultiContentsView
+   std::unique_ptr<MultiContentsViewDropTargetController>
+       drop_target_controller_;
+ 
++  // Aside: sizes the hidden agent tab. Never painted and never hit-tested; it
++  // only carries the bounds that agent tabs are given.
++  raw_ptr<AsideAiTabsViewport> ai_tabs_viewport_ = nullptr;
++
++  // Aside: keeps ai_tabs_viewport_ pointed at the right hidden agent tab.
++  base::ScopedObservation<TabStripModel, MultiContentsView>
++      ai_tabs_tab_strip_observation_{this};
++
+   // The index in contents_views_ of the active contents view.
+   int active_index_ = 0;
+ 
+diff --git a/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc b/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
+index 28fac81220..376b048009 100644
+--- a/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
++++ b/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
+@@ -4,6 +4,14 @@
+ 
+ #include "chrome/browser/ui/views/tabs/common/tab_group_header_view.h"
+ 
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "components/tabs/public/tab_group.h"
++#include "ui/views/layout/flex_layout_view.h"
++#include "ui/views/view_class_properties.h"
++
+ #include "base/task/single_thread_task_runner.h"
+ #include "build/build_config.h"
+ #include "build/buildflag.h"
+@@ -139,7 +147,8 @@ TabGroupHeaderView::TabGroupHeaderView(
+       editor_bubble_button_(AddChildView(std::make_unique<views::LabelButton>(
+           base::BindRepeating(&TabGroupHeaderView::ShowEditorBubble,
+                               base::Unretained(this))))),
+-      collapse_icon_(AddChildView(std::make_unique<views::ImageView>())),
++      collapse_icon_(
++          AddChildView(std::make_unique<TabExpandChevronView>())),
+       delegate_(delegate),
+       editor_bubble_tracker_(state_controller) {
+   SetProperty(views::kElementIdentifierKey, kTabGroupHeaderElementId);
+@@ -148,6 +157,28 @@ TabGroupHeaderView::TabGroupHeaderView(
+   SetNotifyEnterExitOnChild(true);
+ 
+   ConfigureEditorBubbleButton(editor_bubble_button_);
++
++  // Aside: AiTabsCountBadgeView, placed right after the sync icon.
++  {
++    auto badge = std::make_unique<views::FlexLayoutView>();
++    badge->SetOrientation(views::LayoutOrientation::kHorizontal);
++    badge->SetCrossAxisAlignment(views::LayoutAlignment::kCenter);
++    badge->SetTooltipText(u"Tabs controlled by Aside while it works");
++    ai_badge_icon_ = badge->AddChildView(std::make_unique<views::ImageView>());
++    ai_badge_label_ = badge->AddChildView(std::make_unique<views::Label>(
++        std::u16string(), views::style::CONTEXT_LABEL,
++        views::style::STYLE_PRIMARY));
++    // The badge sits on the group's own colour, so the readability pass would
++    // fight the foreground colour we set below (it assumes the widget's light
++    // background and washes white out to grey). The sibling group title label
++    // turns it off for the same reason.
++    ai_badge_label_->SetAutoColorReadabilityEnabled(false);
++    ai_badge_label_->SetProperty(views::kMarginsKey,
++                                 gfx::Insets::TLBR(0, 2, 0, 4));
++    ai_badge_ = AddChildView(std::move(badge));
++    ai_badge_->SetVisible(false);
++    ReorderChildView(ai_badge_, GetIndexOf(sync_icon_).value() + 1);
++  }
+   editor_bubble_opened_subscription_ =
+       editor_bubble_tracker_.RegisterOnBubbleOpened(base::BindRepeating(
+           &TabGroupHeaderView::OnBubbleOpened, base::Unretained(this)));
+@@ -467,6 +498,21 @@ void TabGroupHeaderView::OnDataChanged(
+ 
+     // Update save tab group related items, the sync icon and attention
+     // indicator.
++    const TabGroup& tab_group = delegate_->GetTabGroup();
++    const bool is_agent_group = aside::IsAgentTabsGroup(&tab_group);
++    ai_badge_->SetVisible(is_agent_group);
++    if (is_agent_group) {
++      ai_badge_icon_->SetImage(ui::ImageModel::FromVectorIcon(
++          kAsideWindowSparkleStrokeIcon, foreground_color, kIconSize));
++      std::optional<aside::AiTabsMetadata> metadata =
++          aside::GetAiTabsMetadata(&tab_group);
++      ai_badge_label_->SetText(
++          metadata && !metadata->badge_label.empty()
++              ? base::UTF8ToUTF16(metadata->badge_label)
++              : base::NumberToString16(tab_group.tab_count()));
++      ai_badge_label_->SetEnabledColor(foreground_color);
++    }
++
+     sync_icon_->SetVisible(is_shared_);
+     if (is_shared_) {
+       sync_icon_->SetImage(ui::ImageModel::FromVectorIcon(
+@@ -486,16 +532,10 @@ void TabGroupHeaderView::OnDataChanged(
+     // Update editor bubble button.
+     UpdateEditorButtonColors(editor_bubble_button_, foreground_color);
+ 
+-    // Update collapse icon.
+-    collapse_icon_->SetImage(ui::ImageModel::FromVectorIcon(
+-        tab_group_visual_data_.is_collapsed()
+-            ? features::IsRoundedIconsEnabled()
+-                  ? kKeyboardArrowDownIcon
+-                  : kKeyboardArrowDownChromeRefreshOldIcon
+-        : features::IsRoundedIconsEnabled()
+-            ? kKeyboardArrowUpIcon
+-            : kKeyboardArrowUpChromeRefreshOldIcon,
+-        foreground_color, kIconSize));
++    // Update collapse icon (Aside: TabExpandChevronView).
++    collapse_icon_->SetIconSize(kIconSize);
++    collapse_icon_->SetIconColor(foreground_color);
++    collapse_icon_->SetExpanded(!tab_group_visual_data_.is_collapsed());
+ 
+     // Update background.
+     SetBackground(views::CreateRoundedRectBackground(background_color,

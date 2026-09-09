@@ -1,0 +1,112 @@
+[
+  {
+    "namespace": "asideBrowserImport",
+    "types": [
+      {
+        "id": "JsonObject",
+        "type": "object",
+        "additionalProperties": {
+          "type": "any"
+        }
+      },
+      {
+        "id": "SafariArchive",
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "optional": true
+          },
+          "data": {
+            "type": "binary"
+          }
+        }
+      }
+    ],
+    "functions": [
+      {
+        "name": "getImportSources",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "sources",
+              "type": "array",
+              "items": {
+                "$ref": "JsonObject"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "startImport",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "options",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getImportProgress",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "jobId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "progress",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "cancelImport",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "jobId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      }
+    ],
+    "events": [
+      {
+        "name": "onImportProgress",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "progress",
+            "$ref": "JsonObject"
+          }
+        ]
+      }
+    ],
+    "description": "Aside private API asideBrowserImport (trusted bundled extensions only)."
+  }
+]

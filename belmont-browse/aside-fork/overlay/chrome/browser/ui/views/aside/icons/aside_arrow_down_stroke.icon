@@ -1,0 +1,21 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideArrowDownStrokeIcon
+
+CANVAS_DIMENSIONS, 12,
+MOVE_TO, 6, 1.5f,
+CUBIC_TO, 6.28f, 1.5f, 6.5f, 1.72f, 6.5f, 2,
+V_LINE_TO, 8.79f,
+LINE_TO, 8.65f, 6.65f,
+CUBIC_TO, 8.84f, 6.45f, 9.16f, 6.45f, 9.35f, 6.65f,
+CUBIC_TO, 9.55f, 6.84f, 9.55f, 7.16f, 9.35f, 7.35f,
+LINE_TO, 6.35f, 10.35f,
+CUBIC_TO, 6.16f, 10.55f, 5.84f, 10.55f, 5.65f, 10.35f,
+LINE_TO, 2.65f, 7.35f,
+CUBIC_TO, 2.45f, 7.16f, 2.45f, 6.84f, 2.65f, 6.65f,
+CUBIC_TO, 2.84f, 6.45f, 3.16f, 6.45f, 3.35f, 6.65f,
+LINE_TO, 5.5f, 8.79f,
+V_LINE_TO, 2,
+CUBIC_TO, 5.5f, 1.72f, 5.72f, 1.5f, 6, 1.5f,
+CLOSE,

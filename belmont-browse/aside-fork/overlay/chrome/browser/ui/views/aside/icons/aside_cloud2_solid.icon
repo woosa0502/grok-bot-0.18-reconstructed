@@ -1,0 +1,21 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideCloud2SolidIcon
+
+CANVAS_DIMENSIONS, 18,
+FILL_RULE_NONZERO,
+MOVE_TO, 7.5006f, 2.6244f,
+CUBIC_TO, 8.7247f, 2.6244f, 9.8354f, 3.1145f, 10.6456f, 3.9069f,
+CUBIC_TO, 10.697f, 3.9571f, 10.7882f, 3.9919f, 10.8888f, 3.9772f,
+CUBIC_TO, 11.0684f, 3.9507f, 11.252f, 3.9369f, 11.4381f, 3.9369f,
+CUBIC_TO, 13.5091f, 3.9369f, 15.1881f, 5.6158f, 15.1881f, 7.6869f,
+CUBIC_TO, 15.1881f, 7.8082f, 15.2626f, 7.9368f, 15.3668f, 7.9967f,
+CUBIC_TO, 16.4908f, 8.6426f, 17.2506f, 9.8566f, 17.2506f, 11.2494f,
+CUBIC_TO, 17.2506f, 13.3204f, 15.5716f, 14.9994f, 13.5006f, 14.9994f,
+H_LINE_TO, 5.2506f,
+CUBIC_TO, 2.7653f, 14.9994f, 0.7506f, 12.9847f, 0.7506f, 10.4994f,
+CUBIC_TO, 0.7506f, 8.8587f, 1.6289f, 7.4234f, 2.9376f, 6.6381f,
+CUBIC_TO, 2.9964f, 6.6028f, 3.0383f, 6.5401f, 3.0482f, 6.4725f,
+CUBIC_TO, 3.3644f, 4.2962f, 5.2363f, 2.6244f, 7.5006f, 2.6244f,
+CLOSE,

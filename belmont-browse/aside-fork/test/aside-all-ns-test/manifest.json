@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3, "name": "aside-all-ns-test", "version": "1.0", "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqhv+iJq51KjdvWXOROTWwPgHEtYt3yabPtUyTnj3iT6vtqJw8LjxiA8Usq79PmKb77f8NANCbeupfrz0uaLIFkFTbgJnGasO3bBZQKvfPiThfhJsNGpNtYwdfTpoYK9Nitzr9TwJ0vgvbNIkp8kG/A1x3XpUrGMEeqpbep+XWLkWN3MgAsC3p1HpXLrVVOHyF45vZMqsmrjoXWJELlRLVZl2XVA+Yk+tZL1zoOoSL19y7L4pjM/N4ZmbfUO8hdC2dh7FhdJrPWR9lRaxoM8x3fngDPyX/BPFOzO4yDIB8La7KNiwrineyOpT8DBxkSK4GVm/oD6kPfaOGR2cZ92bRQIDAQAB",
+  "permissions": [
+    "at.studio.Aside.ext.private.account",
+    "at.studio.Aside.ext.private.browser-import",
+    "at.studio.Aside.ext.private.notification",
+    "at.studio.Aside.ext.private.omnibox",
+    "at.studio.Aside.ext.private.pref-get-set",
+    "at.studio.Aside.ext.private.launch-extension"
+  ],
+  "background": { "service_worker": "sw.js" }
+}

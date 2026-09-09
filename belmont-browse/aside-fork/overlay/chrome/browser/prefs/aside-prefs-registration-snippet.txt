@@ -1,0 +1,11 @@
+  // Aside private preferences (chrome/browser/extensions/api/aside_*). Keys must
+  // match the literals used in the aside_* API implementations.
+  registry->RegisterStringPref("aside.tab_style", std::string());
+  registry->RegisterBooleanPref("aside.horizontal_tab_shrink_enabled", false);
+  registry->RegisterBooleanPref("aside.tab_switcher_sort_by_recently_used", false);
+  registry->RegisterBooleanPref("aside.auto_pip_enabled", false);
+  registry->RegisterBooleanPref("aside.vertical_tabs_bookmarks_section_enabled",
+                                false);
+  registry->RegisterBooleanPref("aside.keep_tasks_running_enabled", false);
+  registry->RegisterBooleanPref("aside.mini_popup_enabled", true);
+  registry->RegisterStringPref("aside.mini_popup_shortcut", std::string());

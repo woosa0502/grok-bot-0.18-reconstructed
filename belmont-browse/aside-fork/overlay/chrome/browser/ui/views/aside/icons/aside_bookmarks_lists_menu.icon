@@ -1,0 +1,28 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideBookmarksListsMenuIcon
+
+CANVAS_DIMENSIONS, 16,
+MOVE_TO, 6.47f, 11.6f,
+CUBIC_TO, 7.39f, 10.95f, 8.61f, 10.95f, 9.53f, 11.6f,
+LINE_TO, 12, 13.33f,
+V_LINE_TO, 4,
+CUBIC_TO, 12, 3.26f, 11.4f, 2.67f, 10.67f, 2.67f,
+H_LINE_TO, 5.33f,
+CUBIC_TO, 4.6f, 2.67f, 4, 3.26f, 4, 4,
+V_LINE_TO, 13.33f,
+LINE_TO, 6.47f, 11.6f,
+CLOSE,
+MOVE_TO, 13.33f, 13.33f,
+CUBIC_TO, 13.33f, 14.41f, 12.12f, 15.04f, 11.23f, 14.42f,
+LINE_TO, 8.77f, 12.69f,
+CUBIC_TO, 8.31f, 12.36f, 7.69f, 12.36f, 7.23f, 12.69f,
+LINE_TO, 4.77f, 14.42f,
+CUBIC_TO, 3.88f, 15.04f, 2.67f, 14.41f, 2.67f, 13.33f,
+V_LINE_TO, 4,
+CUBIC_TO, 2.67f, 2.53f, 3.86f, 1.33f, 5.33f, 1.33f,
+H_LINE_TO, 10.67f,
+CUBIC_TO, 12.14f, 1.33f, 13.33f, 2.53f, 13.33f, 4,
+V_LINE_TO, 13.33f,
+CLOSE,

@@ -1,0 +1,76 @@
+{
+ "checksum": "",
+ "roots": {
+  "bookmark_bar": {
+   "children": [
+    {
+     "date_added": "13000000000000001",
+     "guid": "00000001-0000-4000-8000-000000000001",
+     "id": "11",
+     "name": "Chromium",
+     "type": "url",
+     "url": "https://www.chromium.org/"
+    },
+    {
+     "children": [
+      {
+       "date_added": "13000000000000002",
+       "guid": "00000002-0000-4000-8000-000000000002",
+       "id": "12",
+       "name": "Example",
+       "type": "url",
+       "url": "https://example.com/"
+      },
+      {
+       "date_added": "13000000000000003",
+       "guid": "00000003-0000-4000-8000-000000000003",
+       "id": "13",
+       "name": "IANA",
+       "type": "url",
+       "url": "https://www.iana.org/"
+      }
+     ],
+     "date_added": "13000000000000004",
+     "date_modified": "0",
+     "guid": "00000004-0000-4000-8000-000000000004",
+     "id": "14",
+     "name": "Work",
+     "type": "folder"
+    },
+    {
+     "date_added": "13000000000000005",
+     "guid": "00000005-0000-4000-8000-000000000005",
+     "id": "15",
+     "name": "Aside",
+     "type": "url",
+     "url": "https://aside.studio/"
+    }
+   ],
+   "date_added": "13000000000000000",
+   "date_modified": "0",
+   "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
+   "id": "1",
+   "name": "Bookmarks bar",
+   "type": "folder"
+  },
+  "other": {
+   "children": [],
+   "date_added": "13000000000000000",
+   "date_modified": "0",
+   "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+   "id": "2",
+   "name": "Other bookmarks",
+   "type": "folder"
+  },
+  "synced": {
+   "children": [],
+   "date_added": "13000000000000000",
+   "date_modified": "0",
+   "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
+   "id": "3",
+   "name": "Mobile bookmarks",
+   "type": "folder"
+  }
+ },
+ "version": 1
+}

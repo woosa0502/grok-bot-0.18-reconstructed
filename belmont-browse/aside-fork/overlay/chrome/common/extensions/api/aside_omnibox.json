@@ -1,0 +1,835 @@
+[
+  {
+    "namespace": "asideOmnibox",
+    "types": [
+      {
+        "id": "JsonObject",
+        "type": "object",
+        "additionalProperties": {
+          "type": "any"
+        }
+      }
+    ],
+    "functions": [
+      {
+        "name": "createSession",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "options",
+            "$ref": "JsonObject",
+            "optional": true
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "session",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "destroySession",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getSearchEngines",
+        "type": "function",
+        "parameters": [],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "onFocusChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "focused",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "queryAutocomplete",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "JsonObject",
+            "optional": true
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "stopAutocomplete",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "clearResult",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "openAutocompleteMatch",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "setPopupSelection",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "selection",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "openPopupSelection",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "onNavigationLikely",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "deleteAutocompleteMatch",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "activateKeyword",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "executeAction",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "onThumbnailRemoved",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "getPlaceholderConfig",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getRecentTabs",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getTabPreview",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "tabId",
+            "type": "integer"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "getInputState",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "notifySessionStarted",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "notifySessionAbandoned",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "addFileContext",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "addTabContext",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "tabId",
+            "type": "integer"
+          },
+          {
+            "name": "delayUpload",
+            "type": "boolean",
+            "optional": true
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "result",
+              "$ref": "JsonObject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "deleteContext",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "contextToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAutomaticChip",
+            "type": "boolean",
+            "optional": true
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "clearFiles",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "shouldBlockAutoSuggestedTabs",
+            "type": "boolean"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "submitQuery",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "$ref": "JsonObject"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "openLensSearch",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "setActiveToolMode",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "toolMode",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "setActiveModelMode",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "modelMode",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      },
+      {
+        "name": "activateMetricsFunnel",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "funnelName",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
+      }
+    ],
+    "events": [
+      {
+        "name": "onAutocompleteResultChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "result",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onSelectionUpdated",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onStepSelection",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onOpenCurrentSelection",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onAimButtonVisibilityChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onKeywordSelectedChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onInputTextChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onThumbnailChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onContextualInputStatusChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onTabStripChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "onInputStateChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onFileContextAdded",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onAutoSuggestedTabContextChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onLensSearchEligibilityChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onContentSharingPolicyChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onAimEligibilityChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onShowAiModePrefChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onSmartTabSharingActiveChanged",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      },
+      {
+        "name": "onSessionInvalidated",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "details",
+            "$ref": "JsonObject"
+          }
+        ]
+      }
+    ],
+    "description": "Aside private API asideOmnibox (trusted bundled extensions only)."
+  }
+]

@@ -1,0 +1,41 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+assert(enable_extensions)
+
+source_set("aside_omnibox") {
+  sources = [
+    "aside_omnibox_api.cc",
+    "aside_omnibox_api.h",
+    "aside_omnibox_service.cc",
+    "aside_omnibox_service.h",
+    "aside_omnibox_service_factory.cc",
+    "aside_omnibox_service_factory.h",
+    "aside_omnibox_session.cc",
+    "aside_omnibox_session.h",
+  ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+  public_deps = [
+    "//chrome/browser/extensions",
+    "//chrome/common/extensions/api",
+    "//content/public/browser",
+    "//extensions/browser",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser/autocomplete",
+    "//chrome/browser/ui",
+    "//chrome/browser/profiles:profile",
+    "//components/keyed_service/core",
+    "//components/omnibox/browser",
+    "//components/search_engines",
+    "//extensions/browser",
+    "//extensions/common",
+    "//third_party/metrics_proto",
+    "//ui/base",
+    "//url",
+  ]
+}

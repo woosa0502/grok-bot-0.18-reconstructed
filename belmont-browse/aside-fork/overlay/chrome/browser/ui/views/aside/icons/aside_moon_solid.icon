@@ -1,0 +1,19 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideMoonSolidIcon
+
+CANVAS_DIMENSIONS, 18,
+FILL_RULE_NONZERO,
+MOVE_TO, 9.0382f, 2.7002f,
+CUBIC_TO, 9.2028f, 2.4613f, 9.2149f, 2.149f, 9.0692f, 1.8981f,
+CUBIC_TO, 8.9236f, 1.6472f, 8.6463f, 1.5028f, 8.3573f, 1.5273f,
+CUBIC_TO, 4.5155f, 1.8528f, 1.4994f, 5.0732f, 1.4994f, 8.9989f,
+CUBIC_TO, 1.4994f, 13.1402f, 4.8566f, 16.4974f, 8.998f, 16.4974f,
+CUBIC_TO, 12.9237f, 16.4974f, 16.1442f, 13.4813f, 16.4695f, 9.6394f,
+CUBIC_TO, 16.4941f, 9.3502f, 16.3496f, 9.073f, 16.0987f, 8.9274f,
+CUBIC_TO, 15.8479f, 8.7817f, 15.5355f, 8.7939f, 15.2966f, 8.9585f,
+CUBIC_TO, 14.572f, 9.4579f, 13.6945f, 9.7503f, 12.7465f, 9.7503f,
+CUBIC_TO, 10.2612f, 9.7503f, 8.2465f, 7.7356f, 8.2465f, 5.2502f,
+CUBIC_TO, 8.2465f, 4.3023f, 8.5387f, 3.4248f, 9.0382f, 2.7002f,
+CLOSE,

@@ -1,0 +1,28 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+// Extracted verbatim from Aside 1.0.825.1 vector icon kAsideThumbsUpSolidIcon
+
+CANVAS_DIMENSIONS, 18,
+MOVE_TO, 8.2494f, 1.4994f,
+CUBIC_TO, 7.9653f, 1.4994f, 7.7056f, 1.6599f, 7.5786f, 1.914f,
+LINE_TO, 4.7859f, 7.4994f,
+H_LINE_TO, 2.9994f,
+CUBIC_TO, 2.171f, 7.4994f, 1.4994f, 8.1709f, 1.4994f, 8.9994f,
+V_LINE_TO, 14.2494f,
+CUBIC_TO, 1.4994f, 15.0778f, 2.171f, 15.7494f, 2.9994f, 15.7494f,
+H_LINE_TO, 13.0354f,
+CUBIC_TO, 14.5356f, 15.7494f, 15.8052f, 14.6412f, 16.0079f, 13.1548f,
+LINE_TO, 16.5193f, 9.4048f,
+CUBIC_TO, 16.7649f, 7.6034f, 15.3647f, 5.9994f, 13.5467f, 5.9994f,
+H_LINE_TO, 10.6375f,
+LINE_TO, 10.9342f, 4.096f,
+CUBIC_TO, 11.1469f, 2.7317f, 10.0919f, 1.4994f, 8.7111f, 1.4994f,
+H_LINE_TO, 8.2494f,
+CLOSE,
+MOVE_TO, 4.4994f, 14.2494f,
+V_LINE_TO, 8.9994f,
+H_LINE_TO, 2.9994f,
+V_LINE_TO, 14.2494f,
+H_LINE_TO, 4.4994f,
+CLOSE,

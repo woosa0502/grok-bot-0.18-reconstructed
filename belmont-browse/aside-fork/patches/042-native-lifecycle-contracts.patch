@@ -1,0 +1,2059 @@
+--- a/chrome/browser/extensions/api/aside_account/aside_account_api.cc
++++ b/chrome/browser/extensions/api/aside_account/aside_account_api.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/api/aside_account/aside_account_api.h"
++#include "chrome/browser/extensions/api/aside_account/aside_profile_index.h"
+ 
+ #include <memory>
+ #include <optional>
+@@ -34,7 +35,7 @@
+ namespace extensions {
+ 
+ namespace {
+-namespace aside_account = api::aside_account;
++namespace account_api = api::aside_account;
+ 
+ // Daemon auth signing input prefix (matches the original Aside daemon protocol).
+ constexpr char kDaemonAuthPrefix[] = "Aside Daemon Auth v1";
+@@ -82,7 +83,7 @@
+       ProfileAttributesStorage& storage =
+           profile_manager->GetProfileAttributesStorage();
+       int index = 0;
+-      for (ProfileAttributesEntry* entry : storage.GetAllProfilesAttributes()) {
++      for (ProfileAttributesEntry* entry : extensions::aside_account::GetProfilesInApiOrder(storage)) {
+         if (entry->GetPath() == profile->GetPath()) {
+           profile_index = index;
+           break;
+@@ -139,7 +140,7 @@
+ }
+ 
+ ExtensionFunction::ResponseAction AsideAccountGetProfilesFunction::Run() {
+-  std::vector<aside_account::ProfileInfo> profiles;
++  std::vector<account_api::ProfileInfo> profiles;
+   ProfileManager* profile_manager = g_browser_process->profile_manager();
+   if (!profile_manager) {
+     return RespondNow(Error("Chromium profile manager unavailable"));
+@@ -151,8 +152,8 @@
+     base::FilePath current_path =
+         current ? current->GetPath() : base::FilePath();
+     int index = 0;
+-    for (ProfileAttributesEntry* entry : storage.GetAllProfilesAttributes()) {
+-      aside_account::ProfileInfo info;
++    for (ProfileAttributesEntry* entry : extensions::aside_account::GetProfilesInApiOrder(storage)) {
++      account_api::ProfileInfo info;
+       info.profile_index = index++;
+       info.name = base::UTF16ToUTF8(entry->GetName());
+       info.is_current = entry->GetPath() == current_path;
+@@ -161,13 +162,13 @@
+     }
+   }
+   return RespondNow(
+-      ArgumentList(aside_account::GetProfiles::Results::Create(profiles)));
++      ArgumentList(account_api::GetProfiles::Results::Create(profiles)));
+ }
+ 
+ ExtensionFunction::ResponseAction
+ AsideAccountSignDaemonAuthChallengeFunction::Run() {
+-  std::optional<aside_account::SignDaemonAuthChallenge::Params> params =
+-      aside_account::SignDaemonAuthChallenge::Params::Create(args());
++  std::optional<account_api::SignDaemonAuthChallenge::Params> params =
++      account_api::SignDaemonAuthChallenge::Params::Create(args());
+   if (!params) {
+     return RespondNow(Error("Invalid daemon auth challenge"));
+   }
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_account/aside_profile_index.h
+@@ -0,0 +1,32 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_ACCOUNT_ASIDE_PROFILE_INDEX_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_ACCOUNT_ASIDE_PROFILE_INDEX_H_
++
++#include <vector>
++
++#include "chrome/browser/profiles/profile_attributes_entry.h"
++#include "chrome/browser/profiles/profile_attributes_storage.h"
++
++namespace extensions::aside_account {
++
++// profileIndex belongs to this API enumeration, never the drag-reorderable
++// profile menu. All index producers and consumers must use the same ordering.
++inline std::vector<ProfileAttributesEntry*> GetProfilesInApiOrder(
++    ProfileAttributesStorage& storage) {
++  return storage.GetAllProfilesAttributes();
++}
++
++inline ProfileAttributesEntry* ResolveProfileIndex(
++    ProfileAttributesStorage& storage, int index) {
++  const auto entries = GetProfilesInApiOrder(storage);
++  return index >= 0 && static_cast<size_t>(index) < entries.size()
++             ? entries[index]
++             : nullptr;
++}
++
++}  // namespace extensions::aside_account
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_ACCOUNT_ASIDE_PROFILE_INDEX_H_
+--- a/chrome/browser/extensions/api/aside_account/BUILD.gn
++++ b/chrome/browser/extensions/api/aside_account/BUILD.gn
+@@ -10,6 +10,7 @@
+   sources = [
+     "aside_account_api.cc",
+     "aside_account_api.h",
++    "aside_profile_index.h",
+   ]
+   configs += [ "//build/config/compiler:wexit_time_destructors" ]
+   public_deps = [
+--- a/chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.cc
++++ b/chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/api/aside_mini_popup/aside_mini_popup_api.h"
++#include "chrome/browser/extensions/api/aside_account/aside_profile_index.h"
+ 
+ #include <string>
+ 
+@@ -196,16 +197,15 @@
+   }
+   ProfileAttributesStorage& storage =
+       profile_manager->GetProfileAttributesStorage();
+-  std::vector<ProfileAttributesEntry*> entries =
+-      storage.GetAllProfilesAttributesSortedForDisplay();
+-  if (params->profile_index < 0 ||
+-      static_cast<size_t>(params->profile_index) >= entries.size()) {
++  ProfileAttributesEntry* entry =
++      aside_account::ResolveProfileIndex(storage, params->profile_index);
++  if (!entry) {
+     return RespondNow(Error("Invalid Chromium profile index"));
+   }
+-  if (entries[params->profile_index]->IsSigninRequired()) {
++  if (entry->IsSigninRequired()) {
+     return RespondNow(Error("Chromium profile is locked"));
+   }
+-  base::FilePath profile_path = entries[params->profile_index]->GetPath();
++  base::FilePath profile_path = entry->GetPath();
+   profiles::SwitchToProfile(
+       profile_path, /*always_create=*/false,
+       base::BindOnce(&AsideMiniPopupSwitchProfileFunction::OnProfileSwitched,
+@@ -237,6 +237,10 @@
+ }
+ 
+ void AsideMiniPopupSwitchProfileFunction::OnProfileSwitched(Browser* browser) {
++  if (!browser) {
++    Respond(Error("Chromium profile could not be opened"));
++    return;
++  }
+   Respond(NoArguments());
+ }
+ 
+--- a/chrome/browser/extensions/api/aside_mini_popup/BUILD.gn
++++ b/chrome/browser/extensions/api/aside_mini_popup/BUILD.gn
+@@ -28,6 +28,7 @@
+   ]
+   deps = [
+     "//base",
++    "//chrome/browser/extensions/api/aside_account",
+     "//chrome/browser/profiles:profile",
+     "//chrome/browser/profiles:profile_manager",
+     "//chrome/browser/profiles:profile_util",
+--- a/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc
++++ b/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc
+@@ -21,6 +21,9 @@
+ #include "build/build_config.h"
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/importer/external_process_importer_host.h"
++#include "chrome/browser/extensions/api/aside_browser_import/import_job.h"
++#include "chrome/browser/profiles/profile_observer.h"
++#include "base/scoped_observation.h"
+ #include "chrome/browser/importer/importer_list.h"
+ #include "chrome/browser/importer/importer_progress_observer.h"
+ #include "chrome/browser/importer/profile_writer.h"
+@@ -101,16 +104,13 @@
+   return 0;
+ }
+ 
+-// RE 0x4051430: {jobId, progress, state, currentDataKind, errorMessage, sourceId}.
+-struct ImportJob {
+-  std::string source_id;
+-  std::string state = "queued";  // queued | importing | succeeded | failed | cancelled
+-  double progress = 0.0;
+-  std::string current_data_kind;
+-  std::string error_message;
+-  int total_items = 0;
+-  int finished_items = 0;
+-};
++using aside_import::ImportJob;
++
++std::map<std::string, raw_ptr<ExternalProcessImporterHost>>& ActiveHosts() {
++  static base::NoDestructor<
++      std::map<std::string, raw_ptr<ExternalProcessImporterHost>>> hosts;
++  return *hosts;
++}
+ 
+ std::map<std::string, ImportJob>& Jobs() {
+   static base::NoDestructor<std::map<std::string, ImportJob>> jobs;
+@@ -156,41 +156,45 @@
+       context));
+ }
+ 
+-// Tracks one ExternalProcessImporterHost run; deletes itself on ImportEnded.
+-class JobObserver : public importer::ImporterProgressObserver {
++// The host owns the import lifetime and deletes itself on every terminal path.
++// This observer removes the non-owning handle before the host is destroyed.
++class JobObserver : public importer::ImporterProgressObserver,
++                    public ProfileObserver {
+  public:
+-  JobObserver(content::BrowserContext* context, std::string job_id, int total)
+-      : context_(context), job_id_(std::move(job_id)) {
+-    auto it = Jobs().find(job_id_);
+-    if (it != Jobs().end()) {
+-      it->second.total_items = total;
+-    }
++  JobObserver(Profile* profile, std::string job_id)
++      : profile_(profile), job_id_(std::move(job_id)) {
++    profile_observation_.Observe(profile);
+   }
+   ~JobObserver() override = default;
+ 
+   void ImportStarted() override {
+-    Update([](ImportJob& job) { job.state = "importing"; });
++    Update([](ImportJob& job) { job.Started(); });
+   }
+   void ImportItemStarted(user_data_importer::ImportItem item) override {
+-    Update([item](ImportJob& job) { job.current_data_kind = KindNameForItem(item); });
++    Update([item](ImportJob& job) { job.ItemStarted(KindNameForItem(item)); });
+   }
+   void ImportItemEnded(user_data_importer::ImportItem item) override {
+-    Update([](ImportJob& job) {
+-      job.finished_items++;
+-      if (job.total_items > 0) {
+-        job.progress = static_cast<double>(job.finished_items) / job.total_items;
+-      }
+-    });
++    Update([item](ImportJob& job) { job.ItemEnded(item); });
++  }
++  void ImportFailed(const std::string& message) override {
++    Update([&message](ImportJob& job) { job.Failed(message); });
++  }
++  void ImportCancelled() override {
++    Update([](ImportJob& job) { job.Cancelled(); });
+   }
+   void ImportEnded() override {
+-    Update([](ImportJob& job) {
+-      if (job.state != "cancelled") {
+-        job.state = "succeeded";
+-        job.progress = 1.0;
+-      }
+-      job.current_data_kind.clear();
+-    });
++    ActiveHosts().erase(job_id_);
++    Update([](ImportJob& job) { job.Ended(); });
+     delete this;
++  }
++  void OnProfileWillBeDestroyed(Profile* profile) override {
++    profile_observation_.Reset();
++    profile_ = nullptr;
++    auto it = ActiveHosts().find(job_id_);
++    if (it != ActiveHosts().end()) {
++      // Cancel synchronously invokes ImportEnded and deletes this observer.
++      it->second->Cancel();
++    }
+   }
+ 
+  private:
+@@ -198,11 +202,12 @@
+     auto it = Jobs().find(job_id_);
+     if (it != Jobs().end()) {
+       fn(it->second);
+-      FireProgress(context_, job_id_);
+-    }
+-  }
+-  raw_ptr<content::BrowserContext> context_;
++      if (profile_) FireProgress(profile_, job_id_);
++    }
++  }
++  raw_ptr<Profile> profile_;
+   std::string job_id_;
++  base::ScopedObservation<Profile, ProfileObserver> profile_observation_{this};
+ };
+ 
+ std::string NewJobId() {
+@@ -269,7 +274,6 @@
+     return RespondNow(Error("Invalid import source"));
+   }
+   uint16_t items = 0;
+-  int total = 0;
+   for (const base::Value& kind : *kinds) {
+     if (!kind.is_string()) {
+       return RespondNow(Error("Invalid import options"));
+@@ -277,7 +281,6 @@
+     const uint16_t item = ItemForKind(kind.GetString());
+     if (item && (source->services_supported & item)) {
+       items |= item;
+-      ++total;
+     }
+   }
+   if (!items) {
+@@ -286,10 +289,12 @@
+   const std::string job_id = NewJobId();
+   ImportJob job;
+   job.source_id = *source_id;
++  job.requested_items = items;
+   Jobs()[job_id] = job;
+   // ExternalProcessImporterHost deletes itself when the import ends.
+   ExternalProcessImporterHost* host = new ExternalProcessImporterHost();
+-  host->set_observer(new JobObserver(browser_context(), job_id, total));
++  ActiveHosts()[job_id] = host;
++  host->set_observer(new JobObserver(profile, job_id));
+   host->StartImportSettings(*source, profile, items, new ProfileWriter(profile));
+   // RE 0x40505e0: {jobId, state:"queued"}.
+   base::DictValue dict;
+@@ -322,8 +327,13 @@
+     return RespondNow(Error("Invalid import job id"));
+   }
+   if (it->second.state == "queued" || it->second.state == "importing") {
+-    it->second.state = "cancelled";
+-    FireProgress(browser_context(), params->job_id);
++    it->second.Cancelled();
++    auto host = ActiveHosts().find(params->job_id);
++    if (host != ActiveHosts().end()) {
++      host->second->Cancel();
++    } else {
++      FireProgress(browser_context(), params->job_id);
++    }
+   }
+   return RespondNow(NoArguments());
+ }
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_browser_import/import_job.h
+@@ -0,0 +1,66 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_API_ASIDE_BROWSER_IMPORT_IMPORT_JOB_H_
++#define CHROME_BROWSER_EXTENSIONS_API_ASIDE_BROWSER_IMPORT_IMPORT_JOB_H_
++
++#include <bit>
++#include <cstdint>
++#include <string>
++#include <utility>
++
++namespace extensions::aside_import {
++
++// Terminal outcomes are monotonic, including when utility callbacks race
++// cancellation. Progress counts selected kinds, not duplicated notifications.
++struct ImportJob {
++  std::string source_id;
++  std::string state = "queued";
++  double progress = 0.0;
++  std::string current_data_kind;
++  std::string error_message;
++  uint16_t requested_items = 0;
++  uint16_t finished_items = 0;
++
++  bool IsActive() const { return state == "queued" || state == "importing"; }
++  void Started() {
++    if (IsActive()) state = "importing";
++  }
++  void ItemStarted(std::string kind) {
++    if (IsActive()) current_data_kind = std::move(kind);
++  }
++  void ItemEnded(uint16_t item) {
++    if (!IsActive()) return;
++    finished_items |= item & requested_items;
++    if (requested_items) {
++      progress = static_cast<double>(std::popcount(finished_items)) /
++                 std::popcount(requested_items);
++    }
++  }
++  void Failed(const std::string& message) {
++    if (!IsActive()) return;
++    state = "failed";
++    error_message = message.empty() ? "Import failed" : message;
++    current_data_kind.clear();
++  }
++  void Cancelled() {
++    if (!IsActive()) return;
++    state = "cancelled";
++    current_data_kind.clear();
++  }
++  void Ended() {
++    if (!IsActive()) return;
++    if (!requested_items || finished_items != requested_items) {
++      Failed("Import ended before all selected data types completed");
++      return;
++    }
++    state = "succeeded";
++    progress = 1.0;
++    current_data_kind.clear();
++  }
++};
++
++}  // namespace extensions::aside_import
++
++#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_BROWSER_IMPORT_IMPORT_JOB_H_
+--- /dev/null
++++ b/chrome/browser/extensions/api/aside_browser_import/import_job_unittest.cc
+@@ -0,0 +1,72 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/extensions/api/aside_browser_import/import_job.h"
++#include "testing/gtest/include/gtest/gtest.h"
++
++using extensions::aside_import::ImportJob;
++
++TEST(AsideImportStateTest, CancellationIsTerminalUnderEveryLateCallback) {
++  ImportJob job;
++  job.requested_items = 3;
++  job.Cancelled();
++  job.Started();
++  job.ItemStarted("bookmarks");
++  job.ItemEnded(3);
++  job.Failed("late failure");
++  job.Ended();
++  EXPECT_EQ("cancelled", job.state);
++  EXPECT_EQ(0.0, job.progress);
++  EXPECT_TRUE(job.current_data_kind.empty());
++}
++
++TEST(AsideImportStateTest, FailureSurvivesTheHostCancellationPath) {
++  ImportJob job;
++  job.requested_items = 1;
++  job.Started();
++  job.Failed("utility disconnected");
++  job.Cancelled();
++  job.ItemEnded(1);
++  job.Ended();
++  EXPECT_EQ("failed", job.state);
++  EXPECT_EQ("utility disconnected", job.error_message);
++}
++
++TEST(AsideImportStateTest, DuplicateAndUnrequestedItemsCannotInflateProgress) {
++  ImportJob job;
++  job.requested_items = 3;
++  job.Started();
++  job.ItemEnded(1);
++  job.ItemEnded(1);
++  job.ItemEnded(8);
++  EXPECT_EQ(0.5, job.progress);
++  job.ItemEnded(2);
++  job.Ended();
++  EXPECT_EQ("succeeded", job.state);
++  EXPECT_EQ(1.0, job.progress);
++  job.Cancelled();
++  EXPECT_EQ("succeeded", job.state);
++}
++
++TEST(AsideImportStateTest, EarlyEndDoesNotManufactureSuccess) {
++  ImportJob job;
++  job.requested_items = 3;
++  job.ItemEnded(1);
++  job.Ended();
++  EXPECT_EQ("failed", job.state);
++  EXPECT_EQ(0.5, job.progress);
++  EXPECT_FALSE(job.error_message.empty());
++}
++
++TEST(AsideImportStateTest, EmptyFailureStillHasActionableError) {
++  ImportJob job;
++  job.Failed("");
++  EXPECT_EQ("failed", job.state);
++  EXPECT_FALSE(job.error_message.empty());
++}
++
++int main(int argc, char** argv) {
++  testing::InitGoogleTest(&argc, argv);
++  return RUN_ALL_TESTS();
++}
+--- a/chrome/browser/extensions/api/aside_browser_import/BUILD.gn
++++ b/chrome/browser/extensions/api/aside_browser_import/BUILD.gn
+@@ -10,6 +10,7 @@
+   sources = [
+     "aside_browser_import_api.cc",
+     "aside_browser_import_api.h",
++    "import_job.h",
+   ]
+   configs += [ "//build/config/compiler:wexit_time_destructors" ]
+   public_deps = [
+@@ -24,3 +25,13 @@
+     "//components/user_data_importer/common",
+   ]
+ }
++
++# Executes the production state machine without launching a browser/importer.
++executable("aside_native_contracts_tests") {
++  testonly = true
++  sources = [
++    "import_job.h",
++    "import_job_unittest.cc",
++  ]
++  deps = [ "//testing/gtest" ]
++}
+--- a/chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.cc
++++ b/chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.cc
+@@ -415,6 +415,12 @@
+     return RespondNow(Error("Invalid auto pip enabled value"));
+   }
+   Profile* profile = Profile::FromBrowserContext(browser_context());
++  if (!profile) {
++    return RespondNow(Error("Browser profile unavailable"));
++  }
++  if (!profile->GetPrefs()->IsUserModifiablePreference("aside.auto_pip.enabled")) {
++    return RespondNow(Error("Automatic picture-in-picture is disabled by policy"));
++  }
+   profile->GetPrefs()->SetBoolean("aside.auto_pip.enabled", params->is_enabled);
+   return RespondNow(NoArguments());
+ }
+@@ -451,13 +457,14 @@
+ }
+ 
+ ExtensionFunction::ResponseAction AsideBrowserPreferencesCheckForUpdatesFunction::Run() {
+-  // Linux has no in-browser updater (updates via the package manager); report
+-  // "up to date" so the settings UI does not offer an in-app update path.
+-  // No macOS Sparkle-style in-browser updater on Linux (updates via the package
+-  // manager). Field vocabulary matches the original's update-status object.
+-  base::DictValue dict;
++  // No updater is configured for this reconstruction. The bundled settings
++  // page reads status/message; never manufacture an "up to date" result.
++  base::DictValue dict;
++  dict.Set("supported", false);
+   dict.Set("available", false);
+-  dict.Set("state", "noUpdate");
++  dict.Set("status", "disabled");
++  dict.Set("state", "disabled");
++  dict.Set("message", "Automatic updates are not configured for this build.");
+   return RespondNow(WithArguments(std::move(dict)));
+ }
+ 
+--- a/chrome/browser/importer/importer_progress_observer.h
++++ b/chrome/browser/importer/importer_progress_observer.h
+@@ -4,6 +4,8 @@
+ 
+ #ifndef CHROME_BROWSER_IMPORTER_IMPORTER_PROGRESS_OBSERVER_H_
+ #define CHROME_BROWSER_IMPORTER_IMPORTER_PROGRESS_OBSERVER_H_
++
++#include <string>
+ 
+ #include "components/user_data_importer/common/importer_data_types.h"
+ 
+@@ -23,7 +25,11 @@
+   // source profile and is now ready for further processing.
+   virtual void ImportItemEnded(user_data_importer::ImportItem item) = 0;
+ 
+-  // Invoked when the source profile has been imported.
++  // Optional terminal details. ImportEnded still follows for every observer.
++  virtual void ImportFailed(const std::string& error_message) {}
++  virtual void ImportCancelled() {}
++
++  // Invoked when the import terminates, including failure and cancellation.
+   virtual void ImportEnded() = 0;
+ 
+  protected:
+--- a/chrome/browser/importer/external_process_importer_host.h
++++ b/chrome/browser/importer/external_process_importer_host.h
+@@ -79,6 +79,7 @@
+   void NotifyImportStarted();
+   void NotifyImportItemStarted(user_data_importer::ImportItem item);
+   void NotifyImportItemEnded(user_data_importer::ImportItem item);
++  void NotifyImportFailed(const std::string& error_message);
+   void NotifyImportEnded();
+ 
+  private:
+--- a/chrome/browser/importer/external_process_importer_host.cc
++++ b/chrome/browser/importer/external_process_importer_host.cc
+@@ -34,6 +34,8 @@
+ 
+ void ExternalProcessImporterHost::Cancel() {
+   cancelled_ = true;
++  if (observer_)
++    observer_->ImportCancelled();
+   // There is only a |client_| if the import was started.
+   if (client_)
+     client_->Cancel();
+@@ -81,11 +83,21 @@
+     observer_->ImportItemEnded(item);
+ }
+ 
++void ExternalProcessImporterHost::NotifyImportFailed(
++    const std::string& error_message) {
++  if (observer_)
++    observer_->ImportFailed(error_message);
++}
++
+ void ExternalProcessImporterHost::NotifyImportEnded() {
+   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+   firefox_lock_.reset();
+-  if (observer_)
+-    observer_->ImportEnded();
++  // An ImportEnded callback may destroy its observer. Drop our non-owning
++  // reference before invoking it, rather than retaining a dangling raw_ptr.
++  importer::ImporterProgressObserver* observer = observer_.get();
++  observer_ = nullptr;
++  if (observer)
++    observer->ImportEnded();
+   delete this;
+ }
+ 
+@@ -149,7 +161,7 @@
+       ShowWarningDialog();
+     }
+   } else {
+-    NotifyImportEnded();
++    Cancel();
+   }
+ }
+ 
+--- a/chrome/browser/importer/external_process_importer_client.cc
++++ b/chrome/browser/importer/external_process_importer_client.cc
+@@ -92,8 +92,10 @@
+ 
+   // If the host is still around, cancel the import; otherwise it means the
+   // import was already cancelled or completed and this message can be dropped.
+-  if (process_importer_host_.get())
++  if (process_importer_host_.get()) {
++    process_importer_host_->NotifyImportFailed("Import process disconnected");
+     process_importer_host_->Cancel();
++  }
+ }
+ 
+ void ExternalProcessImporterClient::OnImportStart() {
+@@ -108,8 +110,11 @@
+   if (cancelled_)
+     return;
+ 
+-  if (!succeeded)
++  if (!succeeded) {
+     LOG(WARNING) << "Import failed.  Error: " << error_msg;
++    if (process_importer_host_)
++      process_importer_host_->NotifyImportFailed(error_msg);
++  }
+   Cleanup();
+ }
+ 
+--- a/chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.cc
++++ b/chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.cc
+@@ -17,12 +17,14 @@
+ #include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_observer_helper_base.h"
+ #include "chrome/browser/picture_in_picture/auto_picture_in_picture_window_occlusion_helper_base.h"
+ #include "chrome/browser/picture_in_picture/auto_pip_setting_helper.h"
++#include "chrome/browser/picture_in_picture/aside_auto_pip_policy.h"
+ #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/ui/recently_audible_helper.h"
+ #include "components/content_settings/browser/page_specific_content_settings.h"
+ #include "components/content_settings/core/browser/host_content_settings_map.h"
+ #include "components/permissions/permission_decision_auto_blocker.h"
++#include "components/prefs/pref_service.h"
+ #include "content/public/browser/media_session.h"
+ #include "content/public/browser/media_session_service.h"
+ #include "media/base/media_switches.h"
+@@ -771,6 +773,13 @@
+ }
+ 
+ ContentSetting AutoPictureInPictureTabHelper::GetCurrentContentSetting() const {
++  // The Aside toggle is a per-profile master switch. A site-specific ALLOW
++  // must not bypass it; enabling it still respects native policy/permissions.
++  PrefService* prefs = Profile::FromBrowserContext(
++                           web_contents()->GetBrowserContext())->GetPrefs();
++  if (!IsAsideAutoPipEnabled(*prefs)) {
++    return CONTENT_SETTING_BLOCK;
++  }
+   GURL url = web_contents()->GetLastCommittedURL();
+   auto setting = host_content_settings_map_->GetContentSetting(
+       url, url, ContentSettingsType::AUTO_PICTURE_IN_PICTURE);
+--- /dev/null
++++ b/chrome/browser/picture_in_picture/aside_auto_pip_policy.h
+@@ -0,0 +1,17 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_PICTURE_IN_PICTURE_ASIDE_AUTO_PIP_POLICY_H_
++#define CHROME_BROWSER_PICTURE_IN_PICTURE_ASIDE_AUTO_PIP_POLICY_H_
++
++#include "components/prefs/pref_service.h"
++
++// This master switch restricts eligibility. It never grants site permission.
++// Platforms without the Aside pref retain their native PiP behavior.
++inline bool IsAsideAutoPipEnabled(const PrefService& prefs) {
++  return !prefs.FindPreference("aside.auto_pip.enabled") ||
++         prefs.GetBoolean("aside.auto_pip.enabled");
++}
++
++#endif  // CHROME_BROWSER_PICTURE_IN_PICTURE_ASIDE_AUTO_PIP_POLICY_H_
+--- a/chrome/browser/picture_in_picture/BUILD.gn
++++ b/chrome/browser/picture_in_picture/BUILD.gn
+@@ -22,6 +22,7 @@
+     # Common Auto Picture-in-Picture files
+     "auto_picture_in_picture_safe_browsing_checker_client.h",
+     "auto_picture_in_picture_tab_helper.h",
++    "aside_auto_pip_policy.h",
+     "auto_picture_in_picture_tab_observer_helper_base.h",
+     "auto_picture_in_picture_window_occlusion_helper_base.h",
+     "auto_pip_setting_helper.h",
+--- a/chrome/browser/ui/aside/aside_ai_tabs_metadata.h
++++ b/chrome/browser/ui/aside/aside_ai_tabs_metadata.h
+@@ -7,6 +7,7 @@
+ 
+ #include <optional>
+ #include <string>
++#include <string_view>
+ 
+ #include "components/tab_groups/tab_group_id.h"
+ 
+@@ -26,14 +27,21 @@
+ // carries the same UTF-16 literal.
+ inline constexpr char16_t kAgentTabsGroupTitle[] = u"Agent Tabs";
+ 
+-void SetAiTabsMetadata(const tab_groups::TabGroupId& group,
++void SetAiTabsMetadata(const TabGroup* group,
+                        AiTabsMetadata metadata);
+-std::optional<AiTabsMetadata> GetAiTabsMetadata(
+-    const tab_groups::TabGroupId& group);
++std::optional<AiTabsMetadata> GetAiTabsMetadata(const TabGroup* group);
+ void ClearAiTabsMetadata(const tab_groups::TabGroupId& group);
+ 
+-// True for the group the agent works in: either flagged through
+-// setAiTabsMetadata or titled "Agent Tabs" by the extension.
++// Legacy bundled-extension support: assignment and naming must be explicit
++// calls by the bundled owner, for the same still-live group, within 10 seconds.
++// Neither a display title nor a generic DevTools connection confers ownership.
++void RecordAgentTabsAssignment(const TabGroup* group,
++                               std::string_view extension_id);
++void ConfirmAgentTabsAssignment(const TabGroup* group,
++                                std::string_view extension_id,
++                                std::u16string_view title);
++
++// True only for a registered agent group; user-editable titles are irrelevant.
+ bool IsAgentTabsGroup(const TabGroup* group);
+ 
+ }  // namespace aside
+--- a/chrome/browser/ui/aside/aside_ai_tabs_metadata.cc
++++ b/chrome/browser/ui/aside/aside_ai_tabs_metadata.cc
+@@ -4,10 +4,13 @@
+ 
+ #include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
+ 
++#include <algorithm>
+ #include <map>
+ #include <utility>
+ 
+ #include "base/no_destructor.h"
++#include "base/time/time.h"
++#include "chrome/browser/ui/aside/aside_extension_bridge.h"
+ #include "components/tab_groups/tab_group_visual_data.h"
+ #include "components/tabs/public/tab_group.h"
+ 
+@@ -15,40 +18,90 @@
+ 
+ namespace {
+ 
+-std::map<tab_groups::TabGroupId, AiTabsMetadata>& Registry() {
+-  static base::NoDestructor<std::map<tab_groups::TabGroupId, AiTabsMetadata>>
++struct RegisteredMetadata {
++  base::WeakPtr<const TabGroup> group;
++  AiTabsMetadata metadata;
++};
++
++std::map<tab_groups::TabGroupId, RegisteredMetadata>& Registry() {
++  static base::NoDestructor<std::map<tab_groups::TabGroupId, RegisteredMetadata>>
+       registry;
+   return *registry;
+ }
+ 
++void PruneRegistry() {
++  std::erase_if(Registry(), [](const auto& entry) {
++    return !entry.second.group;
++  });
++}
++
++struct AssignmentCandidate {
++  base::WeakPtr<const TabGroup> group;
++  base::TimeTicks expires;
++};
++
++std::map<tab_groups::TabGroupId, AssignmentCandidate>& Candidates() {
++  static base::NoDestructor<
++      std::map<tab_groups::TabGroupId, AssignmentCandidate>> candidates;
++  return *candidates;
++}
++
++void PruneCandidates() {
++  const auto now = base::TimeTicks::Now();
++  std::erase_if(Candidates(), [now](const auto& entry) {
++    return !entry.second.group || entry.second.expires <= now;
++  });
++}
++
+ }  // namespace
+ 
+-void SetAiTabsMetadata(const tab_groups::TabGroupId& group,
+-                       AiTabsMetadata metadata) {
+-  Registry()[group] = std::move(metadata);
++void SetAiTabsMetadata(const TabGroup* group, AiTabsMetadata metadata) {
++  PruneRegistry();
++  if (group) {
++    Registry()[group->id()] = {group->AsWeakPtr(), std::move(metadata)};
++  }
+ }
+ 
+-std::optional<AiTabsMetadata> GetAiTabsMetadata(
+-    const tab_groups::TabGroupId& group) {
+-  auto it = Registry().find(group);
+-  if (it == Registry().end()) {
++std::optional<AiTabsMetadata> GetAiTabsMetadata(const TabGroup* group) {
++  PruneRegistry();
++  if (!group) return std::nullopt;
++  auto it = Registry().find(group->id());
++  if (it == Registry().end() || it->second.group.get() != group) {
+     return std::nullopt;
+   }
+-  return it->second;
++  return it->second.metadata;
+ }
+ 
+ void ClearAiTabsMetadata(const tab_groups::TabGroupId& group) {
+   Registry().erase(group);
++  Candidates().erase(group);
++}
++
++void RecordAgentTabsAssignment(const TabGroup* group,
++                               std::string_view extension_id) {
++  PruneCandidates();
++  if (!group || extension_id != kAsideExtensionId) return;
++  Candidates()[group->id()] = {
++      group->AsWeakPtr(), base::TimeTicks::Now() + base::Seconds(10)};
++}
++
++void ConfirmAgentTabsAssignment(const TabGroup* group,
++                                std::string_view extension_id,
++                                std::u16string_view title) {
++  PruneCandidates();
++  if (!group || extension_id != kAsideExtensionId) return;
++  auto it = Candidates().find(group->id());
++  if (it == Candidates().end()) return;
++  const bool matches = it->second.group.get() == group &&
++                       title == kAgentTabsGroupTitle;
++  Candidates().erase(it);  // A candidate is consumed once, even on rename.
++  if (matches && !GetAiTabsMetadata(group)) {
++    SetAiTabsMetadata(group, {});
++  }
+ }
+ 
+ bool IsAgentTabsGroup(const TabGroup* group) {
+-  if (!group) {
+-    return false;
+-  }
+-  if (Registry().contains(group->id())) {
+-    return true;
+-  }
+-  return group->visual_data()->title() == kAgentTabsGroupTitle;
++  return GetAiTabsMetadata(group).has_value();
+ }
+ 
+ }  // namespace aside
+--- a/chrome/browser/ui/aside/aside_agent_tabs.h
++++ b/chrome/browser/ui/aside/aside_agent_tabs.h
+@@ -18,7 +18,7 @@
+ 
+ // "Agent tabs" are the tabs the daemon drives inside the "Agent Tabs" group
+ // (created by the extension / Browser.setAiTabsMetadata). A tab is
+-// "controlled" while a DevTools client (the daemon's CDP session) is attached
++// "controlled" while an authenticated Aside CDP session is attached
+ // to it — that is what the original's "Aside is controlling the tab" banner
+ // and "Take over" button react to.
+ bool IsAgentTab(TabStripModel* model, int index);
+@@ -28,8 +28,8 @@
+ 
+ bool IsAgentControlled(Browser* browser, content::WebContents* web_contents);
+ 
+-// Detaches every DevTools client from `web_contents` so the user can take
+-// over the tab.
++// Detaches only authenticated Aside sessions from `web_contents`, preserving
++// developer tools and unrelated debugging clients.
+ void TakeOverTab(content::WebContents* web_contents);
+ 
+ // Closes every agent tab in `model`.
+--- a/chrome/browser/ui/aside/aside_agent_tabs.cc
++++ b/chrome/browser/ui/aside/aside_agent_tabs.cc
+@@ -60,7 +60,7 @@
+   if (!content::DevToolsAgentHost::HasFor(web_contents)) {
+     return false;
+   }
+-  return content::DevToolsAgentHost::GetOrCreateFor(web_contents)->IsAttached();
++  return content::DevToolsAgentHost::GetOrCreateFor(web_contents)->HasSecureRemoteDebuggingSession();
+ }
+ 
+ void TakeOverTab(content::WebContents* web_contents) {
+@@ -68,7 +68,7 @@
+     return;
+   }
+   content::DevToolsAgentHost::GetOrCreateFor(web_contents)
+-      ->ForceDetachAllSessions();
++      ->ForceDetachSecureRemoteDebuggingSessions();
+ }
+ 
+ void CloseAllAgentTabs(TabStripModel* model) {
+--- /dev/null
++++ b/chrome/browser/ui/aside/aside_native_contracts_unittest.cc
+@@ -0,0 +1,407 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include <memory>
++#include <string>
++#include <utility>
++
++#include "base/memory/scoped_refptr.h"
++#include "base/test/bind.h"
++#include "chrome/browser/extensions/api/aside_account/aside_profile_index.h"
++#include "chrome/browser/extensions/api/aside_browser_import/import_job.h"
++#include "chrome/browser/extensions/api/aside_browser_preferences/aside_browser_preferences_api.h"
++#include "chrome/browser/importer/external_process_importer_host.h"
++#include "chrome/browser/picture_in_picture/aside_auto_pip_policy.h"
++#include "chrome/browser/profiles/profile_attributes_init_params.h"
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/aside/aside_extension_bridge.h"
++#include "chrome/browser/ui/webui/aside_import_data/aside_import_data_session.h"
++#include "base/time/time.h"
++#include "chrome/test/base/testing_browser_process.h"
++#include "chrome/test/base/testing_profile.h"
++#include "chrome/test/base/testing_profile_manager.h"
++#include "components/prefs/testing_pref_service.h"
++#include "components/prefs/pref_registry_simple.h"
++#include "components/tab_groups/tab_group_color.h"
++#include "components/tabs/public/tab_group.h"
++#include "content/public/test/browser_task_environment.h"
++#include "extensions/browser/api_test_utils.h"
++#include "testing/gtest/include/gtest/gtest.h"
++
++namespace {
++
++using extensions::aside_import::ImportJob;
++
++TEST(AsideImportJobTest, CancellationCannotBeRevivedByLateCallbacks) {
++  ImportJob job;
++  job.requested_items = user_data_importer::FAVORITES;
++  job.Cancelled();
++  job.Started();
++  job.ItemStarted("bookmarks");
++  job.ItemEnded(user_data_importer::FAVORITES);
++  job.Failed("late utility error");
++  job.Ended();
++  EXPECT_EQ("cancelled", job.state);
++  EXPECT_EQ(0.0, job.progress);
++  EXPECT_TRUE(job.current_data_kind.empty());
++}
++
++TEST(AsideImportJobTest, FailureIsNotReportedAsSuccessOrCancellation) {
++  ImportJob job;
++  job.requested_items = user_data_importer::FAVORITES;
++  job.Started();
++  job.Failed("utility disconnected");
++  job.Cancelled();
++  job.ItemEnded(user_data_importer::FAVORITES);
++  job.Ended();
++  EXPECT_EQ("failed", job.state);
++  EXPECT_EQ("utility disconnected", job.error_message);
++}
++
++TEST(AsideImportJobTest, ProgressUsesDistinctSelectedKinds) {
++  ImportJob job;
++  job.requested_items = user_data_importer::FAVORITES | user_data_importer::HISTORY;
++  job.Started();
++  job.ItemEnded(user_data_importer::FAVORITES);
++  job.ItemEnded(user_data_importer::FAVORITES);
++  job.ItemEnded(user_data_importer::PASSWORDS);
++  EXPECT_EQ(0.5, job.progress);
++  job.ItemEnded(user_data_importer::HISTORY);
++  job.Ended();
++  EXPECT_EQ("succeeded", job.state);
++  EXPECT_EQ(1.0, job.progress);
++  job.Cancelled();
++  EXPECT_EQ("succeeded", job.state);
++}
++
++TEST(AsideImportJobTest, MissingCompletionIsFailure) {
++  ImportJob job;
++  job.requested_items = user_data_importer::FAVORITES;
++  job.Started();
++  job.Ended();
++  EXPECT_EQ("failed", job.state);
++}
++
++class RecordingImporterObserver : public importer::ImporterProgressObserver {
++ public:
++  void ImportStarted() override {}
++  void ImportItemStarted(user_data_importer::ImportItem) override {}
++  void ImportItemEnded(user_data_importer::ImportItem) override {}
++  void ImportFailed(const std::string& message) override { failure = message; }
++  void ImportCancelled() override { cancelled = true; }
++  void ImportEnded() override { ended = true; }
++  bool cancelled = false;
++  bool ended = false;
++  std::string failure;
++};
++
++TEST(AsideImporterHostTest, CancelNotifiesObserverAndEndsHost) {
++  content::BrowserTaskEnvironment environment;
++  RecordingImporterObserver observer;
++  auto* host = new ExternalProcessImporterHost();
++  host->set_observer(&observer);
++  host->Cancel();  // Uses the real host path; no utility process is started.
++  EXPECT_TRUE(observer.cancelled);
++  EXPECT_TRUE(observer.ended);
++}
++
++TEST(AsideImporterHostTest, FailureDetailSurvivesTermination) {
++  content::BrowserTaskEnvironment environment;
++  RecordingImporterObserver observer;
++  auto* host = new ExternalProcessImporterHost();
++  host->set_observer(&observer);
++  host->NotifyImportFailed("missing source");
++  host->NotifyImportEnded();
++  EXPECT_EQ("missing source", observer.failure);
++  EXPECT_FALSE(observer.cancelled);
++  EXPECT_TRUE(observer.ended);
++}
++
++class AsideProfileIndexTest : public testing::Test {
++ protected:
++  AsideProfileIndexTest() : profiles_(TestingBrowserProcess::GetGlobal()) {}
++  void SetUp() override { ASSERT_TRUE(profiles_.SetUp()); }
++  content::BrowserTaskEnvironment environment_;
++  TestingProfileManager profiles_;
++};
++
++TEST_F(AsideProfileIndexTest, ReorderingDisplayCannotChangeApiIdentity) {
++  auto* storage = profiles_.profile_attributes_storage();
++  for (const char* name : {"first", "second"}) {
++    ProfileAttributesInitParams params;
++    params.profile_path = profiles_.profile_manager()->user_data_dir().AppendASCII(name);
++    params.profile_name = name == std::string("first") ? u"Zulu" : u"Alpha";
++    storage->AddProfile(std::move(params));
++  }
++  const auto api_entries = extensions::aside_account::GetProfilesInApiOrder(*storage);
++  ASSERT_EQ(2u, api_entries.size());
++  const auto first_path = api_entries[0]->GetPath();
++  const auto second_path = api_entries[1]->GetPath();
++  const auto initial_display = storage->GetAllProfilesAttributesSortedForDisplay();
++  const auto old_first = initial_display[0]->GetPath();
++  storage->UpdateProfilesOrderPref(0, 1);
++  EXPECT_NE(old_first, storage->GetAllProfilesAttributesSortedForDisplay()[0]->GetPath());
++  EXPECT_EQ(first_path, extensions::aside_account::ResolveProfileIndex(*storage, 0)->GetPath());
++  EXPECT_EQ(second_path, extensions::aside_account::ResolveProfileIndex(*storage, 1)->GetPath());
++  EXPECT_EQ(nullptr, extensions::aside_account::ResolveProfileIndex(*storage, -1));
++  EXPECT_EQ(nullptr, extensions::aside_account::ResolveProfileIndex(*storage, 2));
++}
++
++TEST(AsideAutoPipPolicyTest, MasterSwitchIsPerProfileAndDoesNotGrantPermission) {
++  TestingPrefServiceSimple first;
++  TestingPrefServiceSimple second;
++  first.registry()->RegisterBooleanPref("aside.auto_pip.enabled", false);
++  second.registry()->RegisterBooleanPref("aside.auto_pip.enabled", false);
++  EXPECT_FALSE(IsAsideAutoPipEnabled(first));
++  first.SetBoolean("aside.auto_pip.enabled", true);
++  EXPECT_TRUE(IsAsideAutoPipEnabled(first));
++  EXPECT_FALSE(IsAsideAutoPipEnabled(second));
++  first.SetBoolean("aside.auto_pip.enabled", false);
++  EXPECT_FALSE(IsAsideAutoPipEnabled(first));
++  TestingPrefServiceSimple native_platform;
++  EXPECT_TRUE(IsAsideAutoPipEnabled(native_platform));
++}
++
++TEST(AsideUpdaterTest, UnconfiguredUpdaterNeverClaimsCurrent) {
++  content::BrowserTaskEnvironment environment;
++  TestingProfile profile;
++  auto function = base::MakeRefCounted<extensions::AsideBrowserPreferencesCheckForUpdatesFunction>();
++  auto result = extensions::api_test_utils::RunFunctionAndReturnSingleResult(
++      function.get(), "[]", &profile);
++  ASSERT_TRUE(result);
++  ASSERT_TRUE(result->is_dict());
++  const auto& value = result->GetDict();
++  EXPECT_EQ(false, value.FindBool("supported"));
++  EXPECT_EQ(false, value.FindBool("available"));
++  EXPECT_EQ("disabled", *value.FindString("status"));
++  EXPECT_FALSE(value.FindString("message")->empty());
++}
++
++class TestAsideGroup : public TabGroup {
++ public:
++  explicit TestAsideGroup(const tab_groups::TabGroupId& id)
++      : TabGroup(nullptr, id, tab_groups::TabGroupVisualData(
++                                 u"Agent Tabs", tab_groups::TabGroupColorId::kGrey)) {}
++  TabGroupFeatures* GetTabGroupFeatures() override { return nullptr; }
++  const TabGroupFeatures* GetTabGroupFeatures() const override { return nullptr; }
++};
++
++TEST(AsideAgentOwnershipTest, DisplayTitleCannotGrantOrRemoveOwnership) {
++  const auto id = tab_groups::TabGroupId::GenerateNew();
++  TestAsideGroup group(id);
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&group));
++  aside::SetAiTabsMetadata(&group, {});
++  EXPECT_TRUE(aside::IsAgentTabsGroup(&group));
++  group.SetVisualData(tab_groups::TabGroupVisualData(
++      u"Renamed by user", tab_groups::TabGroupColorId::kGrey));
++  EXPECT_TRUE(aside::IsAgentTabsGroup(&group));
++  aside::ClearAiTabsMetadata(id);
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&group));
++}
++
++TEST(AsideAgentOwnershipTest, TrustedAssignmentIsRequiredAndConsumedOnce) {
++  content::BrowserTaskEnvironment environment;
++  const auto id = tab_groups::TabGroupId::GenerateNew();
++  TestAsideGroup group(id);
++  aside::ConfirmAgentTabsAssignment(&group, aside::kAsideExtensionId, u"Agent Tabs");
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&group));
++  aside::RecordAgentTabsAssignment(&group, "ordinary-extension");
++  aside::ConfirmAgentTabsAssignment(&group, aside::kAsideExtensionId, u"Agent Tabs");
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&group));
++  aside::RecordAgentTabsAssignment(&group, aside::kAsideExtensionId);
++  aside::ConfirmAgentTabsAssignment(&group, "ordinary-extension", u"Agent Tabs");
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&group));
++  aside::ConfirmAgentTabsAssignment(&group, aside::kAsideExtensionId, u"Agent Tabs");
++  EXPECT_TRUE(aside::IsAgentTabsGroup(&group));
++  aside::ClearAiTabsMetadata(id);
++  aside::ConfirmAgentTabsAssignment(&group, aside::kAsideExtensionId, u"Agent Tabs");
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&group));
++}
++
++TEST(AsideAgentOwnershipTest, AssignmentExpiresAndCannotOutliveItsGroup) {
++  content::BrowserTaskEnvironment environment(
++      base::test::TaskEnvironment::TimeSource::MOCK_TIME);
++  const auto id = tab_groups::TabGroupId::GenerateNew();
++  auto group = std::make_unique<TestAsideGroup>(id);
++  aside::RecordAgentTabsAssignment(group.get(), aside::kAsideExtensionId);
++  environment.FastForwardBy(base::Seconds(11));
++  aside::ConfirmAgentTabsAssignment(group.get(), aside::kAsideExtensionId, u"Agent Tabs");
++  EXPECT_FALSE(aside::IsAgentTabsGroup(group.get()));
++  aside::RecordAgentTabsAssignment(group.get(), aside::kAsideExtensionId);
++  group.reset();
++  TestAsideGroup replacement(id);
++  aside::ConfirmAgentTabsAssignment(&replacement, aside::kAsideExtensionId, u"Agent Tabs");
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&replacement));
++  aside::ClearAiTabsMetadata(id);
++}
++
++TEST(AsideAgentOwnershipTest, PromotedOwnershipCannotSurviveGroupReplacement) {
++  const auto id = tab_groups::TabGroupId::GenerateNew();
++  auto group = std::make_unique<TestAsideGroup>(id);
++  aside::SetAiTabsMetadata(group.get(), {"owner", "https://example.test"});
++  ASSERT_TRUE(aside::IsAgentTabsGroup(group.get()));
++  // Restore/move code can reuse group IDs. Even a concurrent replacement may
++  // not borrow the previous object's authority or its badge metadata.
++  TestAsideGroup replacement(id);
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&replacement));
++  EXPECT_FALSE(aside::GetAiTabsMetadata(&replacement));
++  group.reset();
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&replacement));
++  EXPECT_FALSE(aside::GetAiTabsMetadata(&replacement));
++  aside::ConfirmAgentTabsAssignment(&replacement, aside::kAsideExtensionId,
++                                    u"Agent Tabs");
++  EXPECT_FALSE(aside::IsAgentTabsGroup(&replacement));
++  aside::RecordAgentTabsAssignment(&replacement, aside::kAsideExtensionId);
++  aside::ConfirmAgentTabsAssignment(&replacement, aside::kAsideExtensionId,
++                                    u"Agent Tabs");
++  EXPECT_TRUE(aside::IsAgentTabsGroup(&replacement));
++  aside::ClearAiTabsMetadata(id);
++}
++
++TEST(AsideImportWebUiSessionTest, UtilityFailureCannotEmitSuccess) {
++  content::BrowserTaskEnvironment environment;
++  std::optional<aside::ImportDataResult> result;
++  auto* host = new ExternalProcessImporterHost();
++  aside::ImportDataSession session(
++      host, user_data_importer::FAVORITES, "firefox",
++      base::BindLambdaForTesting([&result](aside::ImportDataResult value) {
++        result = std::move(value);
++      }));
++  host->NotifyImportFailed("source could not be read");
++  host->NotifyImportItemEnded(user_data_importer::FAVORITES);
++  host->NotifyImportEnded();
++  ASSERT_TRUE(result);
++  EXPECT_EQ(aside::ImportDataResult::State::kFailed, result->state);
++  EXPECT_EQ("source could not be read", result->error_message);
++  EXPECT_FALSE(session.importing());
++}
++
++TEST(AsideImportWebUiSessionTest, ActualHostCancellationRemainsCancelled) {
++  content::BrowserTaskEnvironment environment;
++  std::optional<aside::ImportDataResult> result;
++  auto* host = new ExternalProcessImporterHost();
++  aside::ImportDataSession session(
++      host, user_data_importer::FAVORITES, "firefox",
++      base::BindLambdaForTesting([&result](aside::ImportDataResult value) {
++        result = std::move(value);
++      }));
++  host->Cancel();
++  ASSERT_TRUE(result);
++  EXPECT_EQ(aside::ImportDataResult::State::kCancelled, result->state);
++  EXPECT_FALSE(result->error_message.empty());
++  EXPECT_FALSE(session.importing());
++}
++
++TEST(AsideImportWebUiSessionTest, CrashThenHostCancelRemainsFailure) {
++  content::BrowserTaskEnvironment environment;
++  std::optional<aside::ImportDataResult> result;
++  auto* host = new ExternalProcessImporterHost();
++  aside::ImportDataSession session(
++      host, user_data_importer::FAVORITES, "firefox",
++      base::BindLambdaForTesting([&result](aside::ImportDataResult value) {
++        result = std::move(value);
++      }));
++  host->NotifyImportFailed("Import process disconnected");
++  host->Cancel();
++  ASSERT_TRUE(result);
++  EXPECT_EQ(aside::ImportDataResult::State::kFailed, result->state);
++}
++
++TEST(AsideImportWebUiSessionTest, OnlyCompleteImportProducesSuccessOnce) {
++  content::BrowserTaskEnvironment environment;
++  int callbacks = 0;
++  auto* host = new ExternalProcessImporterHost();
++  aside::ImportDataSession session(
++      host, user_data_importer::FAVORITES | user_data_importer::HISTORY,
++      "firefox", base::BindLambdaForTesting([&callbacks](aside::ImportDataResult result) {
++        ++callbacks;
++        EXPECT_EQ(aside::ImportDataResult::State::kSucceeded, result.state);
++      }));
++  host->NotifyImportItemEnded(user_data_importer::FAVORITES);
++  host->NotifyImportItemEnded(user_data_importer::FAVORITES);
++  host->NotifyImportItemEnded(user_data_importer::HISTORY);
++  host->NotifyImportEnded();
++  session.ImportEnded();
++  EXPECT_EQ(1, callbacks);
++}
++
++TEST(AsideImportWebUiSessionTest, IncompleteImportIsFailure) {
++  content::BrowserTaskEnvironment environment;
++  std::optional<aside::ImportDataResult> result;
++  auto* host = new ExternalProcessImporterHost();
++  aside::ImportDataSession session(
++      host, user_data_importer::FAVORITES, "firefox",
++      base::BindLambdaForTesting([&result](aside::ImportDataResult value) {
++        result = std::move(value);
++      }));
++  host->NotifyImportEnded();
++  ASSERT_TRUE(result);
++  EXPECT_EQ(aside::ImportDataResult::State::kFailed, result->state);
++}
++
++TEST(AsideImportWebUiSessionTest, PageDestructionDetachesBeforeCancellation) {
++  content::BrowserTaskEnvironment environment;
++  int callbacks = 0;
++  {
++    auto* host = new ExternalProcessImporterHost();
++    aside::ImportDataSession session(
++        host, user_data_importer::FAVORITES, "firefox",
++        base::BindLambdaForTesting([&callbacks](aside::ImportDataResult) { ++callbacks; }));
++    EXPECT_TRUE(session.importing());
++  }  // Cancels the real host without allowing callbacks into a dying page.
++  EXPECT_EQ(0, callbacks);
++}
++
++TEST(AsideImportWebUiSessionTest, CompletionMayDestroyThePageSession) {
++  content::BrowserTaskEnvironment environment;
++  auto* host = new ExternalProcessImporterHost();
++  std::unique_ptr<aside::ImportDataSession> session;
++  session = std::make_unique<aside::ImportDataSession>(
++      host, user_data_importer::FAVORITES, "safari",
++      base::BindLambdaForTesting([&session](aside::ImportDataResult result) {
++        EXPECT_EQ(aside::ImportDataResult::State::kSucceeded, result.state);
++        session.reset();
++      }));
++  host->NotifyImportItemEnded(user_data_importer::FAVORITES);
++  host->NotifyImportEnded();
++  EXPECT_FALSE(session);
++}
++
++TEST(AsideSafariArchiveTest, PendingUnpackAndActiveImportRejectSecondSelection) {
++  aside::PendingSafariArchive gate;
++  ASSERT_TRUE(gate.CanPick(false));
++  const auto first = gate.Begin(false);
++  ASSERT_TRUE(first);
++  EXPECT_FALSE(gate.CanPick(false));
++  EXPECT_FALSE(gate.Begin(false));
++  EXPECT_TRUE(gate.Complete(*first, false));
++  // Archive one is now used by an import: a second archive cannot replace it.
++  EXPECT_FALSE(gate.CanPick(true));
++  EXPECT_FALSE(gate.Begin(true));
++}
++
++TEST(AsideSafariArchiveTest, ActiveImportPreventsArchiveReplacementOnCompletion) {
++  aside::PendingSafariArchive gate;
++  const auto token = gate.Begin(false);
++  ASSERT_TRUE(token);
++  std::string active_archive = "archive-one";
++  if (gate.Complete(*token, true)) active_archive = "archive-two";
++  EXPECT_EQ("archive-one", active_archive);
++}
++
++TEST(AsideSafariArchiveTest, CancelRevokesOldCompletionWithoutStealingNewWork) {
++  aside::PendingSafariArchive gate;
++  const auto old_token = gate.Begin(false);
++  ASSERT_TRUE(old_token);
++  gate.Cancel();
++  const auto new_token = gate.Begin(false);
++  ASSERT_TRUE(new_token);
++  EXPECT_NE(*old_token, *new_token);
++  EXPECT_FALSE(gate.Complete(*old_token, false));
++  EXPECT_FALSE(gate.CanPick(false));
++  EXPECT_TRUE(gate.Complete(*new_token, false));
++  EXPECT_FALSE(gate.Complete(*new_token, false));
++}
++
++}  // namespace
+--- a/chrome/browser/extensions/api/tabs/tabs_api.cc
++++ b/chrome/browser/extensions/api/tabs/tabs_api.cc
+@@ -3,6 +3,12 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/api/tabs/tabs_api.h"
++
++#if !BUILDFLAG(IS_ANDROID)
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/tabs/tab_group_model.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#endif
+ 
+ #include "base/metrics/histogram_functions.h"
+ #include "base/metrics/histogram_macros.h"
+@@ -3395,6 +3401,13 @@
+     return RespondNow(
+         Error(ExtensionTabUtil::kTabStripDoesNotSupportTabGroupsError));
+   }
++#if !BUILDFLAG(IS_ANDROID)
++  if (extension()) {
++    aside::RecordAgentTabsAssignment(
++        target_browser->GetTabStripModel()->group_model()->GetTabGroup(*final_group),
++        extension()->id());
++  }
++#endif
+   group_id = ExtensionTabUtil::GetGroupId(*final_group);
+   DCHECK_GT(group_id, 0);
+ 
+--- a/chrome/browser/extensions/api/tab_groups/tab_groups_api.cc
++++ b/chrome/browser/extensions/api/tab_groups/tab_groups_api.cc
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/api/tab_groups/tab_groups_api.h"
++
++#if !BUILDFLAG(IS_ANDROID)
++#include "chrome/browser/ui/aside/aside_ai_tabs_metadata.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#endif
+ 
+ #include <memory>
+ #include <string>
+@@ -274,6 +279,13 @@
+         Error(ExtensionTabUtil::kTabStripDoesNotSupportTabGroupsError));
+   }
+   tab_groups::TabGroupVisualData new_visual_data(title, color, collapsed);
++#if !BUILDFLAG(IS_ANDROID)
++  if (extension() && params->update_properties.title) {
++    aside::ConfirmAgentTabsAssignment(
++        browser->GetTabStripModel()->group_model()->GetTabGroup(id),
++        extension()->id(), title);
++  }
++#endif
+   tab_list->SetTabGroupVisualData(id, new_visual_data);
+ 
+   if (!has_callback()) {
+--- a/content/public/browser/devtools_agent_host.h
++++ b/content/public/browser/devtools_agent_host.h
+@@ -192,6 +192,12 @@
+   // Returns true if there is a client attached.
+   virtual bool IsAttached() = 0;
+ 
++  // Aside ownership checks require an authenticated session on this target.
++  // Ordinary developer tools do not count as agent control.
++  virtual bool HasSecureRemoteDebuggingSession();
++  // Disconnect only authenticated Aside sessions, preserving other clients.
++  virtual void ForceDetachSecureRemoteDebuggingSessions();
++
+   // Sends |message| from |client| to the agent.
+   virtual void DispatchProtocolMessage(DevToolsAgentHostClient* client,
+                                        base::span<const uint8_t> message) = 0;
+--- a/content/browser/devtools/devtools_agent_host_impl.h
++++ b/content/browser/devtools/devtools_agent_host_impl.h
+@@ -49,6 +49,8 @@
+   void DispatchProtocolMessage(DevToolsAgentHostClient* client,
+                                base::span<const uint8_t> message) override;
+   bool IsAttached() override;
++  bool HasSecureRemoteDebuggingSession() override;
++  void ForceDetachSecureRemoteDebuggingSessions() override;
+   void InspectElement(RenderFrameHost* frame_host, int x, int y) override;
+   std::string GetId() override;
+   std::string CreateIOStreamFromData(
+@@ -177,6 +179,7 @@
+   void DetachInternal(DevToolsSession* session);
+   void NotifyAttached();
+   void NotifyDetached();
++  void NotifySecureSessionsChanged();
+   void NotifyDestroyed();
+   DevToolsSession* SessionByClient(DevToolsAgentHostClient* client);
+ 
+--- a/content/browser/devtools/devtools_agent_host_impl.cc
++++ b/content/browser/devtools/devtools_agent_host_impl.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "content/browser/devtools/devtools_agent_host_impl.h"
+ 
++#include <algorithm>
+ #include <map>
+ #include <vector>
+ 
+@@ -335,6 +336,7 @@
+ bool DevToolsAgentHostImpl::AttachInternal(
+     std::unique_ptr<DevToolsSession> session_owned) {
+   scoped_refptr<DevToolsAgentHostImpl> protect(this);
++  const bool had_secure_session = HasSecureRemoteDebuggingSession();
+   DevToolsSession* session = session_owned.get();
+   DevToolsManager* manager = DevToolsManager::GetInstance();
+   if (manager->delegate() &&
+@@ -353,6 +355,8 @@
+     NotifyAttached();
+   if (manager->delegate())
+     manager->delegate()->ClientAttached(session);
++  if (had_secure_session != HasSecureRemoteDebuggingSession())
++    NotifySecureSessionsChanged();
+   return true;
+ }
+ 
+@@ -381,6 +385,7 @@
+ }
+ 
+ void DevToolsAgentHostImpl::DetachInternal(DevToolsSession* session) {
++  const bool had_secure_session = HasSecureRemoteDebuggingSession();
+   std::unique_ptr<DevToolsSession> session_owned =
+       std::move(session_by_client_[session->GetClient()]);
+   DCHECK_EQ(session, session_owned.get());
+@@ -396,10 +401,39 @@
+     io_context_.DiscardAllStreams();
+     NotifyDetached();
+   }
++  if (had_secure_session != HasSecureRemoteDebuggingSession())
++    NotifySecureSessionsChanged();
+ }
+ 
+ bool DevToolsAgentHostImpl::IsAttached() {
+   return !sessions_.empty();
++}
++
++bool DevToolsAgentHost::HasSecureRemoteDebuggingSession() {
++  return false;
++}
++
++void DevToolsAgentHost::ForceDetachSecureRemoteDebuggingSessions() {}
++
++bool DevToolsAgentHostImpl::HasSecureRemoteDebuggingSession() {
++  return std::ranges::any_of(sessions_, [](const auto& session) {
++    return session->GetClient()->IsSecureRemoteDebuggingSession();
++  });
++}
++
++void DevToolsAgentHostImpl::ForceDetachSecureRemoteDebuggingSessions() {
++  scoped_refptr<DevToolsAgentHost> retain_this(this);
++  // Detaching may destroy a child Target session and mutate sessions_. Search
++  // afresh each time, retaining this host through the callbacks.
++  for (;;) {
++    auto it = std::ranges::find_if(sessions_, [](const auto& session) {
++      return session->GetClient()->IsSecureRemoteDebuggingSession();
++    });
++    if (it == sessions_.end()) return;
++    DevToolsAgentHostClient* client = (*it)->GetClient();
++    DetachClient(client);
++    client->AgentHostClosed(this);
++  }
+ }
+ 
+ void DevToolsAgentHostImpl::InspectElement(RenderFrameHost* frame_host,
+@@ -596,6 +630,11 @@
+ void DevToolsAgentHostImpl::NotifyDetached() {
+   for (auto& observer : GetDevtoolsObservers())
+     observer.DevToolsAgentHostDetached(this);
++}
++
++void DevToolsAgentHostImpl::NotifySecureSessionsChanged() {
++  for (auto& observer : GetDevtoolsObservers())
++    observer.DevToolsAgentHostSecureSessionsChanged(this);
+ }
+ 
+ void DevToolsAgentHostImpl::NotifyCrashed(base::TerminationStatus status) {
+--- a/content/browser/devtools/devtools_agent_host_impl_unittest.cc
++++ b/content/browser/devtools/devtools_agent_host_impl_unittest.cc
+@@ -9,6 +9,7 @@
+ #include <utility>
+ 
+ #include "base/location.h"
++#include "base/containers/span.h"
+ #include "base/run_loop.h"
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/time/time.h"
+@@ -18,6 +19,7 @@
+ #include "content/public/browser/browser_context.h"
+ #include "content/public/browser/content_browser_client.h"
+ #include "content/public/browser/devtools_agent_host.h"
++#include "content/public/browser/devtools_agent_host_observer.h"
+ #include "content/public/browser/devtools_external_agent_proxy.h"
+ #include "content/public/browser/devtools_external_agent_proxy_delegate.h"
+ #include "content/public/browser/devtools_manager_delegate.h"
+@@ -144,6 +146,87 @@
+   EXPECT_FALSE(agent->IsAttached());
+ }
+ 
++namespace {
++class AsideSessionObserver : public DevToolsAgentHostObserver {
++ public:
++  explicit AsideSessionObserver(DevToolsAgentHost* tracked) : tracked_(tracked) {}
++  void DevToolsAgentHostAttached(DevToolsAgentHost* host) override {
++    if (host == tracked_) ++attached;
++  }
++  void DevToolsAgentHostDetached(DevToolsAgentHost* host) override {
++    if (host == tracked_) ++detached;
++  }
++  void DevToolsAgentHostSecureSessionsChanged(DevToolsAgentHost* host) override {
++    if (host == tracked_) ++secure_changes;
++  }
++  int attached = 0;
++  int detached = 0;
++  int secure_changes = 0;
++ private:
++  raw_ptr<DevToolsAgentHost> tracked_;
++};
++
++class AsideSessionTestClient : public DevToolsAgentHostClient {
++ public:
++  explicit AsideSessionTestClient(bool secure) : secure_(secure) {}
++  bool IsSecureRemoteDebuggingSession() override { return secure_; }
++  void DispatchProtocolMessage(DevToolsAgentHost*, base::span<const uint8_t>) override {}
++  void AgentHostClosed(DevToolsAgentHost*) override { closed = true; }
++  bool closed = false;
++ private:
++  const bool secure_;
++};
++}  // namespace
++
++TEST_F(DevToolsAgentHostImplTest, AsideTakeoverPreservesOrdinaryDeveloperTools) {
++  auto agent = DevToolsAgentHost::GetOrCreateFor(web_contents());
++  AsideSessionTestClient developer(false);
++  AsideSessionTestClient aside(true);
++  AsideSessionObserver observer(agent.get());
++  DevToolsAgentHost::AddObserver(&observer);
++  ASSERT_TRUE(agent->AttachClient(&developer));
++  EXPECT_FALSE(agent->HasSecureRemoteDebuggingSession());
++  EXPECT_EQ(1, observer.attached);
++  EXPECT_EQ(0, observer.secure_changes);
++  ASSERT_TRUE(agent->AttachClient(&aside));
++  EXPECT_TRUE(agent->HasSecureRemoteDebuggingSession());
++  EXPECT_EQ(1, observer.attached);
++  EXPECT_EQ(1, observer.secure_changes);
++  agent->ForceDetachSecureRemoteDebuggingSessions();
++  EXPECT_TRUE(aside.closed);
++  EXPECT_FALSE(developer.closed);
++  EXPECT_FALSE(agent->HasSecureRemoteDebuggingSession());
++  EXPECT_TRUE(agent->IsAttached());
++  EXPECT_EQ(0, observer.detached);
++  EXPECT_EQ(2, observer.secure_changes);
++  EXPECT_TRUE(agent->DetachClient(&developer));
++  EXPECT_FALSE(agent->IsAttached());
++  EXPECT_EQ(1, observer.detached);
++  EXPECT_EQ(2, observer.secure_changes);
++  DevToolsAgentHost::RemoveObserver(&observer);
++}
++
++TEST_F(DevToolsAgentHostImplTest, AsideAuthenticationFollowsAttachedTarget) {
++  auto target = DevToolsAgentHost::GetOrCreateFor(web_contents());
++  for (bool secure : {false, true}) {
++    auto browser = DevToolsAgentHost::CreateForBrowser(
++        nullptr, DevToolsAgentHost::CreateServerSocketCallback());
++    AsideSessionTestClient client(secure);
++    ASSERT_TRUE(browser->AttachClient(&client));
++    const std::string command =
++        "{\"id\":1,\"method\":\"Target.attachToTarget\",\"params\":{\"targetId\":\"" +
++        target->GetId() + "\",\"flatten\":true}}";
++    browser->DispatchProtocolMessage(&client, base::as_byte_span(command));
++    EXPECT_TRUE(target->IsAttached());
++    EXPECT_EQ(secure, target->HasSecureRemoteDebuggingSession());
++    target->ForceDetachSecureRemoteDebuggingSessions();
++    EXPECT_FALSE(target->HasSecureRemoteDebuggingSession());
++    EXPECT_EQ(!secure, target->IsAttached());
++    EXPECT_TRUE(browser->DetachClient(&client));
++    EXPECT_FALSE(target->IsAttached());
++  }
++}
++
+ TEST_F(DevToolsAgentHostImplTest, NoUnresponsiveDialogInInspectedContents) {
+   const GURL url("http://www.google.com");
+   contents()->NavigateAndCommit(url);
+--- a/content/browser/devtools/protocol/target_handler.cc
++++ b/content/browser/devtools/protocol/target_handler.cc
+@@ -640,6 +640,10 @@
+     return GetRootClient()->MayAccessAllCookies();
+   }
+ 
++  bool IsSecureRemoteDebuggingSession() override {
++    return GetRootClient()->IsSecureRemoteDebuggingSession();
++  }
++
+   bool MayAttachToRenderFrameHost(RenderFrameHost* rfh) override {
+     return GetRootClient()->MayAttachToRenderFrameHost(rfh);
+   }
+--- a/content/public/browser/devtools_agent_host_observer.h
++++ b/content/public/browser/devtools_agent_host_observer.h
+@@ -37,6 +37,11 @@
+   // Called when client has detached from DevToolsAgentHost.
+   virtual void DevToolsAgentHostDetached(DevToolsAgentHost* agent_host);
+ 
++  // Aside authenticated control changed while other developer clients may
++  // remain attached. General Attached/Detached retain first/last semantics.
++  virtual void DevToolsAgentHostSecureSessionsChanged(
++      DevToolsAgentHost* agent_host);
++
+   // Called when DevToolsAgentHost crashed.
+   virtual void DevToolsAgentHostCrashed(DevToolsAgentHost* agent_host,
+                                         base::TerminationStatus status);
+--- a/content/public/browser/devtools_agent_host_observer.cc
++++ b/content/public/browser/devtools_agent_host_observer.cc
+@@ -39,4 +39,7 @@
+     DevToolsAgentHost* agent_host,
+     base::TerminationStatus status) {}
+ 
++void DevToolsAgentHostObserver::DevToolsAgentHostSecureSessionsChanged(
++    DevToolsAgentHost* agent_host) {}
++
+ }  // namespace content
+--- a/chrome/browser/ui/views/frame/aside_agent_control_banner.h
++++ b/chrome/browser/ui/views/frame/aside_agent_control_banner.h
+@@ -53,6 +53,8 @@
+   // content::DevToolsAgentHostObserver:
+   void DevToolsAgentHostAttached(content::DevToolsAgentHost* host) override;
+   void DevToolsAgentHostDetached(content::DevToolsAgentHost* host) override;
++  void DevToolsAgentHostSecureSessionsChanged(
++      content::DevToolsAgentHost* host) override;
+ 
+  private:
+   void OnTakeOverPressed();
+--- a/chrome/browser/ui/views/frame/aside_agent_control_banner.cc
++++ b/chrome/browser/ui/views/frame/aside_agent_control_banner.cc
+@@ -111,6 +111,11 @@
+   Update();
+ }
+ 
++void AsideAgentControlBanner::DevToolsAgentHostSecureSessionsChanged(
++    content::DevToolsAgentHost* host) {
++  Update();
++}
++
+ void AsideAgentControlBanner::OnTakeOverPressed() {
+   if (contents_view_) {
+     aside::TakeOverTab(contents_view_->web_contents());
+--- a/chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.cc
++++ b/chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.h"
++#include "chrome/browser/ui/webui/aside_import_data/aside_import_data_session.h"
+ 
+ #include <memory>
+ #include <string>
+@@ -121,15 +122,12 @@
+ }
+ 
+ class AsideImportDataHandler : public content::WebUIMessageHandler,
+-                               public importer::ImporterProgressObserver,
+                                public ui::SelectFileDialog::Listener {
+  public:
+   AsideImportDataHandler() = default;
+-  ~AsideImportDataHandler() override {
+-    if (select_file_dialog_) {
+-      select_file_dialog_->ListenerDestroyed();
+-    }
+-  }
++  ~AsideImportDataHandler() override { CancelPendingWork(); }
++
++  void OnJavascriptDisallowed() override { CancelPendingWork(); }
+ 
+   // content::WebUIMessageHandler:
+   void RegisterMessages() override {
+@@ -147,16 +145,38 @@
+                             base::Unretained(this)));
+   }
+ 
+-  void DetectSources(base::OnceClosure done) {
++  void DetectSources(base::OnceCallback<void(base::ListValue)> done) {
+     importer_list_ = std::make_unique<ImporterList>();
+     importer_list_->DetectSourceProfiles(
+         g_browser_process->GetApplicationLocale(),
+-        /*include_interactive_profiles=*/false, std::move(done));
+-  }
+-
+-  const ImporterList* importer_list() const { return importer_list_.get(); }
++        /*include_interactive_profiles=*/false,
++        base::BindOnce(&AsideImportDataHandler::OnSourcesDetected,
++                       weak_factory_.GetWeakPtr(), std::move(done)));
++  }
+ 
+  private:
++  void CancelPendingWork() {
++    weak_factory_.InvalidateWeakPtrs();
++    pending_safari_archive_.Cancel();
++    if (select_file_dialog_) {
++      select_file_dialog_->ListenerDestroyed();
++      select_file_dialog_.reset();
++    }
++    import_session_.reset();
++    safari_archive_ = SafariArchive();
++  }
++
++  void OnSourcesDetected(base::OnceCallback<void(base::ListValue)> done) {
++    base::ListValue ids;
++    for (size_t i = 0; importer_list_ && i < importer_list_->count(); ++i) {
++      if (const char* id =
++              BrowserIdForType(importer_list_->GetSourceProfileAt(i).importer_type)) {
++        ids.Append(id);
++      }
++    }
++    std::move(done).Run(std::move(ids));
++  }
++
+   Profile* profile() { return Profile::FromWebUI(web_ui()); }
+ 
+   void HandleImportFirefox(const base::ListValue& args) {
+@@ -185,7 +205,8 @@
+ 
+   void HandleSelectSafariZip(const base::ListValue& args) {
+     AllowJavascript();
+-    if (select_file_dialog_) {
++    if (select_file_dialog_ ||
++        !pending_safari_archive_.CanPick(import_session_ && import_session_->importing())) {
+       return;
+     }
+     select_file_dialog_ = ui::SelectFileDialog::Create(
+@@ -202,15 +223,25 @@
+   // ui::SelectFileDialog::Listener:
+   void FileSelected(const ui::SelectedFileInfo& file, int index) override {
+     select_file_dialog_.reset();
++    const auto generation = pending_safari_archive_.Begin(
++        import_session_ && import_session_->importing());
++    if (!generation) return;
+     base::ThreadPool::PostTaskAndReplyWithResult(
+         FROM_HERE, {base::MayBlock()},
+         base::BindOnce(&UnpackSafariZip, file.path()),
+         base::BindOnce(&AsideImportDataHandler::OnSafariZipUnpacked,
+-                       weak_factory_.GetWeakPtr()));
++                       weak_factory_.GetWeakPtr(), *generation));
+   }
+   void FileSelectionCanceled() override { select_file_dialog_.reset(); }
+ 
+-  void OnSafariZipUnpacked(SafariArchive archive) {
++  void OnSafariZipUnpacked(uint64_t generation, SafariArchive archive) {
++    // Do not replace the storage backing an existing import. A stale or
++    // cancelled completion owns only its local temporary archive and drops it.
++    if (!pending_safari_archive_.Complete(
++            generation, import_session_ && import_session_->importing()) ||
++        !IsJavascriptAllowed()) {
++      return;
++    }
+     if (archive.bookmarks_html.empty()) {
+       FireWebUIListener("safari-import-invalid-file",
+                         base::Value(kSafariInvalidZip));
+@@ -252,34 +283,42 @@
+   void StartImport(const user_data_importer::SourceProfile& source,
+                    uint16_t items,
+                    const std::string& id) {
+-    if (importing_) {
+-      return;
+-    }
+-    importing_ = true;
+-    current_id_ = id;
++    if (import_session_ && import_session_->importing()) {
++      return;
++    }
++    if (!items || !profile()) {
++      FireWebUIListener("browser-import-failed", base::Value(id),
++                        base::Value(kChromiumImportFailed));
++      return;
++    }
+     FireWebUIListener("browser-import-started", base::Value(id));
+-    // ExternalProcessImporterHost deletes itself when the import ends.
+-    ExternalProcessImporterHost* host = new ExternalProcessImporterHost();
+-    host->set_observer(this);
++    // The session retains a non-owning host handle and cancels it when this
++    // page goes away. The host deletes itself on every terminal path.
++    auto* host = new ExternalProcessImporterHost();
++    import_session_ = std::make_unique<aside::ImportDataSession>(
++        host, items, id,
++        base::BindOnce(&AsideImportDataHandler::OnImportCompleted,
++                       weak_factory_.GetWeakPtr()));
+     host->StartImportSettings(source, profile(), items,
+                               new ProfileWriter(profile()));
+   }
+ 
+-  // importer::ImporterProgressObserver:
+-  void ImportStarted() override {}
+-  void ImportItemStarted(user_data_importer::ImportItem item) override {}
+-  void ImportItemEnded(user_data_importer::ImportItem item) override {}
+-  void ImportEnded() override {
+-    importing_ = false;
+-    FireWebUIListener("browser-import-succeeded", base::Value(current_id_));
++  void OnImportCompleted(aside::ImportDataResult result) {
+     safari_archive_ = SafariArchive();
++    if (!IsJavascriptAllowed()) return;
++    if (result.state == aside::ImportDataResult::State::kSucceeded) {
++      FireWebUIListener("browser-import-succeeded", base::Value(result.source_id));
++    } else {
++      FireWebUIListener("browser-import-failed", base::Value(result.source_id),
++                        base::Value(result.error_message));
++    }
+   }
+ 
+   std::unique_ptr<ImporterList> importer_list_;
+   scoped_refptr<ui::SelectFileDialog> select_file_dialog_;
+   SafariArchive safari_archive_;
+-  bool importing_ = false;
+-  std::string current_id_;
++  aside::PendingSafariArchive pending_safari_archive_;
++  std::unique_ptr<aside::ImportDataSession> import_session_;
+   base::WeakPtrFactory<AsideImportDataHandler> weak_factory_{this};
+ };
+ 
+@@ -301,21 +340,12 @@
+   // installedBrowsers is read synchronously by the page; detection is async,
+   // so the page is served after detection through the data source's strings.
+   raw->DetectSources(base::BindOnce(
+-      [](base::WeakPtr<content::WebUIDataSource> unused,
+-         AsideImportDataHandler* handler, content::WebUIDataSource* source) {
+-        base::ListValue ids;
+-        const ImporterList* list = handler->importer_list();
+-        for (size_t i = 0; list && i < list->count(); ++i) {
+-          if (const char* id =
+-                  BrowserIdForType(list->GetSourceProfileAt(i).importer_type)) {
+-            ids.Append(id);
+-          }
+-        }
++      [](content::WebUIDataSource* source, base::ListValue ids) {
+         std::string json;
+         base::JSONWriter::Write(ids, &json);
+         source->AddString("installedBrowsers", json);
+       },
+-      base::WeakPtr<content::WebUIDataSource>(), raw, source));
++      source));
+ }
+ 
+ AsideImportDataUI::~AsideImportDataUI() = default;
+--- /dev/null
++++ b/chrome/browser/ui/webui/aside_import_data/aside_import_data_session.h
+@@ -0,0 +1,87 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEBUI_ASIDE_IMPORT_DATA_ASIDE_IMPORT_DATA_SESSION_H_
++#define CHROME_BROWSER_UI_WEBUI_ASIDE_IMPORT_DATA_ASIDE_IMPORT_DATA_SESSION_H_
++
++#include <cstdint>
++#include <optional>
++#include <string>
++
++#include "base/functional/callback.h"
++#include "base/memory/raw_ptr.h"
++#include "chrome/browser/importer/external_process_importer_host.h"
++
++namespace aside {
++
++// Only the currently selected archive may be installed into the active
++// import's storage. Cancellation revokes outstanding asynchronous completions.
++class PendingSafariArchive {
++ public:
++  bool CanPick(bool import_active) const { return !pending_ && !import_active; }
++  std::optional<uint64_t> Begin(bool import_active) {
++    if (!CanPick(import_active)) return std::nullopt;
++    pending_ = true;
++    return ++generation_;
++  }
++  bool Complete(uint64_t generation, bool import_active) {
++    if (!pending_ || generation != generation_) return false;
++    pending_ = false;
++    return !import_active;
++  }
++  void Cancel() {
++    pending_ = false;
++    ++generation_;
++  }
++
++ private:
++  bool pending_ = false;
++  uint64_t generation_ = 0;
++};
++
++struct ImportDataResult {
++  enum class State { kImporting, kSucceeded, kFailed, kCancelled };
++  State state = State::kImporting;
++  std::string source_id;
++  std::string error_message;
++};
++
++// Binds the self-deleting import host to a WebUI lifetime. Utility failure and
++// cancellation are terminal outcomes, never implicit success. Destroying the
++// page detaches the observer before cancelling the host, so callbacks cannot
++// reach a destroyed handler or a document with JavaScript disallowed.
++class ImportDataSession : public importer::ImporterProgressObserver {
++ public:
++  using Completion = base::OnceCallback<void(ImportDataResult)>;
++
++  ImportDataSession(ExternalProcessImporterHost* host,
++                    uint16_t requested_items,
++                    std::string source_id,
++                    Completion completion);
++  ~ImportDataSession() override;
++  ImportDataSession(const ImportDataSession&) = delete;
++  ImportDataSession& operator=(const ImportDataSession&) = delete;
++
++  bool importing() const { return host_ != nullptr; }
++
++  void Abort();
++
++  void ImportStarted() override {}
++  void ImportItemStarted(user_data_importer::ImportItem) override {}
++  void ImportItemEnded(user_data_importer::ImportItem item) override;
++  void ImportFailed(const std::string& error_message) override;
++  void ImportCancelled() override;
++  void ImportEnded() override;
++
++ private:
++  raw_ptr<ExternalProcessImporterHost> host_;
++  const uint16_t requested_items_;
++  uint16_t completed_items_ = 0;
++  ImportDataResult result_;
++  Completion completion_;
++};
++
++}  // namespace aside
++
++#endif  // CHROME_BROWSER_UI_WEBUI_ASIDE_IMPORT_DATA_ASIDE_IMPORT_DATA_SESSION_H_
+--- a/chrome/browser/devtools/protocol/browser_handler.cc
++++ b/chrome/browser/devtools/protocol/browser_handler.cc
+@@ -34,6 +34,7 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+ #include "chrome/browser/ui/exclusive_access/exclusive_access_context.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/tabs/tab_group_model.h"
+ #include "components/privacy_sandbox/privacy_sandbox_attestations/privacy_sandbox_attestations.h"
+ #include "content/public/browser/browser_task_traits.h"
+ #include "content/public/browser/browser_thread.h"
+@@ -248,7 +249,7 @@
+     return protocol::Response::ServerError("Target is not in a tab group");
+   }
+   aside::SetAiTabsMetadata(
+-      *group, aside::AiTabsMetadata{badge_label.value_or(std::string()),
++      model->group_model()->GetTabGroup(*group), aside::AiTabsMetadata{badge_label.value_or(std::string()),
+                                     initial_origin.value_or(std::string())});
+   return protocol::Response::Success();
+ }
+--- a/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
++++ b/chrome/browser/ui/views/tabs/common/tab_group_header_view.cc
+@@ -499,7 +499,7 @@
+       ai_badge_icon_->SetImage(ui::ImageModel::FromVectorIcon(
+           kAsideWindowSparkleStrokeIcon, foreground_color, kIconSize));
+       std::optional<aside::AiTabsMetadata> metadata =
+-          aside::GetAiTabsMetadata(tab_group.id());
++          aside::GetAiTabsMetadata(&tab_group);
+       ai_badge_label_->SetText(
+           metadata && !metadata->badge_label.empty()
+               ? base::UTF8ToUTF16(metadata->badge_label)
+--- /dev/null
++++ b/chrome/browser/ui/webui/aside_import_data/aside_import_data_session.cc
+@@ -0,0 +1,81 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/webui/aside_import_data/aside_import_data_session.h"
++
++#include <utility>
++
++namespace aside {
++
++ImportDataSession::ImportDataSession(ExternalProcessImporterHost* host,
++                                   uint16_t requested_items,
++                                   std::string source_id,
++                                   Completion completion)
++    : host_(host),
++      requested_items_(requested_items),
++      completion_(std::move(completion)) {
++  result_.source_id = std::move(source_id);
++  host_->set_observer(this);
++}
++
++ImportDataSession::~ImportDataSession() {
++  Abort();
++}
++
++void ImportDataSession::Abort() {
++  if (!host_) {
++    return;
++  }
++  ExternalProcessImporterHost* host = host_.get();
++  host_ = nullptr;
++  completion_.Reset();
++  host->set_observer(nullptr);
++  host->Cancel();  // Deletes host. No callback to this observer is possible.
++}
++
++void ImportDataSession::ImportItemEnded(user_data_importer::ImportItem item) {
++  if (result_.state == ImportDataResult::State::kImporting) {
++    completed_items_ |= item & requested_items_;
++  }
++}
++
++void ImportDataSession::ImportFailed(const std::string& error_message) {
++  if (result_.state != ImportDataResult::State::kImporting) {
++    return;
++  }
++  result_.state = ImportDataResult::State::kFailed;
++  result_.error_message = error_message.empty() ? "Browser import failed"
++                                              : error_message;
++}
++
++void ImportDataSession::ImportCancelled() {
++  if (result_.state != ImportDataResult::State::kImporting) {
++    return;
++  }
++  result_.state = ImportDataResult::State::kCancelled;
++  result_.error_message = "Browser import was cancelled";
++}
++
++void ImportDataSession::ImportEnded() {
++  if (!host_) {
++    return;
++  }
++  host_ = nullptr;
++  if (result_.state == ImportDataResult::State::kImporting) {
++    if (requested_items_ && completed_items_ == requested_items_) {
++      result_.state = ImportDataResult::State::kSucceeded;
++    } else {
++      ImportFailed("Import ended before all selected data types completed");
++    }
++  }
++  // The callback may destroy this session. Use locals and do not touch
++  // members after invocation.
++  auto completion = std::move(completion_);
++  auto result = result_;
++  if (completion) {
++    std::move(completion).Run(std::move(result));
++  }
++}
++
++}  // namespace aside

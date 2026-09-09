@@ -1,0 +1,51 @@
+[
+  {
+    "namespace": "asideNotification",
+    "types": [],
+    "functions": [
+      {
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "isGranted",
+              "type": "boolean"
+            }
+          ]
+        },
+        "name": "requestPermission",
+        "type": "function"
+      },
+      {
+        "parameters": [
+          {
+            "name": "origin",
+            "type": "string"
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "parameters": [
+            {
+              "name": "isRevoked",
+              "type": "boolean"
+            }
+          ]
+        },
+        "name": "revokePermission",
+        "type": "function"
+      }
+    ],
+    "properties": {},
+    "events": [],
+    "platforms": null,
+    "deprecated": null,
+    "description": "Aside private API asideNotification (trusted bundled extensions only)."
+  }
+]

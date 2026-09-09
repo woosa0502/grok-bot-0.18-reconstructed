@@ -1,0 +1,1317 @@
+diff --git a/chrome/browser/prefs/browser_prefs.cc b/chrome/browser/prefs/browser_prefs.cc
+index 48394ef7d6..0c2a132b13 100644
+--- a/chrome/browser/prefs/browser_prefs.cc
++++ b/chrome/browser/prefs/browser_prefs.cc
+@@ -1484,6 +1484,14 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
+ 
+ #if BUILDFLAG(ENABLE_BACKGROUND_MODE)
+   BackgroundModeManager::RegisterPrefs(registry);
++  // Aside private browser-global preferences (RE: registered in the original's
++  // RegisterLocalState at 0x22c97b8; defaults read from the base::Value payloads).
++  registry->RegisterIntegerPref("aside.browser_preferences.browser_color_scheme", 0);
++  registry->RegisterBooleanPref(
++      "aside.browser_preferences.horizontal_tab_strip_shrink_to_fit_enabled", false);
++  registry->RegisterStringPref("aside.mini_popup.shortcut", "Alt+Space");
++  registry->RegisterBooleanPref("aside.mini_popup.enabled", false);
++  registry->RegisterBooleanPref("aside.browser_preferences.vertical_tabs_enabled", true);
+ #endif
+ 
+ #if BUILDFLAG(IS_ANDROID)
+@@ -1715,6 +1723,40 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
+   accessibility_annotator::prefs::RegisterProfilePrefs(registry);
+   AimEligibilityService::RegisterProfilePrefs(registry);
+   AnnouncementNotificationService::RegisterProfilePrefs(registry);
++  // Aside private per-profile preferences (RE: registered next to ntp.* in the
++  // original's RegisterProfilePrefs). Browser-global aside.* keys live in
++  // RegisterLocalState below.
++  // RE 0x336fd94: default true.
++  registry->RegisterBooleanPref("aside.tab_switcher.sort_by_recently_used", true);
++  registry->RegisterBooleanPref("aside.auto_pip.enabled", false);
++  // RE 0x336fdc4: default true.
++  registry->RegisterBooleanPref("aside.vertical_tabs.bookmarks_section_enabled",
++                                true);
++  registry->RegisterBooleanPref(
++      "aside.vertical_tabs.bookmarks_section_expanded", true);
++  registry->RegisterListPref(
++      "aside.vertical_tabs.expanded_bookmark_folder_ids");
++  // RE 0x336fa04: default -1 (no bound account).
++  registry->RegisterIntegerPref("aside.account_id", -1);
++  registry->RegisterStringPref("aside.account_user_id", std::string());
++  registry->RegisterStringPref("aside.profile_id", std::string());
++  registry->RegisterStringPref("aside.account_email", std::string());
++  registry->RegisterStringPref("aside.account_display_name", std::string());
++  registry->RegisterStringPref("aside.account_profile_url", std::string());
++  registry->RegisterBooleanPref("aside.account_auth_paused", false);
++  registry->RegisterBooleanPref("aside.account_has_persisted_session", false);
++  registry->RegisterBooleanPref("aside.bootstrap_complete", false);
++  registry->RegisterStringPref("aside.sync_auth_diagnostic_message",
++                               std::string());
++  registry->RegisterStringPref("aside.sync_encryption_diagnostic_message",
++                               std::string());
++  // Aside per-profile tab-strip pref (RE 0x31d56c4: bool, default false).
++  // vertical_tabs.enabled is registered by tab_strip_prefs.cc (default true in
++  // the Aside fork, RE 0x31d56e8).
++  registry->RegisterBooleanPref("horizontal_tab_strip.shrink_to_fit_enabled", false);
++  // Aside notification permission ledger (RE 0x3f39714): origin -> delivery mode.
++  registry->RegisterDictionaryPref(
++      "persistent_notifications.ai_delivery_mode_by_origin");
+   autofill::prefs::RegisterProfilePrefs(registry);
+   browsing_data::prefs::RegisterBrowserUserPrefs(registry);
+   capture_policy::RegisterProfilePrefs(registry);
+diff --git a/chrome/browser/ui/BUILD.gn b/chrome/browser/ui/BUILD.gn
+index 017a8c3ff7..4cce7be898 100644
+--- a/chrome/browser/ui/BUILD.gn
++++ b/chrome/browser/ui/BUILD.gn
+@@ -689,6 +689,7 @@ static_library("ui") {
+     "//chrome/browser/ui/webui/sanitized_image:sanitized_image_source",
+     "//chrome/browser/ui/webui/sync_internals",
+     "//chrome/browser/ui/webui/translate_internals",
++    "//chrome/browser/ui/webui/aside_import_data",
+     "//chrome/browser/ui/webui/version",
+     "//chrome/browser/ui/zoom",
+     "//chrome/browser/undo",
+@@ -4050,6 +4051,36 @@ static_library("ui") {
+       "views/frame/top_container_view.cc",
+       "views/frame/top_container_view.h",
+       "views/frame/top_controls_slide_controller.h",
++      "views/frame/aside_tab_search_bubble.cc",
++      "views/frame/aside_tab_search_bubble.h",
++      "views/tabs/aside_agent_tabs_button.cc",
++      "views/tabs/aside_agent_tabs_button.h",
++      "views/aside/aside_text_button.cc",
++      "views/aside/aside_text_button.h",
++      "views/frame/aside_profile_footer_view.cc",
++      "views/frame/aside_profile_footer_view.h",
++      "views/frame/aside_bookmarks_section_view.cc",
++      "views/frame/aside_bookmarks_section_view.h",
++      "views/frame/aside_task_views.cc",
++      "views/frame/aside_task_views.h",
++      "views/frame/aside_tab_switcher.cc",
++      "views/frame/aside_tab_switcher.h",
++      "views/frame/aside_tab_switcher_view.cc",
++      "views/frame/aside_tab_switcher_view.h",
++      "views/frame/aside_agent_control_banner.cc",
++      "views/frame/aside_agent_control_banner.h",
++      "views/frame/aside_vertical_tab_strip_additions.cc",
++      "aside/aside_fonts.cc",
++      "aside/aside_fonts.h",
++      "aside/aside_tasks_client.cc",
++      "aside/aside_tasks_client.h",
++      "aside/aside_agent_tabs.cc",
++      "aside/aside_agent_tabs.h",
++      "aside/aside_ai_tabs_metadata.cc",
++      "aside/aside_ai_tabs_metadata.h",
++      "aside/aside_extension_bridge.cc",
++      "aside/aside_extension_bridge.h",
++      "views/frame/aside_vertical_tab_strip_additions.h",
+       "views/frame/vertical_tab_strip_region_view.cc",
+       "views/frame/vertical_tab_strip_region_view.h",
+       "views/frame/web_contents_close_handler.cc",
+diff --git a/chrome/browser/ui/views/BUILD.gn b/chrome/browser/ui/views/BUILD.gn
+index 82aeb019c6..b81e4e5acb 100644
+--- a/chrome/browser/ui/views/BUILD.gn
++++ b/chrome/browser/ui/views/BUILD.gn
+@@ -37,6 +37,8 @@ component("views") {
+     "//components/lens",
+     "//components/lens:buildflags",
+     "//components/vector_icons",
++    "//chrome/browser/ui/views/aside/icons",
++    "//chrome/browser/ui/views/aside/fonts:aside_fonts",
+     "//content/public/browser",
+     "//printing/buildflags",
+     "//services/screen_ai/buildflags",
+diff --git a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
+index ecc6a1c81c..2e431f5c71 100644
+--- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
++++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
+@@ -4,6 +4,9 @@
+ 
+ #include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
+ 
++#include "chrome/browser/ui/views/frame/aside_profile_footer_view.h"
++#include "chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.h"
++
+ #include <algorithm>
+ #include <optional>
+ #include <variant>
+@@ -144,6 +147,22 @@ VerticalTabStripRegionView::VerticalTabStripRegionView(
+   top_button_separator_->SetProperty(
+       views::kMarginsKey, gfx::Insets::VH(0, region_horizontal_padding));
+ 
++  // Aside fork: the original's new-chat / tabs-header / organizer rows sit
++  // between the top separator and the tab list.
++  aside_additions_ =
++      AddChildView(std::make_unique<AsideVerticalTabStripAdditions>(
++          browser_view->browser()));
++  aside_additions_->SetProperty(
++      views::kMarginsKey, gfx::Insets::VH(0, region_horizontal_padding));
++  // Chromium 151's vertical tab strip already provides the original's
++  // context menu items (IDS 11709-11719 are Chromium strings).
++  aside_organizer_ = AddChildView(aside_additions_->TakeOrganizerView());
++  aside_organizer_->SetProperty(
++      views::kMarginsKey, gfx::Insets::VH(0, region_horizontal_padding));
++  aside_footer_ = AddChildView(std::make_unique<AsideProfileFooterView>(browser_view->browser()));
++  aside_footer_->SetProperty(
++      views::kMarginsKey, gfx::Insets::VH(0, region_horizontal_padding));
++
+   bottom_button_container_ =
+       AddChildView(std::make_unique<VerticalTabStripBottomContainer>(
+           state_controller_, root_action_item, browser_view->browser(),
+@@ -774,6 +793,15 @@ views::View* VerticalTabStripRegionView::SetTabStripView(
+   std::optional<size_t> separator_index = GetIndexOf(top_button_separator_);
+   CHECK(separator_index.has_value());
+   ReorderChildView(tab_strip_view_, separator_index.value() + 1);
++  // Aside fork: keep the new-chat / organizer rows above the tab list, as in
++  // the original (builder order: NewChatTabButton before the tab strip).
++  if (aside_additions_) {
++    ReorderChildView(aside_additions_, separator_index.value() + 1);
++    // tab list now sits at separator+2; the organizer sections follow it.
++    if (aside_organizer_) {
++      ReorderChildView(aside_organizer_, separator_index.value() + 3);
++    }
++  }
+ 
+   OnCollapseStateChanged(state_controller_->GetCollapseState());
+ 
+diff --git a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
+index 5d035b9eea..5df17dcee9 100644
+--- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
++++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
+@@ -33,6 +33,7 @@
+ #include "ui/views/focus/focus_manager.h"
+ 
+ class BrowserView;
++class AsideVerticalTabStripAdditions;
+ class VerticalTabStripTopContainer;
+ class VerticalTabStripBottomContainer;
+ class ShadowFrameView;
+@@ -250,6 +251,10 @@ class VerticalTabStripRegionView final
+   raw_ptr<views::FlexLayout> flex_layout_ = nullptr;
+ 
+   const raw_ptr<tabs::VerticalTabStripStateController> state_controller_;
++  // Aside fork: new chat / tidy / organizer rows (see the class comment).
++  raw_ptr<AsideVerticalTabStripAdditions> aside_additions_ = nullptr;
++  raw_ptr<views::View> aside_organizer_ = nullptr;
++  raw_ptr<views::View> aside_footer_ = nullptr;
+   std::optional<base::CallbackListSubscription>
+       expand_on_hover_enabled_changed_subscription_;
+   std::optional<base::CallbackListSubscription>
+diff --git a/chrome/browser/ui/webui/BUILD.gn b/chrome/browser/ui/webui/BUILD.gn
+index 9ad30f708e..7cfb0e7539 100644
+--- a/chrome/browser/ui/webui/BUILD.gn
++++ b/chrome/browser/ui/webui/BUILD.gn
+@@ -95,6 +95,7 @@ source_set("configs") {
+     "//chrome/browser/ui/webui/sync_internals",
+     "//chrome/browser/ui/webui/translate_internals",
+     "//chrome/browser/ui/webui/usb_internals",
++    "//chrome/browser/ui/webui/aside_import_data",
+     "//chrome/browser/ui/webui/version",
+     "//components/compose:buildflags",
+     "//components/lens:buildflags",
+diff --git a/chrome/browser/ui/views/frame/aside_bookmarks_section_view.h b/chrome/browser/ui/views/frame/aside_bookmarks_section_view.h
+new file mode 100644
+index 0000000000..03073bfcf8
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_bookmarks_section_view.h
+@@ -0,0 +1,61 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_BOOKMARKS_SECTION_VIEW_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_BOOKMARKS_SECTION_VIEW_H_
++
++#include <set>
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "components/bookmarks/browser/base_bookmark_model_observer.h"
++#include "components/prefs/pref_change_registrar.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/layout/box_layout_view.h"
++
++class Browser;
++
++namespace bookmarks {
++class BookmarkModel;
++class BookmarkNode;
++}  // namespace bookmarks
++
++class AsideTextButton;
++
++// Vertical tab strip "Bookmarks" section: the bookmark bar tree with
++// expandable folders. Driven by the prefs the original consumes
++// (aside.vertical_tabs.bookmarks_section_enabled / _expanded /
++// expanded_bookmark_folder_ids; RE strings in
++// vertical_tab_strip_region_view.cc, icons kAsideBookmarkFolderIcon /
++// kAsideBookmarkSolidIcon / kAsideChevronRightMediumStrokeIcon /
++// kAsideExpandMoreIcon).
++class AsideBookmarksSectionView : public views::BoxLayoutView,
++                                  public bookmarks::BaseBookmarkModelObserver {
++  METADATA_HEADER(AsideBookmarksSectionView, views::BoxLayoutView)
++
++ public:
++  explicit AsideBookmarksSectionView(Browser* browser);
++  ~AsideBookmarksSectionView() override;
++
++  void Rebuild();
++
++  // bookmarks::BaseBookmarkModelObserver:
++  void BookmarkModelChanged() override;
++
++ private:
++  void AddNodeRows(const bookmarks::BookmarkNode* node, int depth);
++  void ToggleSection();
++  void ToggleFolder(int64_t folder_id);
++  void OpenBookmark(int64_t node_id);
++  bool IsFolderExpanded(int64_t folder_id) const;
++  std::set<std::string> ExpandedFolderIds() const;
++
++  raw_ptr<Browser> browser_;
++  raw_ptr<bookmarks::BookmarkModel> model_ = nullptr;
++  raw_ptr<AsideTextButton> header_ = nullptr;
++  raw_ptr<views::View> rows_ = nullptr;
++  PrefChangeRegistrar pref_registrar_;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_BOOKMARKS_SECTION_VIEW_H_
+diff --git a/chrome/browser/ui/views/frame/aside_bookmarks_section_view.cc b/chrome/browser/ui/views/frame/aside_bookmarks_section_view.cc
+new file mode 100644
+index 0000000000..7a69b7db95
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_bookmarks_section_view.cc
+@@ -0,0 +1,196 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_bookmarks_section_view.h"
++
++#include <memory>
++#include <utility>
++
++#include "base/functional/bind.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/values.h"
++#include "chrome/browser/bookmarks/bookmark_model_factory.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/navigator/browser_navigator.h"
++#include "chrome/browser/ui/navigator/browser_navigator_params.h"
++#include "chrome/browser/ui/aside/aside_fonts.h"
++#include "chrome/browser/ui/views/aside/aside_text_button.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "components/bookmarks/browser/bookmark_model.h"
++#include "components/bookmarks/browser/bookmark_node.h"
++#include "components/bookmarks/browser/bookmark_utils.h"
++#include "components/prefs/pref_service.h"
++#include "components/prefs/scoped_user_pref_update.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/base/page_transition_types.h"
++#include "ui/base/window_open_disposition.h"
++#include "ui/color/color_id.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/views/controls/button/md_text_button.h"
++#include "ui/views/layout/box_layout.h"
++
++namespace {
++
++constexpr char kEnabledPref[] = "aside.vertical_tabs.bookmarks_section_enabled";
++constexpr char kExpandedPref[] =
++    "aside.vertical_tabs.bookmarks_section_expanded";
++constexpr char kExpandedFoldersPref[] =
++    "aside.vertical_tabs.expanded_bookmark_folder_ids";
++constexpr char16_t kBookmarksTitle[] = u"Bookmarks";
++constexpr int kIndent = 14;
++constexpr int kMaxRows = 40;
++
++}  // namespace
++
++AsideBookmarksSectionView::AsideBookmarksSectionView(Browser* browser)
++    : browser_(browser) {
++  SetOrientation(views::BoxLayout::Orientation::kVertical);
++  SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++
++  header_ = AddChildView(std::make_unique<AsideTextButton>(
++      base::BindRepeating(&AsideBookmarksSectionView::ToggleSection,
++                          base::Unretained(this)),
++      kBookmarksTitle, views::style::CONTEXT_BUTTON_MD));
++  header_->SetStyle(ui::ButtonStyle::kText);
++  header_->SetCustomPadding(gfx::Insets::VH(4, 8));
++  header_->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  header_->SetLabelStyle(views::style::STYLE_BODY_4_BOLD);
++  header_->SetImageLabelSpacing(4);
++  header_->SetLabelFontList(
++      aside::UiFontList(12, gfx::Font::Weight::SEMIBOLD));
++
++  auto rows = std::make_unique<views::BoxLayoutView>();
++  rows->SetOrientation(views::BoxLayout::Orientation::kVertical);
++  rows->SetCrossAxisAlignment(views::LayoutAlignment::kStretch);
++  rows_ = AddChildView(std::move(rows));
++
++  model_ = BookmarkModelFactory::GetForBrowserContext(browser_->profile());
++  if (model_) {
++    model_->AddObserver(this);
++  }
++  pref_registrar_.Init(browser_->profile()->GetPrefs());
++  auto rebuild = base::BindRepeating(&AsideBookmarksSectionView::Rebuild,
++                                     base::Unretained(this));
++  pref_registrar_.Add(kEnabledPref, rebuild);
++  pref_registrar_.Add(kExpandedPref, rebuild);
++  pref_registrar_.Add(kExpandedFoldersPref, rebuild);
++  Rebuild();
++}
++
++AsideBookmarksSectionView::~AsideBookmarksSectionView() {
++  if (model_) {
++    model_->RemoveObserver(this);
++  }
++}
++
++void AsideBookmarksSectionView::BookmarkModelChanged() {
++  Rebuild();
++}
++
++std::set<std::string> AsideBookmarksSectionView::ExpandedFolderIds() const {
++  std::set<std::string> ids;
++  for (const base::Value& v :
++       browser_->profile()->GetPrefs()->GetList(kExpandedFoldersPref)) {
++    if (v.is_string()) {
++      ids.insert(v.GetString());
++    }
++  }
++  return ids;
++}
++
++bool AsideBookmarksSectionView::IsFolderExpanded(int64_t folder_id) const {
++  return ExpandedFolderIds().contains(base::NumberToString(folder_id));
++}
++
++void AsideBookmarksSectionView::Rebuild() {
++  PrefService* prefs = browser_->profile()->GetPrefs();
++  const bool enabled = prefs->GetBoolean(kEnabledPref);
++  const bool expanded = prefs->GetBoolean(kExpandedPref);
++  SetVisible(enabled && model_ && model_->loaded());
++  header_->SetImageModel(
++      views::Button::STATE_NORMAL,
++      ui::ImageModel::FromVectorIcon(expanded ? kAsideExpandMoreIcon
++                                              : kAsideChevronRightMediumStrokeIcon,
++                                     ui::kColorIcon, 14));
++  rows_->RemoveAllChildViews();
++  rows_->SetVisible(expanded);
++  if (enabled && expanded && model_ && model_->loaded()) {
++    AddNodeRows(model_->bookmark_bar_node(), 0);
++  }
++  InvalidateLayout();
++  if (parent()) {
++    parent()->InvalidateLayout();
++  }
++}
++
++void AsideBookmarksSectionView::AddNodeRows(const bookmarks::BookmarkNode* node,
++                                            int depth) {
++  if (!node) {
++    return;
++  }
++  for (const auto& child : node->children()) {
++    if (rows_->children().size() >= kMaxRows) {
++      return;
++    }
++    const bool folder = child->is_folder();
++    const bool open = folder && IsFolderExpanded(child->id());
++    auto* row = rows_->AddChildView(std::make_unique<AsideTextButton>(
++        folder ? base::BindRepeating(&AsideBookmarksSectionView::ToggleFolder,
++                                     base::Unretained(this), child->id())
++               : base::BindRepeating(&AsideBookmarksSectionView::OpenBookmark,
++                                     base::Unretained(this), child->id()),
++        child->GetTitle()));
++    row->SetStyle(ui::ButtonStyle::kText);
++    row->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++    row->SetCustomPadding(gfx::Insets::TLBR(3, 8 + depth * kIndent, 3, 8));
++    row->SetImageLabelSpacing(6);
++    row->SetLabelFontList(aside::UiFontList(13));
++    row->SetTooltipText(folder ? child->GetTitle()
++                               : base::UTF8ToUTF16(child->url().spec()));
++    row->SetImageModel(
++        views::Button::STATE_NORMAL,
++        ui::ImageModel::FromVectorIcon(
++            folder ? (open ? kAsideExpandMoreIcon : kAsideBookmarkFolderIcon)
++                   : kAsideBookmarkSolidIcon,
++            ui::kColorIcon, 14));
++    if (open) {
++      AddNodeRows(child.get(), depth + 1);
++    }
++  }
++}
++
++void AsideBookmarksSectionView::ToggleSection() {
++  PrefService* prefs = browser_->profile()->GetPrefs();
++  prefs->SetBoolean(kExpandedPref, !prefs->GetBoolean(kExpandedPref));
++}
++
++void AsideBookmarksSectionView::ToggleFolder(int64_t folder_id) {
++  ScopedListPrefUpdate update(browser_->profile()->GetPrefs(),
++                              kExpandedFoldersPref);
++  const std::string id = base::NumberToString(folder_id);
++  base::ListValue& list = update.Get();
++  if (!list.EraseValue(base::Value(id))) {
++    list.Append(id);
++  }
++}
++
++void AsideBookmarksSectionView::OpenBookmark(int64_t node_id) {
++  if (!model_) {
++    return;
++  }
++  const bookmarks::BookmarkNode* node =
++      bookmarks::GetBookmarkNodeByID(model_, node_id);
++  if (!node || !node->is_url()) {
++    return;
++  }
++  NavigateParams params(browser_, node->url(),
++                        ui::PAGE_TRANSITION_AUTO_BOOKMARK);
++  params.disposition = WindowOpenDisposition::CURRENT_TAB;
++  Navigate(&params);
++}
++
++BEGIN_METADATA(AsideBookmarksSectionView)
++END_METADATA
+diff --git a/chrome/browser/ui/views/frame/aside_profile_footer_view.h b/chrome/browser/ui/views/frame/aside_profile_footer_view.h
+new file mode 100644
+index 0000000000..eb2d473b37
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_profile_footer_view.h
+@@ -0,0 +1,44 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_PROFILE_FOOTER_VIEW_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_PROFILE_FOOTER_VIEW_H_
++
++#include "base/memory/raw_ptr.h"
++#include "components/prefs/pref_change_registrar.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/views/layout/box_layout_view.h"
++
++class AsideTextButton;
++class Browser;
++
++namespace views {
++class ImageButton;
++}
++
++// Bottom row of the vertical tab strip: VerticalTabSidebarProfileButton
++// (avatar circle + account name + kAsideExpandMoreIcon; reads
++// aside.account_* prefs, incognito uses kAsideIncognitoRefreshMenuIcon) and
++// ProfileSearchButton (kAsideMagnifyingGlassStrokeIcon → tab search).
++// RE: vertical_tab_strip_region_view.cc 0x43fb000–0x440e000.
++class AsideProfileFooterView : public views::BoxLayoutView {
++  METADATA_HEADER(AsideProfileFooterView, views::BoxLayoutView)
++
++ public:
++  explicit AsideProfileFooterView(Browser* browser);
++  ~AsideProfileFooterView() override;
++
++  void UpdateFromPrefs();
++
++ private:
++  void OnProfilePressed();
++  void OnSearchPressed();
++
++  raw_ptr<Browser> browser_;
++  raw_ptr<AsideTextButton> profile_button_ = nullptr;
++  raw_ptr<views::ImageButton> search_button_ = nullptr;
++  PrefChangeRegistrar pref_registrar_;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_PROFILE_FOOTER_VIEW_H_
+diff --git a/chrome/browser/ui/views/frame/aside_profile_footer_view.cc b/chrome/browser/ui/views/frame/aside_profile_footer_view.cc
+new file mode 100644
+index 0000000000..064e4c0839
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/aside_profile_footer_view.cc
+@@ -0,0 +1,126 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/aside_profile_footer_view.h"
++
++#include <memory>
++#include <string>
++
++#include "base/functional/bind.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/app/chrome_command_ids.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/profiles/profile_attributes_entry.h"
++#include "chrome/browser/profiles/profile_attributes_storage.h"
++#include "chrome/browser/profiles/profile_manager.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/ui/aside/aside_fonts.h"
++#include "chrome/browser/ui/browser.h"
++#include "chrome/browser/ui/browser_commands.h"
++#include "chrome/browser/ui/views/aside/aside_text_button.h"
++#include "chrome/browser/ui/views/aside/icons/vector_icons.h"
++#include "chrome/browser/ui/views/frame/aside_tab_search_bubble.h"
++#include "components/prefs/pref_service.h"
++#include "components/vector_icons/vector_icons.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/base/models/image_model.h"
++#include "ui/color/color_id.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/views/controls/button/image_button.h"
++#include "ui/views/controls/button/image_button_factory.h"
++#include "ui/views/layout/box_layout.h"
++
++namespace {
++
++constexpr int kAvatarSize = 20;
++
++std::u16string ProfileDisplayName(Browser* browser) {
++  PrefService* prefs = browser->profile()->GetPrefs();
++  std::string name = prefs->GetString("aside.account_display_name");
++  if (name.empty()) {
++    name = prefs->GetString("aside.account_email");
++  }
++  if (name.empty()) {
++    ProfileManager* manager = g_browser_process->profile_manager();
++    if (manager) {
++      ProfileAttributesEntry* entry =
++          manager->GetProfileAttributesStorage().GetProfileAttributesWithPath(
++              browser->profile()->GetPath());
++      if (entry) {
++        return entry->GetName();
++      }
++    }
++  }
++  return base::UTF8ToUTF16(name);
++}
++
++}  // namespace
++
++AsideProfileFooterView::AsideProfileFooterView(Browser* browser)
++    : browser_(browser) {
++  SetOrientation(views::BoxLayout::Orientation::kHorizontal);
++  SetCrossAxisAlignment(views::LayoutAlignment::kCenter);
++  SetInsideBorderInsets(gfx::Insets::VH(6, 8));
++  SetBetweenChildSpacing(4);
++
++  auto profile = std::make_unique<AsideTextButton>(
++      base::BindRepeating(&AsideProfileFooterView::OnProfilePressed,
++                          base::Unretained(this)),
++      std::u16string(), views::style::CONTEXT_BUTTON_MD);
++  profile->SetStyle(ui::ButtonStyle::kText);
++  profile->SetHorizontalAlignment(gfx::ALIGN_LEFT);
++  profile->SetCustomPadding(gfx::Insets::VH(4, 6));
++  profile->SetImageLabelSpacing(6);
++  profile->SetLabelFontList(aside::UiFontList(13, gfx::Font::Weight::MEDIUM));
++  profile_button_ = AddChildView(std::move(profile));
++  SetFlexForView(profile_button_, 1);
++
++  auto search = views::CreateVectorImageButtonWithNativeTheme(
++      base::BindRepeating(&AsideProfileFooterView::OnSearchPressed,
++                          base::Unretained(this)),
++      kAsideMagnifyingGlassStrokeIcon, 18);
++  search->SetTooltipText(u"Search");
++  search_button_ = AddChildView(std::move(search));
++
++  pref_registrar_.Init(browser_->profile()->GetPrefs());
++  auto update = base::BindRepeating(&AsideProfileFooterView::UpdateFromPrefs,
++                                    base::Unretained(this));
++  for (const char* pref :
++       {"aside.account_display_name", "aside.account_email",
++        "aside.account_auth_paused", "aside.account_id"}) {
++    pref_registrar_.Add(pref, update);
++  }
++  UpdateFromPrefs();
++}
++
++AsideProfileFooterView::~AsideProfileFooterView() = default;
++
++void AsideProfileFooterView::UpdateFromPrefs() {
++  const bool incognito = browser_->profile()->IsIncognitoProfile();
++  const bool paused =
++      browser_->profile()->GetPrefs()->GetBoolean("aside.account_auth_paused");
++  profile_button_->SetText(ProfileDisplayName(browser_));
++  profile_button_->SetImageModel(
++      views::Button::STATE_NORMAL,
++      ui::ImageModel::FromVectorIcon(
++          incognito ? kAsideIncognitoRefreshMenuIcon
++                    : vector_icons::kAccountCircleChromeRefreshOldIcon,
++          paused ? ui::kColorAlertMediumSeverityIcon : ui::kColorIcon,
++          kAvatarSize));
++  profile_button_->SetTooltipText(
++      paused ? std::u16string(u"Sign-in paused")
++             : std::u16string(profile_button_->GetText()));
++}
++
++void AsideProfileFooterView::OnProfilePressed() {
++  chrome::ExecuteCommand(browser_, IDC_SHOW_AVATAR_MENU);
++}
++
++void AsideProfileFooterView::OnSearchPressed() {
++  AsideTabSearchBubbleContentsView::MaybeShow(search_button_,
++                                              browser_->profile());
++}
++
++BEGIN_METADATA(AsideProfileFooterView)
++END_METADATA
+diff --git a/chrome/browser/ui/views/aside/aside_text_button.h b/chrome/browser/ui/views/aside/aside_text_button.h
+new file mode 100644
+index 0000000000..50e7cd9016
+--- /dev/null
++++ b/chrome/browser/ui/views/aside/aside_text_button.h
+@@ -0,0 +1,23 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_ASIDE_ASIDE_TEXT_BUTTON_H_
++#define CHROME_BROWSER_UI_VIEWS_ASIDE_ASIDE_TEXT_BUTTON_H_
++
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/gfx/font_list.h"
++#include "ui/views/controls/button/md_text_button.h"
++
++// MdTextButton whose label font can be set (the Aside strip uses Geist).
++class AsideTextButton : public views::MdTextButton {
++  METADATA_HEADER(AsideTextButton, views::MdTextButton)
++
++ public:
++  using views::MdTextButton::MdTextButton;
++  ~AsideTextButton() override;
++
++  void SetLabelFontList(const gfx::FontList& font_list);
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_ASIDE_ASIDE_TEXT_BUTTON_H_
+diff --git a/chrome/browser/ui/views/aside/aside_text_button.cc b/chrome/browser/ui/views/aside/aside_text_button.cc
+new file mode 100644
+index 0000000000..c6db4a0a99
+--- /dev/null
++++ b/chrome/browser/ui/views/aside/aside_text_button.cc
+@@ -0,0 +1,17 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/aside/aside_text_button.h"
++
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/views/controls/label.h"
++
++AsideTextButton::~AsideTextButton() = default;
++
++void AsideTextButton::SetLabelFontList(const gfx::FontList& font_list) {
++  label()->SetFontList(font_list);
++}
++
++BEGIN_METADATA(AsideTextButton)
++END_METADATA
+diff --git a/chrome/browser/ui/aside/aside_fonts.h b/chrome/browser/ui/aside/aside_fonts.h
+new file mode 100644
+index 0000000000..af77d4f78f
+--- /dev/null
++++ b/chrome/browser/ui/aside/aside_fonts.h
+@@ -0,0 +1,34 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_ASIDE_ASIDE_FONTS_H_
++#define CHROME_BROWSER_UI_ASIDE_ASIDE_FONTS_H_
++
++#include <string>
++
++#include "ui/gfx/font.h"
++#include "ui/gfx/font_list.h"
++
++namespace aside {
++
++// Family name used by the original's vertical tab strip ("Geist" string in
++// vertical_tab_strip_region_view.cc).
++inline constexpr char kGeistFontFamily[] = "Geist";
++
++// Registers the bundled Geist TTFs (<exe dir>/aside_fonts) with fontconfig so
++// gfx::FontList("Geist, ...") resolves. Safe to call more than once.
++void RegisterBundledFonts();
++
++// "Geist" when registered, else the platform default family.
++std::string PreferredUiFontFamily();
++
++// Geist font list at `size` px with `weight` (registers the fonts first).
++gfx::FontList UiFontList(int size, gfx::Font::Weight weight);
++inline gfx::FontList UiFontList(int size) {
++  return UiFontList(size, gfx::Font::Weight::NORMAL);
++}
++
++}  // namespace aside
++
++#endif  // CHROME_BROWSER_UI_ASIDE_ASIDE_FONTS_H_
+diff --git a/chrome/browser/ui/aside/aside_fonts.cc b/chrome/browser/ui/aside/aside_fonts.cc
+new file mode 100644
+index 0000000000..c7ed2f6c41
+--- /dev/null
++++ b/chrome/browser/ui/aside/aside_fonts.cc
+@@ -0,0 +1,53 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/aside/aside_fonts.h"
++
++#include "base/base_paths.h"
++#include "base/files/file_enumerator.h"
++#include "base/files/file_path.h"
++#include "base/path_service.h"
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_LINUX)
++#include <fontconfig/fontconfig.h>
++#endif
++
++namespace aside {
++
++namespace {
++bool g_registered = false;
++}
++
++void RegisterBundledFonts() {
++  if (g_registered) {
++    return;
++  }
++  g_registered = true;
++#if BUILDFLAG(IS_LINUX)
++  base::FilePath dir;
++  if (!base::PathService::Get(base::DIR_MODULE, &dir)) {
++    return;
++  }
++  dir = dir.Append(FILE_PATH_LITERAL("aside_fonts"));
++  base::FileEnumerator files(dir, false, base::FileEnumerator::FILES,
++                             FILE_PATH_LITERAL("*.ttf"));
++  for (base::FilePath path = files.Next(); !path.empty();
++       path = files.Next()) {
++    FcConfigAppFontAddFile(
++        nullptr, reinterpret_cast<const FcChar8*>(path.value().c_str()));
++  }
++#endif
++}
++
++std::string PreferredUiFontFamily() {
++  return kGeistFontFamily;
++}
++
++gfx::FontList UiFontList(int size, gfx::Font::Weight weight) {
++  RegisterBundledFonts();
++  return gfx::FontList({kGeistFontFamily}, gfx::Font::NORMAL, size, weight);
++}
++
++}  // namespace aside
+diff --git a/chrome/browser/ui/views/aside/fonts/BUILD.gn b/chrome/browser/ui/views/aside/fonts/BUILD.gn
+new file mode 100644
+index 0000000000..9558d01864
+--- /dev/null
++++ b/chrome/browser/ui/views/aside/fonts/BUILD.gn
+@@ -0,0 +1,30 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++# Geist font family bundled by the original (Aside Framework.framework/
++# Resources/Geist-*.ttf). Copied next to the binary; registered with
++# fontconfig at startup by chrome/browser/ui/aside/aside_fonts.cc.
++copy("aside_fonts") {
++  sources = [
++    "Geist-Black.ttf",
++    "Geist-BlackItalic.ttf",
++    "Geist-Bold.ttf",
++    "Geist-BoldItalic.ttf",
++    "Geist-ExtraBold.ttf",
++    "Geist-ExtraBoldItalic.ttf",
++    "Geist-ExtraLight.ttf",
++    "Geist-ExtraLightItalic.ttf",
++    "Geist-Italic.ttf",
++    "Geist-Light.ttf",
++    "Geist-LightItalic.ttf",
++    "Geist-Medium.ttf",
++    "Geist-MediumItalic.ttf",
++    "Geist-Regular.ttf",
++    "Geist-SemiBold.ttf",
++    "Geist-SemiBoldItalic.ttf",
++    "Geist-Thin.ttf",
++    "Geist-ThinItalic.ttf",
++  ]
++  outputs = [ "$root_out_dir/aside_fonts/{{source_file_part}}" ]
++}
+diff --git a/chrome/browser/ui/webui/aside_import_data/BUILD.gn b/chrome/browser/ui/webui/aside_import_data/BUILD.gn
+new file mode 100644
+index 0000000000..386460953e
+--- /dev/null
++++ b/chrome/browser/ui/webui/aside_import_data/BUILD.gn
+@@ -0,0 +1,27 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++source_set("aside_import_data") {
++  sources = [
++    "aside_import_data_ui.cc",
++    "aside_import_data_ui.h",
++  ]
++  public_deps = [
++    "//content/public/browser",
++    "//ui/webui",
++  ]
++  deps = [
++    "//base",
++    "//chrome/browser:browser_process_impl",
++    "//chrome/browser/importer",
++    "//chrome/browser/profiles:profile",
++    "//chrome/browser/ui/select_file_policy",
++    "//components/user_data_importer/common",
++    "//content/public/common",
++    "//third_party/zlib/google:zip",
++    "//ui/base",
++    "//ui/shell_dialogs",
++  ]
++  data_deps = [ "//chrome/browser/resources/aside_import_data" ]
++}
+diff --git a/chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.h b/chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.h
+new file mode 100644
+index 0000000000..30864eeecb
+--- /dev/null
++++ b/chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.h
+@@ -0,0 +1,38 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEBUI_ASIDE_IMPORT_DATA_ASIDE_IMPORT_DATA_UI_H_
++#define CHROME_BROWSER_UI_WEBUI_ASIDE_IMPORT_DATA_ASIDE_IMPORT_DATA_UI_H_
++
++#include "content/public/browser/web_ui_controller.h"
++#include "content/public/browser/webui_config.h"
++#include "content/public/common/url_constants.h"
++
++class AsideImportDataUI;
++
++inline constexpr char kChromeUIAsideImportDataHost[] = "aside-import-data";
++
++// chrome://aside-import-data — the original's "Aside Importer" page
++// (aside_resources.pak 16140 index.html / 16141 app.js + browser icons).
++// The page reads loadTimeData "installedBrowsers" (JSON list of ids), sends
++// importFirefoxData / showProfilePicker / selectSafariExportZipFile and
++// listens for browser-import-started / -succeeded / -failed /
++// safari-import-invalid-file.
++class AsideImportDataUIConfig
++    : public content::DefaultWebUIConfig<AsideImportDataUI> {
++ public:
++  AsideImportDataUIConfig()
++      : DefaultWebUIConfig(content::kChromeUIScheme,
++                           kChromeUIAsideImportDataHost) {}
++};
++
++class AsideImportDataUI : public content::WebUIController {
++ public:
++  explicit AsideImportDataUI(content::WebUI* web_ui);
++  AsideImportDataUI(const AsideImportDataUI&) = delete;
++  AsideImportDataUI& operator=(const AsideImportDataUI&) = delete;
++  ~AsideImportDataUI() override;
++};
++
++#endif  // CHROME_BROWSER_UI_WEBUI_ASIDE_IMPORT_DATA_ASIDE_IMPORT_DATA_UI_H_
+diff --git a/chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.cc b/chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.cc
+new file mode 100644
+index 0000000000..ec9eda9a33
+--- /dev/null
++++ b/chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.cc
+@@ -0,0 +1,321 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.h"
++
++#include <memory>
++#include <string>
++#include <utility>
++#include <vector>
++
++#include "base/base_paths.h"
++#include "base/files/file_enumerator.h"
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/files/scoped_temp_dir.h"
++#include "base/functional/bind.h"
++#include "base/json/json_writer.h"
++#include "base/memory/ref_counted_memory.h"
++#include "base/memory/weak_ptr.h"
++#include "base/path_service.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/task/thread_pool.h"
++#include "base/values.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/importer/external_process_importer_host.h"
++#include "chrome/browser/importer/importer_list.h"
++#include "chrome/browser/importer/importer_progress_observer.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/importer/profile_writer.h"
++#include "chrome/browser/ui/select_file_policy/chrome_select_file_policy.h"
++#include "components/user_data_importer/common/importer_data_types.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_ui.h"
++#include "content/public/browser/web_ui_data_source.h"
++#include "content/public/browser/web_ui_message_handler.h"
++#include "net/base/mime_util.h"
++#include "third_party/zlib/google/zip.h"
++#include "ui/shell_dialogs/select_file_dialog.h"
++#include "ui/shell_dialogs/selected_file_info.h"
++
++namespace {
++
++constexpr char kSafariInvalidZip[] = "This is not a valid Safari data ZIP file.";
++constexpr char kChromiumImportFailed[] = "Chromium browser import failed";
++
++base::FilePath ResourceRoot() {
++  base::FilePath dir;
++  base::PathService::Get(base::DIR_MODULE, &dir);
++  return dir.Append(FILE_PATH_LITERAL("aside_resources"))
++      .Append(FILE_PATH_LITERAL("import_data"));
++}
++
++std::string ReadResource(const std::string& path) {
++  std::string rel = path.empty() ? "index.html" : path;
++  const size_t query = rel.find('?');
++  if (query != std::string::npos) {
++    rel = rel.substr(0, query);
++  }
++  if (rel.find("..") != std::string::npos) {
++    return std::string();
++  }
++  std::string contents;
++  base::ReadFileToString(ResourceRoot().AppendASCII(rel), &contents);
++  return contents;
++}
++
++bool ShouldServe(const std::string& path) {
++  return path.empty() || path == "index.html" || path == "app.js" ||
++         path.starts_with("icons/");
++}
++
++void ServeResource(const std::string& path,
++                   content::WebUIDataSource::GotDataCallback callback) {
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock()}, base::BindOnce(&ReadResource, path),
++      base::BindOnce(
++          [](content::WebUIDataSource::GotDataCallback callback,
++             std::string data) {
++            std::move(callback).Run(
++                base::MakeRefCounted<base::RefCountedString>(std::move(data)));
++          },
++          std::move(callback)));
++}
++
++const char* BrowserIdForType(user_data_importer::ImporterType type) {
++  switch (type) {
++    case user_data_importer::TYPE_FIREFOX:
++      return "firefox";
++#if BUILDFLAG(IS_MAC)
++    case user_data_importer::TYPE_SAFARI:
++      return "safari";
++#endif
++#if BUILDFLAG(IS_WIN)
++    case user_data_importer::TYPE_EDGE:
++      return "edge";
++#endif
++    default:
++      return nullptr;
++  }
++}
++
++// Result of unpacking a Safari export ZIP: the Bookmarks.html inside it.
++struct SafariArchive {
++  std::unique_ptr<base::ScopedTempDir> dir;
++  base::FilePath bookmarks_html;
++};
++
++SafariArchive UnpackSafariZip(const base::FilePath& zip) {
++  SafariArchive result;
++  result.dir = std::make_unique<base::ScopedTempDir>();
++  if (!result.dir->CreateUniqueTempDir() ||
++      !zip::Unzip(zip, result.dir->GetPath())) {
++    return result;
++  }
++  base::FileEnumerator files(result.dir->GetPath(), true,
++                             base::FileEnumerator::FILES,
++                             FILE_PATH_LITERAL("Bookmarks.html"));
++  result.bookmarks_html = files.Next();
++  return result;
++}
++
++class AsideImportDataHandler : public content::WebUIMessageHandler,
++                               public importer::ImporterProgressObserver,
++                               public ui::SelectFileDialog::Listener {
++ public:
++  AsideImportDataHandler() = default;
++  ~AsideImportDataHandler() override {
++    if (select_file_dialog_) {
++      select_file_dialog_->ListenerDestroyed();
++    }
++  }
++
++  // content::WebUIMessageHandler:
++  void RegisterMessages() override {
++    web_ui()->RegisterMessageCallback(
++        "importFirefoxData",
++        base::BindRepeating(&AsideImportDataHandler::HandleImportFirefox,
++                            base::Unretained(this)));
++    web_ui()->RegisterMessageCallback(
++        "showProfilePicker",
++        base::BindRepeating(&AsideImportDataHandler::HandleShowProfilePicker,
++                            base::Unretained(this)));
++    web_ui()->RegisterMessageCallback(
++        "selectSafariExportZipFile",
++        base::BindRepeating(&AsideImportDataHandler::HandleSelectSafariZip,
++                            base::Unretained(this)));
++  }
++
++  void DetectSources(base::OnceClosure done) {
++    importer_list_ = std::make_unique<ImporterList>();
++    importer_list_->DetectSourceProfiles(
++        g_browser_process->GetApplicationLocale(),
++        /*include_interactive_profiles=*/false, std::move(done));
++  }
++
++  const ImporterList* importer_list() const { return importer_list_.get(); }
++
++ private:
++  Profile* profile() { return Profile::FromWebUI(web_ui()); }
++
++  void HandleImportFirefox(const base::ListValue& args) {
++    AllowJavascript();
++    StartImportOfType(user_data_importer::TYPE_FIREFOX, "firefox");
++  }
++
++  void HandleShowProfilePicker(const base::ListValue& args) {
++    AllowJavascript();
++    const std::string id =
++        !args.empty() && args[0].is_string() ? args[0].GetString() : "chrome";
++    // Chromium-family sources are only detected on macOS / Windows.
++    user_data_importer::ImporterType type = user_data_importer::TYPE_UNKNOWN;
++#if BUILDFLAG(IS_WIN)
++    if (id == "edge") {
++      type = user_data_importer::TYPE_EDGE;
++    }
++#endif
++    if (type == user_data_importer::TYPE_UNKNOWN) {
++      FireWebUIListener("browser-import-failed", base::Value(id),
++                        base::Value(kChromiumImportFailed));
++      return;
++    }
++    StartImportOfType(type, id);
++  }
++
++  void HandleSelectSafariZip(const base::ListValue& args) {
++    AllowJavascript();
++    if (select_file_dialog_) {
++      return;
++    }
++    select_file_dialog_ = ui::SelectFileDialog::Create(
++        this, std::make_unique<ChromeSelectFilePolicy>(
++                  web_ui()->GetWebContents()));
++    ui::SelectFileDialog::FileTypeInfo types;
++    types.extensions = {{FILE_PATH_LITERAL("zip")}};
++    select_file_dialog_->SelectFile(
++        ui::SelectFileDialog::SELECT_OPEN_FILE, std::u16string(),
++        base::FilePath(), &types, 0, FILE_PATH_LITERAL("zip"),
++        web_ui()->GetWebContents()->GetTopLevelNativeWindow());
++  }
++
++  // ui::SelectFileDialog::Listener:
++  void FileSelected(const ui::SelectedFileInfo& file, int index) override {
++    select_file_dialog_.reset();
++    base::ThreadPool::PostTaskAndReplyWithResult(
++        FROM_HERE, {base::MayBlock()},
++        base::BindOnce(&UnpackSafariZip, file.path()),
++        base::BindOnce(&AsideImportDataHandler::OnSafariZipUnpacked,
++                       weak_factory_.GetWeakPtr()));
++  }
++  void FileSelectionCanceled() override { select_file_dialog_.reset(); }
++
++  void OnSafariZipUnpacked(SafariArchive archive) {
++    if (archive.bookmarks_html.empty()) {
++      FireWebUIListener("safari-import-invalid-file",
++                        base::Value(kSafariInvalidZip));
++      return;
++    }
++    safari_archive_ = std::move(archive);
++    user_data_importer::SourceProfile source;
++    source.importer_type = user_data_importer::TYPE_BOOKMARKS_FILE;
++    source.source_path = safari_archive_.bookmarks_html;
++    StartImport(source, user_data_importer::FAVORITES, "safari");
++  }
++
++  void StartImportOfType(user_data_importer::ImporterType type,
++                         const std::string& id) {
++    if (!importer_list_) {
++      FireWebUIListener("browser-import-failed", base::Value(id),
++                        base::Value(kChromiumImportFailed));
++      return;
++    }
++    for (size_t i = 0; i < importer_list_->count(); ++i) {
++      const user_data_importer::SourceProfile& source =
++          importer_list_->GetSourceProfileAt(i);
++      if (source.importer_type == type) {
++        StartImport(source,
++                    source.services_supported &
++                        (user_data_importer::HISTORY |
++                         user_data_importer::FAVORITES |
++                         user_data_importer::PASSWORDS |
++                         user_data_importer::SEARCH_ENGINES |
++                         user_data_importer::AUTOFILL_FORM_DATA),
++                    id);
++        return;
++      }
++    }
++    FireWebUIListener("browser-import-failed", base::Value(id),
++                      base::Value("No profile found for " + id));
++  }
++
++  void StartImport(const user_data_importer::SourceProfile& source,
++                   uint16_t items,
++                   const std::string& id) {
++    if (importing_) {
++      return;
++    }
++    importing_ = true;
++    current_id_ = id;
++    FireWebUIListener("browser-import-started", base::Value(id));
++    // ExternalProcessImporterHost deletes itself when the import ends.
++    ExternalProcessImporterHost* host = new ExternalProcessImporterHost();
++    host->set_observer(this);
++    host->StartImportSettings(source, profile(), items,
++                              new ProfileWriter(profile()));
++  }
++
++  // importer::ImporterProgressObserver:
++  void ImportStarted() override {}
++  void ImportItemStarted(user_data_importer::ImportItem item) override {}
++  void ImportItemEnded(user_data_importer::ImportItem item) override {}
++  void ImportEnded() override {
++    importing_ = false;
++    FireWebUIListener("browser-import-succeeded", base::Value(current_id_));
++    safari_archive_ = SafariArchive();
++  }
++
++  std::unique_ptr<ImporterList> importer_list_;
++  scoped_refptr<ui::SelectFileDialog> select_file_dialog_;
++  SafariArchive safari_archive_;
++  bool importing_ = false;
++  std::string current_id_;
++  base::WeakPtrFactory<AsideImportDataHandler> weak_factory_{this};
++};
++
++}  // namespace
++
++AsideImportDataUI::AsideImportDataUI(content::WebUI* web_ui)
++    : content::WebUIController(web_ui) {
++  Profile* profile = Profile::FromWebUI(web_ui);
++  content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
++      profile, kChromeUIAsideImportDataHost);
++  source->UseStringsJs();
++  source->DisableTrustedTypesCSP();
++  source->SetRequestFilter(base::BindRepeating(&ShouldServe),
++                           base::BindRepeating(&ServeResource));
++
++  auto handler = std::make_unique<AsideImportDataHandler>();
++  AsideImportDataHandler* raw = handler.get();
++  web_ui->AddMessageHandler(std::move(handler));
++  // installedBrowsers is read synchronously by the page; detection is async,
++  // so the page is served after detection through the data source's strings.
++  raw->DetectSources(base::BindOnce(
++      [](base::WeakPtr<content::WebUIDataSource> unused,
++         AsideImportDataHandler* handler, content::WebUIDataSource* source) {
++        base::ListValue ids;
++        const ImporterList* list = handler->importer_list();
++        for (size_t i = 0; list && i < list->count(); ++i) {
++          if (const char* id =
++                  BrowserIdForType(list->GetSourceProfileAt(i).importer_type)) {
++            ids.Append(id);
++          }
++        }
++        std::string json;
++        base::JSONWriter::Write(ids, &json);
++        source->AddString("installedBrowsers", json);
++      },
++      base::WeakPtr<content::WebUIDataSource>(), raw, source));
++}
++
++AsideImportDataUI::~AsideImportDataUI() = default;
+diff --git a/chrome/browser/resources/aside_import_data/BUILD.gn b/chrome/browser/resources/aside_import_data/BUILD.gn
+new file mode 100644
+index 0000000000..ac6ee12ceb
+--- /dev/null
++++ b/chrome/browser/resources/aside_import_data/BUILD.gn
+@@ -0,0 +1,39 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++# chrome://aside-import-data page assets (original aside_resources.pak entries
++# 16130-16141: index.html, app.js and the browser icons). Served from
++# <exe dir>/aside_resources/import_data by AsideImportDataUI.
++copy("aside_import_data_resources") {
++  sources = [
++    "app.js",
++    "index.html",
++  ]
++  outputs = [ "$root_out_dir/aside_resources/import_data/{{source_file_part}}" ]
++}
++
++copy("aside_import_data_icons") {
++  sources = [
++    "icons/arc.svg",
++    "icons/atlas.png",
++    "icons/check.svg",
++    "icons/chrome.svg",
++    "icons/comet.png",
++    "icons/dia.png",
++    "icons/edge.svg",
++    "icons/firefox.svg",
++    "icons/safari.png",
++    "icons/safari_import_guide.png",
++  ]
++  outputs = [
++    "$root_out_dir/aside_resources/import_data/icons/{{source_file_part}}",
++  ]
++}
++
++group("aside_import_data") {
++  data_deps = [
++    ":aside_import_data_icons",
++    ":aside_import_data_resources",
++  ]
++}
+diff --git a/chrome/browser/ui/webui/chrome_web_ui_configs.cc b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+index 184305a45a..9daa455588 100644
+--- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
++++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+@@ -2,6 +2,7 @@
+ // Use of this source code is governed by a BSD-style license that can be
+ // found in the LICENSE file.
+ 
++#include "chrome/browser/ui/webui/aside_import_data/aside_import_data_ui.h"
+ #include "chrome/browser/ui/webui/chrome_web_ui_configs.h"
+ 
+ #include "build/android_buildflags.h"
+@@ -252,6 +253,7 @@ void RegisterChromeWebUIConfigs() {
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+ 
+   auto& map = content::WebUIConfigMap::GetInstance();
++  map.AddWebUIConfig(std::make_unique<AsideImportDataUIConfig>());
+   map.AddWebUIConfig(std::make_unique<AccessibilityUIConfig>());
+   map.AddWebUIConfig(std::make_unique<AutofillInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<BluetoothInternalsUIConfig>());
