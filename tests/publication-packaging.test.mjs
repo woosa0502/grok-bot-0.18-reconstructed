@@ -75,7 +75,10 @@ test("Router settings use the trusted backend and Pi-owned Codex runtime", async
   assert.match(mainEdge, /invoke\(deps\.boxRecovery, "restartCoordinator"\)/);
   assert.match(mainEdge, /mode === "local-docker"\) await startLocalDockerBox\(settingsPath\); else await stopLocalDockerBox\(\)/);
   assert.match(mainEdge, /setBoxRuntime", mode === "local-docker" \? "remote" : "local-docker"/);
-  assert.match(localDocker, /public\.ecr\.aws\/k0i0n2g5\/cursorenvironments\/universal:sand-box-latest/);
+  // The local VM image is pinned by manifest digest (audit F07); the mutable tag is only recorded as the pin's origin.
+  assert.match(localDocker, /LOCAL_DOCKER_BOX_IMAGE_DIGEST = "sha256:[0-9a-f]{64}"/);
+  assert.match(localDocker, /LOCAL_DOCKER_BOX_IMAGE = `\$\{LOCAL_DOCKER_BOX_IMAGE_REPOSITORY\}@\$\{LOCAL_DOCKER_BOX_IMAGE_DIGEST\}`/);
+  assert.match(localDocker, /com\.grok-bot\.local-vm\.image-digest=/);
   assert.match(localDocker, /"127\.0\.0\.1:1340:1340"/);
   assert.match(localDocker, /SAND_BOX_AUTO_UPDATE=0/);
   assert.match(localDocker, /dst=\/home\/box\/sand-host,readonly/);
