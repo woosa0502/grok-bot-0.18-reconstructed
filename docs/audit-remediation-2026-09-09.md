@@ -36,7 +36,7 @@
 1. **Claude tool bridge** — **보류 (사용자 결정 2026-09-09: Claude provider를 쓰지 않음).** 코드는 원본 parity 범위라 유지하며, 현재 상태(스트리밍 + 미지원 capability 표시)가 최종이다. 설계 메모(나중에 필요해질 때용): host runner는 stream에서 `tool-call`을 받아 직접 실행하고 결과를 append 후 다시 stream()을 부르는 구조다. Claude Agent SDK는 자체 loop 안에서 tool을 실행하므로, in-process MCP server(`createSdkMcpServer`)의 handler가 `tool-call` 이벤트를 방출하고 다음 stream() 호출에서 append된 tool-result로 handler를 풀어 주는 "차단형 bridge"가 필요하다. JSON schema→Zod 변환, abort·오류 전파, executor 수명 관리가 걸린다. 하루 이상 걸리는 설계 작업이라 이번엔 capability 표시로 대신했다.
 2. **browser suite를 게이트에 넣기** — `vendor/aside-ext`(36MB)·extension-comparison 원본 자산을 LFS로 보관해야 advisory를 필수로 바꿀 수 있다.
 3. **WP6/WP7** — golden E2E lane과 91-row ledger. 범위가 커서 별도 결정.
-4. **906 patched 번들 recipe** — 907은 patch chain + CDP shutdown 패치로 거의 재현(잔여 1개 minified line, 현재 정확 순서 탐색 중). 906은 vendor 파일이 현재 chain보다 오래된 상태라 재현 불가; hash로만 고정.
+4. **patched 번들 recipe** — 탐색 결과(patch-daemon → linux/lifecycle/active-workloads/password-session/`--refresh-cdp-shutdown`의 모든 순서·부분집합) 907·906 모두 vendor 파일을 바이트 단위로 재현하는 순서는 없었다. 907은 CDP client 종료 패치가 든 minified 한 줄이 남고, 906은 vendor가 현재 chain보다 오래된 상태다. 둘 다 `research-archives/aside/artifacts.json`에 hash로 고정돼 있고, 재현 recipe는 다음 daemon 버전 갱신 때 chain을 다시 돌려 기록하는 것으로 미룬다.
 
 ## 검증 방법 (재현)
 
