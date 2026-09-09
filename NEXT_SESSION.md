@@ -1,4 +1,4 @@
-# 다음 세션 시작점 — Aside/Belmont (세션2 갱신 2026-09-09 15:25 KST)
+# 다음 세션 시작점 — Aside/Belmont (세션2 갱신 2026-09-09 16:20 KST)
 
 **작업 완료 판정이 아니다.** 세션2가 인계 문서의 다음 순서를 실행했고, 아래는 그 결과와 현재 살아 있는 상태다.
 
@@ -15,6 +15,12 @@
 ## 감사 보고서 조치 (같은 날 오후)
 
 GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 조치했다. 상세는 `docs/audit-remediation-2026-09-09.md`. 요약: F02·F04·F05·F06·F07 해결, F01은 launcher 범위 해결, F03은 스트리밍·capability만(부분). clean-checkout CI가 브랜치 HEAD에서 성공(run 34308536647). 오후 후반: C01 sandbox 파싱, for-chrome 웹 Origin guard(의도된 차이), browser suite CI 게이트 편입(LFS archive), 반복 루틴 실제 실행 검증, 골든 E2E 근거 장부, 91-row 기계적 대조까지 처리. 남은 것은 골든 E2E 시나리오 자체 구현(특히 not-covered 5건)과 91-row의 missingGate 실행(사용자 흐름 관찰), 성능 빌드(기준선 없음). Claude tool bridge는 사용자가 Claude provider를 쓰지 않기로 해 보류. 오후: 원본 함수 재사용으로 부팅 시 메모리 backfill과 저장된 답의 자동 재개를 연결(문서 하단 참조). 켜져 있는 primary는 다음 실행부터 반영.
+
+## 살아 있는 프로세스 (16:12 KST 재시작 후)
+
+- Belmont 호스트: tmux 세션 `belmont-bot`, runner 795498 / host 795526 / electron 795611, 게이트웨이 127.0.0.1:45026, 새 번들(settings 격리·provider promise 정착 포함). 로그 `data/artifacts/aside-remaining-closure-20260908/logs/host-restart-20260909T0712Z.log`. 죽어 있으면 `tmux new-session -d -s belmont-bot -c <repo> 'SAND_ASIDE_BROWSE=1 npm run wsl:start'`(Node 26.5, `tmux kill-server` 하지 말 것).
+- Aside primary: daemon 777293 / Chrome 777327 (`BELMONT_BROWSE_DISPLAY=:0 bash belmont-browse/run-fork.sh`, setsid). health의 memory.semantic available.
+- 골든 E2E는 스텁·계약 수준이다. 실동작 미수행 항목은 `docs/audit-remediation-2026-09-09.md` 맨 아래 표 참조.
 
 ## 새 세션이 먼저 할 일
 

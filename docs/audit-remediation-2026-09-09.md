@@ -135,3 +135,21 @@ source 포인터가 하나라도 없는 row: 0개. 상세: `data/artifacts/aside
 | E18 | e2e-stub | provider별 readiness (openrouter 키 유무, cursor, codex, claude CLI 유무) |
 
 집계: covered-by-ci 1, not-covered 4, covered-by-unit 4, covered-by-e2e-stub 3, covered-by-contract 6. root 1027 tests / 0 fail.
+
+## 호스트 재시작 (2026-09-09 16:12 KST, "재시작해서 확인해라")
+
+- 재시작 전 상태: 어제 23:34 KST에 띄운 호스트(runner 26784 / host 26813 / electron 27008)는 이미 죽어 있었다. 남은 것은 봇 데스크톱 Xvfb :100/:101/:108(설계상 분리 유지)과 모바일 서버(4188)뿐. 옛 번들에는 `quarantineUnreadable`가 없었다(호스트 쪽 수정 미반영).
+- `npm run wsl:setup`(Node 26.5)로 런타임 재빌드(약 60초). 새 번들 확인: settings 격리(`quarantineUnreadable`) 포함, provider 실패 시 파생 promise 정착(`Promise.race([promise, failure3.promise])`, esbuild가 이름 변경), `SAND_OPENROUTER_BASE_URL`, `runCleanupSteps`, `AsideLinkCorruptError` 모두 포함.
+- 기동: `tmux new-session -d -s belmont-bot -c <repo> 'SAND_ASIDE_BROWSE=1 npm run wsl:start'`. 로그 `data/artifacts/aside-remaining-closure-20260908/logs/host-restart-20260909T0712Z.log`.
+- 결과: runner 795498 / host 795526 / box-exec-daemon 795564(1337) / electron 795611. 게이트웨이 `http://127.0.0.1:45026`(auth required). `runtime-lineage.json` capturedAt 2026-09-09T07:12:01Z, git.head 106f69e. 호스트 로그에 `[browse-runtime] aside-browse subagent type enabled (service found)`. 로컬 데스크톱은 기존 :100을 재사용(x11vnc 5901 / websockify 6081 인수). settings.json 정상(version 1, provider codex), 격리 파일 없음. dbus 오류는 WSL Electron 상시 잡음.
+- Aside 쪽(primary daemon 777293 / Chrome 777327, 15:18 KST 기동)은 이미 새 코드로 돌고 있었다: `/health`의 memory.mode native, semantic.state available; serve 로그 `reconciled 0 persisted executions; 0 handed to the original suspension recovery`, `[memory] semantic search ready`.
+- 확인하지 않은 것: settings 격리의 실동작(사용자 설정 파일을 고의로 깨야 해서 단위 테스트 E15로만 확인), 실제 provider 턴에서의 promise 정착(스텁 E05/E06/E18로만 확인).
+
+### E2E와 실동작 테스트의 차이 (사용자 질문)
+
+| 구분 | 오늘 만든 골든 E2E | 실동작 테스트 |
+|---|---|---|
+| 외부 상대 | 스텁·계약(가짜 SSE 서버, 가짜 세션 스토어) | 진짜 OpenRouter/Codex, 진짜 Chromium, 진짜 사용자 흐름 |
+| 확인 대상 | 코드 경로가 계약대로 반응하는가 | 실제 환경에서 결과가 맞는가 |
+| 오늘 수행 | E05/E06/E18(스텁), E07~E12(계약), E13~E15(단위) | primary 재기동 + guard curl, Moss 실검색, 반복 루틴 실제 실행, 호스트 재시작 |
+| 미수행 | E02/E16(사용자 보류), E04/E17(환경상 불가) | 실제 provider 턴 오류 복구, 실제 브라우저 crash 복구, 사용자 흐름 91-row missingGate |
