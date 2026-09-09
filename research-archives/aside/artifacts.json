@@ -138,6 +138,17 @@
         "belmont-browse/test/local-web-search-native.test.mjs",
         "belmont-browse/test/numeric-fill-parity.test.mjs"
       ]
+    },
+    {
+      "kind": "original-daemon-bundle",
+      "version": "1.26.909.1820",
+      "path": "original/AsideDaemon-win-x64-1.26.909.1820.mjs",
+      "bytes": 10744442,
+      "sha256": "d3d791ce62d4656dbeffc0b3eb591a6bd8f5713c58cee624fc71e3f84d8a30a3",
+      "origin": "NODE_SEA blob (apps/daemon/build/sea/index.mjs) pulled from the Windows x64 daemon component AsideDaemon-1.26.909.1820.crx served by the Aside update server on 2026-09-09 (crx sha256 cdadde05… mac-x64 / same JS byte-for-byte in the macOS build); see docs/aside-909-daemon-comparison-2026-09-10.md",
+      "usedBy": [
+        "docs/aside-909-daemon-comparison-2026-09-10.md (upgrade planning; not wired into any engine yet)"
+      ]
     }
   ]
 }

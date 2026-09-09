@@ -1,6 +1,6 @@
 # 다음 세션 시작점 — Aside/Belmont (세션2 갱신 2026-09-09 19:20 KST)
 
-**작업 완료 판정이 아니다.** 시간순 진행 상황은 [진행 일지](docs/progress-log-2026-09-09.md)에 계속 쌓는다(맨 아래가 최신). 세션2가 인계 문서의 다음 순서를 실행했고, 아래는 그 결과와 현재 살아 있는 상태다.
+**작업 완료 판정이 아니다.** 시간순 진행 상황은 진행 일지에 계속 쌓는다(맨 아래가 최신): [9/9](docs/progress-log-2026-09-09.md), [9/10](docs/progress-log-2026-09-10.md). 세션2가 인계 문서의 다음 순서를 실행했고, 아래는 그 결과와 현재 살아 있는 상태다.
 
 먼저 [상세 인계 문서](data/artifacts/aside-remaining-closure-20260908/HANDOFF_20260909.md)를 읽되, 실행 상태는 이 문서와 [세션2 인계 부록](data/artifacts/aside-remaining-closure-20260908/HANDOFF_20260909_SESSION2.md), [적용된 테스트 수정 기록](data/artifacts/aside-remaining-closure-20260908/handoff-20260909/APPLIED_TEST_FIXES.md)이 우선한다.
 
@@ -29,7 +29,7 @@ GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 �
 
 ## Aside 신규 버전 (2026-09-09 밤 확인)
 
-원본은 1.26.908.1846(changelog)과 1.26.909.1820(업데이트 서버 제공)까지 나와 있다. 우리는 907. 909 CRX 3개는 `data/artifacts/aside-909-20260909/`에 받아 풀어 뒀다(미커밋). 올릴지는 사용자 결정. 절차 `belmont-browse/docs/UPGRADE.md`.
+원본은 1.26.908.1846(changelog)과 1.26.909.1820(업데이트 서버 제공)까지 나와 있다. 우리는 907. 909 CRX 3개는 `data/artifacts/aside-909-20260909/`에 받아 풀어 뒀다(미커밋). 올릴지는 사용자 결정. 절차 `belmont-browse/docs/UPGRADE.md`. 909 데몬과 우리 907 포트 비교·패치 체인 영향은 `docs/aside-909-daemon-comparison-2026-09-10.md`.
 
 ## 새 세션이 먼저 할 일
 
