@@ -58,3 +58,62 @@ npm run test:browser   # belmont-browse 140 + 20 (로컬 자산 필요)
 | 저장된 답이 있는 중단 세션 자동 재개 (C02) | 원본 `recoverSuspensionsOnStartup`이 이미 export돼 있었음 | `initializeLocalLifecycle`이 답/오류가 저장된 suspended 세션을 원본 복구 함수에 그대로 넘김(원본 reentry 예약). 답 없는 질문은 그대로 대기, running 세션은 기존처럼 명시 이어가기. export 없는 번들은 이전 동작 유지 |
 
 테스트: `tests/aside-session-restoration.test.mjs`에 5건 추가. patched 907 번들 pin(`research-archives/aside`)과 native build identity 갱신. **켜져 있는 primary는 다음 실행부터 반영**된다(번들은 기동 시 로드).
+
+## 골든 E2E 장부 (WP6, 2026-09-09 오후)
+
+완료 선언이 아니라 **지금 존재하는 근거의 분류**다. 상세 JSON: `docs/testing/golden-e2e-ledger-2026-09-09.json`.
+
+| ID | 시나리오 | 상태 | 남은 공백 |
+|---|---|---|---|
+| E01 | 빈 머신에서 bootstrap→check→build | covered-by-ci | macOS 패키지 launch·실제 turn은 CI에 없음 |
+| E02 | Aside native clean reconstruction | not-covered | 별도 머신에서 pinned base+snapshot 빌드 후 binary identity 대조 필요 |
+| E03 | stale artifact negative control | covered-by-unit | 실제 launcher 실행 거절은 run-fork.sh 경로에서 수동 확인만 |
+| E04 | 원본 Grok vs 재구성 host 동일 turn | not-covered | golden fixture/provider response corpus 없음 |
+| E05 | provider별 message→tool→continuation→UI | partial | 실제 provider 왕복·UI 표시·저장 transcript 대조 없음 |
+| E06 | provider 실패·중단·rate limit·auth 만료 | partial | rate limit·auth 만료·retry 범위 미검증 |
+| E07 | 실행 중 사용자 cancel 확인 | covered-by-contract | native 쪽 외부 action 0회 관측은 미수행 |
+| E08 | Aside 동일 timestamp 메시지 2개 | covered-by-contract | - |
+| E09 | reconnect replay + crash boundary | partial | emit/DB/cursor 경계 crash 주입 없음 |
+| E10 | 승인 대기 중 restart·stale approval | covered-by-contract | 실제 restart 사이클 없음 |
+| E11 | 3 agents 동시 실행, 1개 cancel | not-covered | 동시성 E2E 없음 |
+| E12 | browser crash 후 명시적 continuation | partial | 실제 browser crash 주입 없음 |
+| E13 | host SIGKILL과 TERM 무시 descendant | covered-by-unit | 전체 앱 종료 경로는 별개 |
+| E14 | cleanup 단계별 reject/hang | covered-by-unit | installShutdownHandlers 통합 실행은 미테스트 |
+| E15 | 손상된 link/settings/run state | partial | settings·run state 손상은 미검증 |
+| E16 | Docker clean install / image drift | not-covered | Docker daemon 없는 환경이라 실행 검증 불가 |
+| E17 | 원본 Aside vs native fork browser action corpus | not-covered | 원본 macOS 실행 환경 없음 |
+| E18 | Claude/OpenRouter-only 계정 routine/hook wake | partial | 실제 wake→turn 완료 E2E 없음 |
+
+집계: covered-by-ci 1, not-covered 5, covered-by-unit 3, partial 6, covered-by-contract 3. not-covered 5건(E02·E04·E11·E16·E17)은 별도 머신·원본 macOS 실행·Docker daemon·동시성 하네스가 필요하다.
+
+## 91-row 장부 기계적 대조 (WP7, 2026-09-09 오후)
+
+원본 91개 사용자 흐름 row를 범위 한정 검증 단위(L01~L14)에 연결하고 source/test 포인터 존재를 확인했다. **row 결론은 하나도 바꾸지 않았다.** row를 닫으려면 각 row의 missingGate(현재 primary에서 원본과 같은 상태를 1회 관찰·대조)를 실행해야 하는데, 오늘은 그 실행이 없었다.
+
+| 분류 | row 수 |
+|---|---|
+| 범위 한정 근거가 있는 흐름의 row | 47 |
+| 부분 근거만 있는 흐름의 row | 10 |
+| 연결된 검증 단위가 없는 row | 34 |
+
+source 포인터가 하나라도 없는 row: 0개. 상세: `data/artifacts/aside-remaining-closure-20260908/workers/workflow-ledger-reconciliation-20260909.json`(캠페인 디렉터리, git 무시). L14(필수 검사)는 모바일 2실패 해결로 `verified_scoped`로 갱신했고 ledger 무결성 검사는 PASS.
+
+## 성능 빌드 판단 (2026-09-09 오후)
+
+우리 Chromium은 `is_official_build=false`, `use_thin_lto=false`, PGO 없음이다(링크 메모리 때문에 선택). 원본 macOS official 빌드 대비 차이를 **측정할 기준이 없다**: 같은 플랫폼의 official 빌드가 없고 원본은 macOS 전용이다. 의미 있는 측정은 "현재 빌드 vs LTO+PGO 재빌드"뿐인데, 그 재빌드는 이 20GB 머신에서 링크가 버틸지 미지수이고 PGO 프로필 생성까지 수 시간이 든다. 결정: 지금은 진행하지 않는다. 필요해지면 (1) `use_thin_lto=true`만 켜서 링크 가능 여부를 먼저 확인하고, (2) Speedometer 3 로컬 사본으로 전후를 비교하는 순서로 한다.
+
+## 남은 항목 처리 (2026-09-09 오후, "남은거 다해라")
+
+| 항목 | 결과 | 근거 |
+|---|---|---|
+| C01 sandbox 옵션 파싱 | 해결. `0/false`로 끄면 정말 꺼지고, 알 수 없는 값은 거부. 기본값은 유지: 이 WSL에서는 sandbox 켠 실행이 멈춤(15초 headless 실행 미완료, `chrome_sandbox` 없음) | commit 173a573, `belmont-browse/test/chrome-sandbox-option.test.mjs` |
+| Moss 업로드 호출 지점 | daemon은 `.pushIndex(`를 이름으로 부르지 않는다(SDK wrapper 정의 1곳뿐). MemoryManager가 부르는 것은 `addDocs/deleteDocs/query/queryText/saveToDisk/loadFromDisk/loadIndex/close`. Moss 서비스 통신을 막아도 색인·질의가 정상이므로 업로드는 적어도 필수 경로가 아님. Rust 내부 자동 동기화 여부는 패킷 복호화 없이는 미확정 | 차단 실험 3종(문서 상단) |
+| `for-chrome` 인증 예외 | **의도된 차이로 보강.** native 탭 스트립(우리 Chromium 패치)과 확장이 토큰 없이 이 경로를 부르므로 토큰 요구는 불가. 대신 **웹 Origin이 붙은 변경 요청을 403**으로 거부(확장 origin·Origin 없는 native/CLI는 통과, GET/OPTIONS 무관). `BELMONT_BROWSE_FOR_CHROME_GUARD=enforce|report|off` | commit b728c79, `tests/aside-for-chrome-origin-guard.test.mjs` |
+| browser 테스트 게이트 편입 | 완료. 확장 자산·vendor 트리 6개를 LFS archive(56MB)로 고정, bootstrap이 없을 때만 풀어 놓음, CI에서 필수 단계로 전환. clean runner에서 160개 중 bwrap 3개가 user namespace 제한으로 실패 → sysctl 완화 + 실제 namespace probe 게이트 | commit 16d795c, 후속 commit |
+| 반복 루틴 실제 실행 | **검증됨.** 원본 스케줄러(`startRoutineScheduler`, 30초 tick)가 `FREQ=MINUTELY` 루틴을 06:15:37Z와 06:17:07Z에 두 번 실행(90초 간격: 첫 세션이 도는 동안의 tick은 원본 규칙대로 건너뜀), 두 세션 모두 정상 완료. 브라우저 binding 없이 만들면 원본이 "browser binding is missing"으로 스스로 일시정지함도 확인. 사용한 루틴은 일시정지·이름 표시, 세션은 보관 처리 | `belmont-browse/tools/verify-recurring-routine.mjs`, daemon 로그 |
+| guard 실제 동작 | primary 재기동 후 curl: 웹 Origin POST 403(로그 기록), 확장 Origin POST와 Origin 없는 POST는 원본 핸들러로 통과(404: 없는 id), 웹 Origin GET 200, 비-loopback Host 403(원본). health ready, memory native 유지 | `logs/primary-relaunch-20260909T1530Z-serve.log` |
+| 성능 빌드 | 진행 안 함(기준선 부재·링크 메모리). 위 "성능 빌드 판단" 참조 | |
+| 골든 E2E 18개 | 근거 분류 장부 작성(1 CI, 3 unit, 3 contract, 6 partial, 5 not-covered). 시나리오 자체 구현은 아님 | `docs/testing/golden-e2e-ledger-2026-09-09.json` |
+| 91-row 장부 | 기계적 대조만(결론 무변경): 근거 있는 흐름 47, 부분 10, 연결 없음 34 | 캠페인 `workers/workflow-ledger-reconciliation-20260909.json` |
+
+이 시점의 primary: daemon은 재기동으로 PID가 바뀌었고(`belmont-browse/.state/serve.json` 참조), guard·C01·warm-up·원본 복구 경로가 모두 적용된 상태다.
