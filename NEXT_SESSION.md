@@ -23,6 +23,10 @@ GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 �
 - 사용자가 본 "cyber" API 오류는 Claude Code 세션의 안전장치 메시지였다(Aside/Belmont 무관, 조치 없음).
 - 골든 E2E는 스텁·계약 수준이다. 포크 UI 실동작 점검(미니 팝업·옵션 창·탭 검색·PW 팝업·단축키)은 `belmont-browse/tools/check-fork-ui-*.mjs`로 격리 인스턴스에서 수행했고 결과는 `docs/audit-remediation-2026-09-09.md` 하단. 남은 것: PW 팝업 크기·위치의 원본 비교(원본 바이너리 필요), Escape 실제 키 입력.
 
+## 실사용 검증을 맡길 때
+
+`docs/real-use-test-plan-2026-09-09.md`를 그대로 지시서로 준다. 데몬이 필요한 시나리오는 사용자 primary에서 승인 아래 수행한다.
+
 ## 새 세션이 먼저 할 일
 
 ```bash
