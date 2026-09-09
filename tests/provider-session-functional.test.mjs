@@ -38,7 +38,7 @@ const built = await build({
 });
 const provider = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString("base64")}`);
 
-function fixture({ hold = false, fail = false } = {}) {
+function fixture({ hold = false, fail = false, partial = false } = {}) {
   const started = Promise.withResolvers();
   const release = Promise.withResolvers();
   const calls = [];
@@ -77,8 +77,16 @@ function fixture({ hold = false, fail = false } = {}) {
     claude: async function* (args) {
       const signal = args.options.abortController?.signal;
       const prompt = typeof args.prompt === "string" ? args.prompt : await Array.fromAsync(args.prompt);
-      calls.push({ kind: "claude-code", model: args.options.model, signal, prompt });
+      calls.push({ kind: "claude-code", model: args.options.model, signal, prompt, includePartialMessages: args.options.includePartialMessages, tools: args.options.tools });
       await wait(signal);
+      if (partial) {
+        // The CLI's partial-message stream: thinking, then text in two deltas, then the assembled result.
+        yield { type: "stream_event", event: { type: "content_block_start", content_block: { type: "thinking" } } };
+        yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "plan" } } };
+        yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "fix" } } };
+        yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "ture-ok" } } };
+        yield { type: "stream_event", event: { type: "message_stop" } };
+      }
       yield { type: "result", subtype: "success", result: "fixture-ok", session_id: "fixture", usage: { input_tokens: 1, output_tokens: 1 }, total_cost_usd: 0 };
     },
   };
@@ -243,4 +251,53 @@ test("Claude converts media URLs and reports unsupported attachments explicitly"
   assert.match(text, /audio requires media preprocessing/);
   assert.match(text, /video requires media preprocessing/);
   assert.doesNotMatch(text, /BINARY_SENTINEL|AUDIO_SENTINEL|VIDEO_SENTINEL/);
+});
+
+// ---- Audit F03: Claude on the authoritative host path streams incrementally and states its tool capability. ----
+
+test("claude-code: partial messages stream as they arrive and the final result is not repeated", async () => {
+  const f = fixture({ partial: true });
+  const executor = provider.createProviderPromptSession("claude-code", "fixture-model").getExecutor();
+  executor.appendMessages([{ role: "user", content: "fixture request" }]);
+  const { events, response } = await consume(executor.stream({}, "fixture-partial"));
+  assert.equal(f.calls[0].includePartialMessages, true);
+  assert.deepEqual(events.map(event => [event.type, event.textDelta]), [["reasoning", "plan"], ["text-delta", "fix"], ["text-delta", "ture-ok"]]);
+  assert.equal(response.messages[0].content[0].text, "fixture-ok");
+});
+
+test("claude-code: a result without partial events is still emitted once", async () => {
+  fixture();
+  const executor = provider.createProviderPromptSession("claude-code", "fixture-model").getExecutor();
+  const { events } = await consume(executor.stream({}, "fixture-whole"));
+  assert.deepEqual(events.map(event => event.textDelta), ["fixture-ok"]);
+});
+
+test("claude-code: host tool definitions are reported as unsupported once per executor instead of silently dropped", async () => {
+  fixture();
+  const reported = [];
+  provider.setClaudeHostToolGapReporterForTesting(count => reported.push(count));
+  try {
+    const executor = provider.createProviderPromptSession("claude-code", "fixture-model").getExecutor();
+    const definitions = [{ name: "read_file", inputSchema: { type: "object" } }, { name: "send_message", inputSchema: { type: "object" } }];
+    await consume(executor.stream({}, "fixture-tools-1", definitions));
+    await consume(executor.stream({}, "fixture-tools-2", definitions));
+    await consume(executor.stream({}, "fixture-tools-3"));
+    assert.deepEqual(reported, [2]);
+    assert.equal(provider.routedProviderCapabilities("claude-code").hostTools, false);
+    assert.equal(provider.routedProviderCapabilities("openrouter").hostTools, true);
+    process.env.SAND_CLAUDE_STRICT_TOOLS = "1";
+    try {
+      assert.throws(() => provider.createProviderPromptSession("claude-code", "fixture-model").getExecutor().stream({}, "fixture-strict", definitions), /text-only provider/);
+    } finally { delete process.env.SAND_CLAUDE_STRICT_TOOLS; }
+  } finally { provider.setClaudeHostToolGapReporterForTesting(null); }
+});
+
+test("routed provider readiness follows the selected provider's own credential or binary", () => {
+  assert.equal(provider.isRoutedProviderConfigured("claude-code"), true, "fixture CLI path resolves");
+  assert.equal(provider.isRoutedProviderConfigured("openrouter"), true, "fixture OPENROUTER_API_KEY is set");
+  const key = process.env.OPENROUTER_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  try { assert.equal(provider.isRoutedProviderConfigured("openrouter"), false); }
+  finally { process.env.OPENROUTER_API_KEY = key; }
+  assert.equal(provider.isRoutedProviderConfigured("codex"), false, "Codex readiness is the Pi credential, checked by the extension");
 });

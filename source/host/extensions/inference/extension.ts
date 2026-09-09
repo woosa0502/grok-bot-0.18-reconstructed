@@ -3,6 +3,7 @@ import type { SummarizationPromptSession } from "../../../packages/agent-summari
 import { isLocalCodexMode } from "../../../shared/node/local-codex-account.js";
 import { createPiCodexLoginSession } from "./pi-codex-login-session.js";
 import { getPiCodexAuthStatus, loginPiCodex, logoutPiCodex } from "./pi-codex-runtime.js";
+import { isRoutedProviderConfigured } from "./provider-session.js";
 
 export interface InferenceExtensionContext {
   deps: {
@@ -52,10 +53,19 @@ export function createAgentPromptSession(
   return owner.createSession(onRequestId, options);
 }
 
+/** A Claude Code- or OpenRouter-only account is ready when its selected provider has what it needs; Codex
+ * readiness is the Pi credential. Cursor readiness stays the upstream token check. */
+export async function routedProviderReady(settings: { getInferenceProvider?: () => string }, piConfigured: () => Promise<{ configured: boolean }> = () => getPiCodexAuthStatus()): Promise<boolean> {
+  const provider = settings.getInferenceProvider?.();
+  if (provider === "claude-code" || provider === "openrouter") return isRoutedProviderConfigured(provider);
+  if (provider === "codex") return (await piConfigured().catch(() => ({ configured: false }))).configured;
+  return false;
+}
+
 export const inferenceExtension = { id: "inference", dependencies: ["auth", "experiments", "settings"] as const, start(context: InferenceExtensionContext) { const listeners = new Set<() => void>(); const notify = () => { for (const listener of [...listeners]) listener(); }; return {
     // Run readiness gates routines/hooks/wakes (turn-execution.isRunReady). A Cursor
     // token is the upstream signal; in local Codex mode the Pi credential is.
-    isReady: async () => process.env.SAND_AGENT_MOCK_RESPONSE != null || context.deps.auth.peekAccessToken() !== null || (isLocalCodexMode(process.env) && (await getPiCodexAuthStatus().catch(() => ({ configured: false }))).configured),
+    isReady: async () => process.env.SAND_AGENT_MOCK_RESPONSE != null || context.deps.auth.peekAccessToken() !== null || (isLocalCodexMode(process.env) && (await getPiCodexAuthStatus().catch(() => ({ configured: false }))).configured) || await routedProviderReady(context.deps.settings),
     port: context.createPort(notify), onModelExperimentApplied(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }, createWebSearch: (args: unknown) => context.createWebSearch(args), createWebFetch: (args: unknown) => context.createWebFetch(args),
     // Pi Codex OAuth surface for the desktop account screen (local Codex mode): status,
     // background device-code login session, cancel, logout. See pi-codex-login-session.ts.

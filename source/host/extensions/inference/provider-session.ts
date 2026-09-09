@@ -24,6 +24,27 @@ interface ProviderMessage extends LabelMessage { role: string; content: string |
 type RoutedProvider = Exclude<SandInferenceProvider, "cursor">;
 type UsageRecord = { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number };
 type RoutedToolExecutor = (tool: Loose, args: unknown, toolCallId: string) => Promise<unknown>;
+
+/** What each routed provider can do on the authoritative host path. Claude Code runs its own agent loop
+ * inside the CLI, so the host's per-turn tool definitions (executed by the host runner) cannot be handed
+ * to it yet; it answers as a text-only provider and says so instead of silently dropping the tools. */
+export function routedProviderCapabilities(provider: RoutedProvider): { readonly hostTools: boolean; readonly incrementalStreaming: boolean } {
+  return { hostTools: provider !== "claude-code", incrementalStreaming: true };
+}
+export const CLAUDE_HOST_TOOLS_UNSUPPORTED = "Claude Code is a text-only provider in Grok Bot for now: the host's tool definitions cannot be handed to its own agent loop, so they were not offered on this turn. Select Codex or OpenRouter for tool-capable turns.";
+let claudeHostToolGapReporter: (droppedTools: number) => void = droppedTools => console.warn(`[inference] ${CLAUDE_HOST_TOOLS_UNSUPPORTED} (${droppedTools} tool definition(s) not offered)`);
+/** Test seam: observe or silence the once-per-executor capability notice. */
+export function setClaudeHostToolGapReporterForTesting(reporter: ((droppedTools: number) => void) | null): void {
+  claudeHostToolGapReporter = reporter ?? (droppedTools => console.warn(`[inference] ${CLAUDE_HOST_TOOLS_UNSUPPORTED} (${droppedTools} tool definition(s) not offered)`));
+}
+
+/** True when the selected routed provider has the credential/binary it needs to run a turn (Codex readiness is
+ * the Pi credential, checked by the inference extension). */
+export function isRoutedProviderConfigured(provider: RoutedProvider, modelId?: string): boolean {
+  if (provider === "claude-code") return resolveClaudeCodeCliPath() != null;
+  if (provider === "openrouter") { try { resolveOpenAiCompatibleTarget(modelId).apiKey(); return true; } catch { return false; } }
+  return false;
+}
 // "max" exists on the gpt-5.6 tier (Codex model catalog: low…xhigh, max); Pi clamps it per model.
 export type CodexReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 type ProviderExecutorContext = { readonly signal?: AbortSignal; readonly modelId?: string; readonly reasoning?: CodexReasoningEffort; readonly systemPrompt?: string };
@@ -305,6 +326,7 @@ function claudeExecutor(messages: readonly ProviderMessage[], invocationId: stri
     try {
       abortController.signal.throwIfAborted();
       let final: SDKResultMessage | undefined;
+      let streamed = "";
       const requestedModel = context?.modelId?.trim();
       const selectedModel = requestedModel != null && requestedModel.length > 0 && requestedModel !== "claude-code"
         ? requestedModel
@@ -323,16 +345,32 @@ function claudeExecutor(messages: readonly ProviderMessage[], invocationId: stri
           permissionMode: "default",
           maxTurns: mcpServerUrl == null ? 1 : 8,
           persistSession: false,
+          // Text and thinking arrive as they are produced instead of once with the final result.
+          includePartialMessages: true,
           ...(selectedModel == null || selectedModel.length === 0 ? {} : { model: selectedModel }),
         },
       })) {
+        if (message.type === "stream_event") {
+          const event = message.event as { type?: string; delta?: { type?: string; text?: string; thinking?: string } };
+          if (event.type !== "content_block_delta" || event.delta == null) continue;
+          if (event.delta.type === "text_delta" && typeof event.delta.text === "string" && event.delta.text.length > 0) {
+            streamed += event.delta.text;
+            yield { type: "text-delta" as const, textDelta: event.delta.text };
+          } else if (event.delta.type === "thinking_delta" && typeof event.delta.thinking === "string" && event.delta.thinking.length > 0) {
+            yield { type: "reasoning" as const, textDelta: event.delta.thinking };
+          }
+          continue;
+        }
         if (message.type === "result") final = message;
       }
       abortController.signal.throwIfAborted();
       if (final == null) throw new Error("Claude Code ended without a result.");
       if (final.subtype !== "success") throw new Error(final.errors.join("\n") || `Claude Code failed (${final.subtype}).`);
       const text = final.result;
-      if (text.length > 0) yield { type: "text-delta" as const, textDelta: text };
+      // Whatever already streamed is not repeated; only text the final result adds (or the whole result when
+      // the CLI sent no partial events) is emitted.
+      const remainder = streamed.length === 0 ? text : text.startsWith(streamed) ? text.slice(streamed.length) : streamed.endsWith(text) ? "" : text;
+      if (remainder.length > 0) yield { type: "text-delta" as const, textDelta: remainder };
       const input = final.usage.input_tokens;
       const output = final.usage.output_tokens;
       const cacheRead = final.usage.cache_read_input_tokens ?? 0;
@@ -438,6 +476,7 @@ function openRouterExecutor(
 }
 
 class ProviderPromptExecutor implements PromptExecutor {
+  #claudeToolGapReported = false;
   readonly #messages: ProviderMessage[];
   // Stable prompt-cache affinity key (strict-review P1-02, rev 2): the Pi runtime
   // maps sessionId to provider prompt-cache affinity. Executors are rebuilt every
@@ -491,7 +530,14 @@ class ProviderPromptExecutor implements PromptExecutor {
         this.#cacheSessionId,
       );
     }
-    if (this.provider === "claude-code") return claudeExecutor(this.getMessages(), invocationId, this.onUsage, undefined, undefined, providerContext(signalFromContext(ctx), modelFromContext(ctx) ?? this.modelId));
+    if (this.provider === "claude-code") {
+      const dropped = definitions?.length ?? 0;
+      if (dropped > 0) {
+        if (process.env.SAND_CLAUDE_STRICT_TOOLS === "1") throw new Error(CLAUDE_HOST_TOOLS_UNSUPPORTED);
+        if (!this.#claudeToolGapReported) { this.#claudeToolGapReported = true; claudeHostToolGapReporter(dropped); }
+      }
+      return claudeExecutor(this.getMessages(), invocationId, this.onUsage, undefined, undefined, providerContext(signalFromContext(ctx), modelFromContext(ctx) ?? this.modelId));
+    }
     return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, undefined, modelFromContext(ctx) ?? this.modelId, signalFromContext(ctx));
   }
 }
