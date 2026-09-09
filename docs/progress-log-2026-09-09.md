@@ -21,10 +21,11 @@
 | 19:4x | 사용자 질문 "개발자 모드였나?" 확인: 포크 소스에 DevTools 자동 열기 없음, 두 프로필 모두 확장 개발자 모드 꺼짐, 새 탭(Ctrl+T) 열어도 DevTools 대상 없음. 새 탭은 Aside 새 탭 페이지(검색/Ask) 정상 | 로그의 오류는 WSL 잡음 | shots-20260909/04-newtab.png |
 | 19:5x | 데몬 로그 error 47줄 원인 확인 | BAD_REQUEST 39줄(sessions.list 33 + routines 6)은 전부 15:06~15:13 KST, 이전 데몬 768546, 오류 문구 "accountId expected number, received undefined" = 반복 루틴 검증 도구 v1이 입력을 잘못 감싸 보낸 것(v2로 고친 뒤 15:15 실제 실행 성공). 사용자 흐름 아님, 현재 데몬엔 없음. 나머지 8줄은 클라우드 공유 미인증 4 + 존재하지 않는 세션 mark-read 시험 2 + 기타 | 조치 없음 | daemon-2026-09-09.log |
 | 20:1x | 실사용 검증 계획서 작성(다른 모델에게 맡길 지시서): 원칙·환경·판정·알려진 상태·시나리오 S0~S8·91-row 대응표·보고 형식 | `docs/real-use-test-plan-2026-09-09.md` | — |
+| 21:3x | 후속 모델(Opus)의 실사용 검증 보고서 검토(`data/artifacts/real-use-test-20260909/REPORT.md`) | 계획 68항목 중 12항목 실행, 실 인스턴스 PASS는 CDP 페이지 입력 기반(실제 키 아님). 환경 벽: WSLg :0 창에 xdotool 키가 안 닿음, 데몬 포트 고정으로 두 번째 전체 스택 불가. S7 Belmont·S8 장시간·S1~S5 손 조작·루틴·금고·도구별·Guard 실제 승인 미실행. 사용자 primary는 21:15 재기동됨(daemon 931697, 종료 보강 포함) | 다음 한 수: 점검 창에서 전체 스택을 Xvfb로 띄워 실제 키로 수행, 또는 사용자 손+모델 관찰 | REPORT.md |
 
 ## 지금 상태 (19:40)
 
-- 사용자 Aside: daemon 861840 / Chrome 861892, 수정 빌드(chrome sha 37528b8c…). Belmont 호스트: tmux `belmont-bot`, 게이트웨이 45026.
+- 사용자 Aside: daemon 931697 / Chrome 931737 (21:15 재기동, 후속 모델), 수정 빌드(chrome sha 37528b8c…), 런처 종료 보강 포함. Belmont 호스트: tmux `belmont-bot`, 게이트웨이 45026.
 - 로그에 보이는 "Chromium 오류"는 개발자 모드가 아니라 WSL 환경 잡음이다: Electron/Chromium이 시스템 D-Bus를 못 찾는 `ERROR:dbus/bus.cc`(호스트 로그 13줄, Aside 로그 24줄), 구글 구성요소 갱신/GCM 접속 실패(`MtcAnchorData`, `DEPRECATED_ENDPOINT`). 동작에 영향 없음. Belmont 앱의 DevTools는 F12 또는 Ctrl+Shift+I를 눌러야만 열린다.
 - Aside 데몬 로그의 error 47줄: 39줄은 오후 반복 루틴 검증 도구 v1의 잘못된 입력(아래 일지 19:5x 항목), 4줄은 클라우드 공유 미인증, 나머지는 시험 호출. 사용자 흐름의 오류는 없다(분류):
 
