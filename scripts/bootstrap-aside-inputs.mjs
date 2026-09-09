@@ -2,10 +2,13 @@
 /**
  * Hydrates the checksum-pinned Aside inputs that the repository checks need but git ignores:
  *  - verifies the untouched original daemon bundles under research-archives/aside/original (Git LFS), and
- *  - places the pinned patched daemon bundles at their belmont-browse/vendor targets when the archive carries them.
+ *  - places the pinned patched daemon bundles at their belmont-browse/vendor targets when the archive carries them,
+ *  - extracts the pinned extension/vendor archives the browser-harness suites read from fixed paths (only when absent),
+ *  - copies the originals to the historical campaign paths some tests still use (only when absent).
  * Nothing else under belmont-browse/vendor is touched. Fails loudly (exit 1) when an input is missing or
  * mismatched instead of letting a later test skip or fail on ENOENT.
  */
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -48,8 +51,27 @@ for (const item of manifest.artifacts) {
     await copyFile(file, target);
     if (await sha256(target) !== item.sha256) throw new Error(`copy of ${item.path} to ${item.target} did not verify`);
     report.push({ path: item.path, status: "placed", target: item.target });
+  } else if (item.kind === "archive") {
+    // Pinned upstream/derived trees the browser-harness suites read from fixed paths: extract once, never overwrite.
+    const check = path.join(repo, item.check);
+    if (await stat(check).catch(() => null)) { report.push({ path: item.path, status: "already extracted", target: item.extractTo }); continue; }
+    const target = path.join(repo, item.extractTo);
+    await mkdir(target, { recursive: true });
+    const extracted = spawnSync("tar", ["-xzf", file, "-C", target], { encoding: "utf8" });
+    if (extracted.status !== 0) throw new Error(`extracting ${item.path} into ${item.extractTo} failed: ${extracted.stderr}`);
+    if (!(await stat(check).catch(() => null))) throw new Error(`${item.path} extracted but ${item.check} is still missing`);
+    report.push({ path: item.path, status: "extracted", target: item.extractTo });
   } else {
     report.push({ path: item.path, status: "verified" });
+    // Tests written against the historical campaign layout read the originals there; provide that path too.
+    if (typeof item.legacyPath === "string") {
+      const legacy = path.join(repo, item.legacyPath);
+      if (await stat(legacy).catch(() => null)) { report.push({ path: item.path, status: "legacy path present", target: item.legacyPath }); continue; }
+      await mkdir(path.dirname(legacy), { recursive: true });
+      await copyFile(file, legacy);
+      if (await sha256(legacy) !== item.sha256) throw new Error(`copy of ${item.path} to ${item.legacyPath} did not verify`);
+      report.push({ path: item.path, status: "placed at legacy path", target: item.legacyPath });
+    }
   }
 }
 for (const row of report) console.log(`[bootstrap-aside] ${row.status}: ${row.path}${row.target ? ` -> ${row.target}` : ""}`);

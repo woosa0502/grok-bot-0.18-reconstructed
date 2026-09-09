@@ -13,3 +13,4 @@ research-archives/original/**/*.dmg filter=lfs diff=lfs merge=lfs -text
 research-archives/original/**/*.exe filter=lfs diff=lfs merge=lfs -text
 docs/testing/legacy-grok-2026-08-25/** -text -diff
 research-archives/aside/**/*.mjs filter=lfs diff=lfs merge=lfs -text
+research-archives/aside/**/*.tgz filter=lfs diff=lfs merge=lfs -text

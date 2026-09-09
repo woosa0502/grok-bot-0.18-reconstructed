@@ -13,7 +13,8 @@
       "usedBy": [
         "tests/aside-daemon-lifecycle-restoration.test.mjs",
         "belmont-browse patch chain (tools/patch-daemon*.py)"
-      ]
+      ],
+      "legacyPath": "data/artifacts/aside-restoration_20260907T041632Z/raw/AsideDaemon-mac-x64-1.26.906.1714.mjs"
     },
     {
       "kind": "original-daemon-bundle",
@@ -25,7 +26,8 @@
       "usedBy": [
         "tests/aside-password-session-restoration.test.mjs",
         "belmont-browse patch chain (tools/patch-daemon*.py)"
-      ]
+      ],
+      "legacyPath": "data/artifacts/aside-full-restoration_20260907T225545Z/raw/AsideDaemon-mac-x64-1.26.907.1712.mjs"
     },
     {
       "kind": "patched-daemon-bundle",
@@ -55,6 +57,86 @@
         "tests/aside-process-signal-drain.test.mjs",
         "tests/aside-native-memory-restoration.test.mjs",
         "belmont-browse/src/session.mjs ENGINES"
+      ]
+    },
+    {
+      "kind": "archive",
+      "path": "extensions/original-824-assets.tgz",
+      "bytes": 9868030,
+      "sha256": "88c16d4e23db986cf1770657e98b3e73ae5f2b7401491439ed2edfd25b23e83c",
+      "extractTo": "data/artifacts/aside-restoration_20260907T041632Z/raw/extension-comparison/original-824",
+      "check": "data/artifacts/aside-restoration_20260907T041632Z/raw/extension-comparison/original-824/assets",
+      "origin": "Aside Browsing Agent 1.26.824 extension assets (untouched)",
+      "note": "third-party upstream extension assets, pinned for the omnibox generation parity tests",
+      "usedBy": [
+        "belmont-browse/tests/omnibox-consumer-generation.test.mjs"
+      ]
+    },
+    {
+      "kind": "archive",
+      "path": "extensions/original-906-assets.tgz",
+      "bytes": 12790470,
+      "sha256": "c4f00ed782385c9d5ac6e67b2ead66c9cebcccf65d90eea282ba45c143ecd290",
+      "extractTo": "data/artifacts/aside-restoration_20260907T041632Z/raw/extension-comparison/original-906",
+      "check": "data/artifacts/aside-restoration_20260907T041632Z/raw/extension-comparison/original-906/assets",
+      "origin": "Aside Browsing Agent 1.26.906 extension assets (untouched)",
+      "note": "third-party upstream extension assets, pinned for the omnibox generation parity tests",
+      "usedBy": [
+        "belmont-browse/tests/omnibox-consumer-generation-907.test.mjs"
+      ]
+    },
+    {
+      "kind": "archive",
+      "path": "extensions/components-907.tgz",
+      "bytes": 14811386,
+      "sha256": "48d133e071ab23a35ae244c5ba207cbd8a06e36b096315f7d5649f31fedf2973",
+      "extractTo": "data/artifacts/aside-full-restoration_20260907T225545Z/reference-vm/components",
+      "check": "data/artifacts/aside-full-restoration_20260907T225545Z/reference-vm/components/AsideAgentManager/1.26.907.1712/assets",
+      "origin": "Aside component pair 1.26.907.1712 (Browsing Agent + Password Manager) as captured from the reference VM",
+      "note": "third-party upstream component archive; also the pristine baseline for belmont-browse/vendor/aside-components-907 (two omnibox assets are patched there)",
+      "usedBy": [
+        "belmont-browse/tests/omnibox-consumer-generation-907.test.mjs"
+      ]
+    },
+    {
+      "kind": "archive",
+      "path": "extensions/aside-ext.tgz",
+      "bytes": 10266899,
+      "sha256": "2f732ab651c02d3a383715e140c6161e0381f807f34a36a7dc888fddaf983fc2",
+      "extractTo": "belmont-browse/vendor",
+      "check": "belmont-browse/vendor/aside-ext/AsideAgentManager/assets",
+      "origin": "Aside Browsing Agent extension prepared for plain Chrome by tools/build-aside-ext.mjs (original files + private-API shim + omnibox generation patch)",
+      "note": "derived from the upstream extension; pinned by hash",
+      "usedBy": [
+        "belmont-browse/tests/omnibox-consumer-generation.test.mjs"
+      ]
+    },
+    {
+      "kind": "archive",
+      "path": "patched/aside-902-vendor.tgz",
+      "bytes": 2772448,
+      "sha256": "f0a444a87fe9ebf6cc8afb57df1685cff5380230b6a8fdd16a5597b99a18331a",
+      "extractTo": "belmont-browse/vendor",
+      "check": "belmont-browse/vendor/aside-902/apps/daemon/build/daemon.mjs",
+      "origin": "Aside daemon 1.26.902.1713 vendor tree (patched bundle + builtin skills)",
+      "note": "derived; pinned by hash",
+      "usedBy": [
+        "belmont-browse/test/local-web-search-native.test.mjs",
+        "belmont-browse/test/numeric-fill-parity.test.mjs"
+      ]
+    },
+    {
+      "kind": "archive",
+      "path": "patched/aside-824-vendor.tgz",
+      "bytes": 5190437,
+      "sha256": "c667474b79c4f326db981f66ae799319eae1b1452b9ecff8fdf4c9e4c6cb04af",
+      "extractTo": "belmont-browse/vendor",
+      "check": "belmont-browse/vendor/aside-824/apps/daemon/build/daemon.mjs",
+      "origin": "Aside daemon 1.26.824.2151 vendor tree (patched bundle + builtin skills)",
+      "note": "derived; pinned by hash",
+      "usedBy": [
+        "belmont-browse/test/local-web-search-native.test.mjs",
+        "belmont-browse/test/numeric-fill-parity.test.mjs"
       ]
     }
   ]
