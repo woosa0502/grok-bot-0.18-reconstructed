@@ -15015,10 +15015,10 @@ index 0000000000000000000000000000000000000000..a3ec07f7d9e3d4557c13d202fbba8daa
 +#endif  // CHROME_BROWSER_EXTENSIONS_API_ASIDE_MINI_POPUP_ASIDE_MINI_POPUP_API_H_
 diff --git a/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc
 new file mode 100644
-index 0000000000000000000000000000000000000000..90fd6276b773632417cc2b6dc6d375a5433c093e
+index 0000000000000000000000000000000000000000..680bb6e1ef48b8c52e52acce67ec7cec9c507f3d
 --- /dev/null
 +++ b/chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc
-@@ -0,0 +1,418 @@
+@@ -0,0 +1,422 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -15267,18 +15267,22 @@ index 0000000000000000000000000000000000000000..90fd6276b773632417cc2b6dc6d375a5
 +    const GURL& target_url,
 +    const blink::mojom::WindowFeatures& window_features) {
 +  if (!contents || !window_features.is_popup) {
++    VLOG(1) << "AsideMiniPopup: new window is not a popup";
 +    return false;
 +  }
 +  content::RenderFrameHost* opener = contents->GetOpener();
 +  if (!opener) {
++    VLOG(1) << "AsideMiniPopup: new window has no opener";
 +    return false;
 +  }
 +  MiniPopupService* service = Get(contents->GetBrowserContext());
 +  if (!service || !service->view_ || !service->view_->host()) {
++    VLOG(1) << "AsideMiniPopup: no mini popup host for this profile";
 +    return false;
 +  }
 +  content::WebContents* popup = service->view_->host()->host_contents();
 +  if (!popup || popup->GetPrimaryMainFrame() != opener) {
++    VLOG(1) << "AsideMiniPopup: opener is not the mini popup page";
 +    return false;
 +  }
 +  service->OpenOptionsWindow(std::move(contents), target_url, window_features);
@@ -81618,10 +81622,10 @@ index 0000000000000000000000000000000000000000..4b42cd29f515a192fd211a77076d9fc4
 +#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_PROFILE_FOOTER_VIEW_H_
 diff --git a/chrome/browser/ui/views/frame/aside_tab_search_bubble.cc b/chrome/browser/ui/views/frame/aside_tab_search_bubble.cc
 new file mode 100644
-index 0000000000000000000000000000000000000000..3dcd93fd44699a7acc74d011b3db8e7789a47c24
+index 0000000000000000000000000000000000000000..7f32324598d87017af5bf1c8e9effbfda73e0a82
 --- /dev/null
 +++ b/chrome/browser/ui/views/frame/aside_tab_search_bubble.cc
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,163 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -81641,6 +81645,10 @@ index 0000000000000000000000000000000000000000..3dcd93fd44699a7acc74d011b3db8e77
 +#include "base/task/sequenced_task_runner.h"
 +#include "ui/views/bubble/bubble_border.h"
 +#include "ui/views/bubble/bubble_dialog_delegate_view.h"
++#include "base/functional/bind.h"
++#include "base/memory/weak_ptr.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_contents_delegate.h"
 +#include "ui/views/layout/fill_layout.h"
 +#include "ui/views/widget/widget.h"
 +#include "url/gurl.h"
@@ -81682,7 +81690,7 @@ index 0000000000000000000000000000000000000000..3dcd93fd44699a7acc74d011b3db8e77
 +// Owns the delegate and the widget (CLIENT_OWNS_WIDGET) for one bubble
 +// instance and deletes itself when the bubble closes; the delegate must
 +// outlive the widget, so it is declared first (destroyed last).
-+class AsideTabSearchBubbleController {
++class AsideTabSearchBubbleController : public content::WebContentsDelegate {
 + public:
 +  AsideTabSearchBubbleController(views::View* anchor,
 +                                 Profile* profile,
@@ -81694,6 +81702,14 @@ index 0000000000000000000000000000000000000000..3dcd93fd44699a7acc74d011b3db8e77
 +    delegate_->SetShowTitle(false);
 +    delegate_->set_margins(gfx::Insets());
 +    auto contents = std::make_unique<AsideTabSearchBubbleContentsView>(profile);
++    // The page closes itself with window.close() on Escape and after picking a
++    // tab (tabsearch.js). A plain WebView's contents has no delegate, so that
++    // call did nothing and the bubble stayed open; route it here the way the
++    // top-chrome WebUI bubbles do (WebUIContentsWrapper::CloseContents).
++    web_contents_ = contents->web_view()->GetWebContents();
++    if (web_contents_) {
++      web_contents_->SetDelegate(this);
++    }
 +    delegate_->SetInitiallyFocusedView(contents->web_view());
 +    delegate_->SetContentsView(std::move(contents));
 +    widget_ = views::BubbleDialogDelegate::CreateBubble(
@@ -81703,9 +81719,31 @@ index 0000000000000000000000000000000000000000..3dcd93fd44699a7acc74d011b3db8e77
 +    widget_->Show();
 +  }
 +
-+  ~AsideTabSearchBubbleController() = default;
++  ~AsideTabSearchBubbleController() override {
++    if (web_contents_) {
++      web_contents_->SetDelegate(nullptr);
++      web_contents_ = nullptr;
++    }
++  }
++
++  // content::WebContentsDelegate:
++  void CloseContents(content::WebContents* source) override {
++    if (source != web_contents_) {
++      return;
++    }
++    // Runs inside the WebContents' own call stack: close once it unwinds.
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(&AsideTabSearchBubbleController::CloseBubble,
++                                  weak_factory_.GetWeakPtr()));
++  }
 +
 + private:
++  void CloseBubble() {
++    if (widget_ && !closing_) {
++      widget_->Close();
++    }
++  }
++
 +  void OnClosed(views::Widget::ClosedReason) {
 +    // Close can reenter while Hide() notifies native activation observers.
 +    // Keep handling it here until deferred destruction actually runs.
@@ -81725,6 +81763,9 @@ index 0000000000000000000000000000000000000000..3dcd93fd44699a7acc74d011b3db8e77
 +  bool closing_ = false;
 +  std::unique_ptr<views::BubbleDialogDelegate> delegate_;
 +  std::unique_ptr<views::Widget> widget_;
++  // Owned by the WebView inside delegate_; cleared before that is destroyed.
++  raw_ptr<content::WebContents> web_contents_ = nullptr;
++  base::WeakPtrFactory<AsideTabSearchBubbleController> weak_factory_{this};
 +};
 +
 +}  // namespace
@@ -81750,7 +81791,7 @@ index 0000000000000000000000000000000000000000..3dcd93fd44699a7acc74d011b3db8e77
 +END_METADATA
 diff --git a/chrome/browser/ui/views/frame/aside_tab_search_bubble.h b/chrome/browser/ui/views/frame/aside_tab_search_bubble.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..fd3f7427bb886d06a831271710dd54d4dbd04ebb
+index 0000000000000000000000000000000000000000..174e3f814e2e9dc487bb09283c6b3ef0ad91cfbf
 --- /dev/null
 +++ b/chrome/browser/ui/views/frame/aside_tab_search_bubble.h
 @@ -0,0 +1,49 @@
@@ -81796,7 +81837,7 @@ index 0000000000000000000000000000000000000000..fd3f7427bb886d06a831271710dd54d4
 +      Profile* profile,
 +      views::BubbleBorder::Arrow arrow = views::BubbleBorder::TOP_LEFT);
 +
-+  views::View* web_view() { return web_view_; }
++  views::WebView* web_view() { return web_view_; }
 +
 + private:
 +  raw_ptr<AsideTabSearchWebView> web_view_ = nullptr;

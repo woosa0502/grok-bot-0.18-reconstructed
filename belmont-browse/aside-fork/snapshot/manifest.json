@@ -1,13 +1,13 @@
 {
   "status": "SOURCE_CHECKPOINT_NOT_PARITY_APPROVAL",
-  "capturedAt": "2026-09-09T08:35:23.058664+00:00",
+  "capturedAt": "2026-09-09T09:28:27.436642+00:00",
   "upstream": "https://chromium.googlesource.com/chromium/src.git",
   "baseCommit": "cc5584af0df9786f00efdb71f666c6664f836c2d",
   "localHead": "1d00f53b564d073e80d6c90be81fb1ac0f90327f",
   "patch": {
     "path": "chromium.patch",
-    "bytes": 5368985,
-    "sha256": "f740946a1faf65e363f8e474ca5dff48f5082d3c844cf7a6043560c45c47257e"
+    "bytes": 5370789,
+    "sha256": "9ccaf6b2415e95bafa15fc5bfe9f4b757f4c119a125116ff9fa6ddd011a1872a"
   },
   "buildArgs": {
     "path": "args.gn",
@@ -906,8 +906,8 @@
     },
     {
       "path": "chrome/browser/extensions/api/aside_mini_popup/mini_popup_service.cc",
-      "bytes": 14566,
-      "sha256": "8c8be9c70b08e764876cb1f0d872229758826f9a025a10796d00e25600571a22",
+      "bytes": 14823,
+      "sha256": "a59fa9d37f52215c1ea4de3a5b8a32980f6eb6c6f3d9a0de4f8b7f682d6309b7",
       "mode": "100644",
       "untrackedAtCapture": false
     },
@@ -3853,15 +3853,15 @@
     },
     {
       "path": "chrome/browser/ui/views/frame/aside_tab_search_bubble.cc",
-      "bytes": 4570,
-      "sha256": "f811d1de73986b52fdca6063066d8c2b249881c332800554e4991bf8d3ae4747",
+      "bytes": 6073,
+      "sha256": "61369d720fb91d61503cb21fd212f9d4f65eb2e8417048e60b5594acd6a0fba4",
       "mode": "100644",
       "untrackedAtCapture": false
     },
     {
       "path": "chrome/browser/ui/views/frame/aside_tab_search_bubble.h",
-      "bytes": 1802,
-      "sha256": "81abd37c6ecf6f2a173daa5a4607859fff2cfd0cae4ccb49e577829be3382c0d",
+      "bytes": 1805,
+      "sha256": "84b2bb86e8c137ceff4309b7bd6e7b129789cf9a2f587ea6ef76bcddc289f764",
       "mode": "100644",
       "untrackedAtCapture": false
     },

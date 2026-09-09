@@ -167,8 +167,20 @@ source 포인터가 하나라도 없는 row: 0개. 상세: `data/artifacts/aside
 - **런처**: `/health`의 `ready`가 이제 브라우저 생존까지 포함하고 `browser:{pid,alive}`를 낸다, 브라우저 종료 시 로그. 다음 기동부터 반영(지금 primary는 이전 core.mjs로 떠 있음). 자동 재기동은 넣지 않았다(원본에도 없음).
 - **남은 것**: native 테스트 캠페인의 `sourceFingerprint`(b5051935…)는 수정 전 소스 기준이고 unit/browser_tests는 재빌드하지 않았다(변경 범위 1파일). Escape 경로는 실제 키 입력으로는 미검증(같은 `ExtensionHost::Close` 경로).
 
-### "cyber" API 오류 (사용자 보고, 미확인)
+### "cyber" API 오류 (확인됨: Claude Code 자체 안전장치, Aside/Belmont와 무관)
 
-- 호스트 로그, Belmont 대화 기록, Aside 데몬/serve 로그, Aside `state.db`, Chrome 프로필 어디에도 'cyber' 문구가 없다. 유일한 히트는 9/3 Belmont 봇의 Gmail 요약 "OpenAI: Secure your Trusted Access for Cyber account by Oct 1, 2026".
-- 16:43–16:51 테스트 구간의 데몬 기록: `sessions.shareStatus` UNAUTHORIZED(클라우드 공유 상태 조회, 로그인 없음), `passwordManager.vault.getSnapshot` "Password vault is locked", 그리고 크래시. 모델 호출 오류 기록은 없다.
-- 정확한 문구·화면을 받아야 원인을 확정할 수 있다.
+- 사용자가 본 문구는 이 작업 세션(Claude Code, Fable 5.1)의 안전장치 메시지였다: "Fable 5.1's safeguards flagged this message ... Details: [cyber]" (request req_011CesW6Qdv2NAfYFzotSREb). 사용자가 해당 메시지를 undo했다.
+- Aside·Belmont 쪽 로그 어디에도 없었던 이유가 이것이다. OpenAI/Codex 호출 오류가 아니며 계정·제품 설정과 무관하다. 조치할 것 없음.
+- 원인 추정: 브라우저 크래시 분석(스택 추적, 격리 namespace, 원격 디버깅으로 창 닫기 재현, 비밀번호 관리자 팝업)이 보안 공격 작업과 비슷하게 읽혀 메시지 단위로 걸린 것. 계정이 아니라 메시지 하나가 대상이다.
+
+## 포크 복원 UI 닫힘 경로 실동작 점검 (2026-09-09 저녁, 격리 인스턴스)
+
+도구 `belmont-browse/tools/check-fork-ui-close-paths.mjs`(격리 namespace + Xvfb + 스크래치 프로필, 사용자 데몬 도달 불가). 미니 팝업 → 옵션 창(`window.open(..., "popup=yes")`, 확장 JS와 같은 호출) → 옵션 창 `window.close()` → 미니 팝업 `window.close()` → Ctrl+Shift+A 탭 검색 → 탭 검색 페이지 `window.close()`.
+
+- **탭 검색 버블이 안 닫히던 문제(수정)**: 확장의 tabsearch.js는 Escape와 탭 선택 후 `window.close()`를 부른다. 복원한 `aside_tab_search_bubble.cc`는 일반 `views::WebView`만 써서 WebContents에 delegate가 없었고, 그 호출이 아무 일도 하지 않아 버블이 열린 채 남았다(수정 전 3회 모두 `bubbleGone:false`, 페이지 Escape·X11 Escape도 무효). 원본 top-chrome WebUI 버블(`WebUIContentsWrapper::CloseContents`)과 같은 방식으로 컨트롤러를 `content::WebContentsDelegate`로 만들고 `CloseContents` → 스택 풀린 뒤 `widget_->Close()`. 수정 후 3회 모두 `bubbleGone:true`.
+- **옵션 창**: 3회 모두 포크의 frameless 옵션 창으로 열림(`Browser.getWindowForTarget` = "Browser window not found", VLOG `AsideMiniPopup: options window`), `window.close()`로 닫힘. 그 전 바이너리에서 2회는 훅이 거절돼 일반 팝업 브라우저 창("Aside - Chromium")으로 열렸다(원인 미확정, 타이밍 의심). `MaybeOpenOptionsWindow`의 거절 사유를 VLOG(1)로 남기게 했다(`--vmodule=mini_popup_service=1`). 재발 시 그 로그로 추적.
+- **미니 팝업 `window.close()`**: 3회 모두 정상(어제 수정 재확인).
+- **주의(도구 한정)**: 새 호스트의 초기 about:blank 문서에서 `window.open`을 부르면 upstream content CHECK(`rfs_document_data_from_creator`, render_frame_host_impl.cc:5780)로 죽는다. 확장 코드는 그 문서에서 실행될 수 없으므로 사용자 경로가 아니다. 두 도구 모두 문서 commit을 기다린 뒤 동작한다.
+- **빌드·계보**: chrome 재링크, 체크포인트 재생성은 새 도구 `belmont-browse/tools/regenerate-source-checkpoint.py`(원 생성 방식 그대로; 변경 3파일만 차이, 깨끗한 base에 apply --check OK), build-identity 재기록(chrome sha 37528b8c…), verify OK, identity 테스트 5/5. 포크 index에 3파일 stage.
+- **사용자 primary 재기동(오늘 3번째)**: 18:29 KST, daemon 861840 / Chrome 861892, 새 런처 health `ready:true, browser:{pid, alive:true}`. 로그 `logs/primary-relaunch-20260909T0929Z-*.log`.
+- **미점검**: PW 팝업(원본 ExtensionPopup 경로라 close handler 있음, 실동작 미확인), 주소창 표시, 미니 팝업 단축키 실제 키 입력.

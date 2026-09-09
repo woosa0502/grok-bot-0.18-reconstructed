@@ -1,23 +1,23 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-09-09T08:36:48.862Z",
+  "recordedAt": "2026-09-09T09:28:27.500Z",
   "note": "Identity of the native Aside browser build the launcher may run. run-fork.sh verifies the binary and the snapshot inputs against this record before starting; re-record after every native build.",
   "chromium": {
     "baseCommit": "cc5584af0df9786f00efdb71f666c6664f836c2d",
     "localHead": "1d00f53b564d073e80d6c90be81fb1ac0f90327f",
-    "snapshotCapturedAt": "2026-09-09T08:35:23.058664+00:00"
+    "snapshotCapturedAt": "2026-09-09T09:28:27.436642+00:00"
   },
   "snapshotInputs": {
-    "manifest.json": "58e50b304c5768885115fe31d3eabe2402d6e415f40c0b6afe6e4b559f6e33b0",
-    "chromium.patch": "f740946a1faf65e363f8e474ca5dff48f5082d3c844cf7a6043560c45c47257e",
+    "manifest.json": "6cd68823ae54a6d42c64785f9a828c9cb50c4385d3150db63392599c54934389",
+    "chromium.patch": "9ccaf6b2415e95bafa15fc5bfe9f4b757f4c119a125116ff9fa6ddd011a1872a",
     "args.gn": "c9602823c4663012270b9fb2ff0639e8cb3d45c0ad39fdd338cecad69589e6ed",
     "dependencies.json": "970dc7fffd92217c593b6e7e07de688229d7c6ba44e0f44b3b59cc123df791d4"
   },
   "chrome": {
     "path": "/home/hoon/chromium/src/out/aside/chrome",
-    "bytes": 1756644648,
-    "mtimeNs": "1788942188916756672",
-    "sha256": "b2d5b6d70dbd05dd41fa60b3c062b8485fc842d6dd3e65852548a5a0d89b5c91"
+    "bytes": 1756653808,
+    "mtimeNs": "1788946009556096641",
+    "sha256": "37528b8c4c3c3d1d29374b658d7f3b7d9970feaa61272a433dad82958e762860"
   },
   "engine": "907",
   "daemonBundle": {

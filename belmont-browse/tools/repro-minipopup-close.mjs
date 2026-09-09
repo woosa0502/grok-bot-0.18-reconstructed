@@ -36,6 +36,10 @@ const send = (method, params = {}, sessionId) => new Promise((resolve) => { cons
 const targets = async () => (await send("Target.getTargets")).result.targetInfos;
 const attach = async (targetId) => (await send("Target.attachToTarget", { targetId, flatten: true })).result.sessionId;
 const evalIn = async (sessionId, expression) => (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, sessionId)).result;
+// Act only on the committed extension document: in the initial about:blank document of a fresh host, a
+// window.open() trips an upstream content CHECK (rfs_document_data_from_creator); no extension code can run
+// there, so that is a harness hazard, not a user path.
+const waitCommitted = async (sessionId, page, ms = 10_000) => { for (const deadline = Date.now() + ms; Date.now() < deadline;) { const s = (await evalIn(sessionId, "location.href.split('/').pop().split('?')[0] + ' ' + document.readyState")).result?.value; if (s === `${page} complete`) return true; await delay(100); } return false; };
 // 1. find an extension context that can call chrome.asideMiniPopup (service worker, else open sidepanel.html in a tab)
 let ctx = null;
 for (let i = 0; i < 40 && !ctx; i++) {
@@ -61,6 +65,7 @@ out({ step: "open-popup", call: first.call, popup: first.popup ? { type: first.p
 if (!first.popup) { await send("Browser.close"); process.exit(3); }
 // 2. the page closes itself
 const popupSession = await attach(first.popup.targetId);
+out({ step: "popup-committed", committed: await waitCommitted(popupSession, "minipopup.html") });
 const closeResult = await Promise.race([evalIn(popupSession, "window.close(); 'called'"), delay(5000).then(() => "no-reply")]);
 await delay(3000);
 out({ step: "window.close", result: closeResult?.result?.value ?? closeResult, alive: alive(), exited });
@@ -71,6 +76,7 @@ const second = await openPopup();
 let secondClose = null;
 if (second.popup) {
   const s = await attach(second.popup.targetId);
+  await waitCommitted(s, "minipopup.html");
   secondClose = (await Promise.race([evalIn(s, "window.close(); 'called'"), delay(5000).then(() => "no-reply")]))?.result?.value ?? "no-reply";
   await delay(2000);
 }
