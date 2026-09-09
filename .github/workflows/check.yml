@@ -25,8 +25,19 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Hydrate the checksum-pinned shipped runtime
         run: npm run bootstrap
+      - name: Install the system tools the media and document tests spawn
+        run: sudo apt-get install -y -qq ffmpeg poppler-utils && ffmpeg -version | head -1 && pdftotext -v 2>&1 | head -1
+      - name: Install the browser harness's locked dependency graph
+        run: npm ci --no-audit --no-fund --prefix belmont-browse
+      - name: Hydrate the checksum-pinned Aside inputs
+        run: npm run bootstrap:aside
       - name: Run source and publication checks
         run: npm run check
+      # Advisory until the extension assets these need (vendor/aside-ext, extension-comparison originals) are
+      # archived like the daemon bundles; the log is kept so a red run here is visible, not hidden.
+      - name: Run the browser harness suites (advisory)
+        run: npm run test:browser
+        continue-on-error: true
       - name: Build the editable frontend
         run: npm run frontend:build
       - name: Verify a fresh clean-history export is lossless

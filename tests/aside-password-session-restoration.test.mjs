@@ -6,9 +6,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import vm from "node:vm";
 import { parseExpressionAt } from "acorn";
+import { resolveAsideOriginal } from "./helpers/aside-originals.mjs";
 
 const repo = path.resolve(import.meta.dirname, "..");
-const source = readFileSync(path.join(repo, "data/artifacts/aside-full-restoration_20260907T225545Z/raw/AsideDaemon-mac-x64-1.26.907.1712.mjs"), "utf8");
+const source = readFileSync(resolveAsideOriginal("1.26.907.1712"), "utf8");
 const patcher = path.join(repo, "belmont-browse/tools/patch-password-session.py");
 const dir = mkdtempSync(path.join(tmpdir(), "aside-password-lock-"));
 after(() => rmSync(dir, { recursive: true, force: true }));

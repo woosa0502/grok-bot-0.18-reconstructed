@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "product": "Aside Daemon component",
+  "note": "Third-party upstream artifacts pinned for reproducible checks only. No upstream license is asserted or granted (see NOTICE.md).",
+  "artifacts": [
+    {
+      "kind": "original-daemon-bundle",
+      "version": "1.26.906.1714",
+      "path": "original/AsideDaemon-mac-x64-1.26.906.1714.mjs",
+      "bytes": 10560831,
+      "sha256": "98f9f8d507965eb95527ae345513e76102a5e909d003e7423841b0d6a9701529",
+      "origin": "NODE_SEA blob of the Aside Daemon component (apps/daemon/build/sea/index.mjs) extracted from the macOS x64 component package; see belmont-browse/docs/UPGRADE.md",
+      "usedBy": [
+        "tests/aside-daemon-lifecycle-restoration.test.mjs",
+        "belmont-browse patch chain (tools/patch-daemon*.py)"
+      ]
+    },
+    {
+      "kind": "original-daemon-bundle",
+      "version": "1.26.907.1712",
+      "path": "original/AsideDaemon-mac-x64-1.26.907.1712.mjs",
+      "bytes": 10561528,
+      "sha256": "241ef4316728a3a1b83a628082e036a396a1476bb9d301af4a5c5ce905b487dd",
+      "origin": "NODE_SEA blob of the Aside Daemon component (apps/daemon/build/sea/index.mjs) extracted from the macOS x64 component package; see belmont-browse/docs/UPGRADE.md",
+      "usedBy": [
+        "tests/aside-password-session-restoration.test.mjs",
+        "belmont-browse patch chain (tools/patch-daemon*.py)"
+      ]
+    },
+    {
+      "kind": "patched-daemon-bundle",
+      "version": "1.26.906.1714",
+      "path": "patched/aside-906-daemon.mjs",
+      "bytes": 10566858,
+      "sha256": "9d5c7dc20b3a08c776fc7c65b1fe9e928bca69fbf47c73d60482dcca13c42759",
+      "target": "belmont-browse/vendor/aside-906/apps/daemon/build/daemon.mjs",
+      "derivedFrom": "original/AsideDaemon-mac-x64-1.26.906.1714.mjs",
+      "derivation": "belmont-browse/tools/patch-daemon*.py chain applied by the maintainer; the exact reproducible recipe is not yet recorded (source-of-truth work package), so the output is pinned by hash here",
+      "usedBy": [
+        "tests/aside-process-signal-drain.test.mjs",
+        "tests/aside-native-memory-restoration.test.mjs",
+        "belmont-browse/src/session.mjs ENGINES"
+      ]
+    },
+    {
+      "kind": "patched-daemon-bundle",
+      "version": "1.26.907.1712",
+      "path": "patched/aside-907-daemon.mjs",
+      "bytes": 10594408,
+      "sha256": "8b8507340c71b4310f09c1eb04e3f94705c8bc530e402bcf0e32b7c84ade77fa",
+      "target": "belmont-browse/vendor/aside-907/apps/daemon/build/daemon.mjs",
+      "derivedFrom": "original/AsideDaemon-mac-x64-1.26.907.1712.mjs",
+      "derivation": "belmont-browse/tools/patch-daemon*.py chain applied by the maintainer; the exact reproducible recipe is not yet recorded (source-of-truth work package), so the output is pinned by hash here",
+      "usedBy": [
+        "tests/aside-process-signal-drain.test.mjs",
+        "tests/aside-native-memory-restoration.test.mjs",
+        "belmont-browse/src/session.mjs ENGINES"
+      ]
+    }
+  ]
+}

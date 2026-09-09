@@ -6,10 +6,11 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import vm from "node:vm";
+import { resolveAsideOriginal } from "./helpers/aside-originals.mjs";
 
 // Read the pinned daemon as text. Never import it: that would boot real services.
 const repo = path.resolve(import.meta.dirname, "..");
-const bundle = path.join(repo, "data/artifacts/aside-restoration_20260907T041632Z/raw/AsideDaemon-mac-x64-1.26.906.1714.mjs");
+const bundle = resolveAsideOriginal("1.26.906.1714");
 const patcher = path.join(repo, "belmont-browse/tools/patch-daemon-lifecycle.py");
 const source = readFileSync(bundle, "utf8");
 const dir = mkdtempSync(path.join(tmpdir(), "aside-lifecycle-"));
@@ -386,7 +387,7 @@ import lifecycleExtraAssert from "node:assert/strict";
 import lifecycleExtraTest from "node:test";
 
 const lifecycleExtraRepo = process.env.BELMONT_LIFECYCLE_TEST_REPO || lifecycleExtraResolve(import.meta.dirname, "..");
-const lifecycleExtraRawPath = lifecycleExtraJoin(lifecycleExtraRepo, "data/artifacts/aside-restoration_20260907T041632Z/raw/AsideDaemon-mac-x64-1.26.906.1714.mjs");
+const lifecycleExtraRawPath = resolveAsideOriginal("1.26.906.1714");
 const lifecycleExtraSkip = !lifecycleExtraExists(lifecycleExtraRawPath);
 const lifecycleExtraTick = () => new Promise((resolve) => setImmediate(resolve));
 function lifecycleExtraDeferred() {
