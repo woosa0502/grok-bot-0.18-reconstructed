@@ -18,6 +18,7 @@
 | 18:29 | 사용자 Aside 재기동(3회차, 탭 검색 수정 포함). 이전 데몬이 종료 후 남아 정리 | 런처에 종료 마무리 보강 | commit a457c7f, c76f57f |
 | 19:0x | 툴바 팝업·미니 팝업 단축키·주소창 캡처 점검 | 모두 정상, 원본 비교는 불가 | commit 004511e, shots-20260909/ |
 | 19:3x | "cyber" API 오류 = Claude Code 안전장치 확인. 표현 방식 변경 약속 | Aside/Belmont 조치 없음 | audit-remediation §cyber |
+| 19:4x | 사용자 질문 "개발자 모드였나?" 확인: 포크 소스에 DevTools 자동 열기 없음, 두 프로필 모두 확장 개발자 모드 꺼짐, 새 탭(Ctrl+T) 열어도 DevTools 대상 없음. 새 탭은 Aside 새 탭 페이지(검색/Ask) 정상 | 로그의 오류는 WSL 잡음 | shots-20260909/04-newtab.png |
 
 ## 지금 상태 (19:40)
 
