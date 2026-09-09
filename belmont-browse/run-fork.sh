@@ -7,6 +7,9 @@ NODE_BIN="${BELMONT_BROWSE_NODE:-/home/hoon/.local/share/mise/installs/node/26.5
 export PATH="$(dirname "$NODE_BIN"):$PATH"
 cd "$(dirname "$0")"
 export BELMONT_BROWSE_CHROME="${BELMONT_BROWSE_CHROME:-/home/hoon/chromium/src/out/aside/chrome}"
+# Chromium's Linux sandbox does not come up in this WSL2 environment (no SUID chrome_sandbox; a sandboxed headless
+# launch hangs), so the default stays off. The value is parsed as a boolean: set 0/false to keep the sandbox on a
+# host where it works; anything else than 1/true/yes/on or 0/false/no/off is rejected by src/chrome.mjs.
 export BELMONT_BROWSE_NO_SANDBOX="${BELMONT_BROWSE_NO_SANDBOX:-1}"
 export BELMONT_BROWSE_DISPLAY="${BELMONT_BROWSE_DISPLAY:-:99}"
 export BELMONT_BROWSE_TRANSPORT="${BELMONT_BROWSE_TRANSPORT:-port}"

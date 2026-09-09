@@ -7,6 +7,16 @@ import { createOwnedChromeStop, observeChild } from "./browser-lifecycle.mjs";
 
 const CHROME_CANDIDATES = ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
 
+/** BELMONT_BROWSE_NO_SANDBOX is a boolean option: "1"/"true"/"yes"/"on" disable the Chromium sandbox; "0"/"false"/
+ * "no"/"off"/unset keep it. Any other value is rejected so a typo cannot silently drop the sandbox. */
+export function isNoSandboxRequested(value = process.env.BELMONT_BROWSE_NO_SANDBOX) {
+  if (value === undefined) return false;
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === "" || ["0", "false", "no", "off"].includes(normalized)) return false;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  throw new Error(`BELMONT_BROWSE_NO_SANDBOX must be 1/true/yes/on or 0/false/no/off, got ${JSON.stringify(value)}`);
+}
+
 export function findChromeBinary() {
   const fromEnv = process.env.BELMONT_BROWSE_CHROME?.trim();
   if (fromEnv) return fromEnv;
@@ -45,7 +55,7 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
     `--window-size=${windowSize}`,
     "--window-position=0,0",
     "--no-first-run",
-    ...(process.env.BELMONT_BROWSE_NO_SANDBOX ? ["--no-sandbox"] : []),
+    ...(isNoSandboxRequested(process.env.BELMONT_BROWSE_NO_SANDBOX) ? ["--no-sandbox"] : []),
     // Original Aside Browsing Agent extension (built by tools/build-aside-ext.mjs). Branded Google Chrome ignores
     // --load-extension since 137; point BELMONT_BROWSE_CHROME at a Chromium/Chrome-for-Testing build.
     ...(process.env.BELMONT_BROWSE_EXTENSION ? [`--disable-extensions-except=${process.env.BELMONT_BROWSE_EXTENSION}`, `--load-extension=${process.env.BELMONT_BROWSE_EXTENSION}`] : []),
