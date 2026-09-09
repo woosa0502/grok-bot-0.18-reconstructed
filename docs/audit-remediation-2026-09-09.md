@@ -117,3 +117,21 @@ source 포인터가 하나라도 없는 row: 0개. 상세: `data/artifacts/aside
 | 91-row 장부 | 기계적 대조만(결론 무변경): 근거 있는 흐름 47, 부분 10, 연결 없음 34 | 캠페인 `workers/workflow-ledger-reconciliation-20260909.json` |
 
 이 시점의 primary: daemon은 재기동으로 PID가 바뀌었고(`belmont-browse/.state/serve.json` 참조), guard·C01·warm-up·원본 복구 경로가 모두 적용된 상태다.
+
+## 골든 E2E 2차 (2026-09-09 저녁, 빌드·실행 계보 제외)
+
+사용자 지시로 E01~E03·E16(빌드·실행 계보)은 미루고, 이 환경에서 만들 수 있는 나머지를 실제 검사로 만들었다. E04(원본 Grok 응답 기록)·E17(원본 macOS)은 환경상 불가.
+
+| ID | 새 상태 | 검사 |
+|---|---|---|
+| E05 | e2e-stub | 실제 AI SDK 클라이언트 + 실제 실행기 ↔ 로컬 OpenAI 호환 SSE 스텁. tool 정의 전달, tool-call 파싱, tool 결과 이어서 최종 답 |
+| E06 | e2e-stub | 429/401은 오류로 드러나고 답·tool 없음, 중단 시 즉시 거절·상류 요청 닫힘. **결함 발견·수정**: AI SDK 4.3은 스트림 실패 뒤 response/usage/providerMetadata 약속을 영원히 pending으로 두어 이를 기다리는 코드가 멈출 수 있었음 → 실행기가 실패와 함께 settle |
+| E07 | contract | 확정 중단 뒤 엔진 활동이 세션에 귀속되지 않음, 중단 미확인은 STOP_FAILED |
+| E09 | contract | emit과 저장 사이 crash 후 재시작해도 누락·중복 0 |
+| E10 | contract | 재시작 뒤 stale tool-call 답변 거부, 현재 카드 재표시 |
+| E11 | contract | 봇 3개 중 1개 취소(성공·실패 모두) 시 나머지 상태 바이트 동일 |
+| E12 | contract | 브라우저 crash → interrupted + 명시 이어가기, 옛 프롬프트 자동 재실행 없음 |
+| E15 | unit | 손상된 settings.json은 사유와 함께 격리(원본 바이트 보존), 기본값으로 계속. **이전엔 조용히 초기화됐음** |
+| E18 | e2e-stub | provider별 readiness (openrouter 키 유무, cursor, codex, claude CLI 유무) |
+
+집계: covered-by-ci 1, not-covered 4, covered-by-unit 4, covered-by-e2e-stub 3, covered-by-contract 6. root 1027 tests / 0 fail.

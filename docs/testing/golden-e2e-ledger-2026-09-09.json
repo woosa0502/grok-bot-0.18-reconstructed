@@ -1,0 +1,140 @@
+{
+  "asOf": "2026-09-09 (evening)",
+  "scope": "Audit WP6 golden E2E scenarios E01-E18 mapped to what actually exists; statuses are evidence classes, not completion claims.",
+  "statusMeaning": {
+    "covered-by-ci": "clean-runner CI exercises it",
+    "covered-by-unit": "real process/unit test with fault injection",
+    "covered-by-contract": "contract test with fakes for the external side",
+    "partial": "some conditions covered, listed gap remains",
+    "not-covered": "no evidence",
+    "covered-by-e2e-stub": "real client/SDK code path against a local stand-in for the external service"
+  },
+  "scenarios": [
+    {
+      "id": "E01",
+      "scenario": "빈 머신에서 bootstrap→check→build",
+      "status": "covered-by-ci",
+      "evidence": "CI run 34315887228 (clean ubuntu runner: npm ci, bootstrap, bootstrap:aside, check, test:browser, frontend:build, publication:check)",
+      "gap": "macOS 패키지 launch·실제 turn은 CI에 없음"
+    },
+    {
+      "id": "E02",
+      "scenario": "Aside native clean reconstruction",
+      "status": "not-covered",
+      "evidence": "-",
+      "gap": "별도 머신에서 pinned base+snapshot 빌드 후 binary identity 대조 필요"
+    },
+    {
+      "id": "E03",
+      "scenario": "stale artifact negative control",
+      "status": "covered-by-unit",
+      "evidence": "tests/aside-native-build-identity.test.mjs (snapshot 변경·binary 변경·pinned daemon 불일치 거절)",
+      "gap": "실제 launcher 실행 거절은 run-fork.sh 경로에서 수동 확인만"
+    },
+    {
+      "id": "E04",
+      "scenario": "원본 Grok vs 재구성 host 동일 turn",
+      "status": "not-covered",
+      "evidence": "-",
+      "gap": "golden fixture/provider response corpus 없음"
+    },
+    {
+      "id": "E05",
+      "scenario": "provider별 message→tool→continuation→UI",
+      "status": "covered-by-e2e-stub",
+      "evidence": "tests/e2e-golden-provider-http.test.mjs: real `ai`/`@ai-sdk/openai` client + real ProviderPromptExecutor against a local OpenAI-compatible SSE stub (SAND_OPENROUTER_BASE_URL): tool definitions on the wire, tool-call parsed, tool result continued to the final answer",
+      "gap": "live OpenRouter/Codex accounts not exercised; Claude deferred by user decision; UI rendering not covered"
+    },
+    {
+      "id": "E06",
+      "scenario": "provider 실패·중단·rate limit·auth 만료",
+      "status": "covered-by-e2e-stub",
+      "evidence": "tests/e2e-golden-provider-http.test.mjs: 429/401 surface as errors with no text/tool call (bounded retry on 429, none on 401); abort mid-stream rejects and closes the upstream request. Found and fixed: AI SDK 4.3 left response/usage/providerMetadata pending forever after a failed stream (openRouterExecutor now settles them)",
+      "gap": "auth refresh and provider-specific rate-limit headers not exercised"
+    },
+    {
+      "id": "E07",
+      "scenario": "실행 중 사용자 cancel 확인",
+      "status": "covered-by-contract",
+      "evidence": "tests/e2e-golden-browse-runtime.test.mjs (confirmed stop, engine activity no longer attributed, STOP_FAILED surfaced) + aside-bot-runner-lifecycle (durable cancel intent)",
+      "gap": "native browser external action count not measured"
+    },
+    {
+      "id": "E08",
+      "scenario": "Aside 동일 timestamp 메시지 2개",
+      "status": "covered-by-contract",
+      "evidence": "tests/aside-bot-runner-lifecycle.test.mjs (same-timestamp, late lower-timestamp, identity dedup)",
+      "gap": "-"
+    },
+    {
+      "id": "E09",
+      "scenario": "reconnect replay + crash boundary",
+      "status": "covered-by-contract",
+      "evidence": "tests/e2e-golden-browse-runtime.test.mjs: crash between emit and persist loses nothing and repeats nothing across a restart",
+      "gap": "DB-side crash injection not covered"
+    },
+    {
+      "id": "E10",
+      "scenario": "승인 대기 중 restart·stale approval",
+      "status": "covered-by-contract",
+      "evidence": "tests/e2e-golden-browse-runtime.test.mjs: after a restart a stale tool-call identity is refused and the current card re-shown; current identity accepted once",
+      "gap": "-"
+    },
+    {
+      "id": "E11",
+      "scenario": "3 agents 동시 실행, 1개 cancel",
+      "status": "covered-by-contract",
+      "evidence": "tests/e2e-golden-browse-runtime.test.mjs: three bots, one cancelled (confirmed and failing stop), others' state byte-identical and still mirroring",
+      "gap": "host-level concurrent turn isolation not covered"
+    },
+    {
+      "id": "E12",
+      "scenario": "browser crash 후 명시적 continuation",
+      "status": "covered-by-contract",
+      "evidence": "tests/e2e-golden-browse-runtime.test.mjs: crash mid-run -> interrupted + explicit continuation, no replay, continuation sends the new instruction",
+      "gap": "real Chromium crash not injected"
+    },
+    {
+      "id": "E13",
+      "scenario": "host SIGKILL과 TERM 무시 descendant",
+      "status": "covered-by-unit",
+      "evidence": "tests/box-exec-daemon-owner-lifecycle.test.mjs",
+      "gap": "전체 앱 종료 경로는 별개"
+    },
+    {
+      "id": "E14",
+      "scenario": "cleanup 단계별 reject/hang",
+      "status": "covered-by-unit",
+      "evidence": "tests/host-shutdown-cleanup.test.mjs (reject 후 계속, hang timeout, exit 1)",
+      "gap": "installShutdownHandlers 통합 실행은 미테스트"
+    },
+    {
+      "id": "E15",
+      "scenario": "손상된 link/settings/run state",
+      "status": "covered-by-unit",
+      "evidence": "tests/e2e-golden-settings-corruption.test.mjs (settings quarantined with reason, bytes preserved) + link quarantine tests",
+      "gap": "agent run-state DB corruption not covered"
+    },
+    {
+      "id": "E16",
+      "scenario": "Docker clean install / image drift",
+      "status": "not-covered",
+      "evidence": "코드는 digest pin + 라벨 + legacy 교체 (tests/local-docker-runtime-closure.test.mjs는 staging만)",
+      "gap": "Docker daemon 없는 환경이라 실행 검증 불가"
+    },
+    {
+      "id": "E17",
+      "scenario": "원본 Aside vs native fork browser action corpus",
+      "status": "not-covered",
+      "evidence": "-",
+      "gap": "원본 macOS 실행 환경 없음"
+    },
+    {
+      "id": "E18",
+      "scenario": "Claude/OpenRouter-only 계정 routine/hook wake",
+      "status": "covered-by-e2e-stub",
+      "evidence": "tests/e2e-golden-provider-http.test.mjs: inferenceExtension.isReady() for openrouter (key / no key), cursor, codex, claude-code (CLI present / absent)",
+      "gap": "wake -> full turn completion not covered"
+    }
+  ]
+}

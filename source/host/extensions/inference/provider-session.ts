@@ -114,7 +114,8 @@ function resolveOpenAiCompatibleTarget(requestedModelId: string | undefined): Op
     };
   }
   return {
-    name: "openrouter", baseURL: "https://openrouter.ai/api/v1",
+    // SAND_OPENROUTER_BASE_URL points the OpenAI-compatible client at a self-hosted or test endpoint.
+    name: "openrouter", baseURL: process.env.SAND_OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1",
     modelId: requestedModelId?.trim() || process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2",
     apiKey: openRouterCredential,
     headers: { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" },
@@ -465,12 +466,35 @@ function openRouterExecutor(
   }));
   extendedUsage.catch(() => undefined);
   if (onUsage != null) void extendedUsage.then(onUsage).catch(() => undefined);
+  // AI SDK 4.3 leaves response/usage/providerMetadata pending forever when the stream fails (provider error part
+  // or abort). Anything awaiting them after a failed turn would hang, so they settle with the stream's failure.
+  const failure = deferred<never>();
+  failure.promise.catch(() => undefined);
+  const settled = <T>(promise: Promise<T>): Promise<T> => {
+    const raced = Promise.race([promise, failure.promise]);
+    // Consumers that never look at a derived value must not turn the stream's failure into an unhandled rejection.
+    raced.catch(() => undefined);
+    return raced;
+  };
+  type StreamPart = typeof result.fullStream extends AsyncIterable<infer Part> ? Part : never;
+  const fullStream = (async function* (): AsyncGenerator<StreamPart> {
+    try {
+      for await (const part of result.fullStream) {
+        const probe = part as { type: string; error?: unknown };
+        if (probe.type === "error") failure.reject(probe.error instanceof Error ? probe.error : new Error(String(probe.error)));
+        yield part;
+      }
+    } catch (error) {
+      failure.reject(error);
+      throw error;
+    }
+  })();
   return {
-    fullStream: result.fullStream,
-    response: result.response,
-    usage: safeUsage,
-    extendedUsage,
-    providerMetadata: result.providerMetadata,
+    fullStream,
+    response: settled(result.response),
+    usage: settled(safeUsage),
+    extendedUsage: settled(extendedUsage),
+    providerMetadata: settled(result.providerMetadata),
     invocationId: Promise.resolve(invocationId),
   };
 }

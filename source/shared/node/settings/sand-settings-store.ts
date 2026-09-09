@@ -124,8 +124,22 @@ export class SandSettingsStore {
   constructor(readonly settingsPath: string) {}
   load(): SandStoredSettings {
     if (!existsSync(this.settingsPath)) return emptySettings();
-    try { const parsed = parseSettings(JSON.parse(readFileSync(this.settingsPath, "utf8")) as unknown); return parsed == null ? emptySettings() : this.applyPendingMigrations(parsed); }
-    catch { return emptySettings(); }
+    let raw: string;
+    try { raw = readFileSync(this.settingsPath, "utf8"); } catch { return emptySettings(); }
+    let parsedJson: unknown;
+    try { parsedJson = JSON.parse(raw); }
+    catch (error) { return this.quarantineUnreadable(`not valid JSON: ${error instanceof Error ? error.message : String(error)}`); }
+    const parsed = parseSettings(parsedJson);
+    if (parsed == null) return this.quarantineUnreadable("not a settings object of the supported version");
+    return this.applyPendingMigrations(parsed);
+  }
+  /** An unreadable settings file is moved aside and reported, never silently replaced by defaults: the user's
+   * choices stay recoverable from the quarantined copy and the loss is visible in the host log. */
+  private quarantineUnreadable(reason: string): SandStoredSettings {
+    const quarantined = `${this.settingsPath}.corrupt-${Date.now()}`;
+    try { renameSync(this.settingsPath, quarantined); } catch { /* leave the unreadable file in place if it cannot be moved */ }
+    console.error(`[settings] ${this.settingsPath} is unreadable (${reason}); moved to ${quarantined} and continuing with defaults`);
+    return emptySettings();
   }
   private applyPendingMigrations(settings: SandStoredSettings): SandStoredSettings {
     if (settings.settingsMigrations.includes(SAND_DOWNGRADE_MAX_FAST_MIGRATION_ID)) return settings;
