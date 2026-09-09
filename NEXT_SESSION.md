@@ -1,6 +1,6 @@
 # 다음 세션 시작점 — Aside/Belmont (세션2 갱신 2026-09-09 19:20 KST)
 
-**작업 완료 판정이 아니다.** 세션2가 인계 문서의 다음 순서를 실행했고, 아래는 그 결과와 현재 살아 있는 상태다.
+**작업 완료 판정이 아니다.** 시간순 진행 상황은 [진행 일지](docs/progress-log-2026-09-09.md)에 계속 쌓는다(맨 아래가 최신). 세션2가 인계 문서의 다음 순서를 실행했고, 아래는 그 결과와 현재 살아 있는 상태다.
 
 먼저 [상세 인계 문서](data/artifacts/aside-remaining-closure-20260908/HANDOFF_20260909.md)를 읽되, 실행 상태는 이 문서와 [세션2 인계 부록](data/artifacts/aside-remaining-closure-20260908/HANDOFF_20260909_SESSION2.md), [적용된 테스트 수정 기록](data/artifacts/aside-remaining-closure-20260908/handoff-20260909/APPLIED_TEST_FIXES.md)이 우선한다.
 
