@@ -27,6 +27,10 @@ GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 �
 
 **전수판** `docs/full-user-test-checklist-2026-09-09.md`(+부록 `docs/full-user-test-inventory-2026-09-09.md`)를 지시서로 준다. 시나리오 골격은 `docs/real-use-test-plan-2026-09-09.md`. 데몬이 필요한 시나리오는 사용자 primary에서 승인 아래 수행한다.
 
+## Aside 신규 버전 (2026-09-09 밤 확인)
+
+원본은 1.26.908.1846(changelog)과 1.26.909.1820(업데이트 서버 제공)까지 나와 있다. 우리는 907. 909 CRX 3개는 `data/artifacts/aside-909-20260909/`에 받아 풀어 뒀다(미커밋). 올릴지는 사용자 결정. 절차 `belmont-browse/docs/UPGRADE.md`.
+
 ## 새 세션이 먼저 할 일
 
 ```bash

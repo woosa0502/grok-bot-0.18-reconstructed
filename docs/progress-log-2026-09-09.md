@@ -23,6 +23,7 @@
 | 20:1x | 실사용 검증 계획서 작성(다른 모델에게 맡길 지시서): 원칙·환경·판정·알려진 상태·시나리오 S0~S8·91-row 대응표·보고 형식 | `docs/real-use-test-plan-2026-09-09.md` | — |
 | 21:3x | 후속 모델(Opus)의 실사용 검증 보고서 검토(`data/artifacts/real-use-test-20260909/REPORT.md`) | 계획 68항목 중 12항목 실행, 실 인스턴스 PASS는 CDP 페이지 입력 기반(실제 키 아님). 환경 벽: WSLg :0 창에 xdotool 키가 안 닿음, 데몬 포트 고정으로 두 번째 전체 스택 불가. S7 Belmont·S8 장시간·S1~S5 손 조작·루틴·금고·도구별·Guard 실제 승인 미실행. 사용자 primary는 21:15 재기동됨(daemon 931697, 종료 보강 포함) | 다음 한 수: 점검 창에서 전체 스택을 Xvfb로 띄워 실제 키로 수행, 또는 사용자 손+모델 관찰 | REPORT.md |
 | 22:3x | 전수 실사용 체크리스트 작성(테스터=사용자 페르소나, 실제 키가 되는 점검 창 절차, S1~S14 전수 표) + 부록 컨트롤 목록(확장 문구 2,109 + 네이티브 137 + 단축키·명령) | `docs/full-user-test-checklist-2026-09-09.md`, `docs/full-user-test-inventory-2026-09-09.md` | — |
+| 23:0x | Aside 신규 버전 조사 | 우리 기준 1.26.907.1712(데몬·확장 2개), 앱 dmg 1.0.825.1. 공식 changelog 최신 v1.26.908.1846(9/8: 채팅 고정, 채팅 UI 개편, 비밀번호 관리자 개편, Telegram 명령 버튼, Lasso 단축키, 계정 수정). 업데이트 서버(Omaha, protocol 4.0 + os 필드 필요)는 **1.26.909.1820**을 제공(mac x64/arm64, win x64; linux는 noupdate). 909 CRX 3개 내려받아 sha 확인·풀어 둠(`data/artifacts/aside-909-20260909/`, 미커밋). 페이지 구성은 907과 동일, 자산 파일만 변경 | 업그레이드는 사용자 결정(UPGRADE.md 절차) | omaha 응답 `scratchpad/omaha-909.json` |
 
 ## 지금 상태 (19:40)
 
