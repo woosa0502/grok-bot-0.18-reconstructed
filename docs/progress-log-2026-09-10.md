@@ -15,6 +15,7 @@
 | 13:59 | 사용자 Aside GPU 켜서 재기동 | daemon 44335 / Chrome 44370, 렌더러 "D3D12 (AMD Radeon)" 확인, health ready | logs/primary-relaunch-20260910T0459Z-* |
 | 14:5x | Windows 컴퓨터 유즈 현황 조사. Codex 데스크톱 앱(MSIX 26.903)이 Windows에 설치돼 있고 컴퓨터 유즈 런타임이 로컬에 있음: `AppData\Local\OpenAI\Codex\runtimes\cua_node\…\node_modules\@oai/{cua,sky,browser-desktop}` + `bin/windows/codex-computer-use.exe`(1.5MB). 설계: 모델에게 `cua_repl`(JS REPL) 하나를 주고 접근성 트리(요소 번호)+캡처로 `click/typeText/setValue/pressKey/scroll` 등 호출, 브라우저는 탭 객체(goto/back/…)와 WebMCP, 확인 정책 문서(손 떼기/항상 확인/사전 승인 3단계). Grok(Belmont) Computer 도구는 가상 화면 전용이고 Aside Windows 데몬에도 화면 조작은 없음 | **판단**: OpenAI 전용 구성요소라 우리 봇이 가져다 쓰지 않는다. 설계 참고만. 봇용 Windows 도우미는 UI Automation 접근성 트리 우선 + 캡처 폴백 + 같은 3단계 확인 정책으로 우리가 만든다 | 대화 기록 |
 | 17:0x~19:3x | Codex 컴퓨터 유즈 조사 마무리: 런타임 팩 zip을 바탕화면에 만들고, 다른 모델의 정적 분석 묶음을 실제 파일과 대조(전부 일치), 오픈소스 cua 드라이버 문서와 비교, Codex 문서 층(30개)과 Aside 909 REPL 설명서·스킬 34개를 항목별로 대조 | 실행 층은 cua 드라이버, Codex는 문서(확인 정책·REPL 규칙·완료 기준·탭 넘기기·봇 차단 분류)만 참고. Aside에는 글 4개만 보태면 됨. 결정 3건 대기 | `docs/codex-computer-use-review-2026-09-10.md`, `data/artifacts/codex-cua-20260910/` |
+| 20:2x | 문서 커밋(18ab588) 뒤 CI 실패 확인. 원인은 문서와 무관: 909 구성요소 압축(`components-909.tgz`)은 `AsideAgentManager/1.26.909.1820/assets` 구조인데 등록 정보의 확인 경로와 909 주소창 테스트가 CRX를 그냥 푼 평평한 `AsideAgentManager/assets`를 기대. 압축을 등록한 89114d6 이후 CI가 계속 실패 중이었음 | 등록 정보 경로를 버전 폴더로 고치고 테스트는 두 구조 모두 허용. 로컬에도 압축을 풀어 CI와 같은 구조 확보. 9764f95 CI 성공(run 34470397301) | `research-archives/aside/artifacts.json`, `belmont-browse/tests/omnibox-consumer-generation-909.test.mjs` |
 
 ## 지금 상태
 
