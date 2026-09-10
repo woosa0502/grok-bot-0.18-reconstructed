@@ -11,8 +11,10 @@
 | 00:5x | 909 번들 조립·설치, 상태 복사본으로 Xvfb에 전체 스택 기동해 검증 | 엔진 준비·확장 등록·메모리 native·마이그레이션 v13~15·실제 작업(example.com 제목) 15초 완료 | `data/artifacts/aside-909-20260909/verify/` |
 | 00:57 | **사용자 Aside를 909로 전환**(홈 `aside-home-907` → `aside-home-909` 복사 후 기동) | daemon 22786 / Chrome 22823, 세션 33개 유지, health ready·memory native | logs/primary-relaunch-20260910T0056Z-* |
 | 01:1x | 909 전환 후 실제 작업 1건(example.com 제목) 15초 완료. 주소창 자산 검사 테스트를 909용으로 추가(비교 함수·헬퍼 이름 매핑), 회귀 테스트 통과 | 도구·문서 커밋 | `belmont-browse/tests/omnibox-consumer-generation-909.test.mjs` |
+| 13:3x | WSL GPU 조사. 시스템 전체가 CPU 렌더링(llvmpipe)이던 원인은 Mesa가 D3D12 가상 GPU 드라이버를 스스로 고르지 않는 것. `GALLIUM_DRIVER=d3d12` + Chromium `--ignore-gpu-blocklist`로 해결 | 측정(:0): 캡처 126→41ms, 무거운 WebGL 소프트웨어는 3분 내 미완 → GPU 98ms/프레임, 스크롤 17→20ms. 내장 AMD가 RTX 5070 Ti보다 이 작업엔 빠름(NVIDIA는 374ms/프레임·캡처 136ms). Xvfb(봇 화면)는 이득 없음. 격리 UI 점검 2종 크래시 0 | `run-fork.sh`(:0에서만 기본 켬, `BELMONT_BROWSE_GPU=0`으로 끔) |
+| 13:59 | 사용자 Aside GPU 켜서 재기동 | daemon 44335 / Chrome 44370, 렌더러 "D3D12 (AMD Radeon)" 확인, health ready | logs/primary-relaunch-20260910T0459Z-* |
 
 ## 지금 상태
 
-- 사용자 Aside: daemon 22786 / Chrome 22823 (00:57 기동, **엔진 1.26.909.1820**, 홈 `aside-home-909`). 되돌리기: `BELMONT_BROWSE_ENGINE=907 bash run-fork.sh`(907 홈 그대로 있음). Belmont 호스트: tmux `belmont-bot`.
+- 사용자 Aside: daemon 44335 / Chrome 44370 (13:59 기동, **엔진 1.26.909.1820**, 홈 `aside-home-909`, **GPU 렌더링 켬**). 되돌리기: `BELMONT_BROWSE_ENGINE=907 bash run-fork.sh`(907 홈 그대로 있음). Belmont 호스트: tmux `belmont-bot`.
 - 909 적용 완료. 전수 테스트 문서는 버전 표기만 909로 읽으면 된다(경로·도구 동일).

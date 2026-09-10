@@ -84,3 +84,7 @@ Aside 데몬(복원한 원본 번들)을 그대로 실행해서, Belmont 옆에�
 - Belmont 브라우저 봇(커밋 `3fd1a21`)은 새 작업이 `error`로 끝나면 `gpt-5.5/high`로 한 번 다시 시도하고 사용자에게 알린다. 끄기: `SAND_ASIDE_BROWSE_FALLBACK_MODEL=off`, 바꾸기: `SAND_ASIDE_BROWSE_FALLBACK_MODEL`, `SAND_ASIDE_BROWSE_FALLBACK_THINKING`.
 - 학습 루프: `learn.mjs`는 하위 도메인을 기존 페이지가 있는 상위 도메인으로 접고(search.naver.com → naver.com), `--after <ISO>`로 수정 이전 세션을 증거에서 뺀다. `--domain` 실행은 `<날짜>-mined-<도메인>.md`에 쓴다. `learn-measure.mjs`는 기본 2회씩 돌려 중앙값으로 채택을 판정한다.
 - 서비스 재시작 뒤 옛 세션 `continue`가 `msgs is not iterable`로 500을 내던 문제 수정(`core.mjs` hydrate: 메시지 목록이 배열일 때만 마지막 답을 복구). Belmont 봇은 그래도 실패하면 새 세션으로 자동 전환(커밋 `6c3d44b`).
+
+## GPU 렌더링 (WSLg, 2026-09-10)
+
+WSL의 Mesa는 D3D12 가상 GPU 드라이버를 스스로 고르지 않아(기본 llvmpipe) Chromium이 CPU로 그렸다. `run-fork.sh`가 `:0`에서는 `GALLIUM_DRIVER=d3d12`와 `--ignore-gpu-blocklist`를 기본으로 준다(`BELMONT_BROWSE_GPU=0`으로 끔, `MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA`로 어댑터 선택). 측정: 캡처 126→41ms, WebGL 사용 가능, 내장 AMD가 RTX보다 빠름. Xvfb 봇 화면은 이득이 없어 끔.

@@ -12,6 +12,15 @@ export BELMONT_BROWSE_CHROME="${BELMONT_BROWSE_CHROME:-/home/hoon/chromium/src/o
 # host where it works; anything else than 1/true/yes/on or 0/false/no/off is rejected by src/chrome.mjs.
 export BELMONT_BROWSE_NO_SANDBOX="${BELMONT_BROWSE_NO_SANDBOX:-1}"
 export BELMONT_BROWSE_DISPLAY="${BELMONT_BROWSE_DISPLAY:-:99}"
+# GPU rendering on WSLg (2026-09-10): Mesa only picks the D3D12 virtual-GPU driver when asked
+# (GALLIUM_DRIVER=d3d12), and Chromium blocklists it, so both are set here. Measured on this PC: screenshot
+# capture 126ms -> 41ms, heavy WebGL from "never finishes" to ~100ms/frame; the integrated adapter (Mesa's
+# default) beat the discrete one for this workload, override with MESA_D3D12_DEFAULT_ADAPTER_NAME. Virtual
+# displays (Xvfb) gain nothing, so it is on only for the WSLg display. BELMONT_BROWSE_GPU=0 turns it off.
+if [[ "${BELMONT_BROWSE_GPU:-auto}" == 1 || ( "${BELMONT_BROWSE_GPU:-auto}" == auto && "$BELMONT_BROWSE_DISPLAY" == ":0" ) ]]; then
+  export GALLIUM_DRIVER="${GALLIUM_DRIVER:-d3d12}"
+  export BELMONT_BROWSE_CHROME_ARGS="${BELMONT_BROWSE_CHROME_ARGS:+$BELMONT_BROWSE_CHROME_ARGS }--ignore-gpu-blocklist"
+fi
 export BELMONT_BROWSE_TRANSPORT="${BELMONT_BROWSE_TRANSPORT:-port}"
 export BELMONT_BROWSE_ENGINE="${BELMONT_BROWSE_ENGINE:-909}"
 export BELMONT_BROWSE_STATE_DIR="${BELMONT_BROWSE_STATE_DIR:-$PWD/.state}"
