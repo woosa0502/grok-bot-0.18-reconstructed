@@ -43,3 +43,5 @@ ps -p $(cat data/artifacts/aside-remaining-closure-20260908/final-native-build/r
 - status는 PASSED여야 한다(세션2 종료 시점). L02는 닫혔다. 남은 것은 **91-row workflow ledger와 F/V 최종 정리**이며, native 테스트 결과는 사용자 흐름 row를 닫는 근거가 아니다. 새 빌드를 띄울 이유가 없다.
 - runner를 다시 띄울 때는 반드시 `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python`과 setsid 분리 실행. 테스트 소스를 바꾸면 `--phase chrome`을 먼저 돌려 fingerprint를 갱신한다.
 - 남은 미해결 범위(B-profile 반복 전환의 로그인 전제, PW popup resize, 모바일 필수 검사 2실패, 91-row 최종 ledger)는 인계 문서 그대로다. 전체 parity 완료로 보고하지 않는다.
+
+**Windows 네이티브 제어(컴퓨터 유즈) 조사 결과**는 `docs/codex-computer-use-review-2026-09-10.md`. 결론: 실행 층은 오픈소스 cua 드라이버, Codex 런타임은 문서만 참고, Aside 브라우저 층에는 정책 글 4개만 보탬. 사용자 결정 대기: cua 설치 승인·CAPTCHA 정책·정책 글 자리.
