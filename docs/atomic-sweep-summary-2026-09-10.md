@@ -77,3 +77,19 @@
 1. 실행기에 데몬 포트 치환(확장 사본의 21420 → 지정 포트)을 넣어 사용자 Aside를 안 끄고도 격리 검증이 되게 한다.
 2. FAIL 1·2·3은 포크/훅 수정 대상. 1은 스킴 매핑, 2는 WSL explorer.exe 연결, 3은 브라우저 감지 API 응답 확인.
 3. S12(Belmont 연동 8행)는 Belmont 호스트를 띄운 별도 점검 창에서. S13·S1-04·S6-03/04/13은 클라우드 계정이 없는 한 BLOCKED.
+
+## 수정 후 재검 (2026-09-10 23:15~23:22, 빌드 c3209e2f · 데몬 59976fd7 · 자산 패치)
+
+FAIL 13건을 원인 5묶음으로 고치고 같은 격리 창 절차로 다시 눌러 봤다(장부 하단 "재검" 행).
+
+| 묶음 | 고친 곳 | 재검 결과 |
+|---|---|---|
+| A. `aside://` 링크 빈 페이지(4) | 포크: `aside` 표준 스킴 등록 + `HandleAsideSchemeRewrite`(aside://→chrome://) + 주소창 분류 | Advanced → "Settings - Appearance", View browsing history → History, Site settings → "Settings - Site settings", 주소창 `aside://history/` 입력 → History. 4/4 PASS |
+| B. 폴더 열기 500(3) | 데몬 패치 `patch-daemon-linux.py`: WSL이면 `wslpath -w` → `explorer.exe`, 아니면 `xdg-open`. 907·909 번들 재생성·재고정 | 채팅 행 메뉴·메모리 Open folder → Windows 파일 탐색기 창이 실제로 열림(세션 폴더·memory 폴더). 3/3 PASS. 네이티브 메뉴 문구도 "Open folder in File Explorer"로 |
+| C. Import 오류 화면(2) | 포크: `asideBrowserImport.getImportSources`가 `{sources}` 대신 배열 반환 | 두 진입점 모두 "Detected browser: woosa0502" 대화상자. 2/2 PASS |
+| D. Dark 테마 네이티브 미적용(1) | 재검만(코드 변경 없음) | Dark에서 사이드바 (31,31,31)·툴바 (60,60,60)로 어두워짐 → 앞선 판정은 캡처 타이밍 오판. PASS |
+| E. 무반응 컨트롤(3) | 단축키: 포크 가속기 Ctrl+S/Ctrl+E/Ctrl+Shift+E/Ctrl+Shift+C/Ctrl+Shift+- 추가(`IDC_ASIDE_*`) + 설정 표기 패치(`patch-linux-platform-glyphs.py`). 사이드바 체크: 재검(Bookmarks 항목이 맞는 대상; Chats는 원래 고정). MCP 서버 스위치: 원본 설계(Aside CLI 설치 시만 활성) | 단축키 5/5 실키 PASS(표기도 Ctrl로), Bookmarks 끄기/켜기 PASS, MCP 스위치는 NOT_APPLICABLE로 정정 |
+
+재검 뒤 장부: 242행, PASS 199 · FAIL 13(모두 재검 PASS 행이 짝으로 붙음) · DIFFERS 5 · ORIGINAL_UNKNOWN 4 · BLOCKED 6 · NOT_DONE 10 · NOT_APPLICABLE 3 · PARTIAL 2. 남은 DIFFERS 중 `--no-sandbox` 안내 막대와 ⌘ 표기(탭 검색 힌트는 이제 Ctrl+⇧A)는 별도 항목.
+
+사용자 Aside는 23:22에 새 빌드로 다시 켰다(daemon 129705 / Chrome 129742, GPU 켬). 살아 있는 프로필의 확장 사본은 `aside_component/agent-manager/1.26.909.1820`을 지우고 다시 준비했다(준비 도구는 내용이 다른 같은 버전을 덮어쓰지 않으므로, 자산 패치를 바꾸면 이 폴더를 지워야 반영된다).

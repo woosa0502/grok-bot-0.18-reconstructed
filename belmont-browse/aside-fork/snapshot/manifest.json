@@ -1,13 +1,13 @@
 {
   "status": "SOURCE_CHECKPOINT_NOT_PARITY_APPROVAL",
-  "capturedAt": "2026-09-09T09:28:27.436642+00:00",
+  "capturedAt": "2026-09-10T14:20:55.976032+00:00",
   "upstream": "https://chromium.googlesource.com/chromium/src.git",
   "baseCommit": "cc5584af0df9786f00efdb71f666c6664f836c2d",
   "localHead": "1d00f53b564d073e80d6c90be81fb1ac0f90327f",
   "patch": {
     "path": "chromium.patch",
-    "bytes": 5370789,
-    "sha256": "9ccaf6b2415e95bafa15fc5bfe9f4b757f4c119a125116ff9fa6ddd011a1872a"
+    "bytes": 5379182,
+    "sha256": "6420274fd3b2afe838d608c9881d5a1ce79baa6d2ef240fe9b336b756656fb31"
   },
   "buildArgs": {
     "path": "args.gn",
@@ -577,8 +577,8 @@
     },
     {
       "path": "chrome/browser/chrome_content_browser_client.cc",
-      "bytes": 394383,
-      "sha256": "4e04e1e14de0f4a5c9e487f13706a54edcc0f9ff017b0e1dc66911bc9e2f8fd9",
+      "bytes": 394638,
+      "sha256": "79a265ef587359d57757bd7fed5401c885f0431d0cee4670168db4ac586b4a56",
       "mode": "100644",
       "untrackedAtCapture": false
     },
@@ -836,8 +836,8 @@
     },
     {
       "path": "chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc",
-      "bytes": 17196,
-      "sha256": "c2237d15092f3aff56022fa2de0aeba257361f783a8a97a0e79ef456ac3c283f",
+      "bytes": 17317,
+      "sha256": "c15aa7f2da9f42919934f96e512ea0d2f97e5758344cee964680124a7e5d9594",
       "mode": "100644",
       "untrackedAtCapture": false
     },
@@ -1935,8 +1935,8 @@
     },
     {
       "path": "chrome/browser/ui/accelerator_table.cc",
-      "bytes": 18847,
-      "sha256": "cf8de4dccc8893f87aaaeb6d9f3e9ce0fd5d3db7aeeca78890d1d29403a58de3",
+      "bytes": 19907,
+      "sha256": "181ec84be68affacf3d480ba1cea5b0ed2e79f81cb5949bfda48c39bef8e0589",
       "mode": "100644",
       "untrackedAtCapture": false
     },
@@ -2089,8 +2089,8 @@
     },
     {
       "path": "chrome/browser/ui/browser_command_controller.cc",
-      "bytes": 106148,
-      "sha256": "4df0fd633d25522435fa3ea939c6ab8c6227f6bbc9b4766b05d00ea9ab4a201a",
+      "bytes": 107194,
+      "sha256": "af88d6ca9e463bb38949ad29922d4a114c340a9693f310130a1a66120259815e",
       "mode": "100644",
       "untrackedAtCapture": false
     },
@@ -3923,8 +3923,8 @@
     },
     {
       "path": "chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.cc",
-      "bytes": 41953,
-      "sha256": "aae48129e47f28c776d192032e37a99caadc553a1d7dd77a3bdc017b87c88b74",
+      "bytes": 42174,
+      "sha256": "8651215de47a8d4c28882bc5f1ec06c1e3ed9abe90baaa9dc3ce23f8a38bd0f9",
       "mode": "100644",
       "untrackedAtCapture": false
     },

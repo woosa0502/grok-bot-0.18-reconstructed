@@ -19,7 +19,7 @@ GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 �
 ## 살아 있는 프로세스 (16:12 KST 재시작 후)
 
 - Belmont 호스트: tmux 세션 `belmont-bot`, runner 795498 / host 795526 / electron 795611, 게이트웨이 127.0.0.1:45026, 새 번들(settings 격리·provider promise 정착 포함). 로그 `data/artifacts/aside-remaining-closure-20260908/logs/host-restart-20260909T0712Z.log`. 죽어 있으면 `tmux new-session -d -s belmont-bot -c <repo> 'SAND_ASIDE_BROWSE=1 npm run wsl:start'`(Node 26.5, `tmux kill-server` 하지 말 것).
-- Aside primary: **엔진 1.26.909.1820**, daemon 112992 / Chrome 113027 (9/10 22:21 점검 창 닫고 재기동, GPU 켬; 그 전 76304/76363은 20:33 테스터 재기동, GALLIUM_DRIVER=d3d12 --ignore-gpu-blocklist
+- Aside primary: **엔진 1.26.909.1820**, daemon 129705 / Chrome 129742 (9/10 23:22 수정 빌드 c3209e2f로 재기동, GPU 켬; 22:21 기동분 112992/113027은 이전 빌드; 그 전 76304/76363은 20:33 테스터 재기동, GALLIUM_DRIVER=d3d12 --ignore-gpu-blocklist
 --ignore-gpu-blocklist; 13:59 기동분 44335/44370은 GPU 켬이었음; 홈 `belmont-browse/.state/aside-home-909`; 907 홈은 되돌리기용). 이전(907): daemon 931697 (21:15 KST 후속 모델 재기동; 18:29, `BELMONT_BROWSE_DISPLAY=:0 bash belmont-browse/run-fork.sh`, setsid), **미니 팝업 크래시 + 탭 검색 닫힘 수정 빌드(chrome sha 37528b8c…)**. 포크 소스를 바꾸면 빌드 후 `python3 belmont-browse/tools/regenerate-source-checkpoint.py` → `node tools/native-build-identity.mjs record` 순서. health의 memory.semantic available. 16:51 크래시·원인·검증은 `docs/audit-remediation-2026-09-09.md` 맨 아래.
 - 사용자가 본 "cyber" API 오류는 Claude Code 세션의 안전장치 메시지였다(Aside/Belmont 무관, 조치 없음).
 - 골든 E2E는 스텁·계약 수준이다. 포크 UI 실동작 점검(미니 팝업·옵션 창·탭 검색·PW 팝업·단축키)은 `belmont-browse/tools/check-fork-ui-*.mjs`로 격리 인스턴스에서 수행했고 결과는 `docs/audit-remediation-2026-09-09.md` 하단. 남은 것: PW 팝업 크기·위치의 원본 비교(원본 바이너리 필요), Escape 실제 키 입력.
@@ -50,3 +50,5 @@ ps -p $(cat data/artifacts/aside-remaining-closure-20260908/final-native-build/r
 **전수 테스트 현황(9/10 21시)**: 테스터 `data/artifacts/full-user-test-20260909/MASTER-COVERAGE.md`는 PASS 24/118. 그 "환경 제약 3개"는 검토 결과(`MASTER-COVERAGE-REVIEW.md`) 대부분 절차 오류다: 확장 포트 21420 고정 때문에 격리 인스턴스는 사용자 데몬을 끄고 돌려야 한다(또는 실행기에 포트 치환 추가). 메시지 메뉴 등 5건은 `#/u/0/...` 경로로 재검.
 
 **원자 단위 실사용 테스트(9/10 저녁, Claude 직접)**: 컨트롤 227개 실측, PASS 184·FAIL 13. 요약 `docs/atomic-sweep-summary-2026-09-10.md`, 장부 `data/artifacts/full-user-test-20260910-atomic/LEDGER.md`. 결함 묶음은 aside:// 스킴·폴더 열기·Import·Dark 테마 네이티브·단축키. 남은 것: S12(Belmont 연동), 클라우드 BLOCKED, 2시간 방치.
+
+**9/10 밤 수정**: 원자 테스트 FAIL 13건을 다 고쳤다(aside:// 스킴, 폴더 열기→Windows 탐색기, Import 오류, 리눅스 단축키 5개, Ctrl/File Explorer 표기). 포크 빌드 c3209e2f, 데몬 907/909 재고정, 자산 패치 도구 `patch-linux-platform-glyphs.py`. 확장 자산 패치를 바꾸면 살아 있는 프로필의 `aside_component/agent-manager/<ver>`를 지워야 반영된다. 상세 `docs/atomic-sweep-summary-2026-09-10.md` 재검 절.

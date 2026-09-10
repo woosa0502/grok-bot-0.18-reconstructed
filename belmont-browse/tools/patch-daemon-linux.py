@@ -77,6 +77,25 @@ exports["loadPwmSessionFromKeychain"] = "init_session$2"
 exports["getAccountDeviceRegistration"] = "init_device"
 src += "\nexport const __belmontLinuxInternals={" + ",".join(f"get {name}(){{{initializer}();return {name}}}" for name, initializer in exports.items()) + "};\n"
 
+# Folder / file reveal on Linux (the original only implements win32 via the native helper
+# and darwin via `open`; every other platform throws, which the daemon surfaces as HTTP 500
+# for /session/for-chrome/:id/open-folder, tRPC meta.open and the project "Open Project
+# Folder" button). Under WSL the path is handed to Windows Explorer through wslpath; on a
+# plain Linux desktop xdg-open takes it.
+open_throw = "throw Error(`Opening system paths is not supported on ${process.platform}`)}"
+open_linux = (
+    "if(process.platform===`linux`){"
+    "let ti=!!process.env.WSL_DISTRO_NAME||!!process.env.WSL_INTEROP;"
+    "if(!ti)try{ti=/microsoft/i.test(await fs$16.readFile(`/proc/version`,`utf8`))}catch{}"
+    "if(ti){let ni=spawnCommand([`wslpath`,`-w`,Cn],{stdio:[`ignore`,`pipe`,`ignore`]}),ri=(await readProcessStream(ni.stdout)).trim();"
+    "if(await waitForExitCode(ni)!==0||!ri)throw Error(`Failed to translate path for Windows Explorer: ${Cn}`);"
+    "let ii=`/mnt/c/Windows/explorer.exe`;try{await fs$16.access(ii)}catch{ii=`explorer.exe`}"
+    "let ai=ei.mode===`reveal`&&ei.targetType===`file`?[ii,`/select,`+ri]:[ii,ri],oi=spawnCommand(ai,{stdio:`ignore`,detached:!0});oi.unref();return}"
+    "if(await waitForExitCode(spawnCommand([`xdg-open`,Cn],{stdio:`ignore`}))!==0)throw Error(`Failed to ${ei.mode} path: ${Cn}`);return}"
+    + open_throw
+)
+replace(open_throw, open_linux)
+
 src += f"\n{MARK}\n"
 path.write_text(src, encoding="utf-8")
 print(f"{path}: patched (installation-v2)")

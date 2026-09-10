@@ -27,3 +27,9 @@ Belmont의 `pi-auth.json`과 같은 형식이라 `credentials.mjs`가 복사·�
 - 909에서 바뀐 앵커: 메모리 라우터 입력의 zod 이름(`string$3`), `memory_search` 설명이 템플릿 리터럴로 인라인(줄바꿈 포함), backfill 함수 이름 `*SessionTurnMemoryBackfill`, `agent.turn.completed` 훅 이름, 확장 연결 키와 `reconcileSessionTabs`에 `browserMode` 인자, orphan 탭 재시도 클로저 이름(`ii`). 도구는 907·909 둘 다 받는다.
 - 계정 홈은 `aside-home-909`. 원본 데몬이 첫 기동에 v13/v14/v15 마이그레이션을 돌리므로 **907 홈을 복사한 뒤** 909로 띄운다(907 홈은 되돌리기용으로 남는다). 되돌리기: `BELMONT_BROWSE_ENGINE=907 bash run-fork.sh`.
 - 확장 자산 2개(주소창)는 `patch-omnibox-generation.py`에 909 항목을 추가해 같은 변환을 적용했다(비교 함수 이름 en→Jr, tn→en, 변수 p→f).
+
+## 2026-09-10 리눅스 개선 (909·907 공통)
+
+- **폴더 열기**: 원본 `openSystemPath`는 win32(네이티브 helper)·darwin(`open`)만 있고 그 외는 throw라서 채팅 메뉴 "Open folder", 프로젝트 "Open Project Folder", 메모리 "Open folder"가 500이었다. `patch-daemon-linux.py`가 리눅스 분기를 넣는다: WSL(`WSL_DISTRO_NAME`/`WSL_INTEROP`/`/proc/version`)이면 `wslpath -w`로 바꾼 경로를 `/mnt/c/Windows/explorer.exe`(파일 reveal은 `/select,`)에 넘기고, 일반 리눅스는 `xdg-open`. 체인을 다시 돌려 `patched/aside-909-daemon.mjs`(59976fd7…)·`patched/aside-907-daemon.mjs`(11e03255…)를 새로 고정했다.
+- **단축키·파일 탐색기 표기**: 확장은 macOS/Windows만 구분해 리눅스에서 ⌘ 글리프와 "Finder" 문구가 나왔다. `tools/patch-linux-platform-glyphs.py --assets vendor/aside-components-909/agent-manager/1.26.909.1820/assets`가 `appearance-BlPq6qs7.js`(Ctrl 표기)와 `platform-CH1yjH9T.js`(Ctrl+ 글리프, File Explorer 문구)를 고친다(해시 고정, 멱등; 테스트 `tests/linux-platform-glyphs-909.test.mjs`). 909 vendor를 새로 만들 때 주소창 패치 다음에 이 도구도 돌린다.
+- **포크(Chromium)**: `aside://` 스킴을 표준 스킴으로 등록하고 `chrome://`로 다시 쓰는 핸들러(`HandleAsideSchemeRewrite`)·주소창 분류를 추가, `asideBrowserImport.getImportSources`가 배열을 돌려주도록 수정(설정 Import 오류 화면 해결), 리눅스 가속기 Ctrl+S(사이드바)·Ctrl+E(Ask Aside)·Ctrl+Shift+E(새 작업)·Ctrl+Shift+C(URL 복사)·Ctrl+Shift+-(분할 탭) 추가(`IDC_ASIDE_*`). 빌드 뒤 `regenerate-source-checkpoint.py` → `native-build-identity.mjs record`.

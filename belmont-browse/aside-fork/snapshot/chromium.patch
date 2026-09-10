@@ -1,3 +1,19 @@
+diff --git a/chrome/app/chrome_command_ids.h b/chrome/app/chrome_command_ids.h
+index 3bdb2131ef0e22f8d43f2f47f43648d25ba5491c..55f068871776f84f9751ed2c36d97fa49a3d872f 100644
+--- a/chrome/app/chrome_command_ids.h
++++ b/chrome/app/chrome_command_ids.h
+@@ -126,6 +126,11 @@
+ #define IDC_CREATE_NEW_TAB_GROUP_TOP_LEVEL 34106
+ #define IDC_ADD_NEW_TAB_RECENT_GROUP  34107
+ #define IDC_UNFOCUS_TAB_GROUP         34108
++// Aside keyboard shortcuts (settings > Appearance lists them as Ctrl+S /
++// Ctrl+E / Ctrl+Shift+E on Windows; Linux uses the same keys).
++#define IDC_ASIDE_TOGGLE_SIDEBAR        34120
++#define IDC_ASIDE_ASK_ASIDE             34121
++#define IDC_ASIDE_NEW_TASK              34122
+ 
+ // Page-related commands
+ #define IDC_BOOKMARK_THIS_TAB           35000
 diff --git a/chrome/app/generated_resources.grd b/chrome/app/generated_resources.grd
 index 5c0d36402d728d542560f5a08b8f607b633c891c..bc75811ff2ac358400a4588defbd93d30293684d 100644
 --- a/chrome/app/generated_resources.grd
@@ -9412,6 +9428,62 @@ index 0000000000000000000000000000000000000000..74049ec43e60708d101ea86cd016d5a7
 +        track: noopfn,
 +    };
 +})();
+diff --git a/chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.cc b/chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.cc
+index 2f7ea50b69a46ee1bfabad3ceeeee8c6fc94a956..8afed4873bcb4415b19ac08c287ed0f12ff2acce 100644
+--- a/chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.cc
++++ b/chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.cc
+@@ -72,6 +72,8 @@ ChromeAutocompleteSchemeClassifier::GetInputTypeForScheme(
+       (ProfileIOData::IsHandledProtocol(scheme) ||
+        base::EqualsCaseInsensitiveASCII(scheme, content::kViewSourceScheme) ||
+        base::EqualsCaseInsensitiveASCII(scheme, url::kJavaScriptScheme) ||
++       // Aside: aside://settings/... typed in the omnibox is a URL.
++       base::EqualsCaseInsensitiveASCII(scheme, "aside") ||
+        base::EqualsCaseInsensitiveASCII(scheme, url::kDataScheme))) {
+     return metrics::OmniboxInputType::URL;
+   }
+diff --git a/chrome/browser/browser_about_handler.cc b/chrome/browser/browser_about_handler.cc
+index 08949a69415dfa9f836e00929a34330a34546ce2..d65b850afa3783d64abd9bb844417d4d32e9505c 100644
+--- a/chrome/browser/browser_about_handler.cc
++++ b/chrome/browser/browser_about_handler.cc
+@@ -38,6 +38,21 @@ bool IsNonNavigationAboutUrl(const GURL& url) {
+ 
+ }  // namespace
+ 
++bool HandleAsideSchemeRewrite(GURL* url,
++                              content::BrowserContext* browser_context) {
++  if (!url->SchemeIs("aside")) {
++    return false;
++  }
++  GURL::Replacements replacements;
++  replacements.SetSchemeStr(content::kChromeUIScheme);
++  GURL rewritten = url->ReplaceComponents(replacements);
++  if (!rewritten.is_valid()) {
++    return false;
++  }
++  *url = rewritten;
++  return true;
++}
++
+ bool HandleChromeAboutAndChromeSyncRewrite(
+     GURL* url,
+     content::BrowserContext* browser_context) {
+diff --git a/chrome/browser/browser_about_handler.h b/chrome/browser/browser_about_handler.h
+index 2d90b6855019a29b4ef78d7e0d9dcca8f99afdcf..884d15da74ef7e28d67ff3d5be46f393d7875c43 100644
+--- a/chrome/browser/browser_about_handler.h
++++ b/chrome/browser/browser_about_handler.h
+@@ -13,6 +13,12 @@ class BrowserContext;
+ 
+ // Rewrites chrome://about -> chrome://chrome-urls and chrome://sync ->
+ // chrome://sync-internals.  Used with content::BrowserURLHandler.
++// Aside: rewrites aside://<host>/<path> to chrome://<host>/<path> so the
++// extension's aside://settings/appearance, aside://history/ and
++// aside://credits/ links open the matching WebUI page.
++bool HandleAsideSchemeRewrite(GURL* url,
++                              content::BrowserContext* browser_context);
++
+ bool HandleChromeAboutAndChromeSyncRewrite(
+     GURL* url,
+     content::BrowserContext* browser_context);
 diff --git a/chrome/browser/chrome_browser_interface_binders.cc b/chrome/browser/chrome_browser_interface_binders.cc
 index 14ee8fd6b094229ae634223021e94e6a85407c4c..ded64cd63c8f9299ae663591c5c0089159e674be 100644
 --- a/chrome/browser/chrome_browser_interface_binders.cc
@@ -9471,7 +9543,7 @@ index 1cf053beb05bc4485bd6e468eedf9e9d2d864ab2..d0d0d49a094ad512b6a51c65d6f4c69c
        connectors_internals::mojom::PageHandler,
        enterprise_connectors::ConnectorsInternalsUI>(map);
 diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
-index 89df9311afa2cf904d3e99ea23aaf4ace6353e3f..f0664b32d9cc5141f3e0f1cd515375f31ee6929c 100644
+index 89df9311afa2cf904d3e99ea23aaf4ace6353e3f..36b34c15b0e913980e1a38cfef9af9a07a6bb84c 100644
 --- a/chrome/browser/chrome_content_browser_client.cc
 +++ b/chrome/browser/chrome_content_browser_client.cc
 @@ -56,6 +56,7 @@
@@ -9482,7 +9554,19 @@ index 89df9311afa2cf904d3e99ea23aaf4ace6353e3f..f0664b32d9cc5141f3e0f1cd515375f3
  #include "chrome/browser/ai/ai_manager.h"
  #include "chrome/browser/app_mode/app_mode_utils.h"
  #include "chrome/browser/battery/battery_saver.h"
-@@ -6734,6 +6735,20 @@ void ChromeContentBrowserClient::WillCreateURLLoaderFactory(
+@@ -5160,6 +5161,11 @@ void ChromeContentBrowserClient::BrowserURLHandlerCreated(
+     part->BrowserURLHandlerCreated(handler);
+   }
+ 
++  // Aside: aside://... -> chrome://... (must run before the about/sync
++  // rewrite so aside://about and friends get the same treatment).
++  handler->AddHandlerPair(&HandleAsideSchemeRewrite,
++                          BrowserURLHandler::null_handler());
++
+   // Handler to rewrite chrome://about and chrome://sync URLs.
+   handler->AddHandlerPair(&HandleChromeAboutAndChromeSyncRewrite,
+                           BrowserURLHandler::null_handler());
+@@ -6734,6 +6740,20 @@ void ChromeContentBrowserClient::WillCreateURLLoaderFactory(
        frame, type == URLLoaderFactoryType::kNavigation, request_initiator,
        isolation_info, factory_builder);
  
@@ -12752,10 +12836,10 @@ index 0000000000000000000000000000000000000000..321854fce6502b9b26fb9723cbbac8e5
 +}
 diff --git a/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc b/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc
 new file mode 100644
-index 0000000000000000000000000000000000000000..a92a63924fbeacdb9e8ccf2d4eaafd956aca9183
+index 0000000000000000000000000000000000000000..48e466023db54ac9ecc57b78edafce3cc7bbcfe5
 --- /dev/null
 +++ b/chrome/browser/extensions/api/aside_browser_import/aside_browser_import_api.cc
-@@ -0,0 +1,478 @@
+@@ -0,0 +1,479 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -13228,9 +13312,10 @@ index 0000000000000000000000000000000000000000..a92a63924fbeacdb9e8ccf2d4eaafd95
 +  for (base::Value& source : chromium_sources) {
 +    sources.Append(std::move(source));
 +  }
-+  base::DictValue dict;
-+  dict.Set("sources", std::move(sources));
-+  Respond(WithArguments(std::move(dict)));
++  // The extension awaits getImportSources() and maps over the result
++  // directly (`d.data?.map(...)`), so the callback carries the array itself
++  // rather than a {sources} wrapper.
++  Respond(WithArguments(std::move(sources)));
 +}
 +
 +}  // namespace extensions
@@ -43013,10 +43098,10 @@ index 017a8c3ff755f6e4142567d04740f682c2800b2b..6ddb4afff9fd1975739cf9549f8d2891
        "//content/test:test_support",
        "//testing/gmock",
 diff --git a/chrome/browser/ui/accelerator_table.cc b/chrome/browser/ui/accelerator_table.cc
-index 847093f9bb5d68bc8b06512a22e883280c992583..447981e75fb6e50cde075c25d6596c5242eceda0 100644
+index 847093f9bb5d68bc8b06512a22e883280c992583..d64f4187ac90bdb3739a4c2f0ee6afe2901062e2 100644
 --- a/chrome/browser/ui/accelerator_table.cc
 +++ b/chrome/browser/ui/accelerator_table.cc
-@@ -321,6 +321,12 @@ std::vector<AcceleratorMapping> GetAcceleratorList() {
+@@ -321,6 +321,30 @@ std::vector<AcceleratorMapping> GetAcceleratorList() {
  #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
      accelerators->emplace_back(AcceleratorMapping(
          {ui::VKEY_N, ui::EF_SHIFT_DOWN | ui::EF_ALT_DOWN, IDC_NEW_SPLIT_TAB}));
@@ -43026,6 +43111,24 @@ index 847093f9bb5d68bc8b06512a22e883280c992583..447981e75fb6e50cde075c25d6596c52
 +        AcceleratorMapping({ui::VKEY_OEM_5,
 +                            ui::EF_SHIFT_DOWN | ui::EF_CONTROL_DOWN,
 +                            IDC_NEW_SPLIT_TAB}));
++    // Aside: the remaining shortcuts the settings page advertises for
++    // Windows (Ctrl+S toggle sidebar, Ctrl+E ask Aside, Ctrl+Shift+E new
++    // task, Ctrl+Shift+C copy URL, Ctrl+Shift+- split tab alternate). They
++    // are appended last so they win over the stock Save Page / Focus
++    // Search / DevTools Inspect bindings (BrowserView keeps the last
++    // mapping per accelerator).
++    accelerators->emplace_back(AcceleratorMapping(
++        {ui::VKEY_S, ui::EF_CONTROL_DOWN, IDC_ASIDE_TOGGLE_SIDEBAR}));
++    accelerators->emplace_back(AcceleratorMapping(
++        {ui::VKEY_E, ui::EF_CONTROL_DOWN, IDC_ASIDE_ASK_ASIDE}));
++    accelerators->emplace_back(AcceleratorMapping(
++        {ui::VKEY_E, ui::EF_SHIFT_DOWN | ui::EF_CONTROL_DOWN,
++         IDC_ASIDE_NEW_TASK}));
++    accelerators->emplace_back(AcceleratorMapping(
++        {ui::VKEY_C, ui::EF_SHIFT_DOWN | ui::EF_CONTROL_DOWN, IDC_COPY_URL}));
++    accelerators->emplace_back(AcceleratorMapping(
++        {ui::VKEY_OEM_MINUS, ui::EF_SHIFT_DOWN | ui::EF_CONTROL_DOWN,
++         IDC_NEW_SPLIT_TAB}));
  #elif BUILDFLAG(IS_CHROMEOS)
      accelerators->emplace_back(
          AcceleratorMapping({ui::VKEY_N, ui::EF_CONTROL_DOWN | ui::EF_ALT_DOWN,
@@ -44881,7 +44984,7 @@ index 30a45e07a5e9d7c986923b3254f01e0da6aa20cb..8ef6a038be82ddbddaa356a816c36c0f
        actions::ActionItem::Builder(
            base::BindRepeating(
 diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
-index a457075948e34dcc2df8a1c127c146bf4dc92a02..bd9253353251f4a4277c43d00a6708b93d4b1c75 100644
+index a457075948e34dcc2df8a1c127c146bf4dc92a02..2a2dc2e5a548b93da6e33d2b1d63c72a3481e905 100644
 --- a/chrome/browser/ui/browser_command_controller.cc
 +++ b/chrome/browser/ui/browser_command_controller.cc
 @@ -4,6 +4,8 @@
@@ -44893,7 +44996,17 @@ index a457075948e34dcc2df8a1c127c146bf4dc92a02..bd9253353251f4a4277c43d00a6708b9
  #include <stddef.h>
  
  #include <algorithm>
-@@ -416,7 +418,7 @@ BrowserCommandController::BrowserCommandController(BrowserWindowInterface* bwi)
+@@ -57,7 +59,9 @@
+ #include "chrome/browser/ui/bookmarks/bookmark_tab_helper.h"
+ #include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/browser_actions.h"
++#include "chrome/browser/ui/aside/aside_extension_bridge.h"
+ #include "chrome/browser/ui/browser_commands.h"
++#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+ #include "chrome/browser/ui/browser_element_identifiers.h"
+ #include "chrome/browser/ui/browser_select_file_dialog_controller.h"
+ #include "chrome/browser/ui/browser_window.h"
+@@ -416,7 +420,7 @@ BrowserCommandController::BrowserCommandController(BrowserWindowInterface* bwi)
    sessions::TabRestoreService* tab_restore_service =
        TabRestoreServiceFactory::GetForProfile(profile());
    if (tab_restore_service) {
@@ -44902,7 +45015,7 @@ index a457075948e34dcc2df8a1c127c146bf4dc92a02..bd9253353251f4a4277c43d00a6708b9
      if (!tab_restore_service->IsLoaded()) {
        tab_restore_service->LoadTabsFromLastSession();
      }
-@@ -428,18 +430,26 @@ BrowserCommandController::BrowserCommandController(BrowserWindowInterface* bwi)
+@@ -428,18 +432,26 @@ BrowserCommandController::BrowserCommandController(BrowserWindowInterface* bwi)
  
  BrowserCommandController::~BrowserCommandController() {
    extension_state_observer_.reset();
@@ -44936,7 +45049,7 @@ index a457075948e34dcc2df8a1c127c146bf4dc92a02..bd9253353251f4a4277c43d00a6708b9
  bool BrowserCommandController::IsReservedCommandOrKey(
      int command_id,
      const input::NativeWebKeyboardEvent& event) {
-@@ -734,6 +744,9 @@ void BrowserCommandController::HandleCommandWithDisposition(
+@@ -734,6 +746,9 @@ void BrowserCommandController::HandleCommandWithDisposition(
        CloseTab(browser_);
        break;
      case IDC_SELECT_NEXT_TAB:
@@ -44946,7 +45059,7 @@ index a457075948e34dcc2df8a1c127c146bf4dc92a02..bd9253353251f4a4277c43d00a6708b9
        base::RecordAction(base::UserMetricsAction("Accel_SelectNextTab"));
        SelectNextTab(
            browser_,
-@@ -741,6 +754,9 @@ void BrowserCommandController::HandleCommandWithDisposition(
+@@ -741,6 +756,9 @@ void BrowserCommandController::HandleCommandWithDisposition(
                TabStripUserGestureDetails::GestureType::kKeyboard, time_stamp));
        break;
      case IDC_SELECT_PREVIOUS_TAB:
@@ -44956,7 +45069,31 @@ index a457075948e34dcc2df8a1c127c146bf4dc92a02..bd9253353251f4a4277c43d00a6708b9
        base::RecordAction(base::UserMetricsAction("Accel_SelectPreviousTab"));
        SelectPreviousTab(
            browser_,
-@@ -1647,7 +1663,9 @@ void BrowserCommandController::TabRestoreServiceChanged(
+@@ -793,6 +811,23 @@ void BrowserCommandController::HandleCommandWithDisposition(
+     case IDC_MOVE_TAB_TO_NEW_WINDOW:
+       MoveActiveTabToNewWindow(browser_);
+       break;
++    case IDC_ASIDE_TOGGLE_SIDEBAR: {
++      if (auto* controller =
++              tabs::VerticalTabStripStateController::From(browser_)) {
++        controller->RequestCollapse(!controller->IsCollapsed());
++      }
++      break;
++    }
++    case IDC_ASIDE_ASK_ASIDE:
++      aside::ShowExtensionPage(
++          browser_, aside::ExtensionPageUrl(browser_->profile(),
++                                            "sidepanel.html", "/sidepanel"));
++      break;
++    case IDC_ASIDE_NEW_TASK:
++      aside::ShowExtensionPage(
++          browser_, aside::ExtensionPageUrl(browser_->profile(), "main.html",
++                                            "/tasks/new"));
++      break;
+     case IDC_NEW_SPLIT_TAB:
+       if (!browser_->tab_strip_model()->GetActiveTab()->IsSplit()) {
+         NewSplitTab(browser_, split_tabs::SplitTabLayout::kSideBySide,
+@@ -1647,7 +1682,9 @@ void BrowserCommandController::TabRestoreServiceChanged(
  
  void BrowserCommandController::TabRestoreServiceDestroyed(
      sessions::TabRestoreService* service) {
@@ -44967,6 +45104,18 @@ index a457075948e34dcc2df8a1c127c146bf4dc92a02..bd9253353251f4a4277c43d00a6708b9
  }
  
  void BrowserCommandController::TabRestoreServiceLoaded(
+@@ -1677,6 +1714,11 @@ void BrowserCommandController::InitCommandState() {
+     return;
+   }
+ 
++  // Aside shortcuts are always available.
++  command_updater_->UpdateCommandEnabled(IDC_ASIDE_TOGGLE_SIDEBAR, true);
++  command_updater_->UpdateCommandEnabled(IDC_ASIDE_ASK_ASIDE, true);
++  command_updater_->UpdateCommandEnabled(IDC_ASIDE_NEW_TASK, true);
++
+   // Navigation commands
+   const bool can_reload = CanReload(browser_);
+   command_updater_->UpdateCommandEnabled(IDC_RELOAD, can_reload);
 diff --git a/chrome/browser/ui/browser_command_controller.h b/chrome/browser/ui/browser_command_controller.h
 index 7b7b32a55b970f92f5b0d01013a4dba2d7763d1e..b7ed5068489f72e03a5854339207acc22cffadcc 100644
 --- a/chrome/browser/ui/browser_command_controller.h
@@ -83030,15 +83179,17 @@ index 0000000000000000000000000000000000000000..cb68b23b6e8ac48383dde64c08b3854a
 +#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_ASIDE_TOOLBAR_COLLAPSE_HOVER_MONITOR_H_
 diff --git a/chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.cc b/chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.cc
 new file mode 100644
-index 0000000000000000000000000000000000000000..b98b21a160c9b026339caf857df0e550b0c62158
+index 0000000000000000000000000000000000000000..c7196cec057082df95f606ff8808dd6fab3104e2
 --- /dev/null
 +++ b/chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.cc
-@@ -0,0 +1,1014 @@
+@@ -0,0 +1,1021 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
 +
 +#include "chrome/browser/ui/views/frame/aside_vertical_tab_strip_additions.h"
++
++#include "build/build_config.h"
 +
 +#include <algorithm>
 +#include <memory>
@@ -83166,7 +83317,12 @@ index 0000000000000000000000000000000000000000..b98b21a160c9b026339caf857df0e550
 +constexpr char16_t kArchiveChat[] = u"Archive Chat";
 +constexpr char16_t kBookmarkChat[] = u"Bookmark chat";
 +constexpr char16_t kMarkAsRead[] = u"Mark as read";
++#if BUILDFLAG(IS_MAC)
 +constexpr char16_t kOpenFolderInFinder[] = u"Open folder in Finder";
++#else
++// Linux/WSL: the daemon hands the folder to Windows Explorer (or xdg-open).
++constexpr char16_t kOpenFolderInFinder[] = u"Open folder in File Explorer";
++#endif
 +constexpr char16_t kCopySessionId[] = u"Copy session ID";
 +constexpr char16_t kOpenInANewTab[] = u"Open in a new tab";
 +constexpr char16_t kMarkAllAsRead[] = u"Mark all as read";
@@ -96152,6 +96308,21 @@ index 0000000000000000000000000000000000000000..1398a563d6fd6cc9058fbb4ce7b99fce
 +
 +}  // namespace aside_adblock
 +#endif
+diff --git a/chrome/common/chrome_content_client.cc b/chrome/common/chrome_content_client.cc
+index bb390289693bd53bb6ef31f3703c0c7d5ae79c8f..cd92e65f110d2d8f7dd0bc43e1c204d4846e609f 100644
+--- a/chrome/common/chrome_content_client.cc
++++ b/chrome/common/chrome_content_client.cc
+@@ -193,6 +193,10 @@ static const char* const kChromeStandardURLSchemes[] = {
+ #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+         // BUILDFLAG(IS_CHROMEOS)
+     chrome::kChromeNativeScheme,        chrome::kChromeSearchScheme,
++    // Aside: the extension links to aside://settings/..., aside://history/
++    // and aside://credits/; they are rewritten to chrome:// (see
++    // HandleAsideSchemeRewrite).
++    "aside",
+     dom_distiller::kDomDistillerScheme,
+ #if BUILDFLAG(IS_ANDROID)
+     content::kAndroidAppScheme,
 diff --git a/chrome/common/extensions/api/_api_features.json b/chrome/common/extensions/api/_api_features.json
 index 79ef33aa4bcb0cefcf0fd6533d2d97ecdb7ecc70..1ccea441a824f9778414667f87e384f5366697ea 100644
 --- a/chrome/common/extensions/api/_api_features.json
