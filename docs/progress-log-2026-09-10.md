@@ -17,9 +17,10 @@
 | 17:0x~19:3x | Codex 컴퓨터 유즈 조사 마무리: 런타임 팩 zip을 바탕화면에 만들고, 다른 모델의 정적 분석 묶음을 실제 파일과 대조(전부 일치), 오픈소스 cua 드라이버 문서와 비교, Codex 문서 층(30개)과 Aside 909 REPL 설명서·스킬 34개를 항목별로 대조 | 실행 층은 cua 드라이버, Codex는 문서(확인 정책·REPL 규칙·완료 기준·탭 넘기기·봇 차단 분류)만 참고. Aside에는 글 4개만 보태면 됨. 결정 3건 대기 | `docs/codex-computer-use-review-2026-09-10.md`, `data/artifacts/codex-cua-20260910/` |
 | 20:2x | 문서 커밋(18ab588) 뒤 CI 실패 확인. 원인은 문서와 무관: 909 구성요소 압축(`components-909.tgz`)은 `AsideAgentManager/1.26.909.1820/assets` 구조인데 등록 정보의 확인 경로와 909 주소창 테스트가 CRX를 그냥 푼 평평한 `AsideAgentManager/assets`를 기대. 압축을 등록한 89114d6 이후 CI가 계속 실패 중이었음 | 등록 정보 경로를 버전 폴더로 고치고 테스트는 두 구조 모두 허용. 로컬에도 압축을 풀어 CI와 같은 구조 확보. 9764f95 CI 성공(run 34470397301) | `research-archives/aside/artifacts.json`, `belmont-browse/tests/omnibox-consumer-generation-909.test.mjs` |
 | 21:1x | 테스터의 MASTER-COVERAGE(118행) 검토. "환경 제약 3개"를 로그로 대조 | #3 Xvfb 격리 불안정은 절차 오류: 확장은 21420이 고정인데 격리 데몬만 21520으로 띄워 확장이 사용자 데몬에 붙음(사용자 브리지 3번 끊김, 20:35~20:41). #1은 절반만(Account·Billing·Channels는 맞고, 메시지 메뉴 등 5건은 `#/u/0/...` 경로 누락). #2는 CDP 키 이벤트로 우회 가능. PASS 24/118 | `data/artifacts/full-user-test-20260909/MASTER-COVERAGE-REVIEW.md` |
+| 21:14~22:21 | **원자 단위 실사용 테스트 직접 실행**(사용자가 "지금 안 쓴다"고 해 점검 창 개시). 사용자 Aside 정지 → 상태 복사본 격리 909(Xvfb :97, 확장 등록 1초) → 실제 키·마우스 + CDP 확인으로 컨트롤 227개 | PASS 184 / FAIL 13 / DIFFERS 5 / ORIGINAL_UNKNOWN 4 / BLOCKED 6 / NOT_DONE 10 / NOT_APPLICABLE 2 / PARTIAL 2. 결함 묶음: aside:// 스킴 미처리(4), 폴더 열기 미구현(3), Import 오류(2), Dark 테마 네이티브 미적용(의심), 사이드바 커스터마이즈 체크 무반응(의심), MCP 서버 스위치 무반응(의심), 단축키 리눅스 매핑 없음(의심). 22:21 사용자 Aside 복구(daemon 112992 / Chrome 113027, GPU 켬), 복사본 삭제 | `docs/atomic-sweep-summary-2026-09-10.md`, `data/artifacts/full-user-test-20260910-atomic/` |
 
 ## 지금 상태
 
-- 사용자 Aside: daemon 76304 / Chrome 76363 (20:33 테스터 재기동, GALLIUM_DRIVER=d3d12 --ignore-gpu-blocklist
+- 사용자 Aside: daemon 112992 / Chrome 113027 (22:21 점검 창 닫고 재기동, GPU 켬; 그 전 76304/76363은 20:33 테스터 재기동, GALLIUM_DRIVER=d3d12 --ignore-gpu-blocklist
 --ignore-gpu-blocklist; 이전 44335/44370은 13:59 기동, **엔진 1.26.909.1820**, 홈 `aside-home-909`, **GPU 렌더링 켬**). 되돌리기: `BELMONT_BROWSE_ENGINE=907 bash run-fork.sh`(907 홈 그대로 있음). Belmont 호스트: tmux `belmont-bot`.
 - 909 적용 완료. 전수 테스트 문서는 버전 표기만 909로 읽으면 된다(경로·도구 동일).
