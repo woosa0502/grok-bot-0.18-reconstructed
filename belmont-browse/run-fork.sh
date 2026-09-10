@@ -13,7 +13,7 @@ export BELMONT_BROWSE_CHROME="${BELMONT_BROWSE_CHROME:-/home/hoon/chromium/src/o
 export BELMONT_BROWSE_NO_SANDBOX="${BELMONT_BROWSE_NO_SANDBOX:-1}"
 export BELMONT_BROWSE_DISPLAY="${BELMONT_BROWSE_DISPLAY:-:99}"
 export BELMONT_BROWSE_TRANSPORT="${BELMONT_BROWSE_TRANSPORT:-port}"
-export BELMONT_BROWSE_ENGINE="${BELMONT_BROWSE_ENGINE:-907}"
+export BELMONT_BROWSE_ENGINE="${BELMONT_BROWSE_ENGINE:-909}"
 export BELMONT_BROWSE_STATE_DIR="${BELMONT_BROWSE_STATE_DIR:-$PWD/.state}"
 if [[ -z "${BELMONT_BROWSE_NATIVE_COMPONENTS+x}" ]]; then
   if [[ -n "${BELMONT_BROWSE_EXTENSION:-}" ]]; then
@@ -24,9 +24,9 @@ if [[ -z "${BELMONT_BROWSE_NATIVE_COMPONENTS+x}" ]]; then
 fi
 if [[ "$BELMONT_BROWSE_NATIVE_COMPONENTS" == 1 ]]; then
   "$NODE_BIN" tools/prepare-native-components.mjs \
-    --source-root "${BELMONT_BROWSE_COMPONENT_SOURCE:-$PWD/vendor/aside-components-907}" \
+    --source-root "${BELMONT_BROWSE_COMPONENT_SOURCE:-$PWD/vendor/aside-components-$BELMONT_BROWSE_ENGINE}" \
     --profile-dir "$BELMONT_BROWSE_STATE_DIR/chrome-profile" \
-    --version "${BELMONT_BROWSE_COMPONENT_VERSION:-1.26.907.1712}"
+    --version "${BELMONT_BROWSE_COMPONENT_VERSION:-$(case "$BELMONT_BROWSE_ENGINE" in 909) echo 1.26.909.1820;; 907) echo 1.26.907.1712;; *) echo 1.26.907.1712;; esac)}"
 fi
 # The binary must be the recorded build of the current source snapshot and the daemon bundle must be the pinned
 # one; a source change after the last build refuses to launch the old binary (BELMONT_BROWSE_ALLOW_UNVERIFIED_NATIVE=1

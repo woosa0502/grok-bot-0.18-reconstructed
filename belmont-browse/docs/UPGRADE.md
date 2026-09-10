@@ -17,3 +17,13 @@
 
 확인된 함정: 계정 폴더의 `settings.json`에 기본 모델을 써 두지 않으면 Aside 클라우드 모델이 기본값이 된다. `credentials.json`은
 Belmont의 `pi-auth.json`과 같은 형식이라 `credentials.mjs`가 복사·되돌리기를 한다.
+
+
+## 2026-09-10: 907 → 909 실제 적용 기록
+
+- 구성요소는 Omaha 요청을 **protocol 4.0 + os 필드**로 보내야 준다(3.1이나 os 없이 보내면 noupdate). 요청 예: `docs/aside-909-daemon-comparison-2026-09-10.md` §1.
+- Windows·macOS 데몬의 JS는 동일하다. `aside-daemon.exe`에서도 같은 규칙(`import{createRequire}from"node:m` 앞 8바이트가 길이)으로 뽑힌다.
+- 체인 순서(907 vendor를 바이트 단위로 재현하는 순서): `patch-daemon.py <원본> <출력> 1.26.909.1820` → `patch-password-session.py <출력> <출력> 1.26.909.1820` → `patch-daemon-linux.py <출력>`(**입력을 제자리에서 덮어씀**, 원본 사본에 돌리지 말 것) → `patch-daemon-lifecycle.py <입력> <출력>` → `patch-daemon-active-workloads.py <입력> <출력>`.
+- 909에서 바뀐 앵커: 메모리 라우터 입력의 zod 이름(`string$3`), `memory_search` 설명이 템플릿 리터럴로 인라인(줄바꿈 포함), backfill 함수 이름 `*SessionTurnMemoryBackfill`, `agent.turn.completed` 훅 이름, 확장 연결 키와 `reconcileSessionTabs`에 `browserMode` 인자, orphan 탭 재시도 클로저 이름(`ii`). 도구는 907·909 둘 다 받는다.
+- 계정 홈은 `aside-home-909`. 원본 데몬이 첫 기동에 v13/v14/v15 마이그레이션을 돌리므로 **907 홈을 복사한 뒤** 909로 띄운다(907 홈은 되돌리기용으로 남는다). 되돌리기: `BELMONT_BROWSE_ENGINE=907 bash run-fork.sh`.
+- 확장 자산 2개(주소창)는 `patch-omnibox-generation.py`에 909 항목을 추가해 같은 변환을 적용했다(비교 함수 이름 en→Jr, tn→en, 변수 p→f).

@@ -13,7 +13,7 @@ const { values: opt } = parseArgs({
   allowNegative: true,
   options: {
     port: { type: "string", default: process.env.BELMONT_BROWSE_PORT || "9340" },
-    engine: { type: "string", default: process.env.BELMONT_BROWSE_ENGINE || "907" },
+    engine: { type: "string", default: process.env.BELMONT_BROWSE_ENGINE || "909" },
     "state-dir": { type: "string", default: process.env.BELMONT_BROWSE_STATE_DIR || path.join(ROOT, ".state") },
     model: { type: "string", default: process.env.BELMONT_BROWSE_MODEL },
     provider: { type: "string", default: process.env.BELMONT_BROWSE_PROVIDER },

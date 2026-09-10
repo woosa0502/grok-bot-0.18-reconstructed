@@ -19,7 +19,7 @@ GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 �
 ## 살아 있는 프로세스 (16:12 KST 재시작 후)
 
 - Belmont 호스트: tmux 세션 `belmont-bot`, runner 795498 / host 795526 / electron 795611, 게이트웨이 127.0.0.1:45026, 새 번들(settings 격리·provider promise 정착 포함). 로그 `data/artifacts/aside-remaining-closure-20260908/logs/host-restart-20260909T0712Z.log`. 죽어 있으면 `tmux new-session -d -s belmont-bot -c <repo> 'SAND_ASIDE_BROWSE=1 npm run wsl:start'`(Node 26.5, `tmux kill-server` 하지 말 것).
-- Aside primary: daemon 931697 / Chrome 931737 (21:15 KST 후속 모델 재기동; 이전 18:29, `BELMONT_BROWSE_DISPLAY=:0 bash belmont-browse/run-fork.sh`, setsid), **미니 팝업 크래시 + 탭 검색 닫힘 수정 빌드(chrome sha 37528b8c…)**. 포크 소스를 바꾸면 빌드 후 `python3 belmont-browse/tools/regenerate-source-checkpoint.py` → `node tools/native-build-identity.mjs record` 순서. health의 memory.semantic available. 16:51 크래시·원인·검증은 `docs/audit-remediation-2026-09-09.md` 맨 아래.
+- Aside primary: **엔진 1.26.909.1820**, daemon 22786 / Chrome 22823 (9/10 00:57 기동, 홈 `belmont-browse/.state/aside-home-909`; 907 홈은 되돌리기용). 이전(907): daemon 931697 (21:15 KST 후속 모델 재기동; 18:29, `BELMONT_BROWSE_DISPLAY=:0 bash belmont-browse/run-fork.sh`, setsid), **미니 팝업 크래시 + 탭 검색 닫힘 수정 빌드(chrome sha 37528b8c…)**. 포크 소스를 바꾸면 빌드 후 `python3 belmont-browse/tools/regenerate-source-checkpoint.py` → `node tools/native-build-identity.mjs record` 순서. health의 memory.semantic available. 16:51 크래시·원인·검증은 `docs/audit-remediation-2026-09-09.md` 맨 아래.
 - 사용자가 본 "cyber" API 오류는 Claude Code 세션의 안전장치 메시지였다(Aside/Belmont 무관, 조치 없음).
 - 골든 E2E는 스텁·계약 수준이다. 포크 UI 실동작 점검(미니 팝업·옵션 창·탭 검색·PW 팝업·단축키)은 `belmont-browse/tools/check-fork-ui-*.mjs`로 격리 인스턴스에서 수행했고 결과는 `docs/audit-remediation-2026-09-09.md` 하단. 남은 것: PW 팝업 크기·위치의 원본 비교(원본 바이너리 필요), Escape 실제 키 입력.
 
@@ -29,7 +29,7 @@ GPT Pro 감사 보고서의 F01~F07을 브랜치 `fix/audit-remediation`에서 �
 
 ## Aside 신규 버전 (2026-09-09 밤 확인)
 
-원본은 1.26.908.1846(changelog)과 1.26.909.1820(업데이트 서버 제공)까지 나와 있다. 우리는 907. 909 CRX 3개는 `data/artifacts/aside-909-20260909/`에 받아 풀어 뒀다(미커밋). 올릴지는 사용자 결정. 절차 `belmont-browse/docs/UPGRADE.md`. 909 데몬과 우리 907 포트 비교·패치 체인 영향은 `docs/aside-909-daemon-comparison-2026-09-10.md`.
+원본은 1.26.908.1846(changelog)과 1.26.909.1820(업데이트 서버 제공)까지 나와 있다. **2026-09-10 00:57에 909로 올렸다.** 백업 `data/artifacts/backups/state-before-909-20260910T0042Z.tgz`. 909 CRX 3개는 `data/artifacts/aside-909-20260909/`에 받아 풀어 뒀다(미커밋). 올릴지는 사용자 결정. 절차 `belmont-browse/docs/UPGRADE.md`. 909 데몬과 우리 907 포트 비교·패치 체인 영향은 `docs/aside-909-daemon-comparison-2026-09-10.md`.
 
 ## 새 세션이 먼저 할 일
 
