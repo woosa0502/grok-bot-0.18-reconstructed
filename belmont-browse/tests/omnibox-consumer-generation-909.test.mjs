@@ -1,7 +1,7 @@
 // Same checks as omnibox-consumer-generation-907.test.mjs against the 1.26.909.1820 pair; the minifier renamed the
 // refinement/expansion comparators (907 en/tn -> 909 Jr/en), the trim helper (_ -> R) and the message sink (f -> p).
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,12 @@ import * as acorn from "../../node_modules/acorn/dist/acorn.mjs";
 
 const browse = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const campaign = path.resolve(browse, "../data/artifacts/aside-909-20260909");
-const original = path.join(campaign, "AsideAgentManager/assets");
+// The pinned archive (components-909.tgz) extracts to AsideAgentManager/<version>/assets like the 907 pair; a raw CRX
+// extraction keeps the flat AsideAgentManager/assets layout. Accept either so the local campaign folder and CI agree.
+const original = ["AsideAgentManager/1.26.909.1820/assets", "AsideAgentManager/assets"]
+  .map((relative) => path.join(campaign, relative))
+  .find((candidate) => existsSync(path.join(candidate, "-page-C7w40MhN.js")));
+assert.ok(original, `no 909 agent-manager assets under ${campaign}`);
 const names = ["-page-C7w40MhN.js", "search-view-C5yihfsp.js"];
 const patcher = path.join(browse, "tools/patch-omnibox-generation.py");
 const directory = mkdtempSync(path.join(tmpdir(), "aside-generation-909-"));

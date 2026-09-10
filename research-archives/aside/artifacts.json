@@ -171,7 +171,7 @@
       "bytes": 14990176,
       "sha256": "9adc86dc4904e13093b84910738e2050c678922340c09d2a29b193591486f7e3",
       "extractTo": "data/artifacts/aside-909-20260909",
-      "check": "data/artifacts/aside-909-20260909/AsideAgentManager/assets",
+      "check": "data/artifacts/aside-909-20260909/AsideAgentManager/1.26.909.1820/assets",
       "origin": "Aside component pair 1.26.909.1820 (Browsing Agent + Password Manager) as served by the Aside update server on 2026-09-09 (crx sha256 17ca0504… / 2539ebbf…)",
       "note": "third-party upstream component archive; pristine baseline for belmont-browse/vendor/aside-components-909 (two omnibox assets are patched there by tools/patch-omnibox-generation.py)",
       "usedBy": [
