@@ -81,6 +81,7 @@ export const ENGINES = {
   "902": { bundle: "../vendor/aside-902/apps/daemon/build/daemon.mjs", home: "aside-home-902", version: "1.26.902.1713" },
   "906": { bundle: "../vendor/aside-906/apps/daemon/build/daemon.mjs", home: "aside-home-906", version: "1.26.906.1714" },
   "907": { bundle: "../vendor/aside-907/apps/daemon/build/daemon.mjs", home: "aside-home-907", version: "1.26.907.1712" },
+  "909": { bundle: "../vendor/aside-909/apps/daemon/build/daemon.mjs", home: "aside-home-909", version: "1.26.909.1820" },
 };
 
 export function prepareAsideHome({ asideHome, cdpUrl, model }) {
@@ -284,15 +285,19 @@ export async function initializeLocalLifecycle(A, { accountId, startBackground =
       // Original bootstrap parity: the memory history backfill also runs at startup (it otherwise only runs
       // from the per-session memory hook), catching sessions that ended while the daemon was down. The
       // original start/stop pair is used unchanged; the promise is the backfill's own lifetime.
-      if (typeof A.startSessionRunMemoryBackfill === "function") {
-        const name = "startSessionRunMemoryBackfill";
+      // 909 renamed the pair to *SessionTurnMemoryBackfill (logical Turns); the original start/stop pair is used
+      // under whichever name the bundle exports.
+      const backfillStart = ["startSessionTurnMemoryBackfill", "startSessionRunMemoryBackfill"].find((candidate) => typeof A[candidate] === "function");
+      const backfillStop = backfillStart?.replace("start", "stop");
+      if (backfillStart) {
+        const name = backfillStart;
         if (state.closed) state.background[name] = "stopped-before-start";
         else {
           state.background[name] = "starting";
           try {
-            const running = Promise.resolve(A.startSessionRunMemoryBackfill(accountId));
+            const running = Promise.resolve(A[backfillStart](accountId));
             running.catch((error) => { state.errors[name] = error.message; log(`[lifecycle] memory backfill stopped unexpectedly: ${error.message}`); });
-            if (typeof A.stopSessionRunMemoryBackfill === "function") state.cleanups.set(name, () => A.stopSessionRunMemoryBackfill(accountId));
+            if (typeof A[backfillStop] === "function") state.cleanups.set(name, () => A[backfillStop](accountId));
             if (!["stopped", "stop-failed"].includes(state.background[name])) state.background[name] = state.cleanups.has(name) ? "started" : "started-unmanaged";
           } catch (error) {
             state.background[name] = "failed"; state.errors[name] = error.message; failures.push(error);

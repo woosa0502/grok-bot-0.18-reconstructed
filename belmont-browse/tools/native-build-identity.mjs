@@ -22,7 +22,7 @@ export const REPO_ROOT = path.resolve(BROWSE_ROOT, "..");
 export const SNAPSHOT_DIR = path.join(BROWSE_ROOT, "aside-fork/snapshot");
 export const IDENTITY_FILE = path.join(SNAPSHOT_DIR, "build-identity.json");
 const SNAPSHOT_INPUTS = ["manifest.json", "chromium.patch", "args.gn", "dependencies.json"];
-const ENGINE_BUNDLES = { "824": "aside-824", "902": "aside-902", "906": "aside-906", "907": "aside-907" };
+const ENGINE_BUNDLES = { "824": "aside-824", "902": "aside-902", "906": "aside-906", "907": "aside-907", "909": "aside-909" };
 
 export async function sha256File(file) {
   return new Promise((resolve, reject) => {

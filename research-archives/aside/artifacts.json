@@ -149,6 +149,34 @@
       "usedBy": [
         "docs/aside-909-daemon-comparison-2026-09-10.md (upgrade planning; not wired into any engine yet)"
       ]
+    },
+    {
+      "kind": "patched-daemon-bundle",
+      "version": "1.26.909.1820",
+      "path": "patched/aside-909-daemon.mjs",
+      "bytes": 10777479,
+      "sha256": "2f5d4758657847b3f302d095415fe6a32cc0956f8e28721183bed935a9935fdd",
+      "target": "belmont-browse/vendor/aside-909/apps/daemon/build/daemon.mjs",
+      "derivedFrom": "original/AsideDaemon-win-x64-1.26.909.1820.mjs",
+      "derivation": "Reproducible: patch-daemon.py <orig> <out> 1.26.909.1820; patch-password-session.py; patch-daemon-linux.py (in place); patch-daemon-lifecycle.py; patch-daemon-active-workloads.py. The same chain with 1.26.907.1712 reproduces patched/aside-907-daemon.mjs byte for byte (checked 2026-09-10).",
+      "usedBy": [
+        "belmont-browse/src/session.mjs ENGINES (909)",
+        "belmont-browse/tools/native-build-identity.mjs pinnedDaemon(909)"
+      ],
+      "origin": "tools/patch-daemon.py 1.26.909.1820 -> patch-password-session.py -> patch-daemon-linux.py -> patch-daemon-lifecycle.py -> patch-daemon-active-workloads.py over original/AsideDaemon-win-x64-1.26.909.1820.mjs (2026-09-10)"
+    },
+    {
+      "kind": "archive",
+      "path": "extensions/components-909.tgz",
+      "bytes": 14990176,
+      "sha256": "9adc86dc4904e13093b84910738e2050c678922340c09d2a29b193591486f7e3",
+      "extractTo": "data/artifacts/aside-909-20260909",
+      "check": "data/artifacts/aside-909-20260909/AsideAgentManager/assets",
+      "origin": "Aside component pair 1.26.909.1820 (Browsing Agent + Password Manager) as served by the Aside update server on 2026-09-09 (crx sha256 17ca0504… / 2539ebbf…)",
+      "note": "third-party upstream component archive; pristine baseline for belmont-browse/vendor/aside-components-909 (two omnibox assets are patched there by tools/patch-omnibox-generation.py)",
+      "usedBy": [
+        "belmont-browse/tools/patch-omnibox-generation.py (909 hashes)"
+      ]
     }
   ]
 }

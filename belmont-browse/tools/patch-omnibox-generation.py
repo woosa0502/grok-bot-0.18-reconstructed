@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bind original Aside omnibox consumers to the native result they rendered.
 
-Pins the 1.26.824, 1.26.906 and 1.26.907 omnibox assets. Only these exact original
+Pins the 1.26.824, 1.26.906, 1.26.907 and 1.26.909 omnibox assets. Only these exact original
 inputs (or this tool's exact output) are accepted; changing bundle shape must fail, never partly
 patch. The 906 omnibox code is byte-shape-identical to 824 at every anchor EXCEPT the hover handler
 callback, which the 906 minifier named `P` (824 used `_`); everything else, including the entire
@@ -21,6 +21,8 @@ ASSETS = {
     "search-view--fIYrfC3.js":  ("906", "search-view", "P"),
     "-page-C9UKSHnb.js":        ("907", "page", None),
     "search-view-Bczinz9d.js":  ("907", "search-view", "P"),
+    "-page-C7w40MhN.js":        ("909", "page", None),
+    "search-view-C5yihfsp.js":  ("909", "search-view", "P"),
 }
 RAW_HASHES = {
     "-page-DIRMOM6u.js":       "01a42addc9c35a4eddbfae0e1b339f96747de9ebb0b584339060d6efb37a8dab",
@@ -29,6 +31,8 @@ RAW_HASHES = {
     "search-view--fIYrfC3.js": "005dec14cbbe9e09b9e2f9b7a5eeb3202e000dae2b5c81bb6ac6a98c6043a343",
     "-page-C9UKSHnb.js":       "a7579dff92894404d31dadfde10ce81927cad30d46c6129e65f21f9dd0bea862",
     "search-view-Bczinz9d.js": "51e8bb45e21586c571043010e45a6c6e645fb2135d574c34911b24fb670db121",
+    "-page-C7w40MhN.js":       "a71693e2128d56d14c2b069654c63b90fb1f0e98f5c86729d40197b449de4a97",
+    "search-view-C5yihfsp.js": "1a66fb33eda7d555f1dbbddb28b64a9aae52766ef4cfe755699d7b162e418c75",
 }
 PATCHED_HASHES = {
     "-page-DIRMOM6u.js":       "8b423ba056f869beec6dc9cb6409ee71aa34330d2a66bc827438e52d1497d6dc",
@@ -37,6 +41,8 @@ PATCHED_HASHES = {
     "search-view--fIYrfC3.js": "13fa3b38ae3cf171615e83ebc1b48fac742bd1a9fee194af06f6357715cfffd9",
     "-page-C9UKSHnb.js":       "3728e7e3ee176c54857016a938c485fdf5260bc059549f98d0a366f218d0f0a4",
     "search-view-Bczinz9d.js": "6d19fc6c80208264869bdb01ab2f037b6f8a0acb469eefc52463ce64c1d45388",
+    "-page-C7w40MhN.js":       "93dd5f3c05c05bd92bfe802df8ef6c0a9f3be06271a01c7c380a1e7eb1064622",
+    "search-view-C5yihfsp.js": "9b55f8521ac655cb572d7b2c541638d17c94cd4a342885b02a43ae97f19f93a2",
 }
 HELPERS = '''/* belmont-omnibox-generation-v1:start */
 const __belmontOmniboxWithGeneration=(selection,match)=>{
@@ -158,12 +164,56 @@ def transform_page_907(source):
     return HELPERS + source
 
 
+def transform_page_909(source):
+    source = replace(source,
+        'Pe=e=>e?{actionIndex:Number(e.actionIndex??0),line:Number(e.line??0),state:e.state??"normal"}:null',
+        'Pe=e=>e?{actionIndex:Number(e.actionIndex??0),line:Number(e.line??0),resultSequenceId:e.resultSequenceId,state:e.state??"normal"}:null')
+    source = replace(source,
+        '&&String(e.state??"normal")===String(t.state??"normal"),st=',
+        '&&String(e.state??"normal")===String(t.state??"normal")&&e.resultSequenceId===t.resultSequenceId,st=')
+    source = replace(source, 'return c?n.contents===c.contents',
+        'return c?n.resultSequenceId===c.resultSequenceId&&n.contents===c.contents')
+    source = replace(source, 'const l=Pe(r);',
+        'const l=Pe(__belmontOmniboxWithGeneration(r,x.current[Number(r.line??-1)]));')
+    source = replace(source, '{line:y,url:r.destinationUrl}',
+        '{line:y,resultSequenceId:r.resultSequenceId,url:r.destinationUrl}')
+    source = replace(source, 'activationTarget:{line:c,url:d.destinationUrl}',
+        'activationTarget:{line:c,resultSequenceId:d.resultSequenceId,url:d.destinationUrl}')
+    source = replace(source, 'const Qe={actionIndex:0,line:X,state:"normal"}',
+        'const Qe={actionIndex:0,line:X,resultSequenceId:Te.resultSequenceId,state:"normal"}')
+    source = replace(source, 'ge={actionIndex:0,line:qe,state:"normal"}',
+        'ge={actionIndex:0,line:qe,resultSequenceId:W[qe]?.resultSequenceId,state:"normal"}', 2)
+    source = replace(source,
+        'const X=S.selection===void 0?I.current:Pe(S.selection);',
+        'const X=S.selection===void 0?Pe(__belmontOmniboxWithGeneration(I.current?{...I.current,resultSequenceId:void 0}:null,S.matches[Number(I.current?.line??-1)])):Pe(S.selection);')
+    source = replace(source, 'matches:S.matches,selection:S.selection}',
+        'matches:S.matches,selection:X}')
+    source = replace(source, '&&Jr(x.current,S.matches)',
+        '&&__belmontOmniboxSameGeneration(x.current,S.matches)&&Jr(x.current,S.matches)')
+    source = replace(source, '&&en(x.current,S.matches)',
+        '&&__belmontOmniboxSameGeneration(x.current,S.matches)&&en(x.current,S.matches)')
+    source = replace(source, 'line:y?.line,state:"normal"',
+        'line:y?.line,resultSequenceId:y?.item.resultSequenceId,state:"normal"')
+    source = replace(source, 'selection:Qe}',
+        'resultSequenceId:Qe.resultSequenceId,selection:Qe}')
+    source = replace(source,
+        'openPopupSelection(b.sessionId,{disposition:"currentTab",selection:y})',
+        'openPopupSelection(b.sessionId,{disposition:"currentTab",selection:__belmontOmniboxWithGeneration(y,f)})')
+    source = replace(source,
+        'const v=Ae(f.destinationUrl);if(v)return',
+        'const v=Ae(f.destinationUrl);if(v&&(__belmontOmniboxWithGeneration(y,f).resultSequenceId===0||f.resultSequenceId!==x.current[Number(y.line??-1)]?.resultSequenceId))return!1;if(v)return')
+    source = replace(source,
+        'H({actionIndex:0,line:0,state:"normal"}),!0)},[le,t,H])',
+        'H({actionIndex:0,line:0,resultSequenceId:u[0]?.resultSequenceId,state:"normal"}),!0)},[le,t,H,u])')
+    return HELPERS + source
+
+
 def transform(name, source):
     version, kind, hv = ASSETS[name]
     if kind == 'search-view':
         return transform_search_view(source, hv)
     if kind == 'page':
-        return transform_page_907(source) if version == '907' else transform_page(source)
+        return {'907': transform_page_907, '909': transform_page_909}.get(version, transform_page)(source)
     raise ValueError(f'Unknown asset: {name}')
 
 
@@ -191,7 +241,7 @@ def main():
     present = [n for n in ASSETS if (options.assets / n).exists()]
     versions = sorted({ASSETS[n][0] for n in present})
     if len(versions) != 1 or len(present) != 2:
-        raise ValueError(f'expected exactly one 824|906|907 asset pair in {options.assets}; found {present}')
+        raise ValueError(f'expected exactly one 824|906|907|909 asset pair in {options.assets}; found {present}')
     planned = []
     for name in present:
         target = options.assets / name

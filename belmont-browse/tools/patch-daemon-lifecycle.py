@@ -263,7 +263,14 @@ export const __belmontLifecycles = {
 '''
 
 
-def replacements():
+def _reconcile_params(source):
+    for params in ("Cn,ei,ti=`default`", "Cn,ei"):
+        if f"function reconcileSessionTabs({params}){{" in source or f"function __belmontOriginalReconcileSessionTabs({params}){{" in source:
+            return params
+    return "Cn,ei"
+
+
+def replacements(source=""):
     changes = []
     for original, renamed, parameters in (
         ("checkRoutines", "CheckRoutines", ""),
@@ -278,7 +285,7 @@ def replacements():
         ("stopObservingUserBrowsing", "StopObservingUserBrowsing", ""),
         ("purgeEphemeralSessions", "PurgeEphemeralSessions", ""),
         ("flushIdleTabs", "FlushIdleTabs", ""),
-        ("reconcileSessionTabs", "ReconcileSessionTabs", "Cn,ei"),
+        ("reconcileSessionTabs", "ReconcileSessionTabs", _reconcile_params(source)),
     ):
         changes.append((f"async function {original}({parameters}){{",
                         f"async function __belmontOriginal{renamed}({parameters}){{"))
@@ -304,9 +311,16 @@ def replacements():
     routine_dispatch = "let ti=listDueRoutines(ei.id,Cn);for(let ni of ti)await runDueRoutine(ei.id,ni,Cn).catch(Cn=>logger.warn(`[RoutineScheduler] Routine run failed`,{routineId:ni.id,error:Cn}))"
     routine_dispatch_new = 'if(__belmontLifecycleBlocked("routine"))break;let ti=listDueRoutines(ei.id,Cn);for(let ni of ti){if(__belmontLifecycleBlocked("routine"))break;await runDueRoutine(ei.id,ni,Cn).catch(Cn=>logger.warn(`[RoutineScheduler] Routine run failed`,{routineId:ni.id,error:Cn}))}'
     changes.append((routine_dispatch, routine_dispatch_new))
-    changes.append(("setTimeout(()=>void ri(),ORPHAN_TAB_CLOSE_RETRY_MS)", "__belmontLifecycleScheduleReconciliationRetry(ri)"))
-    bridge_callback = "globalExtensionBridge.onConnect(({accountId:Cn,profileId:ei})=>{let ti=`${Cn}:${ei}`;"
-    changes.append((bridge_callback, bridge_callback.replace("=>{let ti=", '=>{if(__belmontLifecycleBlocked("maintenance"))return;let ti=', 1)))
+    # 907 names the retry closure `ri`; 909 (browserMode parameter) names it `ii`.
+    retry_var = next((v for v in ("ri", "ii") if source.count(f"setTimeout(()=>void {v}(),ORPHAN_TAB_CLOSE_RETRY_MS)") == 1 or source.count(f"__belmontLifecycleScheduleReconciliationRetry({v})") == 1), "ri")
+    changes.append((f"setTimeout(()=>void {retry_var}(),ORPHAN_TAB_CLOSE_RETRY_MS)", f"__belmontLifecycleScheduleReconciliationRetry({retry_var})"))
+    # 909 keys the bridge connection by browser mode as well; the gate goes in the same place.
+    bridge_variants = (
+        ("globalExtensionBridge.onConnect(({accountId:Cn,profileId:ei})=>{let ti=`${Cn}:${ei}`;", "=>{let ti="),
+        ("globalExtensionBridge.onConnect(({accountId:Cn,profileId:ei,browserMode:ti})=>{let ni=`${Cn}:${ei}:${ti}`;", "=>{let ni="),
+    )
+    bridge_callback, bridge_head = next(((cb, head) for cb, head in bridge_variants if source.count(cb) == 1 or source.count(cb.replace(head, "=>{if(__belmontLifecycleBlocked(\"maintenance\"))return;" + head[3:], 1)) == 1), bridge_variants[0])
+    changes.append((bridge_callback, bridge_callback.replace(bridge_head, '=>{if(__belmontLifecycleBlocked("maintenance"))return;' + bridge_head[3:], 1)))
     # Direct API/account reconciliation must respect the lifecycle stop boundary.
     reconcile = "reconcile(Cn=AccountRegistry.getCurrentAccountId()){if(Cn===AccountRegistry.getCurrentAccountId())"
     changes.append((reconcile, reconcile.replace("{if(", '{if(__belmontLifecycleBlocked("context"))return;if(', 1)))
@@ -319,7 +333,8 @@ def replacements():
     queue_gate = "if(!ri()||!settings(ti).get(`contextAwareness`).enabled)return{...ni,gated:`disabled`};let ii=ei.now??Date.now();ni.queued=enqueueSummaryJobs(ti,ii);for(let ai=0;ai<(ei.maxJobs??MAX_JOBS_PER_PASS)&&ri();ai+=1)"
     queue_gate_new = queue_gate.replace("if(!ri()", 'if(__belmontLifecycleBlocked("comprehension")||!ri()', 1).replace("&&ri();ai+=1)", '&&ri()&&!__belmontLifecycleBlocked("comprehension");ai+=1)')
     changes.append((queue_gate, queue_gate_new))
-    cancel_job = "}catch(Cn){if(!ri()){ni.skipped+=1;break}let ei=Cn instanceof Error?Cn.message:String(Cn),oi=ai.attemptCount>=MAX_ATTEMPTS"
+    # Anchor stops at `oi=`: 909 inserts a contract-error branch after it; the insertion point is the same.
+    cancel_job = "}catch(Cn){if(!ri()){ni.skipped+=1;break}let ei=Cn instanceof Error?Cn.message:String(Cn),oi="
     cancel_job_new = cancel_job.replace("}catch(Cn){", '}catch(Cn){if(Cn?.code===`BELMONT_LIFECYCLE_STOPPING`){if(ri())deferSummaryJob(ti,ai,Date.now());ni.skipped+=1;break}', 1)
     changes.append((cancel_job, cancel_job_new))
     dispose_all = "async disposeAll(){await Promise.all([...this.#e.values()].map(Cn=>this.disposeSession(Cn.accountId,Cn.sessionId)))}"
@@ -336,16 +351,16 @@ def patch(source):
         if source.count(suffix) != 1 or not source.endswith(suffix):
             raise ValueError("Lifecycle suffix mismatch; refusing partial or foreign lifecycle patch")
         body = source[:-len(suffix)]
-        for old, new in replacements():
+        for old, new in replacements(body):
             if body.count(old) != 0 or body.count(new) != 1:
                 raise ValueError(f"Patched lifecycle anchor mismatch: {old[:100]}")
         validate_ownership(body)
         return source
-    for old, new in replacements():
+    for old, new in replacements(source):
         if source.count(old) != 1 or source.count(new) != 0:
             raise ValueError(f"Lifecycle anchor mismatch: count={source.count(old)}: {old[:100]}")
     validate_ownership(source)
-    for old, new in replacements():
+    for old, new in replacements(source):
         source = source.replace(old, new, 1)
     return source + suffix
 

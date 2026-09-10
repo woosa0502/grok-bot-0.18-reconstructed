@@ -220,18 +220,24 @@ export const __belmontWorkloads = {
 '''
 
 
-def replacements():
+def _kind(source):
+    return "Turn" if "SessionTurnMemoryBackfill" in source else "Run"
+
+
+def replacements(source=""):
     changes = []
+    kind = _kind(source)
+    event = "agent.turn.completed" if "agent.turn.completed" in source else "agent.run.completed"
     for name, renamed, parameters in (
         ("extractMemories", "ExtractMemories", "Cn"),
         ("runDreaming", "RunDreaming", "Cn"),
         ("digestContextAwareness", "DigestContextAwareness", "Cn,ei={}"),
     ):
         changes.append((f"async function {name}({parameters}){{", f"async function __belmontOriginal{renamed}({parameters}){{"))
-    changes.append(("function startSessionRunMemoryBackfill(Cn){", "function __belmontOriginalStartSessionRunMemoryBackfill(Cn){"))
+    changes.append((f"function startSession{kind}MemoryBackfill(Cn){{", f"function __belmontOriginalStartSession{kind}MemoryBackfill(Cn){{"))
     changes.append(("async function acquireWebSocket(Cn,ei,ti,ni,ri,ii,ai){", "async function __belmontOriginalAcquireWebSocket(Cn,ei,ti,ni,ri,ii,ai){"))
-    completed = "this.hooks.trigger(`agent.run.completed`,{finalAssistantMessage:ei,sessionRun:ti},void 0).catch(Cn=>console.error(`[Hook] agent.run.completed failed:`,Cn))"
-    changes.append((completed, "__belmontWorkloadCompleted(()=>" + completed.split(".catch", 1)[0] + ").catch(Cn=>console.error(`[Hook] agent.run.completed failed:`,Cn))"))
+    completed = "this.hooks.trigger(`agent.run.completed`,{finalAssistantMessage:ei,sessionRun:ti},void 0).catch(Cn=>console.error(`[Hook] agent.run.completed failed:`,Cn))".replace("agent.run.completed", event)
+    changes.append((completed, "__belmontWorkloadCompleted(()=>" + completed.split(".catch", 1)[0] + ").catch(Cn=>console.error(`[Hook] " + event + " failed:`,Cn))"))
     disposed = '"session.dispose":()=>{incrementSessionCount(Cn.accountRoot).catch(Cn=>{logger.error(`[MemoryHook] incrementSessionCount failed: ${Cn}`)})}'
     changes.append((disposed, '"session.dispose":()=>__belmontWorkloadTrack(()=>incrementSessionCount(Cn.accountRoot),true)'))
     for name, content in (("pi", "buildExtractionPrompt({sessionId:Cn.sessionId,memoryRoot:ai,recentMessageCount:ri,targetEpisodicPath:si.path,recentEpisodicContent:si.recentContent})"),):
@@ -264,19 +270,20 @@ def repair_routine_memory_await(source):
 
 def patch(source):
     source = repair_routine_memory_await(source)
-    suffix = "\n" + MARKER + "\n" + SHIM + END_MARKER + "\n"
+    shim = SHIM.replace("SessionRunMemoryBackfill", f"Session{_kind(source)}MemoryBackfill")
+    suffix = "\n" + MARKER + "\n" + shim + END_MARKER + "\n"
     if MARKER in source or END_MARKER in source or "export const __belmontWorkloads" in source:
         if source.count(suffix) != 1 or not source.endswith(suffix):
             raise ValueError("Active workload suffix mismatch; refusing partial or foreign patch")
         body = source[:-len(suffix)]
-        for old, new in replacements():
+        for old, new in replacements(body):
             if body.count(new) != 1 or body.count(old) != new.count(old):
                 raise ValueError(f"Patched active workload anchor mismatch: {old[:100]}")
         return source
-    for old, new in replacements():
+    for old, new in replacements(source):
         if source.count(old) != 1 or source.count(new) != 0:
             raise ValueError(f"Active workload anchor mismatch: count={source.count(old)}: {old[:100]}")
-    for old, new in replacements():
+    for old, new in replacements(source):
         source = source.replace(old, new, 1)
     return source + suffix
 

@@ -3,13 +3,13 @@
 from pathlib import Path
 import sys
 
-VERSION = "1.26.907.1712"
+VERSIONS = ("1.26.907.1712", "1.26.909.1820", "907", "909")
 ORIGINAL = "function refreshPasswordSessionExpiry(Cn,ei,{persist:ti=!1}={}){let ni=getState(Cn);ni.masterKey&&(ni.expiresAt=sessionExpiresAt(ei),ti?persistToKeychain(Cn,ni.expiresAt):scheduleKeychainClear(Cn,ni.expiresAt))}"
 PATCHED = ORIGINAL.replace("{let ni=getState(Cn);", "{if(isPasswordUiSessionExplicitlyLocked(Cn))return;let ni=getState(Cn);", 1)
 
 
 def patch_password_session(source, version):
-    if version != VERSION:
+    if version not in VERSIONS:
         return source
     if source.count("function isPasswordUiSessionExplicitlyLocked(Cn){") != 1:
         raise ValueError("907 explicit UI lock predicate is missing or ambiguous")

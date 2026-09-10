@@ -18,12 +18,12 @@ startContextAwareness startContextAwarenessComprehension init_lifecycles init_sc
 registerStartupTabReconciliation RecentSessionsStore init_recent_sessions_store
 init_store$3 init_store$1 init_skills$5 liveSuspensionRegistry BUILTIN_SKILLS_DIR ASIDE_HOME_PATH EventBus logger createAgentToolset ProjectStore
 tryMigrateStateDb initAccountDirectory runAccountBootstrap stateDb syncAccountBuiltinSkills MemoryManager recoverSuspensionsOnStartup
-startSessionRunMemoryBackfill stopSessionRunMemoryBackfill
+startSessionRunMemoryBackfill stopSessionRunMemoryBackfill startSessionTurnMemoryBackfill stopSessionTurnMemoryBackfill
 init_agent_session init_browser init_cdp init_extension_bridge init_accounts init_directory init_tool_states init_session_notifications init_suspension""".split()
 
 def patch_cdp_shutdown(src, version):
     """Terminal close must cancel a 907 discovery, retry, or WS handshake."""
-    if version != "907":
+    if version not in ("907", "909", "1.26.907.1712", "1.26.909.1820"):
         return src
     start = src.index("CdpClient=class{")
     end = src.index("SessionManager,init_session_manager", start)
@@ -83,13 +83,24 @@ def patch_memory_routing(src):
     elif 'createMemoryReadTool=Cn=>' in src:
         old = 'search:accountProcedure.input(object({queries:array(string$2().min(1)).min(1).max(3),maxResults:number$2().int().min(1).max(10).optional()})).query('
         new = 'search:accountProcedure.input(object({queries:array(string$2().min(1)).min(1).max(3),maxResults:number$2().int().min(1).max(10).optional(),range:object({from:string$2().optional(),to:string$2().optional()}).optional()})).query('
+        zod = 'string$3' if 'array(string$3().min(1)).min(1).max(3),maxResults' in src else 'string$2'
+        old, new = old.replace('string$2', zod), new.replace('string$2', zod)
         replace_once(old, new, '902 memory UI date range')
         old = 'let ni=await MemoryManager.forAccount(ei.accountId).searchMany({...Cn,excludeContextAwareness:!ti});'
         new = 'let ni=await (globalThis.__belmontMemorySearch?globalThis.__belmontMemorySearch({accountId:ei.accountId,accountRoot:getAccountRoot(ei.accountId),...Cn,excludeContextAwareness:!ti}):MemoryManager.forAccount(ei.accountId).searchMany({...Cn,excludeContextAwareness:!ti}));'
         replace_once(old, new, '902 memory UI router')
         old = 'name:`memory_search`,label:`Memory search`,description:MEMORY_SEARCH_TOOL_DESCRIPTION({contextAwareness:!Cn.session.incognito&&!isOnboardingSessionTrigger(Cn.session.trigger)&&isContextAwarenessReadable(Cn.accountId)}),parameters:'
         new = 'name:`memory_search`,label:`Memory search`,description:globalThis.__belmontMemoryDescription?.()??MEMORY_SEARCH_TOOL_DESCRIPTION({contextAwareness:!Cn.session.incognito&&!isOnboardingSessionTrigger(Cn.session.trigger)&&isContextAwarenessReadable(Cn.accountId)}),parameters:'
-        replace_once(old, new, '902 memory description')
+        if src.count(old) == 1 or src.count(new) == 1:
+            replace_once(old, new, '902 memory description')
+        else:
+            # 909 inlines the description as a template literal; keep the same hook in front of it.
+            # The template literal contains a raw newline; DOTALL keeps the non-greedy match inside it.
+            pat909 = re.compile(r"(name:`memory_search`,label:`Memory search`,description:)(`Semantically search saved memories.*?)(,parameters:)", re.S)
+            already = src.count('description:globalThis.__belmontMemoryDescription?.()??`Semantically search saved memories')
+            if already != 1:
+                assert len(pat909.findall(src)) == 1, '909 memory description anchor mismatch'
+                src = pat909.sub(lambda m: m.group(1) + 'globalThis.__belmontMemoryDescription?.()??' + m.group(2) + m.group(3), src, 1)
         assert src.count('globalThis.__belmontMemorySearch({accountId:Cn.accountId,accountRoot:getAccountRoot(Cn.accountId),...{queries:') == 1, '902/906/907 final memory tool hook mismatch'
         assert src.count('globalThis.__belmontMemorySearch({accountId:ei.accountId,accountRoot:getAccountRoot(ei.accountId),...Cn,') == 1, '902/906/907 final memory UI hook mismatch'
     else:
