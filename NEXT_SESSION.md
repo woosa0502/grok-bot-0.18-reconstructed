@@ -1,5 +1,38 @@
 # 다음 세션 시작점 — Aside/Belmont (세션2 갱신 2026-09-09 19:20 KST)
 
+## 지금 상태 요약 (2026-09-10 23:30 KST, 세션3 종료 직전 — compaction용)
+
+**살아 있는 것**
+- 사용자 Aside: daemon **129705** / Chrome **129742**, 엔진 1.26.909.1820, 홈 `belmont-browse/.state/aside-home-909`, GPU 켬(GALLIUM_DRIVER=d3d12 + --ignore-gpu-blocklist), 포크 빌드 **c3209e2f**(9/10 23:19 링크). 23:22에 setsid로 띄움. health `http://127.0.0.1:9340/health`(토큰 `belmont-browse/.state/serve.json`).
+- Belmont 호스트(tmux `belmont-bot`)는 **꺼져 있음**(테스터가 껐고 다시 안 켬). 필요하면 `SAND_ASIDE_BROWSE=1 npm run wsl:start`.
+- 격리 점검 창(Xvfb :97, `/tmp/aside-test-state`)은 닫고 지웠음.
+
+**오늘 한 일(순서)** — 상세는 `docs/progress-log-2026-09-10.md`
+1. Codex 컴퓨터 유즈 조사 → `docs/codex-computer-use-review-2026-09-10.md`, GPT Pro 지시서 `docs/gpt-pro-brief-windows-computer-use-2026-09-10.md`(바탕화면 zip으로도 전달). 결론: 실행 층은 trycua/cua 드라이버, Codex는 문서만 참고.
+2. CI 실패 원인(909 구성요소 압축 폴더 구조) 수정 → 9764f95.
+3. 테스터 MASTER-COVERAGE 검토 → `data/artifacts/full-user-test-20260909/MASTER-COVERAGE-REVIEW.md`(핵심: 확장 포트 21420 고정이라 격리 검증은 사용자 데몬을 멈추고 해야 함).
+4. 원자 단위 실사용 테스트 직접 실행(227 컨트롤) → `docs/atomic-sweep-summary-2026-09-10.md`, 장부 `data/artifacts/full-user-test-20260910-atomic/LEDGER.md`.
+5. FAIL 13건 전부 수정·재검 → 6cad6b8(CI 성공). 포크 9파일(aside:// 스킴, Import 배열, 가속기 Ctrl+S/E/Shift+E/Shift+C/Shift+-, 메뉴 문구), 데몬 패치(WSL 폴더 열기, 907·909 재고정), 자산 패치 도구 `belmont-browse/tools/patch-linux-platform-glyphs.py`.
+
+**사용자 결정 대기**
+- cua 드라이버 Windows 설치 승인(연기 테스트는 사용자가 보는 앞에서).
+- CAPTCHA 정책: 계속 자동 / Codex처럼 묻기.
+- Aside에 보탤 정책 글 4개(확인 정책·로그인/탭 넘기기·봇 차단 분류·완료 기준)를 내장 스킬로 넣을지, 훅으로 붙일지.
+- 실행기에 데몬 포트 치환(확장 사본의 21420 → 지정 포트) 추가 여부: 넣으면 사용자 Aside를 안 끄고도 격리 검증 가능.
+
+**다시 시작할 때 주의**
+- 포크 소스를 바꾸면: 빌드(`third_party/ninja/ninja -C out/aside -j3 chrome`, `chrome_command_ids.h` 건드리면 379단계·약 15분) → `python3 belmont-browse/tools/regenerate-source-checkpoint.py` → `cd belmont-browse && node tools/native-build-identity.mjs record --chrome /home/hoon/chromium/src/out/aside/chrome --engine 909`.
+- 확장 자산 패치를 바꾸면 살아 있는 프로필의 `belmont-browse/.state/chrome-profile/aside_component/agent-manager/1.26.909.1820`을 지운 뒤 재기동해야 반영됨(준비 도구가 같은 버전의 다른 내용을 덮어쓰지 않음).
+- 데몬 패치 체인은 원본에서 다시 돌린다(`belmont-browse/docs/UPGRADE.md` 체인 순서). `patch-daemon-linux.py`는 입력을 제자리에서 덮어씀.
+- `pkill -f`에 자기 명령줄이 매칭돼 셸이 죽는 사고가 두 번 있었음. PID로 죽일 것.
+- 테스트는 Node 26(`/home/hoon/.local/share/mise/installs/node/26.5.0/bin/node`)으로. nvm의 Node 22로 돌리면 `node --check`류가 잘못 실패함.
+- 점검 창 절차는 `docs/full-user-test-checklist-2026-09-09.md` §2.2/§2.3 그대로(사용자 데몬 정지 → 상태 복사 → Xvfb :97 → 전체 스택). 실키·마우스는 xdotool, DOM 확인은 `data/artifacts/full-user-test-20260910-atomic/tools/cdp.mjs`(`front`/`visible`/`eval id:<targetId>`).
+
+**남은 항목**
+- 원자 테스트 NOT_DONE 10(S12 Belmont 연동 8행, 2시간 방치, 완료 소리 Change 등)·BLOCKED 6(클라우드 계정·PRO)·DIFFERS 5(`--no-sandbox` 안내 막대, 원본 미확인 항목).
+- 저장소에 남의 미커밋 파일: `docs/shopping-bot-plan-2026-09-08.md`(수정), `docs/shopping-bot-memory-init.md`, `docs/taobao-account-safety-2026-09-10.md`(신규). 내 작업 아님, 손대지 않음.
+
+
 **작업 완료 판정이 아니다.** 시간순 진행 상황은 진행 일지에 계속 쌓는다(맨 아래가 최신): [9/9](docs/progress-log-2026-09-09.md), [9/10](docs/progress-log-2026-09-10.md). 세션2가 인계 문서의 다음 순서를 실행했고, 아래는 그 결과와 현재 살아 있는 상태다.
 
 먼저 [상세 인계 문서](data/artifacts/aside-remaining-closure-20260908/HANDOFF_20260909.md)를 읽되, 실행 상태는 이 문서와 [세션2 인계 부록](data/artifacts/aside-remaining-closure-20260908/HANDOFF_20260909_SESSION2.md), [적용된 테스트 수정 기록](data/artifacts/aside-remaining-closure-20260908/handoff-20260909/APPLIED_TEST_FIXES.md)이 우선한다.
