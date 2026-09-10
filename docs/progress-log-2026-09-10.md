@@ -10,6 +10,7 @@
 | 00:4x | 사용자 상태 백업(`data/artifacts/backups/state-before-909-20260910T0042Z.tgz`, 캐시 제외 683MB), 909 vendor 디렉터리 준비, 패치 도구 5개를 909에 맞게 확장 | 907 체인은 여전히 vendor와 바이트 동일 | commit 89114d6 |
 | 00:5x | 909 번들 조립·설치, 상태 복사본으로 Xvfb에 전체 스택 기동해 검증 | 엔진 준비·확장 등록·메모리 native·마이그레이션 v13~15·실제 작업(example.com 제목) 15초 완료 | `data/artifacts/aside-909-20260909/verify/` |
 | 00:57 | **사용자 Aside를 909로 전환**(홈 `aside-home-907` → `aside-home-909` 복사 후 기동) | daemon 22786 / Chrome 22823, 세션 33개 유지, health ready·memory native | logs/primary-relaunch-20260910T0056Z-* |
+| 01:1x | 909 전환 후 실제 작업 1건(example.com 제목) 15초 완료. 주소창 자산 검사 테스트를 909용으로 추가(비교 함수·헬퍼 이름 매핑), 회귀 테스트 통과 | 도구·문서 커밋 | `belmont-browse/tests/omnibox-consumer-generation-909.test.mjs` |
 
 ## 지금 상태
 
