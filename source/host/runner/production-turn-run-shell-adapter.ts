@@ -288,6 +288,12 @@ export function createProductionTurnRunShellAdapter(
       const emitUpdate = (update: ForwardedUpdate): void => {
         if (!ownsRun()) return;
         const callbacks = updateRelay.callbacks;
+        if (update.type === "final-delivery") {
+          // SendMessage final: true. Owner-internal: end the turn after the
+          // checkpoint that carries this delivery; nothing reaches the transport.
+          callbacks?.completeAfterDelivery();
+          return;
+        }
         if (callbacks !== undefined) {
           if (update.type === "text-delta" && typeof update.text === "string") {
             callbacks.collectText(update.text);

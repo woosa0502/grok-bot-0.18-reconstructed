@@ -2347,6 +2347,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 });
                 return hooks.transport.lastSentMessageId?.();
               },
+              // A delivery marked final: true ends the turn at the next persisted
+              // checkpoint (turn-run-shell). Owner-internal signal: the relay
+              // consumes it and never forwards it to the transport.
+              onFinalDelivery: () => {
+                turn.emitUpdate?.({ type: "final-delivery" });
+              },
             },
       }),
       createSendToAgentToolInputs: (turn) => ({

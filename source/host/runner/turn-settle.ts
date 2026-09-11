@@ -126,6 +126,8 @@ export interface TurnResultFlags {
   readonly quiescedForUpgrade?: boolean;
   readonly awaitingUserSelection?: boolean;
   readonly streamOutputProduced?: boolean;
+  /** The run was cut right after a SendMessage marked final: true (a completed turn, not an abort). */
+  readonly completedOnFinalDelivery?: boolean;
 }
 
 export interface TurnSettleResult extends TurnResultFlags {
@@ -448,6 +450,9 @@ export function createTurnSettle(
         : {}),
       ...(flags.awaitingUserSelection === true
         ? { awaitingUserSelection: true }
+        : {}),
+      ...(flags.completedOnFinalDelivery === true
+        ? { completedOnFinalDelivery: true }
         : {}),
       ...(endedOnSilentToolCalls
         ? { endedOnSilentToolCalls: true }

@@ -8,6 +8,8 @@ export interface SendMessageInput {
   readonly images?: readonly { readonly url: string; readonly alt?: string | undefined }[] | undefined; readonly alt?: string | undefined;
   readonly reply_to?: string | undefined; readonly channel?: string | undefined; readonly widget?: unknown; readonly bcId?: string | undefined;
   readonly secret?: { readonly label: string; readonly description?: string | undefined; readonly connector: string; readonly field: string } | undefined;
+  /** The delivery that closes the loop for this turn: the runtime ends the turn right after it is sent. */
+  readonly final?: boolean | undefined;
 }
 export interface SendMessageIssue { readonly path: readonly (string | number)[]; readonly message: string }
 export function isValidAttachmentUrl(value: string): boolean { try { return ["file:", "https:"].includes(new URL(value).protocol); } catch { return false; } }
@@ -21,6 +23,7 @@ export function refineSendMessage(value: SendMessageInput): SendMessageIssue[] {
   for (const { field, types } of TYPE_FIELDS) if (!types.includes(value.type) && isFieldProvided(value[field])) { const allowed = types.map((type) => `type:${type}`).join(" or "); issues.push({ path: [String(field)], message: `${String(field)} is only valid with ${allowed} and cannot ride a type:${value.type} message \u2014 it would be silently dropped. Nothing was sent. Re-send as separate SendMessage calls, one per type: this field on its own properly-typed message (${allowed}), and any text as its own type:text message.` }); }
   if (value.channel && value.type !== "text" && value.type !== "attachment") issues.push({ path: ["channel"], message: "channel can only be set for type:text or type:attachment, not widgets or cursor-agent cards" });
   if ((value.images?.length ?? 0) > 0 && value.type !== "text") issues.push({ path: ["images"], message: "images can only be set for type:text (they attach to a text message); for a standalone attachment use type:attachment with url" });
+  if (value.final === true && (value.type === "widget" || value.type === "secret-request")) issues.push({ path: ["final"], message: `final is not needed with type:${value.type} — a widget or secret-request already ends your turn while it waits on the user. Nothing was sent. Re-send without final.` });
   if (value.type === "text") {
     if (!value.content) issues.push({ path: ["content"], message: "content is required when type is text" });
     for (const [index, image] of (value.images ?? []).entries()) if (!isValidAttachmentUrl(image.url)) issues.push({ path: ["images", index, "url"], message: "each images url must include a file:// or https:// scheme" });
@@ -49,5 +52,6 @@ const objectSchema = z.object({
     connector: z.string().trim().min(1).describe("The connector/platform the secret is for. The value is written to that connector's per-agent credential file."),
     field: z.string().trim().min(1).describe('The credential field name to store the value under, e.g. "token".'),
   }).optional().describe("Required when type is secret-request. Asks the user for a credential through a masked secure input; the value goes straight to the connector's credential file and never reaches you or the chat. You only learn that it was provided."),
+  final: z.boolean().optional().describe("Optional. Set true only on the SendMessage that closes the loop for this turn — the message carrying the result (or the whole answer, for a quick reply) after which you have nothing more to do. The turn ends immediately after this message is delivered, without another model round trip, so anything you meant to do afterwards will not happen. Never set it on an acknowledgement, a progress update, or a message you intend to follow with more work. Not for widgets or secret-requests (they already end the turn)."),
 });
 export const sendMessageParameters = objectSchema.superRefine((value, ctx) => { for (const issue of refineSendMessage(value)) ctx.addIssue({ code: "custom", path: [...issue.path], message: issue.message }); });

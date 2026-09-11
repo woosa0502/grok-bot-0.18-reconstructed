@@ -460,6 +460,11 @@ export interface TurnStreamCallbacks {
   collectAgentMessage(message: string): void;
   persistCheckpoint(checkpoint: TurnCheckpoint): Promise<void>;
   pauseForUser(reason: string): void;
+  /**
+   * SendMessage final: true. The run ends once the checkpoint carrying that
+   * delivery is persisted, and settles as a completed turn (no closing round trip).
+   */
+  completeAfterDelivery(): void;
   noteDispatched(): void;
 }
 
@@ -550,6 +555,10 @@ interface ActiveRun {
   recoveryShaped: boolean;
   awaitingUserSelection: boolean;
   quiescedForUpgrade: boolean;
+  /** A SendMessage marked final: true was delivered; cut the run at the next persisted checkpoint. */
+  finalDeliveryRequested: boolean;
+  /** The run was cut after that checkpoint: a completed turn, not an abort. */
+  completedOnFinalDelivery: boolean;
 }
 
 export function createTurnRunShell(host: TurnRunShellHost) {
@@ -611,6 +620,11 @@ export function createTurnRunShell(host: TurnRunShellHost) {
       intentional: true,
       reason: "awaiting user selection (escaped run)",
     });
+  }
+
+  function endTurnAfterDelivery(owner: ActiveRun | null = activeRun): void {
+    if (owner == null) return;
+    owner.finalDeliveryRequested = true;
   }
 
   function interruptAll(reason: string): boolean {
@@ -677,6 +691,8 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         && rawTranscriptText === trimmedPrompt,
       awaitingUserSelection: false,
       quiescedForUpgrade: false,
+      finalDeliveryRequested: false,
+      completedOnFinalDelivery: false,
     };
     if (activeRun != null) {
       cancelRun(activeRun, { intentional: true, reason: "Superseded by a newer turn." });
@@ -734,6 +750,7 @@ export function createTurnRunShell(host: TurnRunShellHost) {
     let finalState: TurnCheckpoint | undefined;
     let aborted = false;
     let awaitingUserSelection = false;
+    let lastPersistedCheckpoint: TurnCheckpoint | undefined;
     const turnStartedAtMs = Date.now();
 
     let context: TurnRunContext = {
@@ -742,6 +759,20 @@ export function createTurnRunShell(host: TurnRunShellHost) {
       generation,
       ownsRun,
       cancelThisRun: cancellation => cancelRun(runState, cancellation),
+    };
+    const settleCompleted = async (state: TurnCheckpoint): Promise<void> => {
+      if (prepared == null) return;
+      await settle.settleCompletedTurn({
+        finalState: state,
+        turnStartedAtMs,
+        hidden: options.hidden === true,
+        closingNudge: options.closingNudge === true,
+        taskContinuation: options.taskContinuation === true,
+        trimmedPrompt,
+        session: prepared.session,
+        baseContext: context,
+        requestId,
+      });
     };
 
     try {
@@ -861,10 +892,20 @@ export function createTurnRunShell(host: TurnRunShellHost) {
             await settle.persistStepCheckpoint(context, checkpoint);
           });
           if (!ownsRun()) return;
+          lastPersistedCheckpoint = checkpoint;
           if (runState.awaitingUserSelection) {
             cancelRun(runState, {
               intentional: true,
               reason: "awaiting user selection",
+            });
+          } else if (runState.finalDeliveryRequested) {
+            // The checkpoint carrying the final SendMessage (its tool result
+            // included) is durable: end the run here instead of paying another
+            // model round trip for an empty closing message. Settles as completed.
+            runState.completedOnFinalDelivery = true;
+            cancelRun(runState, {
+              intentional: true,
+              reason: "final message delivered",
             });
           } else if (quiescingForUpgrade) {
             runState.quiescedForUpgrade = true;
@@ -876,6 +917,9 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         },
         pauseForUser(reason): void {
           endTurnAwaitingUser(reason, runState);
+        },
+        completeAfterDelivery(): void {
+          endTurnAfterDelivery(runState);
         },
         noteDispatched(): void {
           runState.dispatched = true;
@@ -894,28 +938,30 @@ export function createTurnRunShell(host: TurnRunShellHost) {
       aborted =
         (controller.signal.aborted || !ownsRun())
         && !runState.awaitingUserSelection
-        && !runState.quiescedForUpgrade;
+        && !runState.quiescedForUpgrade
+        && !runState.completedOnFinalDelivery;
       endLifecycle();
 
       if (ownsRun() && !aborted && !runState.quiescedForUpgrade) {
-        await settle.settleCompletedTurn({
-          finalState,
-          turnStartedAtMs,
-          hidden: options.hidden === true,
-          closingNudge: options.closingNudge === true,
-          taskContinuation: options.taskContinuation === true,
-          trimmedPrompt,
-          session: prepared.session,
-          baseContext: context,
-          requestId,
-        });
+        await settleCompleted(finalState);
       }
     } catch (error) {
       endLifecycle();
       if (!controller.signal.aborted) throw error;
       aborted =
         !runState.awaitingUserSelection
-        && !runState.quiescedForUpgrade;
+        && !runState.quiescedForUpgrade
+        && !runState.completedOnFinalDelivery;
+      if (
+        runState.completedOnFinalDelivery
+        && ownsRun()
+        && lastPersistedCheckpoint != null
+      ) {
+        // We cut the stream ourselves right after the final delivery's checkpoint
+        // was persisted; that checkpoint is the turn's final state.
+        finalState = lastPersistedCheckpoint;
+        await settleCompleted(finalState);
+      }
     } finally {
       try {
         if (
@@ -950,6 +996,9 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         : {}),
       ...(awaitingUserSelection
         ? { awaitingUserSelection: true }
+        : {}),
+      ...(runState.completedOnFinalDelivery
+        ? { completedOnFinalDelivery: true }
         : {}),
     });
   }
