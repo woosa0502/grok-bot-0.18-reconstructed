@@ -1,5 +1,16 @@
 # 다음 세션 시작점 — Aside/Belmont (세션2 갱신 2026-09-09 19:20 KST)
 
+## 9/11 08:05 KST 갱신 (세션4)
+
+- Belmont 호스트 **켜져 있음**: tmux `belmont-bot`, 게이트웨이 127.0.0.1:42923 (`sand-data/gateway.json`), Electron 창 1개, aside-browse 연결됨. 폰 PWA 4173 켜져 있음(Tailscale 8444).
+- **미커밋 변경**: `SendMessage final: true` 로 최종 답 뒤 빈 모델 왕복 제거. 파일 7개 + 테스트 1개 + 문서 2개. 상세 `docs/final-send-turn-close-2026-09-11.md`, 일지 `docs/progress-log-2026-09-11.md`. 런타임은 이 변경으로 재빌드된 상태.
+- 사용자 Belmont 에서의 실측은 아직. 상태 폴러 스크립트는 세션 스크래치에만 있음(재실행 시 새로 짜면 됨: 게이트웨이 `POST /api/listAgents` 를 0.4초 간격으로).
+- Aside 사용자 인스턴스: 9/11 13:09 KST 재기동 → daemon **416998** / Chrome **417037** (로그 `belmont-browse/.state/logs/serve-fork-20260911T040908Z.log`). 오늘 바뀐 것: 프로필 언어 ko-KR 우선; **데몬 패치 2개 추가** `patch-daemon-site-knowledge.py`(한글 키워드 스킬 주입, 메모리 워커가 `memory/sites` 링크를 따라감) + `patch-daemon-dream-procedures.py`(dreaming이 사이트 페이지에 절차를 씀) → 909 번들 핀 갱신(`research-archives/aside/artifacts.json` + LFS 사본), UPGRADE.md에 체인 순서 기록. `dreamingMinSessions`는 5로 복구됨(캐시라 재기동 필요).
+- Aside 규칙·스킬(모두 지식 저장소, git 밖): `knowledge/rules/aside-agents.md` v2(아는 길은 한 호출, 확인용 호출 금지, 클릭 이동, 접근 제한 정지), 쿠팡 스킬은 사용자 판단(방법은 스크립트가 아니라 메모리로 학습)으로 철회·삭제. 백업 `*.bak-20260911`.
+- **쿠팡 쿨다운**: 11:37부터 `사용권한이 없습니다` 제한이 걸림(직접 URL 이동 + 쿠키 지운 반복 접속 12회). 오늘은 쿠팡 작업 금지, 쿠키 지우는 측정 금지. 부검 `docs/aside-decision-count-2026-09-11.md`.
+- 미커밋: 위 문서·패치 스크립트·artifacts.json·LFS 사본 + 아침의 `SendMessage final` 변경.
+
+
 ## 지금 상태 요약 (2026-09-10 23:30 KST, 세션3 종료 직전 — compaction용)
 
 **살아 있는 것**

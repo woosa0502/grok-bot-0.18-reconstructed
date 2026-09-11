@@ -33,3 +33,9 @@ Belmont의 `pi-auth.json`과 같은 형식이라 `credentials.mjs`가 복사·�
 - **폴더 열기**: 원본 `openSystemPath`는 win32(네이티브 helper)·darwin(`open`)만 있고 그 외는 throw라서 채팅 메뉴 "Open folder", 프로젝트 "Open Project Folder", 메모리 "Open folder"가 500이었다. `patch-daemon-linux.py`가 리눅스 분기를 넣는다: WSL(`WSL_DISTRO_NAME`/`WSL_INTEROP`/`/proc/version`)이면 `wslpath -w`로 바꾼 경로를 `/mnt/c/Windows/explorer.exe`(파일 reveal은 `/select,`)에 넘기고, 일반 리눅스는 `xdg-open`. 체인을 다시 돌려 `patched/aside-909-daemon.mjs`(59976fd7…)·`patched/aside-907-daemon.mjs`(11e03255…)를 새로 고정했다.
 - **단축키·파일 탐색기 표기**: 확장은 macOS/Windows만 구분해 리눅스에서 ⌘ 글리프와 "Finder" 문구가 나왔다. `tools/patch-linux-platform-glyphs.py --assets vendor/aside-components-909/agent-manager/1.26.909.1820/assets`가 `appearance-BlPq6qs7.js`(Ctrl 표기)와 `platform-CH1yjH9T.js`(Ctrl+ 글리프, File Explorer 문구)를 고친다(해시 고정, 멱등; 테스트 `tests/linux-platform-glyphs-909.test.mjs`). 909 vendor를 새로 만들 때 주소창 패치 다음에 이 도구도 돌린다.
 - **포크(Chromium)**: `aside://` 스킴을 표준 스킴으로 등록하고 `chrome://`로 다시 쓰는 핸들러(`HandleAsideSchemeRewrite`)·주소창 분류를 추가, `asideBrowserImport.getImportSources`가 배열을 돌려주도록 수정(설정 Import 오류 화면 해결), 리눅스 가속기 Ctrl+S(사이드바)·Ctrl+E(Ask Aside)·Ctrl+Shift+E(새 작업)·Ctrl+Shift+C(URL 복사)·Ctrl+Shift+-(분할 탭) 추가(`IDC_ASIDE_*`). 빌드 뒤 `regenerate-source-checkpoint.py` → `native-build-identity.mjs record`.
+
+## 2026-09-11 사이트 지식 배달 패치
+
+- 체인 마지막에 `python3 tools/patch-daemon-site-knowledge.py <출력>`(제자리 덮어쓰기, 표식 `belmont-browse-site-knowledge`). 원본 두 결함: 스킬 키워드 자동 주입이 ASCII `\b` 기준이라 한글 키워드 불일치; 메모리 워커 4곳이 Dirent 기준이라 `memory/sites` 심볼릭 링크 미색인. 적용 뒤 `research-archives/aside/artifacts.json` 909 핀과 LFS 사본을 갱신하고 `native-build-identity.mjs verify`로 확인한다.
+
+- 2026-09-11: `patch-daemon-dream-procedures.py`(v2) — dreaming 프롬프트 Page shape 에 "사이트 페이지는 절차도 담아야 하며, 근거가 있는데 절차가 없으면 미완성" 규칙 1개. 체인 마지막에 site-knowledge 다음으로. v1의 부드러운 표현은 dream 이 무시했음.
