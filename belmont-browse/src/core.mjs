@@ -1,5 +1,5 @@
 // belmont-browse: reusable engine + session handles for the serve/MCP adapters (our code).
-import { browserAlive } from "./browser-lifecycle.mjs";
+import { browserAlive, isProcessAlive } from "./browser-lifecycle.mjs";
 import path from "node:path";
 import { createPrivateKey, randomUUID, createHash } from "node:crypto";
 import { writeFileSync, readFileSync, mkdirSync, rmSync } from "node:fs";
@@ -283,7 +283,15 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
     ...controller,
     // ready is the daemon *and* the owned browser: after the fork crashed (2026-09-09 16:51) health kept saying
     // ready while chromePid was gone, and Belmont's aside-browse bot would have queued work against a dead UI.
-    stats: () => ({ ...controller.stats(), memoryAuthority: canonicalMemoryRequested() ? "belmont" : "aside-legacy", memoryProtocolVersion: canonicalMemoryRequested() ? 1 : 0, ready: engineReady && browserAlive(chrome.child ?? null) !== false, browser: { pid: chrome.child?.pid ?? null, alive: browserAlive(chrome.child ?? null) }, memory: memory.capabilities(), bridge: ext.stats.commands, transport, ...(chrome.relay ? { relayClients: chrome.relay.clientCount(), cdpMessages: chrome.relay.stats.sent } : {}) }),
+    stats: () => {
+      // Chrome liveness for health: an OWNED chrome has a child handle (browserAlive); an ADOPTED chrome
+      // has no handle (child=null), so browserAlive would return null and mask its death — check the
+      // adopted pid via isProcessAlive instead so /health never reports a dead adopted browser as ready
+      // (L19.CHROME.HEALTH.DEAD).
+      const browserPid = chrome.child?.pid ?? chrome.pid ?? null;
+      const browserLive = chrome.child ? browserAlive(chrome.child) : (Number.isSafeInteger(chrome.pid) ? isProcessAlive(chrome.pid) : null);
+      return { ...controller.stats(), memoryAuthority: canonicalMemoryRequested() ? "belmont" : "aside-legacy", memoryProtocolVersion: canonicalMemoryRequested() ? 1 : 0, ready: engineReady && browserLive !== false, browser: { pid: browserPid, alive: browserLive }, memory: memory.capabilities(), bridge: ext.stats.commands, transport, ...(chrome.relay ? { relayClients: chrome.relay.clientCount(), cdpMessages: chrome.relay.stats.sent } : {}) };
+    },
     stop,
   };
   } catch (error) {
