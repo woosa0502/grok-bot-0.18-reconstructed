@@ -871,3 +871,14 @@ L09 MCP나 L04 잔여 도구, L30 승격으로 범위를 넓혀 이 경계들의
 
 **[R3 검토·R4 실행 패키지](sandbox:/mnt/data/Belmont_R3_review_and_R4_batch.zip)**
 **[바로 전달할 다음 배치 명세 — NEXT_BATCH_R4.md](sandbox:/mnt/data/belmont_r3_review/NEXT_BATCH_R4.md)**
+
+---
+
+# 라운드4 실행 (R4 subset) — Claude
+
+- **L18.QUEUED**: 핵심 게이트 PASS — B queued→취소→슬롯 해제 후에도 미시작(BSTART 부재), C 실행(스케줄러 정상). aStart 부재는 하네스 타이밍 아티팩트(A 슬롯점유는 B queued=true로 입증).
+- **L19.RUNNING.NO_CLEANUP**: 복구=PASS(무개입) — serve SIGKILL만 후 수동정리 없이 재시작 성공, 세션 interrupted(explicit-continuation, resumed:false), 자동재실행 0, box:1337 자가해제. **정리=결함(FINDING)**: 하드 크래시 시 aside chrome 프로세스 ~36개 고아 누수(box는 정리되나 chrome은 리퍼 없음).
+
+**실제 결함 1건**: 크래시(serve SIGKILL) 시 브라우저(chrome) 프로세스 누수. GPT 라운드4 검토에서 심각도·원인 경로·조치 판단 요청 중. 정상 stop 경로(engine cleanup)는 chrome을 종료하나, 크래시 우회 시 리퍼 부재.
+
+남은 R4: L13.BROWSER.{DENY/ALLOW/STALE/SELF}, L18.SHELL.TREE, L19.PENDING, L19.DONE.{PERSISTED,EFFECT_ONLY}, L19.CONTINUE.NO_DUP.
