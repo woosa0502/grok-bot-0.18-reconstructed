@@ -82,6 +82,17 @@ Memory 2.1 통합을 고정 9개 목록으로 검증(전부 실 제품 경로로
   - **Belmont 기억 → Aside task = 이미 배선됨**(오탐). `extension.ts:60` `createBrowseMemoryHooks` → `BrowseClient.create/continue`의 `#prepareMemory`가 기억 packet 주입(create·follow-up·answer 전부). origin엔 Memory 2.1이 없어 안 보였음.
   - **dreaming → 승급 게이트**: **canonical엔 존재**(`kernel/experience/loop.ts`: `ingest`는 candidate를 evidence로만 capture, `promote()`가 `evaluateProcedure`로 측정 후 `state:"accepted"`만, `lookup`은 accepted만 반환). **legacy 경로만 gap** — `patch-daemon-dream-procedures.py`가 절차를 활성 `sites/` Current에 직접 쓰고 learn-measure(drafts/→sites/)와 자동 hand-off 없음. **남은 작업**: 라이브 Aside 엔진 + 설계 결정 필요(데몬 write 재조정). 맹목 수정 금지.
 
+## 13. 실제 909 게이트 검증 — 1차 (Draft PR #1, G1+G2-검색)
+- **Draft PR #1**: `woosa0502/grok-bot-0.18-reconstructed` feat/skill-scope-fields→main (base 7a9049d7). 병합·cutover·자동승격 아님. 본문에 무관 변경 `af95bca`(skill-scope) 구분 표시.
+- **유지보수 창**(사용자 승인): 라이브 봇을 **명시 pid로** 중지(싱글턴 포트 21420/1337/9333 때문에 격리 909와 공존 불가) → 격리 909 serve(개발 프로필·개발 knowledge `.cache/eval-verify-909`·로컬 테스트 페이지·blessed 키) → 검증 → **legacy 복구**(`wsl:setup`+`wsl:start`, rollout.json 부재·게이트웨이 /health ok 확인). 실계정·실사이트·cutover 없음.
+  - gotcha 재확인: `run-wsl` 감독자는 host-main을 **재기동**하므로 run-wsl을 먼저 죽여야 함. `pgrep -f <패턴>`은 자기 명령줄을 자가매칭 → **comm=node 필터 + 자기 pid 제외** 또는 포트 소유 pid로만 kill.
+- **G1(세션 배선) PASS / G2-검색 PASS** (실제 909, 동일 run/session, 실제 모델 턴):
+  `[eval-probe] forwarding=true searchIsolation=true readIsolation=withheld | overlay{found:true,result:"<sentinel>"} control{found:false,result:"NOTFOUND"}`. 커밋 `d6bbc3a`, 패치 스크립트 `fd2d153`. daemon sha256(포워딩+스키마) `e4527c6c…`.
+- **원인 2건 발견·수정**: (1) 엄격 `sessionRuntimeConfigSchema`가 미지의 `sitesDir`를 insert 시 제거 → 스키마에 `sitesDir` 추가(`tools/patch-daemon-sites-overlay.py`, 앵커·멱등·fail-closed). (2) legacy `createNativeMemoryRuntime.searchMany`가 모든 검색을 네이티브 MemoryManager(계정 기억, sitesRoot 무시)로 보냄 → **eval 세션(sitesRoot)은 격리 lexical 경로로 라우팅**(`memory-native-runtime.mjs`). 일반 세션 불변.
+- **capability 생산자**: `engine.evaluationCapabilities()` + 호스트 소유 startup self-probe(`BELMONT_BROWSE_SITES_OVERLAY=1`일 때만). workerForwarding+searchIsolation을 **번들 SHA 바인딩**으로 실증하되 **readIsolation은 보류**(read_file/bash 원문읽기 미격리) → `health.sitesOverlay` false 유지 → learn-measure `OVERLAY_NOT_PROVEN` 거부 → **자동승격 OFF**(올바름). 필드 일괄 true 금지.
+- **남은 게이트**: G2-원문읽기(read_file/bash 세션별 파일접근 스코프 — 미구현), G3 학습오염, G4 완료관측(작업별 독립 관측기), G5 비용, G6 게시(개발 knowledge), G7 실패종료. 동일 run/session으로 성공1·실패1 끝까지 추적 필요. 벤더 데몬 편집은 로컬(gitignore), tracked는 패치 스크립트.
+- 검증: Node 26.8.1 memory/overlay/adoption/procedure/parity **110/110**. 결과는 PR #1 코멘트에 기록.
+
 ## 12. 3차 통합 수정 패키지 적용 (56d6f82 재검토 대응)
 리뷰어가 `56d6f82`를 고정해 **실행→관측→비교→게시→종료** 전 경로를 다시 검토하고, 적용 가능한 통합 수정 패키지(코드·재현·74 테스트·mutation·`APPLY.py`)를 제공. 5개 파일 blob SHA가 내 56d6f82와 정확히 일치 확인 후 적용.
 - **발견된 실 결함(내 56d6f82에 실재)**: (A) `goalOk`가 세션 status를 재확인 안 해 error/running에 성공문자열이면 승격 가능. (B) 게시 시 원본 draft를 **다시 읽어** 게시 → 측정 안 한 내용 게시 가능. (C) `finally`에서 게시 → 로그/게시 순서 역전(게시 후 rollback 거짓 보고 등). (E) per-session sitesRoot가 결과는 root로 나눴지만 **FTS 통계(BM25) 공유** → eval 색인이 정상 세션 순위를 바꿈(실 SQLite 재현 [a,b]→[b,a]).
