@@ -7,6 +7,7 @@ import { parseArgs } from "node:util";
 import { createBrowseEngine } from "./core.mjs";
 import { resolveModelSelection } from "./session.mjs";
 import { modelOverrides } from "./model-options.mjs";
+import { sitesOverlayHealth, validateSitesOverlayRequest } from "./sites-overlay-capability.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const { values: opt } = parseArgs({
@@ -60,10 +61,9 @@ const server = http.createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${token}`) return json(res, 401, { error: "unauthorized" });
     const url = new URL(req.url, "http://127.0.0.1");
     const parts = url.pathname.split("/").filter(Boolean);
-    // sitesOverlay is advertised only when the operator has enabled it (BELMONT_BROWSE_SITES_OVERLAY=1) on a
-    // daemon bundle whose memory_search forwards the per-session sitesDir. learn-measure refuses to run without
-    // it, so it never exposes an unapproved draft on a service that cannot isolate the evaluation.
-    if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, ...serviceIdentity, engine: engine.version, model: engine.A.settings(engine.account.id).get("defaultModel") ?? model, sitesOverlay: process.env.BELMONT_BROWSE_SITES_OVERLAY === "1", ...engine.stats() });
+    // The operator flag is only an off switch. A host-owned, engine-bound worker proof is required;
+    // without engine.evaluationCapabilities() this stays disabled, including on pre-patched 909 bundles.
+    if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, ...serviceIdentity, engine: engine.version, model: engine.A.settings(engine.account.id).get("defaultModel") ?? model, ...engine.stats(), ...sitesOverlayHealth(engine, serviceIdentity, process.env.BELMONT_BROWSE_SITES_OVERLAY === "1") });
     if (req.method === "POST" && url.pathname === "/memory/context") return json(res, 200, engine.memoryTaskContext((await readBody(req)).task));
     // Aside-side view: what the fork's own chat UI shows (sessions of the daemon account), for the bot mirror.
     if (parts[0] === "aside") {
@@ -77,6 +77,7 @@ const server = http.createServer(async (req, res) => {
     if (parts[0] !== "sessions") return json(res, 404, { error: "not found" });
     if (req.method === "POST" && parts.length === 1) {
       const body = await readBody(req);
+      validateSitesOverlayRequest(body.sitesDir, stateDir, sitesOverlayHealth(engine, serviceIdentity, process.env.BELMONT_BROWSE_SITES_OVERLAY === "1"));
       const requestedModel = modelOverrides({ model: body.model, provider: body.provider, thinking: body.thinking, fastMode: body.fastMode });
       const h = engine.startSession({
         task: body.task,

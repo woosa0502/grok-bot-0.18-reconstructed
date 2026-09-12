@@ -4,7 +4,7 @@
 // advertises via health.sitesOverlay); the operational page knowledge/sites/<domain>.md is the thing live bot
 // sessions read. The mock worker reads the OVERLAY the session was given, while an independent reader reads
 // the OPERATIONAL page — so these tests prove the operational page is never an unapproved draft during a
-// trial, that a draft is adopted only when it is cheaper AND proven to reach the goal AND no worse on errors,
+// trial, that a draft is adopted only when it is cheaper AND a separate file observer grades success AND no worse on errors,
 // and that the single-writer lock and crash behavior are safe. No live browser, Aside service, site, account
 // or booking API is used; file writes, child processes, an independent reader, SIGKILL and the lock are real.
 import test from "node:test";
@@ -21,6 +21,14 @@ function makeRoot(seedChampion = true) {
   const root = fs.mkdtempSync(join(tmpdir(), "belmont-learn-"));
   for (const sub of ["src", ".state", "knowledge/sites", "knowledge/drafts", "knowledge/lessons"]) fs.mkdirSync(join(root, sub), { recursive: true });
   fs.copyFileSync(moduleFile, join(root, "src/learn-measure.mjs"));
+  fs.copyFileSync(new URL("../src/procedure-evaluation.mjs", import.meta.url), join(root, "src/procedure-evaluation.mjs"));
+  fs.writeFileSync(join(root, "observer.mjs"), `import fs from "node:fs";
+export const id="fixture-file-observer"; export const isolation="read-only";
+export async function verify({sessionId}) {
+  const file=process.env.REVIEW_ROOT+"/world-"+sessionId+".json";
+  const state=JSON.parse(fs.readFileSync(file,"utf8"));
+  return {verdict:state.success?"succeeded":"unknown",criticalFailure:false,evidence:[file]};
+}`);
   fs.writeFileSync(join(root, "src/session.mjs"), "export const KNOWLEDGE_DIR = process.env.REVIEW_KNOWLEDGE_DIR;\n");
   fs.writeFileSync(join(root, ".state/serve.json"), JSON.stringify({ port: 1, token: "test-only-not-a-secret" }));
   if (seedChampion) fs.writeFileSync(join(root, "knowledge/sites/example.com.md"), "CHAMPION");
@@ -37,14 +45,15 @@ const opPage = join(root, "knowledge/sites/example.com.md"); // operational page
 const log = join(root, "knowledge/lessons/measurements.log");
 const trace = join(root, "trace.jsonl");
 let lastSitesDir = null, created = 0, readerRan = false;
+const response=body=>({ok:true,status:200,text:async()=>JSON.stringify(body)});
 globalThis.setTimeout = (fn) => { queueMicrotask(fn); return 0; };
 globalThis.fetch = async (url, options) => {
   const u = String(url);
-  if (u.endsWith("/health")) return { json: async () => ({ ok: true, sitesOverlay: true }) };
+  if (u.endsWith("/health")) return response({ok:true,sitesOverlay:true,instanceId:"fixture",engine:"fixture",sitesOverlayProof:{contract:"session-sites-v1",instanceId:"fixture",engine:"fixture",bundleSha256:"a".repeat(64),workerForwarding:true,readIsolation:true,extractionDisabled:true}});
   if (options.method === "POST" && u.endsWith("/sessions")) {
     const body = options.body ? JSON.parse(options.body) : {};
     lastSitesDir = body.sitesDir ?? null;
-    return { json: async () => ({ id: "test-" + (++created) }) };
+    return response({ id: "test-" + (++created), status:"queued" });
   }
   const overlayPage = lastSitesDir ? join(lastSitesDir, "example.com.md") : null;
   const content = overlayPage && fs.existsSync(overlayPage) ? fs.readFileSync(overlayPage, "utf8") : "NONE";
@@ -66,7 +75,8 @@ globalThis.fetch = async (url, options) => {
   if (content === "DRAFT" && scenario === "done-without-goal") result = "Unable to complete the requested task: no booking was made.";
   if (content === "DRAFT" && scenario === "goal-failure-after-100") result = "Read the itinerary and compared route candidates. ".repeat(4) + "Unable to complete the requested task: no booking was made.";
   if (content === "DRAFT" && scenario === "goal-unknown") result = "예약은 아직 미완료 상태이며, 항공권을 발권하지 않았습니다.";
-  return { json: async () => ({ status: "done", activity: moreErrors ? ["ERROR unsafe partial failure", "ERROR known failed step"] : [], toolCalls, modelCalls: toolCalls, result }) };
+  fs.writeFileSync(join(root,"world-test-"+created+".json"),JSON.stringify({success:!(content==="DRAFT"&&["done-without-goal","goal-failure-after-100","goal-unknown"].includes(scenario))}));
+  return response({ status: "done", activity: moreErrors ? ["ERROR unsafe partial failure", "ERROR known failed step"] : [], toolCalls, modelCalls: toolCalls, result });
 };
 `);
   return root;
@@ -75,8 +85,8 @@ globalThis.fetch = async (url, options) => {
 function run(scenario, { seedChampion = true, goal = "Goal achieved", prelock = false } = {}) {
   const root = makeRoot(seedChampion);
   try {
-    if (prelock) fs.writeFileSync(join(root, ".state/learn-measure.lock"), JSON.stringify({ pid: process.pid, at: Date.now() - 3600001, domain: "example.com" }));
-    const args = ["--import", join(root, "mock.mjs"), join(root, "src/learn-measure.mjs"), "--domain", "example.com", "--task", "Complete the test booking", "--runs", "2"];
+    if (prelock) fs.writeFileSync(join(root, "knowledge/.learn-measure.lock"), JSON.stringify({ pid: process.pid, at: Date.now() - 3600001, domain: "example.com" }));
+    const args = ["--import", join(root, "mock.mjs"), join(root, "src/learn-measure.mjs"), "--domain", "example.com", "--task", "Complete the test booking", "--runs", "2", "--poll-ms", "0", "--verify", join(root,"observer.mjs"), "--publish"];
     if (goal) args.push("--goal", goal);
     const child = spawnSync(process.execPath, args, {
       encoding: "utf8", timeout: 15000,
@@ -86,7 +96,7 @@ function run(scenario, { seedChampion = true, goal = "Goal achieved", prelock = 
     return {
       status: child.status, signal: child.signal, stdout: child.stdout, stderr: child.stderr,
       page: read("knowledge/sites/example.com.md"), draft: read("knowledge/drafts/example.com.md"),
-      backup: read("knowledge/sites/example.com.md.bak"), lock: read(".state/learn-measure.lock"),
+      backup: read("knowledge/sites/example.com.md.bak"), lock: read("knowledge/.learn-measure.lock"),
       log: read("knowledge/lessons/measurements.log"), reader: read("independent-reader.json"), trace: read("trace.jsonl"),
       evalLeftover: fs.existsSync(join(root, ".state/learn-eval")) ? fs.readdirSync(join(root, ".state/learn-eval")) : [],
     };
@@ -139,7 +149,7 @@ test("a draft strictly cheaper than the champion AND proven to reach the goal is
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.page, "DRAFT");
   assert.match(r.log, /ADOPTED/);
-  assert.equal(r.draft, null); // consumed on adoption
+  assert.equal(r.draft, "DRAFT"); // retained; an editor cannot lose a newly written draft
 });
 
 test("with no current procedure, a goal-reaching draft beating the no-page bar is ADOPTED", () => {
@@ -187,7 +197,7 @@ test("a SIGKILL during the draft trial leaves the operational page untouched (no
 test("a live lock owner is NOT evicted merely because the lock is older than an hour", () => {
   const r = run("worse-than-champion", { prelock: true });
   assert.equal(r.status, 3, r.stderr); // refused; single-writer preserved
-  assert.match(r.stderr, /refusing concurrent measurement/);
+  assert.match(r.stderr, /refusing concurrent measurement/i);
   assert.ok(r.lock); // the live owner's lock is still there, not stolen
   assert.equal(r.page, "CHAMPION");
   assert.equal(r.log, null);

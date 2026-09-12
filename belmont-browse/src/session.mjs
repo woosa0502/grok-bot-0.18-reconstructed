@@ -367,7 +367,7 @@ export function createBrowseSession(A, { accountId, cwd, title, permissionMode, 
     model,
     browserBinding: { profileId, windowId, ...(anchorTargetId ? { anchorTargetId } : {}) },
     incognito: false,
-    runtimeConfig: { workingDirs: [cwd], ...(canonicalMemoryRequested() ? { memoryExtractionDisabled: true } : {}), ...(sitesDir ? { sitesDir } : {}) },
+    runtimeConfig: { workingDirs: [cwd], ...((canonicalMemoryRequested() || sitesDir) ? { memoryExtractionDisabled: true } : {}), ...(sitesDir ? { sitesDir } : {}) },
   });
   return session;
 }

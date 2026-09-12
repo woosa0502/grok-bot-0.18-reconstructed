@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { memoryOverlayRoots } from "./memory-sites-overlay.mjs";
 
 const CJK_CLASS = "\\p{Script=Hangul}\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}";
 const CJK_RUNS = new RegExp(`[${CJK_CLASS}]+`, "gu");
@@ -112,7 +113,7 @@ export function chunkMemoryFile(file, text, { maxChunkChars = DEFAULT_CHUNK_CHAR
   return chunks;
 }
 
-function listMarkdown(walkRoots, allowedRoots, log) {
+function listMarkdown(walkRoots, allowedRoots, log, excludedRoots = []) {
   const out = [];
   const visited = new Set();
   const files = new Set();
@@ -121,7 +122,7 @@ function listMarkdown(walkRoots, allowedRoots, log) {
     let entries;
     try {
       canonical = realpathSync(dir);
-      if (!allowedRoots.some((root) => inside(root, canonical)) || visited.has(canonical)) return;
+      if (!allowedRoots.some((root) => inside(root, canonical)) || excludedRoots.some(root => inside(root, canonical)) || visited.has(canonical)) return;
       visited.add(canonical);
       entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, "en"));
     } catch { return; }
@@ -130,7 +131,7 @@ function listMarkdown(walkRoots, allowedRoots, log) {
       const file = path.join(dir, entry.name);
       try {
         const target = realpathSync(file);
-        if (!allowedRoots.some((root) => inside(root, target))) continue;
+        if (!allowedRoots.some((root) => inside(root, target)) || excludedRoots.some(root => inside(root, target))) continue;
         const stat = statSync(file);
         if (stat.isDirectory()) walk(file);
         else if (stat.isFile() && entry.name.endsWith(".md") && !files.has(target)) {
@@ -173,7 +174,7 @@ function resultFor(chunk, query, score, retrieval) {
   };
 }
 
-export function createMemorySearch({ log = () => {}, semanticAdapter = null, allowedRoots = [], maxChunkChars = DEFAULT_CHUNK_CHARS } = {}) {
+export function createMemorySearch({ log = () => {}, semanticAdapter = null, allowedRoots = [], maxChunkChars = DEFAULT_CHUNK_CHARS, _isolatedView = false, _shared = null } = {}) {
   const db = new DatabaseSync(":memory:");
   db.exec(`CREATE VIRTUAL TABLE mem USING fts5(root UNINDEXED, id UNINDEXED, path UNINDEXED, title, aliases, headings, body, ngrams, cjkchars, date UNINDEXED, context UNINDEXED, tokenize='unicode61 remove_diacritics 2')`);
   const roots = new Map();
@@ -181,7 +182,13 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
   const insert = db.prepare("INSERT INTO mem(root, id, path, title, aliases, headings, body, ngrams, cjkchars, date, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
   const remove = db.prepare("DELETE FROM mem WHERE root = ? AND path = ?");
   let closed = false;
-  let semanticError;
+  const shared = _shared ?? { semanticError: undefined };
+  const views = new Map();
+  function viewFor(accountRoot, sitesRoot) {
+    const key = JSON.stringify([rootPath(accountRoot), sitesRoot ? rootPath(sitesRoot) : null]);
+    if (!views.has(key)) views.set(key, createMemorySearch({ log, semanticAdapter, allowedRoots, maxChunkChars, _isolatedView: true, _shared: shared }));
+    return views.get(key);
+  }
 
   function rootPath(accountRoot) {
     if (typeof accountRoot !== "string" || !accountRoot.trim()) throw new TypeError("accountRoot is required");
@@ -191,20 +198,13 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
 
   function refresh(accountRoot, sitesRoot) {
     if (closed) throw new Error("memory search is closed");
+    if (!_isolatedView) return viewFor(accountRoot, sitesRoot).refresh(accountRoot, sitesRoot);
     const root = rootPath(accountRoot);
-    const memoryDir = path.join(root, "memory");
-    const real = (dir) => { try { return realpathSync(dir); } catch { return path.resolve(dir); } };
-    // A per-session sites overlay replaces the operational site knowledge FOR THAT SESSION ONLY: the overlay
-    // is walked and allowed, while the global KNOWLEDGE_DIR sites (reached through the account's memory/sites
-    // symlink) fall outside the allowed set and are excluded. It is indexed under a distinct key so an eval
-    // session's candidate page never mixes into — or leaks out of — the shared per-account view.
-    const sites = sitesRoot ? real(sitesRoot) : null;
-    const allowed = (sites ? [memoryDir, sites] : [memoryDir, ...allowedRoots]).map(real);
-    const walkRoots = sites ? [memoryDir, sites] : [memoryDir];
+    const { sites, allowed, walkRoots, excluded } = memoryOverlayRoots(root, sitesRoot, allowedRoots);
     const key = sites ? `${root} ${sites}` : root;
     const indexed = roots.get(key) ?? new Map();
     roots.set(key, indexed);
-    const files = listMarkdown(walkRoots, allowed, log);
+    const files = listMarkdown(walkRoots, allowed, log, excluded);
     const found = new Set(files.map(({ file }) => file));
     for (const file of indexed.keys()) if (!found.has(file)) { remove.run(key, file); indexed.delete(file); }
     let changed = 0;
@@ -232,9 +232,9 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
   function capabilities() {
     const semantic = semanticAdapter?.capabilities?.() ?? { state: "disabled", engine: null, model: null, reason: "No semantic adapter configured; offline lexical retrieval only." };
     return {
-      mode: semantic.state === "available" && !semanticError ? "hybrid" : "lexical",
+      mode: semantic.state === "available" && !shared.semanticError ? "hybrid" : "lexical",
       lexical: { engine: "sqlite-fts5", chunks: true, cjk: true },
-      semantic: semanticError ? { ...semantic, state: "unavailable", reason: semanticError } : semantic,
+      semantic: shared.semanticError ? { ...semantic, state: "unavailable", reason: shared.semanticError } : semantic,
     };
   }
 
@@ -263,10 +263,10 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
           const rows = await semanticAdapter.rank({ accountRoot: root, query, chunks, maxResults: maxResults * 4 });
           if (!Array.isArray(rows)) throw new TypeError("semantic adapter returned invalid results");
           rankings.push({ name: "semantic", rows: rows.filter((row) => byId.has(row.id) && Number.isFinite(row.score)).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)) });
-          semanticError = undefined;
+          shared.semanticError = undefined;
         } catch {
           // Do not print backend error strings: they can contain credentials or query text.
-          semanticError = "Semantic backend failed; deterministic lexical fallback is active.";
+          shared.semanticError = "Semantic backend failed; deterministic lexical fallback is active.";
           log("[memory-search] semantic backend unavailable; using lexical fallback");
         }
       }
@@ -292,7 +292,7 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
 
   function searchMany(args) {
     if (closed) return Promise.reject(new Error("memory search is closed"));
-    const run = runSearchMany(args);
+    const run = _isolatedView ? runSearchMany(args) : Promise.resolve().then(() => viewFor(args.accountRoot, args.sitesRoot).searchMany(args));
     activeSearches.add(run);
     return run.finally(() => activeSearches.delete(run));
   }
@@ -301,10 +301,12 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
     if (closed) return;
     closed = true;
     await Promise.allSettled([...activeSearches]);
+    await Promise.all([...views.values()].map(view => view.close()));
+    views.clear();
     db.close();
     roots.clear();
-    await semanticAdapter?.close?.();
+    if (!_shared) await semanticAdapter?.close?.();
   }
 
-  return { searchMany, refresh, capabilities, close, size: () => [...roots.values()].reduce((count, files) => count + files.size, 0) };
+  return { searchMany, refresh, capabilities, close, size: () => [...roots.values()].reduce((count, files) => count + files.size, 0) + [...views.values()].reduce((count, view) => count + view.size(), 0) };
 }
