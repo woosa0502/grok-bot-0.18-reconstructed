@@ -82,6 +82,14 @@ Memory 2.1 통합을 고정 9개 목록으로 검증(전부 실 제품 경로로
   - **Belmont 기억 → Aside task = 이미 배선됨**(오탐). `extension.ts:60` `createBrowseMemoryHooks` → `BrowseClient.create/continue`의 `#prepareMemory`가 기억 packet 주입(create·follow-up·answer 전부). origin엔 Memory 2.1이 없어 안 보였음.
   - **dreaming → 승급 게이트**: **canonical엔 존재**(`kernel/experience/loop.ts`: `ingest`는 candidate를 evidence로만 capture, `promote()`가 `evaluateProcedure`로 측정 후 `state:"accepted"`만, `lookup`은 accepted만 반환). **legacy 경로만 gap** — `patch-daemon-dream-procedures.py`가 절차를 활성 `sites/` Current에 직접 쓰고 learn-measure(drafts/→sites/)와 자동 hand-off 없음. **남은 작업**: 라이브 Aside 엔진 + 설계 결정 필요(데몬 write 재조정). 맹목 수정 금지.
 
+## 14. 게이트 검증 — 2차 (G2 원문읽기 샌드박스 primitive)
+- **bwrap eval 격리 모드 구현·검증**(커밋 `69761a3`): `BubblewrapBackend.buildArgs`에 `isolate:{allowRoots,writableRoots}` opt-in. OS는 ro 유지(shell 실행), **`$HOME`을 tmpfs로 덮어** 운영 지식 숨기고 허용 루트만 ro 재노출. 실제 bwrap 테스트(`test/bwrap-eval-isolation.test.mjs`)로 운영 파일 `OP_HIDDEN`·오버레이 읽힘·대조군 노출 확인. 비-eval 불변(라이브 봇 shell 무영향). bwrap+numeric+overlay 45/45.
+- **G2 원문읽기 전체 폐쇄에 남은 난점(보안 경로, 맹목 푸시 금지)**:
+  1. **shell**: 데몬 `spawnSandboxed`가 미지 옵션을 버림 → `isolate` 포워딩 패치 + bash 툴이 eval 세션에 isolate 설정 필요. 단 `allowRoots=[overlay, accountMemoryDir]`로 하면 계정 `memory/sites` **심링크가 운영 sites를 재노출** → 계정 memory는 **sites 심링크 제외 subpath 바인드** 필요.
+  2. **read_file**(네이티브)은 bash/bwrap과 **별도 권한 경로**(`permission.files.readableRoots`에 운영 sites 포함) → eval 세션별로 스코프해야 함.
+  두 경로 모두 라이브 검증(eval `bash cat <운영>`·`read_file <운영>` 거부, 오버레이 허용) 후에만 `readIsolation` 참 → 그 전까지 `health.sitesOverlay` false·learn-measure 거부·**자동승격 off** 유지.
+- 게이트 현황: G1✅ G2-검색✅(라이브), G2-원문읽기=샌드박스 primitive✅/데몬배선⛔, G3◑(memoryExtractionDisabled 설정·데몬 honor 확인; 라이브 무기록 검사 남음), G4–G7◑(로직 `procedure-evaluation.test.mjs` 검증; 라이브 end-to-end는 오버레이 활성=G2-원문읽기에 의존). 결과는 PR #1 코멘트 1·2·3.
+
 ## 13. 실제 909 게이트 검증 — 1차 (Draft PR #1, G1+G2-검색)
 - **Draft PR #1**: `woosa0502/grok-bot-0.18-reconstructed` feat/skill-scope-fields→main (base 7a9049d7). 병합·cutover·자동승격 아님. 본문에 무관 변경 `af95bca`(skill-scope) 구분 표시.
 - **유지보수 창**(사용자 승인): 라이브 봇을 **명시 pid로** 중지(싱글턴 포트 21420/1337/9333 때문에 격리 909와 공존 불가) → 격리 909 serve(개발 프로필·개발 knowledge `.cache/eval-verify-909`·로컬 테스트 페이지·blessed 키) → 검증 → **legacy 복구**(`wsl:setup`+`wsl:start`, rollout.json 부재·게이트웨이 /health ok 확인). 실계정·실사이트·cutover 없음.
