@@ -1,0 +1,14 @@
+{
+  "case": "l19-chrome-double-crash",
+  "at": "2026-09-13T05:41:06+09:00",
+  "gate": "two consecutive serve crashes must not lose the owned chrome range; each restart re-adopts the SAME chrome; a later normal stop reaps it",
+  "evidence": {
+    "serve1_chrome": 1694988,
+    "after_crash1_serve2_adopted": true,
+    "after_crash2_serve3_chrome": 1694988,
+    "same_chrome_across_double_crash": true,
+    "chrome_alive_across_both_crashes": true,
+    "reaped_on_normal_stop": true
+  },
+  "verdict_pass": true
+}
