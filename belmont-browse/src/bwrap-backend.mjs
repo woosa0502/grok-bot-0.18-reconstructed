@@ -18,17 +18,45 @@ export class BubblewrapBackend {
   name = "bubblewrap";
   constructor({ log = () => {}, extraReadOnly = [] } = {}) { this.log = log; this.extraReadOnly = extraReadOnly; }
 
-  buildArgs(command, { readableRoots = [], writableRoots = [], networkMode = "full", cwd }) {
+  buildArgs(command, { readableRoots = [], writableRoots = [], networkMode = "full", cwd, isolate = null }) {
     const home = os.homedir();
     const inside = (p) => path.resolve(p);
     const uniqueRoots = (roots) => [...new Set(roots.map(inside))];
-    const readRoots = uniqueRoots([...this.extraReadOnly, ...readableRoots]);
-    const writeRoots = uniqueRoots(writableRoots);
     const filesystemRoot = path.parse(home).root;
     const covers = (root, target) => {
       const relative = path.relative(root, target);
       return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
     };
+    // Evaluation isolation: an eval session must not read the operational knowledge under $HOME through
+    // read_file/bash. Instead of exposing all of $HOME (the default below re-exposes it because account roots
+    // live there), hide $HOME entirely with a tmpfs and re-expose ONLY the explicitly allowed roots (the eval
+    // overlay + the session's own dirs). The OS tree outside $HOME stays read-only so the shell still runs.
+    if (isolate) {
+      const allow = uniqueRoots([...this.extraReadOnly, ...(isolate.allowRoots ?? []), ...(cwd ? [cwd] : [])]);
+      const write = uniqueRoots(isolate.writableRoots ?? writableRoots ?? []);
+      const args = ["bwrap", "--die-with-parent", "--new-session", "--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts"];
+      if (networkMode === "none") args.push("--unshare-net");
+      // OS read-only for the shell/interpreter, then a tmpfs over $HOME hides every operational path under it.
+      args.push("--ro-bind", filesystemRoot, filesystemRoot, "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", "/run", "--tmpfs", home);
+      const bound = [];
+      // Writable roots first (rw bind); the agent's workspace (cwd) is writable. Only paths under $HOME need
+      // re-exposing — anything outside $HOME is already visible through the read-only OS bind above.
+      for (const root of uniqueRoots([...write, ...(cwd ? [cwd] : [])])) {
+        if (root === filesystemRoot || !covers(home, root) || bound.some((b) => covers(b, root))) continue;
+        try { mkdirSync(root, { recursive: true }); } catch { /* may be a file */ }
+        if (!existsSync(root)) continue;
+        args.push("--bind", root, root); bound.push(root);
+      }
+      for (const root of allow) {
+        if (!existsSync(root) || root === filesystemRoot || !covers(home, root) || bound.some((b) => covers(b, root))) continue;
+        args.push("--ro-bind", root, root); bound.push(root); // re-expose an allowed path read-only on the tmpfs home
+      }
+      if (cwd && existsSync(cwd)) args.push("--chdir", cwd);
+      args.push("--", ...command);
+      return args;
+    }
+    const readRoots = uniqueRoots([...this.extraReadOnly, ...readableRoots]);
+    const writeRoots = uniqueRoots(writableRoots);
     const rootWritable = writeRoots.includes(filesystemRoot);
     const homeVisible = rootWritable || [...readRoots, ...writeRoots].some((root) => covers(root, home));
     const args = ["bwrap", "--die-with-parent", "--new-session", "--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts"];
