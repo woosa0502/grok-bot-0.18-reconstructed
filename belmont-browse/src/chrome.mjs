@@ -49,7 +49,9 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
       const owner = readChromeOwner(profileDir);
       const plan = planReuseOwnership(owner);
       if (plan.mode !== "adopt") return { plan, owner };
-      const pgid = Number.isSafeInteger(owner.pgid) && owner.pgid > 1 ? owner.pgid : (procStat(owner.chromePid)?.pgrp ?? null);
+      // A-3: the AUTHORITATIVE process group is the live root's actual pgrp, not whatever the owner file
+      // claims. Prefer the live pgrp so a stale/wrong owner.pgid can never point group signals elsewhere.
+      const pgid = procStat(owner.chromePid)?.pgrp ?? (Number.isSafeInteger(owner.pgid) && owner.pgid > 1 ? owner.pgid : null);
       const startTicks = Number.isSafeInteger(owner.startTicks) ? owner.startTicks : processStartTicks(owner.chromePid);
       const rec = writeChromeOwner(profileDir, { servePid: process.pid, chromePid: owner.chromePid, pgid, startTicks, startedAt: owner.startedAt, adoptedFrom: owner.servePid });
       return { plan, owner, pgid, startTicks, generation: rec?.generation };
@@ -64,14 +66,12 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
         if (!cur || cur.__corrupt || cur.generation !== generation) throw new Error("adopt aborted: owner record changed since adoption");
         if (!isProcessAlive(cur.chromePid)) return; // already gone; the tree stop will just finish
         if (Number.isSafeInteger(cur.startTicks) && processStartTicks(cur.chromePid) !== cur.startTicks) throw new Error("adopt aborted: chrome pid was reused (start ticks differ)");
-        const cdpPid = await cdpBrowserPid(baseUrl, 2000);
-        if (cdpPid != null && cdpPid !== cur.chromePid && !processGroupMembers(pgid).includes(cdpPid)) {
-          throw new Error(`adopt aborted: CDP browser pid ${cdpPid} is not the owned pid ${cur.chromePid}`);
-        }
       };
       const stop = createChromeTreeStop({ browserPid: owner.chromePid, pgid, startTicks, profileDir, generation, timeoutMs: shutdownTimeoutMs, log,
         verifyIdentity,
-        requestClose: ({ signal, timeoutMs }) => requestCloseViaCdp({ baseUrl, signal, timeoutMs: Math.min(timeoutMs ?? shutdownTimeoutMs, 2000) }) });
+        // A-2: verify identity and send Browser.close on the SAME CDP connection; on lookup failure or a
+        // pid mismatch, do NOT close (the OS tree-kill handles the owned range independently).
+        requestClose: ({ signal, timeoutMs }) => verifiedCloseViaCdp({ baseUrl, expectedPid: owner.chromePid, pgid, signal, timeoutMs: Math.min(timeoutMs ?? shutdownTimeoutMs, 2000) }) });
       const detach = async () => { /* keep the adopted browser alive; leave the owner file for the next serve */ };
       return { baseUrl, child: null, adopted: true, pid: owner.chromePid, stop, detach };
     }
@@ -118,12 +118,17 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
   // Record ownership immediately after spawn — before CDP is up — so a crash during startup still leaves
   // an adoptable/reap-able record (closes the spawn->ready->write gap, B5). child.pid is the pgid
   // (spawned detached). The generation scopes deletion so a stale stop cannot delete a newer owner (B1/B5).
-  const ownerRec = writeChromeOwner(profileDir, { servePid: process.pid, chromePid: child.pid, pgid: child.pid, startTicks });
-  const generation = ownerRec?.generation;
-  // Unified hardened termination: graceful Browser.close (identity-checked via ownsProcess), then group
-  // SIGTERM->SIGKILL, reaping the WHOLE tree (not just the root) and clearing the owner only on confirmed
-  // exit AND generation match. On timeout it throws with the owner/recovery record preserved (B1/B2).
+  const ownerRec = withOwnerLock(profileDir, () => writeChromeOwner(profileDir, { servePid: process.pid, chromePid: child.pid, pgid: child.pid, startTicks }));
+  // A-5: a failed owner publish must NOT return a successful launch with no ownership tracking. Reap the
+  // just-spawned child and fail, rather than leaking an untracked browser.
+  if (!ownerRec?.generation) { try { child.kill("SIGKILL"); } catch {} throw new Error("failed to publish chrome ownership record; aborted launch to avoid an untracked browser"); }
+  const generation = ownerRec.generation;
+  // Unified hardened termination: verified graceful Browser.close (ownsProcess on the same connection), then
+  // group SIGTERM->SIGKILL bound to the owned group, reaping the WHOLE tree (not just the root) and clearing
+  // the owner only on confirmed exit AND generation match. On timeout it throws with the record preserved.
+  const verifyIdentity = () => { if (Number.isSafeInteger(startTicks) && processStartTicks(child.pid) !== startTicks) throw new Error("owned stop aborted: chrome pid was reused (start ticks differ)"); };
   const stop = createChromeTreeStop({ browserPid: child.pid, pgid: child.pid, startTicks, profileDir, generation, timeoutMs: shutdownTimeoutMs, log,
+    verifyIdentity,
     requestClose: ({ signal, timeoutMs }) => closeOwnedCdpBrowser({ child, baseUrl, signal, timeoutMs: Math.min(timeoutMs ?? shutdownTimeoutMs, 2000) }),
   });
   let stderrTail = "";
@@ -224,14 +229,23 @@ export async function cdpBrowserPid(baseUrl, timeoutMs = 2000) {
   finally { await cdp.close(); }
 }
 
-/** Graceful Browser.close for an ADOPTED endpoint (no owned child handle). Identity is re-verified by the
- * adopted stop's verifyIdentity() before this runs; escalation to a group kill is handled by the tree stop. */
-async function requestCloseViaCdp({ baseUrl, signal, timeoutMs }) {
+/** Graceful Browser.close for an ADOPTED endpoint, with identity bound to the close (A-2): verify the CDP
+ * endpoint's browser pid is our owned pid (or in its group) and send Browser.close ON THE SAME connection.
+ * On a lookup failure or a pid mismatch, THROW without closing — the OS tree-kill reaps the owned range
+ * independently, and we never Browser.close a browser that swapped onto the port. */
+async function verifiedCloseViaCdp({ baseUrl, expectedPid, pgid, signal, timeoutMs }) {
   const cdp = new MiniCdp(baseUrl, { connectTimeoutMs: timeoutMs, closeTimeoutMs: 500 });
   const abort = () => { void cdp.close(); };
   signal.addEventListener("abort", abort, { once: true });
-  try { await cdp.send("Browser.close", {}, undefined, { timeoutMs }); }
-  catch (error) { if (!signal.aborted && !/socket closed|CDP.*closed/i.test(error.message)) throw error; }
+  try {
+    const { processInfo } = await cdp.send("SystemInfo.getProcessInfo", {}, undefined, { timeoutMs });
+    const browserPid = processInfo?.find((entry) => entry.type === "browser")?.id;
+    if (!Number.isSafeInteger(browserPid)) throw new Error("CDP identity lookup failed; refusing Browser.close");
+    if (browserPid !== expectedPid && !processGroupMembers(pgid).members.includes(browserPid)) {
+      throw new Error(`CDP browser pid ${browserPid} is not the owned pid ${expectedPid}; refusing Browser.close`);
+    }
+    await cdp.send("Browser.close", {}, undefined, { timeoutMs }); // same connection whose identity we just verified
+  } catch (error) { if (!signal.aborted && !/socket closed|CDP.*closed/i.test(error.message)) throw error; }
   finally { signal.removeEventListener("abort", abort); await cdp.close(); }
 }
 

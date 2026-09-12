@@ -85,3 +85,5 @@ fs.writeFileSync(path.join(SP, "ev-l18-queued-r6.json"), JSON.stringify(out, nul
 console.log("EVIDENCE -> ev-l18-queued-r6.json");
 console.log(JSON.stringify(out.evidence, null, 2));
 console.log("PASS:", pass);
+
+process.exit(pass ? 0 : 1); // B-4: verdict failure => non-zero exit

@@ -1,5 +1,5 @@
 // Lifecycle primitives for Chrome processes spawned by this engine only.
-import { writeFileSync, readFileSync, rmSync, openSync, closeSync, fsyncSync, renameSync, unlinkSync, readdirSync, writeSync } from "node:fs";
+import { writeFileSync, readFileSync, rmSync, openSync, closeSync, fsyncSync, renameSync, unlinkSync, linkSync, readdirSync, writeSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
@@ -37,33 +37,65 @@ export function procStat(pid, readFile = (p) => readFileSync(p, "utf8")) {
 /** Process start ticks (field 22) — with the pid, uniquely identifies a process across PID reuse. */
 export function processStartTicks(pid) { return procStat(pid)?.startTicks ?? null; }
 
-/** Live host pids whose process group == pgid (pgid must be >1). [] when pgid is invalid/non-Linux. */
+/** Census of a process group. Returns { status:"ok"|"error", members:[pids] }. status "error" (a /proc read
+ * failed) is DISTINCT from an empty members list, so a termination judgment never mistakes an observation
+ * failure for "the tree is gone" (A-4). pgid must be >1. */
 export function processGroupMembers(pgid, { isAlive = isProcessAlive, readDir = () => readdirSync("/proc"), stat = procStat } = {}) {
-  if (!Number.isSafeInteger(pgid) || pgid <= 1 || process.platform !== "linux") return [];
-  const out = [];
-  let entries; try { entries = readDir(); } catch { return []; }
-  for (const d of entries) { if (!/^\d+$/.test(d)) continue; const pid = Number(d); const s = stat(pid); if (s && s.pgrp === pgid && isAlive(pid)) out.push(pid); }
-  return out;
+  if (!Number.isSafeInteger(pgid) || pgid <= 1 || process.platform !== "linux") return { status: "ok", members: [] };
+  let entries; try { entries = readDir(); } catch { return { status: "error", members: [] }; }
+  const out = []; let errored = false;
+  for (const d of entries) {
+    if (!/^\d+$/.test(d)) continue;
+    const pid = Number(d);
+    let s; try { s = stat(pid); } catch { errored = true; continue; } // a read error is not "absent"
+    if (s === null) continue; // process is genuinely gone (procStat returns null on ENOENT)
+    if (s.pgrp === pgid && isAlive(pid)) out.push(pid);
+  }
+  return { status: errored ? "error" : "ok", members: out };
 }
 
-/** Exclusive, best-effort per-profile lock around read->plan->write of the owner record (B5). Returns
- * fn()'s value, or undefined when the lock is held by a LIVE holder (caller must act conservatively). */
-export function withOwnerLock(profileDir, fn, { retries = 8 } = {}) {
+// ---- per-profile ownership lock (link-based, A-1) ------------------------------------------------
+// A correct userspace mutex: the lock file's content ({pid,token}) is written to a temp file and
+// fsync'd BEFORE linkSync publishes it, so there is never an empty-content window for a racer to read
+// as a dead holder; release unlinks ONLY when the lock still carries OUR token, so a stale/ABA holder
+// can never delete a newer owner's lock. A stale lock (dead holder or too old) is stolen atomically by
+// renaming it aside — only the winner of that rename proceeds.
+function acquireOwnerLock(profileDir, { retries = 12, staleMs = 120000 } = {}) {
   const lock = ownerLockPath(profileDir);
-  for (let i = 0; i < retries; i++) {
-    let fd;
-    try { fd = openSync(lock, "wx"); }             // O_CREAT|O_EXCL
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const token = crypto.randomUUID();
+    const tmp = `${lock}.acq.${process.pid}.${token.slice(0, 8)}`;
+    try { const fd = openSync(tmp, "w", 0o600); try { writeSync(fd, JSON.stringify({ pid: process.pid, token, ts: Date.now() })); fsyncSync(fd); } finally { closeSync(fd); } }
+    catch { return null; } // cannot even stage (e.g. non-writable dir)
+    try { linkSync(tmp, lock); try { unlinkSync(tmp); } catch {} return { lock, token }; } // atomic publish
     catch (error) {
-      if (error.code !== "EEXIST") return undefined; // e.g. non-writable dir; caller falls back
-      let holder = null; try { holder = Number(readFileSync(lock, "utf8").trim()); } catch {}
-      if (!isProcessAlive(holder)) { try { rmSync(lock, { force: true }); } catch {} continue; } // steal stale
-      return undefined;                              // a live holder owns it; do not contend
+      try { unlinkSync(tmp); } catch {}
+      if (error.code !== "EEXIST") return null;
+      let holder = null; try { holder = JSON.parse(readFileSync(lock, "utf8")); } catch {}
+      const stale = !holder || (Number.isSafeInteger(holder.pid) && !isProcessAlive(holder.pid)) || (Date.now() - (holder.ts || 0) > staleMs);
+      if (!stale) return null; // a live holder owns it; caller acts conservatively
+      const aside = `${lock}.stale.${process.pid}.${token.slice(0, 8)}`;
+      try { renameSync(lock, aside); unlinkSync(aside); } catch {} // atomic steal; loser's rename fails -> retry
     }
-    try { writeSync(fd, String(process.pid)); } catch {}
-    try { return fn(); }
-    finally { try { closeSync(fd); } catch {} try { rmSync(lock, { force: true }); } catch {} }
   }
-  return undefined;
+  return null;
+}
+function releaseOwnerLock(handle) {
+  if (!handle) return;
+  try { const cur = JSON.parse(readFileSync(handle.lock, "utf8")); if (cur.token === handle.token) unlinkSync(handle.lock); } catch { /* not ours / already gone */ }
+}
+/** Run fn() while holding the per-profile lock. undefined when the lock cannot be acquired. Sync fn only. */
+export function withOwnerLock(profileDir, fn, opts) {
+  const handle = acquireOwnerLock(profileDir, opts);
+  if (!handle) return undefined;
+  try { return fn(); } finally { releaseOwnerLock(handle); }
+}
+/** Async variant: holds the lock across an awaited critical section (spawn path). Releases after it resolves
+ * (the sync withOwnerLock would release before an async fn settled). */
+export async function withOwnerLockAsync(profileDir, fn, opts) {
+  const handle = acquireOwnerLock(profileDir, opts);
+  if (!handle) return { locked: false };
+  try { return { locked: true, value: await fn() }; } finally { releaseOwnerLock(handle); }
 }
 
 /** Atomically publish the owner record (temp -> fsync -> rename). Mints a generation token if absent.
@@ -118,34 +150,55 @@ export function planReuseOwnership(owner, { isAlive = isProcessAlive, startTicks
  * (B1/B5). On failure it throws with the owner/recovery record preserved. */
 export function createChromeTreeStop({ browserPid, pgid, startTicks, requestClose, verifyIdentity, profileDir, generation,
   timeoutMs = 10000, pollMs = 150, log = console.error, isAlive = isProcessAlive, kill = process.kill.bind(process),
-  groupMembers = processGroupMembers, ticksOf = processStartTicks }) {
-  const validPgid = Number.isSafeInteger(pgid) && pgid > 1;
+  groupMembers = processGroupMembers, ticksOf = processStartTicks, stat = procStat }) {
   let active = null;
   const rootAlive = () => isAlive(browserPid, kill) && (!Number.isSafeInteger(startTicks) || ticksOf(browserPid) === startTicks);
-  const groupAlive = () => rootAlive() || (validPgid && groupMembers(pgid).length > 0);
-  const signalTree = (sig) => {
-    if (validPgid) { try { kill(-pgid, sig); return; } catch { /* fall through to pid */ } }
-    if (Number.isSafeInteger(browserPid) && browserPid > 1) { try { kill(browserPid, sig); } catch { /* gone */ } } // never kill(-1)/kill(0)
+  // A group signal is only safe when pgid is a real group (>1) that is provably the OWNED root's actual
+  // process group. A valid integer pgid does NOT prove ownership — a wrong owner.pgid must never let us kill
+  // another process's group (A-3). We PROVE ownership once, while the root is alive (its pgrp == pgid), and
+  // cache that proof so we can still reap surviving members after the root dies (otherwise a dead root would
+  // strand its own children). Without the proof we only ever signal the bare root pid.
+  let ownedGroupBound = false;
+  const bindGroup = () => { if (ownedGroupBound) return true; if (Number.isSafeInteger(pgid) && pgid > 1 && rootAlive()) { const s = stat(browserPid); if (s && s.pgrp === pgid) ownedGroupBound = true; } return ownedGroupBound; };
+  // "alive" for termination: the root, or (only when the group is bound to our root) its live members. A
+  // census READ ERROR counts as POSSIBLY alive so an observation failure is never read as "gone" (A-4).
+  const treeAlive = () => {
+    if (rootAlive()) return true;
+    if (!ownedGroupBound) return false; // never inspect an unbound (unproven) group
+    const c = groupMembers(pgid);
+    if (c.status === "error") return true;
+    return c.members.length > 0;
   };
-  const waitEmpty = async (deadline) => { while (Date.now() < deadline) { if (!groupAlive()) return true; await sleep(pollMs); } return !groupAlive(); };
+  const signalTree = (sig) => {
+    if (bindGroup()) { try { kill(-pgid, sig); return; } catch { /* fall through to pid */ } } // group proven ours
+    if (Number.isSafeInteger(browserPid) && browserPid > 1) { try { kill(browserPid, sig); } catch { /* gone */ } } // never kill(-1)/kill(0)/wrong group
+  };
+  const overallDeadline = () => Date.now() + timeoutMs; // set at stop() start; monotonic total bound (A-6)
+  const waitEmpty = async (deadline) => { while (Date.now() < deadline) { if (!treeAlive()) return true; await sleep(pollMs); } return !treeAlive(); };
   const finish = () => { if (profileDir && generation) clearChromeOwnerIfGeneration(profileDir, generation); };
-  // Each phase gets its own bounded window (capped by timeoutMs) so a slow/refused graceful close can
-  // never starve the SIGTERM/SIGKILL escalation (regression: the graceful wait used to consume the whole
-  // budget). A refused graceful close is not waited on at all.
-  const phaseMs = Math.min(timeoutMs, 3000);
+  const withDeadline = (p, overall, label) => Promise.race([Promise.resolve().then(() => p), (async () => { while (Date.now() < overall) await sleep(pollMs); throw new Error(`${label} exceeded overall deadline`); })()]);
   return function stop() {
     if (active) return active;
     active = (async () => {
-      if (!groupAlive()) { finish(); return; }
-      if (verifyIdentity) await verifyIdentity();   // throws -> do NOT kill; owner/recovery preserved (B3)
+      const overall = overallDeadline();
+      const phaseEnd = () => Math.min(overall, Date.now() + Math.min(timeoutMs, 3000));
+      if (!treeAlive()) { finish(); return; }
+      bindGroup(); // prove group ownership now, while the root is alive, so we can reap survivors later (A-3)
+      // A-3: re-verify identity before acting AND before each escalation signal.
+      const reverify = async () => { if (verifyIdentity) await withDeadline(verifyIdentity(), overall, "verifyIdentity"); };
+      await reverify();   // throws -> do NOT kill; owner/recovery preserved (B3)
       const controller = new AbortController();
       let gracefulOk = false;
-      try { await Promise.resolve().then(() => requestClose?.({ signal: controller.signal, timeoutMs: Math.min(timeoutMs, 2000) })); gracefulOk = true; }
+      try { await withDeadline(Promise.resolve().then(() => requestClose?.({ signal: controller.signal, timeoutMs: Math.max(0, Math.min(2000, overall - Date.now())) })), overall, "requestClose"); gracefulOk = true; }
       catch (error) { log(`[chrome] graceful close failed pid=${browserPid}: ${error.message}`); }
-      if (gracefulOk && await waitEmpty(Date.now() + phaseMs)) { controller.abort(); finish(); return; }
+      if (gracefulOk && await waitEmpty(phaseEnd())) { controller.abort(); finish(); return; }
       controller.abort();
-      for (const sig of ["SIGTERM", "SIGKILL"]) { signalTree(sig); if (await waitEmpty(Date.now() + phaseMs)) { finish(); return; } }
-      throw new Error(`Chrome tree (pid=${browserPid}, pgid=${validPgid ? pgid : "n/a"}) did not fully exit; owner/recovery preserved`);
+      for (const sig of ["SIGTERM", "SIGKILL"]) {
+        try { await reverify(); } catch (e) { throw e; }  // re-verify ownership right before each signal (A-3)
+        signalTree(sig);
+        if (await waitEmpty(phaseEnd())) { finish(); return; }
+      }
+      throw new Error(`Chrome tree (pid=${browserPid}, pgid=${Number.isSafeInteger(pgid) ? pgid : "n/a"}) did not fully exit within ${timeoutMs}ms; owner/recovery preserved`);
     })();
     active.catch(() => { active = null; });
     return active;

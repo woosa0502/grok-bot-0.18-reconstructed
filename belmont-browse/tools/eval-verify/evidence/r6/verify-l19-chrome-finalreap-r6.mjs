@@ -63,3 +63,5 @@ fs.writeFileSync(path.join(SP, "ev-l19-chrome-finalreap-r6.json"), JSON.stringif
 // cleanup control browser explicitly
 try { process.kill(-ctrl.pid, "SIGKILL"); } catch { try { process.kill(ctrl.pid, "SIGKILL"); } catch {} }
 console.log("VERDICT:", JSON.stringify(R.verdict), "PASS:", R.verdict_pass);
+
+process.exit(R.verdict_pass ? 0 : 1); // B-4: verdict failure => non-zero exit

@@ -70,6 +70,32 @@ serve always starts for the next eval and adopts+reaps). Production hardening = 
   (`evidence/r6/ev-l19-chrome-finalreap-r6.json`: after normal stop, eval-profile census root=0/tree=0, owner
   cleared, control browser alive).
 
+## Round-6/7 re-hardening (GPT-6 Pro round-6 reproduced A-1..A-6)
+
+Round-6 accepted B4 (the pgid>1 guard) but reproduced further defects; all fixed and regressed:
+
+- **A-1 lock not exclusive** → replaced the O_EXCL+PID lock (empty-file window + `Number("")===0` stale-steal +
+  no ownership check on delete) with a **link-based lock**: content ({pid,token}) is fsync'd to a temp then
+  `linkSync`-published (no empty window); release unlinks only when the lock still carries OUR token (no ABA
+  delete); a stale lock is stolen by an atomic rename-aside. Regression: a real second process holding the
+  lock blocks acquisition.
+- **A-2 CDP wrong-close** → the adopt graceful close now verifies the CDP browser pid and sends `Browser.close`
+  **on the same connection**; a lookup failure or pid mismatch throws without closing (OS tree-kill handles the
+  owned range). Verified-close and OS-kill are separated.
+- **A-3 wrong-PGID mis-kill** → a group signal is sent only after **proving the pgid is the owned root's actual
+  `pgrp`** while the root is alive (cached so survivors are still reaped after the root dies); otherwise only the
+  bare root pid is signalled — never a wrong group. Identity is re-verified before EACH escalation signal.
+  Regression: an owner file carrying a *control* group's pgid does not kill the control group.
+- **A-4 census UNKNOWN→EMPTY** → `processGroupMembers` returns `{status,members}`; a read error counts as
+  possibly-alive, so an observation failure is never mistaken for "tree gone". Regression covers it.
+- **A-5 CDP-down / publish-failure** → the owner write is under the lock, and a failed publish reaps the
+  just-spawned child and throws (no untracked browser returned as success).
+- **A-6 no total deadline** → the stop enforces an overall monotonic deadline across verify/CDP-close/TERM/KILL
+  (an unresolving `requestClose` can no longer hang the stop). Regression covers it.
+
+Live: `L19.CHROME.ADOPT.FINAL_REAP` still PASSes on the round-7 code (adopt → normal stop → eval-profile census
+root=0/tree=0, owner cleared, control browser survives). Regression suite: 14/14; lifecycle 11/11.
+
 ## Regression
 
 `belmont-browse/test/chrome-orphan-ownership.test.mjs` — spawns a real detached sleeper as a stand-in

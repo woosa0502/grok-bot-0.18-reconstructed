@@ -83,3 +83,5 @@ R.verdict = {
 R.verdict_pass = Object.values(R.verdict).every(Boolean);
 fs.writeFileSync(path.join(SP, "ev-l19-nocleanup-r6.json"), JSON.stringify(R, null, 2));
 console.log("VERDICT:", JSON.stringify(R.verdict), "PASS:", R.verdict_pass);
+
+process.exit(R.verdict_pass ? 0 : 1); // B-4: verdict failure => non-zero exit

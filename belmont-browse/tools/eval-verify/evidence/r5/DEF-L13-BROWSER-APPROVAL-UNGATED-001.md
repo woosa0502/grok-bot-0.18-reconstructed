@@ -21,23 +21,27 @@
 
 Under `mode:guard` + `autoApprove:false`, a live agent session performed a real browser
 navigate → fill → click **Submit** on an HTML form and the session finished `done` with **no approval
-suspension**. Native `write_file` (and bash) **do** suspend for approval under identical settings. So the
-guard-mode approval boundary does **not** cover browser state-changing actions (fill/click/submit).
+suspension**, while native `write_file` **did** suspend under identical settings. That observation stands —
+but see the CORRECTION banner above: the resolved contract is that browser `modify` **defaults to `allow`**
+(so no suspension is the policy, not a bypass), and `write_file` suspended because `/tmp` is outside guard's
+`writableRoots` (a folder-access `ask`, not a tool-rule `ask`).
 
-**Consequence:** `L13.BROWSER.DENY/ALLOW` is **not exercisable** — there is no suspension to deny or allow.
-A browser agent in guard mode can submit forms / click buttons on live sites (bookings, purchases, message
-sends) with no human approval, while equivalent file/shell actions are gated.
+**Consequence (corrected):** `L13.BROWSER.POLICY.ALLOW` is the observed default; the deny path was later
+demonstrated live (a browser `modify` deny rule blocks the submit — see r6/L13-BROWSER-POLICY-CONTRACT.md).
+There is no product approval *bypass*. The earlier claim that "a browser agent in guard mode can submit
+forms / make bookings / purchases / message-sends with no human approval" is **WITHDRAWN** as an overreach —
+it conflated the default-allow policy with a broken gate and went beyond the local-fixture scope tested.
 
-## Evidence (`ev-l13-browser-ungated.json`)
+## Evidence (`ev-l13-browser-ungated.json`) — observed behavior (interpret via the corrected contract)
 
 - Two browser sessions (`635434f4…`, `93969a54…`), each with an **owned** CDP browser tab
   (`session_tabs.ownership="owned"`, real `target_id`, `url=…/submit`, DOM snapshot
   `"submitted destination=NYC seat=aisle"`) — proving a real browser, not a bash/curl fallback.
 - External-artifact confirmation: the form server recorded a submit `{destination:NYC, seat:aisle}` under
-  each trial's fresh token; both sessions `done`, `suspended:false`.
+  each trial's fresh token; both sessions `done`, `suspended:false` (consistent with browser `modify` = allow).
 - **Control (same serve, same config):** a `write_file` session **SUSPENDED**
-  (`kind:"approval"`, `scope:{type:"file",mode:"write"}`, file not created before the answer) — proving
-  gating is not globally disabled here; the browser bypass is a specific asymmetry.
+  (`kind:"approval"`, `scope:{type:"file",mode:"write"}`, file not created before the answer) — a
+  folder-access `ask` for an out-of-`writableRoots` path, NOT evidence of a broken browser gate.
 
 ## Config
 
