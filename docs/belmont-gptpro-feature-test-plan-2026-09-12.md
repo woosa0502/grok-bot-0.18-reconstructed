@@ -625,3 +625,19 @@ submits.length가 정확히 1이다.
 
 [검토 보고서·원본 증거·재현 스크립트·다음 배치 명세 ZIP](sandbox:/mnt/data/belmont_round1_review_bundle.zip)
 [다음 배치 실행 명세만 보기](sandbox:/mnt/data/belmont_r2_review/NEXT_BATCH.md)
+
+---
+
+# Claude 라이브 실행 로그 (루프)
+
+실 909 (1.26.909.1820), 데몬 sha256 `aaa13d1202591f03bf2046f8fad2d63f8e4b658e2fea931bcc49b6024a78e534`, dev 프로필(belmont-browse/.state), autoApprove:false, gpt-5.5/high, 외부 산출물 판정, 정리는 명시 PID(pgrep -f 미사용), 실행 후 봇 legacy·auto-promotion OFF. 하네스: belmont-browse/tools/eval-verify/ + scratchpad 드라이버.
+
+| 테스트 | 결과 | 외부 증거 | 비고 |
+|---|---|---|---|
+| L01 폼목표(직접세션) | PASS | 폼서버 영수증 토큰일치·1건·NYC/aisle | 실행 trace 보강 권고(라운드2) |
+| L04 파일도구(native bash) | 제한 PASS | 세션디렉터리 실제 바이트: a.txt=ALPHA\\nBETA, del 생성후삭제, 항목=[a.txt] | 증거 표시가 끝개행 trim(파일 정상). Host T2 전체=PARTIAL |
+| L13 승인경계 deny/allow/stale | PASS×3 | /tmp 파일 존재(allow)·부재(deny)·HTTP_409(stale) | write_file outsideWrite:ask→suspend. SELF=NOT_EXERCISED |
+| L18 취소·실제종료 | PASS | heartbeat 2회→stop→terminal 20ms→delta 0(자식 종료) | stopped 문자열 아님 |
+| L19 재시작·복구 | PASS | SIGKILL 후 고아 hb 0, 재시작→interrupted(explicit-continuation,resumed:false), hb 자동재실행 0 | QUEUED/PENDING/DONE subcase 잔여 |
+
+누락 subcase(다음 후보): L18.QUEUED(대기중 취소), L19.PENDING/DONE, L13.SELF, L04 Host T2 전체. 라운드3 검토 대기 중.
