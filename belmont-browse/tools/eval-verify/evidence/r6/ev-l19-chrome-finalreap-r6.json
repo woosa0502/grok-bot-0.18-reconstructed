@@ -1,0 +1,41 @@
+{
+  "case": "l19-chrome-finalreap-r6",
+  "at": "2026-09-12T15:06:41.840Z",
+  "control": {
+    "pid": 1581120,
+    "aliveBefore": true
+  },
+  "beforeCrash": {
+    "census": {
+      "root": 1,
+      "tree": 30
+    },
+    "owner": true
+  },
+  "afterAdopt": {
+    "serve2Pid": 1581429,
+    "census": {
+      "root": 1,
+      "tree": 30
+    },
+    "owner": true,
+    "adoptLogged": true
+  },
+  "afterNormalStop": {
+    "serveAlive": false,
+    "census": {
+      "root": 0,
+      "tree": 0
+    },
+    "owner": false,
+    "controlAlive": true
+  },
+  "verdict": {
+    "adopted_same_tree": true,
+    "serve_exited": true,
+    "owned_tree_fully_reaped": true,
+    "owner_file_cleared": true,
+    "control_browser_survived": true
+  },
+  "verdict_pass": true
+}

@@ -1,0 +1,25 @@
+{
+  "case": "l18-queued-r6",
+  "at": "2026-09-12T15:08:45.731Z",
+  "nonce": "d860dc36",
+  "gate": "A starts+completes normally (slot frees naturally) => cancelled QUEUED B still never starts; C runs",
+  "evidence": {
+    "aId": "aa398b8fc036490aa94f7",
+    "aStartedMarker": true,
+    "aRunningObserved": true,
+    "aFinalStatus": "done",
+    "aCompletedNormally": true,
+    "aDoneMarker": true,
+    "bId": "9b4ccd99f8cf453b9794a",
+    "bStatusBeforeCancel": "queued",
+    "bQueued": true,
+    "bStatusAfterCancel": "stopped",
+    "bStartedMarker_MUST_BE_FALSE": false,
+    "bStartedMarkerAfterC_MUST_BE_FALSE": false,
+    "bAfterStopExactlyStopped": true,
+    "cId": "421c55dd77d84751bf6c5",
+    "cStartedMarker": true,
+    "cFinalStatus": "done"
+  },
+  "verdict_pass": true
+}

@@ -43,6 +43,15 @@ as a functional PASS.
   started (`ASTART` observed) **and allowed to complete normally** so the slot frees on its own,
   then confirm the cancelled B still never starts.
 
+## Round-5 correction (GPT-6 Pro §C1)
+
+The phrasing "heartbeat increase after restart = re-execution" (used to describe the R4 miscomputation) is
+itself **not a sufficient signal**: a SIGKILL-orphaned shell can keep appending heartbeat lines without any
+re-execution. The correct signal — used from R5 on — is a `BOOT-<nonce>` marker written **once** at bash
+start; a second boot line means re-execution, an unchanged count within the observation window means none.
+Also: an R5 re-run cannot retroactively make the R4 trials verified — the R4 originals remain UNVERIFIED; R5/R6
+are new, independent trials with their own (stronger) evidence, recorded within an explicit observation window.
+
 ## Net effect on the PASS ledger
 
 Both L19.RUNNING.NO_CLEANUP and L18.QUEUED are withdrawn from the live-PASS set pending corrected

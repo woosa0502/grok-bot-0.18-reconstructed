@@ -45,6 +45,31 @@ the next startup, run serve under an external supervisor / cgroup / systemd scop
 on serve death. The owner-file reaper above closes the accumulation defect for the eval workflow (a new
 serve always starts for the next eval and adopts+reaps). Production hardening = a cgroup scope.
 
+## Round-5/6 corrections (GPT-6 Pro adversarial review)
+
+- **"36 orphan Chrome processes" is not 36 browser instances.** That count includes renderer/gpu/zygote/
+  utility children of the tree. And observing the *same* Chrome reused across restarts does not by itself
+  prove "each restart accumulated a new tree" — that causal claim is withdrawn. The accurate, measured
+  metric is the R6 host census: **exactly one root browser** (profile + no `--type=`) and a **tree that does
+  not grow** across crash→restart→adopt (`evidence/r6/ev-l19-nocleanup-r6.json`: root 1, tree 34→34).
+- **The first fix was incomplete.** GPT round-5 reproduced five real defects in it (B1–B5): the owner file
+  was deleted even on a shutdown *timeout* (live browser left unowned); the adopted stop waited only on the
+  root pid (a surviving child reported success and skipped SIGKILL); the CDP-verified pid was discarded and a
+  different owner pid was killed (mis-kill on PID reuse / endpoint swap); `pgid` was only integer-checked so
+  `kill(-1)`/`kill(0)` were reachable; and there was no atomicity/locking across create→adopt→delete.
+- **Re-hardened fix (this branch):** atomic owner file (temp→fsync→rename) with a **generation token** and
+  **process start-ticks**; `planReuseOwnership` returns adopt/shared/foreign/**unknown** (corrupt, malformed
+  servePid, or a reused pid ⇒ unknown ⇒ never touched); a per-profile **lock** guards read→plan→write (CAS)
+  so two serves cannot both adopt; a unified `createChromeTreeStop` reaps the **whole process group** (not
+  just the root), guards **pgid>1** before any group signal, re-verifies identity (generation + start-ticks +
+  CDP browser pid) right before killing, and clears the owner **only** on confirmed full-tree exit **and**
+  generation match (a stale stop cannot delete a newer owner). Owned launch records the owner immediately
+  after spawn (closing the spawn→ready gap).
+- **Accepted acceptance criterion** (GPT): not "adopt logged" but a **normal shutdown that reaps the entire
+  owned tree** while a control browser survives — verified live in `L19.CHROME.ADOPT.FINAL_REAP`
+  (`evidence/r6/ev-l19-chrome-finalreap-r6.json`: after normal stop, eval-profile census root=0/tree=0, owner
+  cleared, control browser alive).
+
 ## Regression
 
 `belmont-browse/test/chrome-orphan-ownership.test.mjs` — spawns a real detached sleeper as a stand-in

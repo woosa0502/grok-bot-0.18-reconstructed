@@ -1,0 +1,85 @@
+{
+  "case": "l19-nocleanup-r6",
+  "at": "2026-09-12T15:04:52.382Z",
+  "nonce": "c113e104",
+  "observationWindowMs": 8000,
+  "preCrash": {
+    "sessionDir": "/home/hoon/_roots/labs/work/Belmont/belmont-browse/.state/aside-home-909/u/0/sessions/2026-09-13_cc5e08c6960f43648cf95",
+    "bootBefore": 1,
+    "hbBefore": 3,
+    "census": {
+      "root": 1,
+      "tree": 34
+    }
+  },
+  "crash": {
+    "census": {
+      "root": 1,
+      "tree": 34
+    }
+  },
+  "restart": {
+    "spawnedPid": 1580439,
+    "serve2Pid": 1580439,
+    "newServePidMatchesSpawned": true
+  },
+  "recovered": {
+    "fullSnapshot": {
+      "id": "cc5e08c6960f43648cf95",
+      "task": "Run this one bash command and nothing else (do not reply until it ends): echo bo",
+      "mode": "guard",
+      "autoApprove": false,
+      "status": "interrupted",
+      "createdAt": 1789225492000,
+      "startedAt": null,
+      "endedAt": null,
+      "turns": 0,
+      "model": {
+        "provider": "openai-codex",
+        "modelId": "gpt-5.5",
+        "thinkingLevel": "high",
+        "fastMode": false
+      },
+      "activity": [],
+      "toolCalls": 0,
+      "modelCalls": 0,
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0
+      },
+      "result": null,
+      "error": null,
+      "errorCode": "SESSION_INTERRUPTED",
+      "suspension": null,
+      "recovery": {
+        "mode": "explicit-continuation-required",
+        "previousStatus": "running",
+        "resumed": false
+      },
+      "executionStarted": true,
+      "asideSessionId": "cc5e08c6960f43648cf95",
+      "memoryContext": null,
+      "memoryObservation": null,
+      "memoryEventId": null
+    },
+    "statusAfter": "interrupted",
+    "bootBefore": 1,
+    "bootAfter": 1,
+    "censusAfter": {
+      "root": 1,
+      "tree": 34
+    },
+    "sameSessionDir": true
+  },
+  "verdict": {
+    "read_ok_and_boot_1_1": true,
+    "no_reexec_in_window": true,
+    "recovered_interrupted": true,
+    "same_session_identity": true,
+    "new_serve_is_spawned_pid": true,
+    "single_root_browser": true,
+    "tree_not_grown": true
+  },
+  "verdict_pass": true
+}

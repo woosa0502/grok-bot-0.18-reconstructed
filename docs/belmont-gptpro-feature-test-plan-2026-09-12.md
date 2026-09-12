@@ -940,3 +940,15 @@ GPT의 "원래 브라우저 경계 OPEN"에 대한 답: **guard 모드 승인 �
 ### R5 종합
 
 닫힌 것: AUDIT.R4(정정+재실행), DEF-L19-CHROME-ORPHAN-001(수정+회귀+라이브 실증), L18.QUEUED, L19.RUNNING.NO_CLEANUP, L19.PENDING, L18.SHELL.TREE, L19.DONE. 새 결함: DEF-L13-BROWSER-APPROVAL-UNGATED-001(브라우저 승인 경계 OPEN). 라운드5 검토를 GPT-6 Pro에 전송(대화 6aa53cac) — 판정 대기.
+
+## R6 실행 결과 (GPT 라운드5 검토 반영) — Claude
+
+GPT 라운드5가 chrome 수정에 실제 재현 결함 5건(B1–B5)을 잡았고, R5 하네스의 false-PASS 조건과 L13.BROWSER 과장 프레이밍을 지적했다. **전부 코드로 확인(트랩⑪) 후 수정**했다.
+
+- **chrome 재수정(B1–B5) 완료** — 원자적 owner 파일(temp→fsync→rename)+generation 토큰+start-ticks, planReuseOwnership에 unknown 모드(corrupt/malformed/pid재사용→미접촉), 프로필 락(CAS), 통합 `createChromeTreeStop`(그룹 전체 리핑, pgid>1 가드, 종료 직전 신원 재검증, generation 일치 시에만 owner 삭제). 내가 넣은 phase-budget 버그(graceful 대기가 전체 예산 소진→escalation 굶김)도 수정. 회귀 `chrome-orphan-ownership.test.mjs` B1–B5 커버(10/10), lifecycle 전체 21/21.
+- **L19.RUNNING.NO_CLEANUP r6 (엄격) = PASS** (`r6/ev-l19-nocleanup-r6.json`): 읽기성공 필수+정확 BOOT 1→1, 새 serve pid=실제 spawn pid, 전체 복구 스냅샷 보존, **실제 호스트 census**로 `orphan_bounded` 대체(root=1, tree 34→34 무증가), 8초 관측창 명시.
+- **L19.CHROME.ADOPT.FINAL_REAP = PASS** (`r6/ev-l19-chrome-finalreap-r6.json`): GPT가 요구한 최종 수용 기준 — crash→adopt→**정상 종료가 소유 트리 전체를 리핑**(eval 프로필 census root=0/tree=0, owner 삭제) + 무관한 **대조 브라우저 생존**.
+- **L18.QUEUED r6 (엄격) = PASS** (`r6/ev-l18-queued-r6.json`): 3가지 구멍 봉합(aRunningObserved 필수, B취소후=정확히 stopped, C 완료 후 BSTART 재검사).
+- **L13.BROWSER 판정 정정**: S1 확정 철회 → `POLICY_CONTRACT_UNVERIFIED / NOT_EXERCISED`(P0 유지). 실효 브라우저 권한(Allow/Ask/Deny)을 데몬 schema에서 먼저 고정한 뒤 POLICY.* 배터리로 재시험(라운드6 계획). 문서 정정: DEF-L13, DEF-L19("36≠인스턴스"+재하드닝+FINAL_REAP), AUDIT.R4(heartbeat 신호 주의).
+
+남은 것(GPT 라운드5 D계획): L13.BROWSER.POLICY.{ALLOW/ASK.DENY/ASK.ALLOW/DENY}+PATHS+STALE_SELF(데몬 권한 schema 확인 선행), 나머지 복구 시험 엄격 재실행(PENDING/SHELL.TREE/DONE 계열), chrome L19.CHROME.* 잔여(OWNER.RACE/DOUBLE_CRASH/HEALTH.DEAD). 라운드6 검토를 GPT에 전송 예정.

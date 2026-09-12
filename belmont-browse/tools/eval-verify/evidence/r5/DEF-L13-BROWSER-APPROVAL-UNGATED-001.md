@@ -1,11 +1,21 @@
 # DEF-L13-BROWSER-APPROVAL-UNGATED-001 — guard-mode approval does not cover browser actions
 
-- **Severity (my assessment):** S1/Critical candidate — the guard-mode approval gate is the primary
-  human-in-the-loop safety control, and the browser is the agent's main external-effect channel. Needs a
-  design/threat-model ruling (intended vs. defect) — flagged for GPT-6 Pro round-5.
-- **Status:** CONFIRMED behavior, deterministic (2 runs) + same-serve control. Whether it is a defect or
-  intended design is the open question.
-- **Answers:** GPT-6 Pro's standing item "L13: 원래 브라우저 경계 OPEN" (the original browser boundary).
+> **CORRECTED after GPT-6 Pro round-5 (§A).** The original S1 framing is WITHDRAWN. Current disposition:
+> `POLICY_CONTRACT_UNVERIFIED`, `L13.BROWSER.DENY/ALLOW = NOT_EXERCISED`. The observation (no approval
+> suspension for a browser submit under guard/autoApprove:false, while write_file suspends) stands, but it
+> does NOT by itself prove an approval *bypass*: "Guard" (folder-access mode) and per-tool permissions
+> (Allow/Ask/Deny) are separate contracts, and the browser tool's *effective* permission was never pinned.
+> If it is Allow, a no-suspension submit is consistent with policy — not a defect. The correct test pins the
+> effective browser capability from the daemon schema first (see the R6 plan / L13.BROWSER.POLICY.* battery).
+> Priority stays **P0** (core external-effect boundary) but as a POLICY test, not a confirmed defect.
+> The overreach "local form submit ⇒ real purchases/bookings possible without approval" is withdrawn — that
+> is beyond the tested scope, and 2/2 is a reproduction, not proof of determinism under all conditions.
+
+- **Severity:** NOT S1-confirmed (insufficient basis). Disposition `POLICY_CONTRACT_UNVERIFIED`.
+- **Status:** observation reproduced (2 runs) + same-serve write_file-gates control; the *contract* (whether
+  browser approval should exist and what its effective value is) is UNVERIFIED and the boundary NOT_EXERCISED.
+- **Answers (partially):** GPT-6 Pro's standing item "L13: 원래 브라우저 경계 OPEN" — the boundary is open to
+  testing; a defect is not established.
 
 ## Claim
 
