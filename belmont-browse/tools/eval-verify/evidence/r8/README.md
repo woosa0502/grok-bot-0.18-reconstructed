@@ -57,3 +57,20 @@ idempotency/durable-accept (L16), vault/secrets (L37), subagent isolation (L10).
   transcript authored by two distinct agent ids (entry shape {kind,id,message:{type:"text",content},timestampMs,author:{id,name}}).
 - **cleanup**: the two test agents + group deleted; roster restored to 14, zero leftover; the 14 real agents untouched.
 Both features exist and work end-to-end (unlike Telegram/autopost which are confirmed-absent). Verdict PASS.
+
+## Evidence-scope caveats (GPT-6 Pro round-9 §2) — claims tightened to what the JSON proves
+- **L15 / L26**: the committed evidence set is complete in this repo (ev-l15-{origin-guard,bad-bearer,daemon}.json,
+  ev-l26-{context-authority,reject-control-field,reject-malformed}.json), but the round-9 review package only
+  carried a subset, so GPT could verify only the Origin-403 and one L26 rejection. The auth-ON/for-chrome/
+  /memory-context/malformed cases are evidenced by the other JSONs here, not by that partial package.
+- **HEALTH.DEAD / DOUBLE_CRASH**: the JSONs record the summarized values/booleans (health ready/alive; same
+  chrome pid across crashes; reaped-on-stop). They do NOT embed an independent per-stage (pid,startTicks) +
+  termination-status trace; the live checks made those observations but only the summary was persisted.
+- **bot-group-discuss**: this proves the **capability** — createAgent/createGroup/group-chat all function and
+  two bots really debated in-character in the room (distinct agent ids, real content). It does NOT prove a
+  bot AUTONOMOUSLY called createAgent (I drove the gateway API directly, which is the same surface a bot's
+  tool would call), nor does it capture the members' internal tool-call trace. Cleanup shows the roster COUNT
+  returned to 14; it does not assert the exact ID-set was preserved or that the groupId is gone (both were
+  true in practice — no `selftest`-named leftovers — but the JSON records the count, not the ID diff).
+Next evidence hardening (no new features): persist req/resp, per-stage (pid,startTicks)+termination, the bot's
+tool-call trace, and cleanup before/after roster ID-set equality + groupId absence.

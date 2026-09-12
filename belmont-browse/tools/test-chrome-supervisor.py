@@ -74,6 +74,40 @@ def test_ownership_no_miskill():
     except ProcessLookupError: pass
     print("PASS ownership: a foreign serve's chrome is not pinned or killed")
 
+
+NULL_SERVEPID_SERVE = r'''
+import os, sys, json, time, subprocess, signal
+profile = sys.argv[1]
+control = subprocess.Popen(["sleep", "600"], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def ticks(pid):
+    with open(f"/proc/{pid}/stat") as f: raw = f.read()
+    return int(raw[raw.rfind(")") + 2:].split()[19])
+# owner record with servePid OMITTED (null) but a valid foreign chromePid+startTicks
+json.dump({"chromePid": control.pid, "pgid": control.pid, "startTicks": ticks(control.pid), "generation": "nullsp"},
+          open(os.path.join(profile, ".belmont-chrome-owner.json"), "w"))
+open(os.path.join(profile, "serve-ready"), "w").write(str(control.pid))
+time.sleep(1.0)
+os.kill(os.getpid(), signal.SIGKILL)
+'''
+
+def test_null_servepid_no_miskill():
+    """GPT round-9 counterexample: owner record with a NULL/missing servePid must NOT pass the ownership
+    check (it previously did, because serve_pid was overwritten with None -> None != None was false)."""
+    profile = tempfile.mkdtemp(prefix="sup-nullsp-")
+    fs = os.path.join(profile, "nullsp-serve.py"); open(fs, "w").write(NULL_SERVEPID_SERVE)
+    sup = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs, profile],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    ready = os.path.join(profile, "serve-ready"); control_pid = None
+    for _ in range(100):
+        if os.path.exists(ready): control_pid = int(open(ready).read().strip()); break
+        time.sleep(0.05)
+    assert control_pid and alive(control_pid)
+    out, _ = sup.communicate(timeout=30); time.sleep(0.5)
+    assert alive(control_pid), "MIS-KILL: supervisor killed a chrome whose owner had a null servePid\n" + out
+    try: os.kill(control_pid, signal.SIGKILL)
+    except ProcessLookupError: pass
+    print("PASS null-servePid: an owner record with no servePid is never pinned/killed")
+
 def test_pidfd_reuse_safety():
     p = subprocess.Popen(["sleep", "0.2"]); fd = os.pidfd_open(p.pid); p.wait(); time.sleep(0.2)
     try:
@@ -84,4 +118,4 @@ def test_pidfd_reuse_safety():
         os.close(fd)
 
 if __name__ == "__main__":
-    test_reap(); test_ownership_no_miskill(); test_pidfd_reuse_safety(); print("ALL SUPERVISOR TESTS PASS")
+    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_pidfd_reuse_safety(); print("ALL SUPERVISOR TESTS PASS")

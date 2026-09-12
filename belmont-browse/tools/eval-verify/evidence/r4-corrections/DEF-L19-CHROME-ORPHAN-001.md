@@ -165,6 +165,19 @@ Still open (documented, not closed by this cut):
 - The in-process `createChromeTreeStop` raw pid/pgid path still has its own (narrowed) TOCTOU independent of
   the supervisor.
 
+### Round-9 (GPT-6 Pro closeout) — a regression I introduced, then fixed
+
+GPT reproduced two more holes caused by my round-8 cut overloading `serve_pid` with `None` on serve exit:
+- **null/missing `servePid` mis-kill**: `None != None` was false, so an owner record with no servePid passed
+  the ownership check and a foreign process was reaped.
+- **valid-owner early-death miss**: after serve exit, the final sweep compared `owner.servePid != None` and
+  rejected a legitimate owner (orphan alive, exit 0).
+Fix: the forked `child_pid` is now IMMUTABLE, exit is tracked by a separate flag, and ownership requires
+`owner.servePid` to be a valid integer equal to `child_pid`. Regressions added: `test_null_servepid_no_miskill`
+(+ the existing wrong-integer `test_ownership_no_miskill`); supervisor tests 4/4. With these closed, the
+remaining scope is again just **whole-tree stragglers / the supervisor's own SIGKILL / A-1 flock** (needs
+root/cgroup) — a genuine external-architecture task.
+
 Net: the **dangerous mis-kill** (killing an unrelated/foreign process) is closed at both layers; the core
 accumulation defect stays fixed+proven; the remaining items are narrow reap-completeness/liveness gaps whose
 full closure needs `flock` + a cgroup/systemd scope (root), tracked as the external-supervisor architecture task.

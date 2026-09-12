@@ -58,14 +58,17 @@ def main():
     serve_argv = sys.argv[sep + 1:]
     grace_ms = int(os.environ.get("BELMONT_SUPERVISOR_GRACE_MS", "4000"))
 
-    serve_pid = os.fork()
-    if serve_pid == 0:
+    child_pid = os.fork()
+    if child_pid == 0:
         os.execvp(serve_argv[0], serve_argv)  # child: become serve
         os._exit(127)
+    # child_pid is IMMUTABLE (the forked serve). Exit is tracked by a separate flag so it never collides with
+    # the ownership comparison (round-9 fix).
+    serve_exited = False
 
     def pin_owned_chrome():
         """Open a pidfd bound to the OWNED chrome instance, or None. Closes GPT round-8 holes:
-        - ownership: the owner record must name OUR serve child (owner.servePid == serve_pid) and carry
+        - ownership: the owner record must name OUR serve child (owner.servePid == child_pid (immutable)) and carry
           startTicks (no missing-identity binding), so we never pin another serve's chrome.
         - verify->open TOCTOU: after pidfd_open we RE-READ the pid's start-ticks and confirm they still match
           the expected value; a pid reused between the check and the open no longer matches, so we close the
@@ -73,8 +76,13 @@ def main():
         o = read_owner(profile)
         if not o or not isinstance(o.get("chromePid"), int) or o["chromePid"] <= 1:
             return (None, None, None)
-        if o.get("servePid") != serve_pid:
-            return (None, None, None)  # not our serve's chrome
+        # Ownership must match the immutable forked child pid, and servePid must be a VALID INTEGER (a missing
+        # or null servePid must NEVER pass — round-9 fix: previously `serve_pid` was overwritten with None on
+        # serve exit, so `None != None` let a null-servePid record through and mis-killed a foreign process,
+        # while a valid owner was wrongly rejected by the final sweep).
+        sp = o.get("servePid")
+        if not isinstance(sp, int) or sp != child_pid:
+            return (None, None, None)  # not our serve's chrome (or malformed ownership)
         cp = o["chromePid"]; ct = o.get("startTicks")
         if not isinstance(ct, int):
             return (None, None, None)  # require a start-ticks identity
@@ -95,14 +103,14 @@ def main():
         fd, chrome_pid, chrome_ticks = pin_owned_chrome()
         if fd is not None:
             print(f"[supervisor] pinned chrome pid={chrome_pid} startTicks={chrome_ticks} via pidfd", flush=True); break
-        wpid, _ = os.waitpid(serve_pid, os.WNOHANG)
-        if wpid == serve_pid:
-            serve_pid = None; break  # serve exited; fall through to the final sweep
+        wpid, _ = os.waitpid(child_pid, os.WNOHANG)
+        if wpid == child_pid:
+            serve_exited = True; break  # serve exited; fall through to the final sweep (child_pid stays valid)
         time.sleep(0.5)
 
     # Wait for serve to exit (if it hasn't already).
-    if serve_pid is not None:
-        try: os.waitpid(serve_pid, 0)
+    if not serve_exited:
+        try: os.waitpid(child_pid, 0)
         except ChildProcessError: pass
     print("[supervisor] serve exited; checking owned chrome", flush=True)
 
