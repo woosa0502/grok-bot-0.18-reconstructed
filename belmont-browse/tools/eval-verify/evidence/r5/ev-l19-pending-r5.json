@@ -1,0 +1,32 @@
+{
+  "case": "l19-pending-r5",
+  "at": "2026-09-12T14:35:12.954Z",
+  "nonce": "94fab506",
+  "gate": "A pending/running at crash; B QUEUED(pending) at crash -> after unattended restart B is not lost, not auto-run uncontrolled, and never duplicated (BSTART <=1)",
+  "preCrash": {
+    "aStatus": "running",
+    "aStartMarker": true,
+    "bStatus": "queued",
+    "bQueued": true,
+    "bStartMarkerBefore": 0
+  },
+  "restart": {
+    "servePid2": 1552785,
+    "serve2Pid": 1552785
+  },
+  "recovered": {
+    "aStatusAfter": "interrupted",
+    "bStatusAfter": "done",
+    "bQueryable": true,
+    "bStartMarkerAfter": 0,
+    "bLost": false,
+    "bNeverDuplicated": true,
+    "bAutoRanUncontrolled": false
+  },
+  "verdict": {
+    "b_not_lost": true,
+    "b_never_duplicated": true,
+    "b_terminal_or_defined": true
+  },
+  "verdict_pass": true
+}

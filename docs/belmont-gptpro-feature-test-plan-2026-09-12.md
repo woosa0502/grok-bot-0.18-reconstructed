@@ -931,4 +931,12 @@ GPT의 "원래 브라우저 경계 OPEN"에 대한 답: **guard 모드 승인 �
 
 심각도(내 판단): 승인 게이트는 guard의 핵심 사람-개입 안전장치이고 브라우저는 에이전트의 주 외부영향 채널 → S1 후보. **의도 vs 결함 판정을 GPT-6 Pro 라운드5에 요청**(`r5/DEF-L13-BROWSER-APPROVAL-UNGATED-001.md`의 open questions). 재현 도구: `form-server-html.mjs`, `probe-l13-browser.mjs`.
 
-남은 R5: L19.PENDING → L18.SHELL.TREE → L19.DONE.{PERSISTED,EFFECT_ONLY}/CONTINUE.NO_DUP (라운드5 GPT 판정 후 진행).
+### R5 잔여 라이프사이클 배치 (라이브) — 완료
+
+- **L19.PENDING = PASS** (`r5/ev-l19-pending-r5.json`): A running·B queued(pending) 상태에서 serve SIGKILL → 무개입 재시작. B는 유실 안 됨(조회 가능), 중복 실행 없음(BSTART 0), 종결. **측정 뉘앙스**: running이던 A는 `interrupted`, pending이던 B는 **`done`(미실행)** — BSTART 마커 0인데 status=done. "실행 안 된 pending이 done" 의미는 경계적(interrupted/cancelled가 더 맞을 수 있음) → GPT 판정 요청 대상.
+- **L18.SHELL.TREE = PASS** (`r5/ev-l18-shell-tree-r5.json`): bash는 bwrap `--unshare-pid` 네임스페이스에서 실행 → 내부 프로세스는 호스트에서 cmdline로 안 보임(설계상 격리). 개별 자손 카운트 불가가 정상. 대신 호스트 bwrap 프로세스 수로 측정: baseline 0 → 실행중 2 → stop 후 0. 네임스페이스 init(bwrap)이 종료되며 트리 전체가 원자적으로 리핑됨.
+- **L19.DONE = PASS** (`r5/ev-l19-done-r5.json`): 완료(done) 세션이 크래시+재시작 후 PERSISTED(done 유지), EFFECT_ONLY(외부 효과 1줄 그대로), CONTINUE.NO_DUP(continue 수용 후에도 원본 효과 1줄 유지 — 원본 재실행 없음).
+
+### R5 종합
+
+닫힌 것: AUDIT.R4(정정+재실행), DEF-L19-CHROME-ORPHAN-001(수정+회귀+라이브 실증), L18.QUEUED, L19.RUNNING.NO_CLEANUP, L19.PENDING, L18.SHELL.TREE, L19.DONE. 새 결함: DEF-L13-BROWSER-APPROVAL-UNGATED-001(브라우저 승인 경계 OPEN). 라운드5 검토를 GPT-6 Pro에 전송(대화 6aa53cac) — 판정 대기.
