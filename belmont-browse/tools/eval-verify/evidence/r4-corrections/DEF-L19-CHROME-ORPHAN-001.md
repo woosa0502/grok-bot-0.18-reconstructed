@@ -121,6 +121,28 @@ serves stealing the same dead lock on one profile, and (b) are only fully closab
 correct end state and a *separate task* from the in-process reaper. Recorded here as known limitations; the
 in-process reaper is at its pure-Node floor.
 
+## Kernel-primitive closure (external pidfd supervisor) — closes the A-1/A-3 floor
+
+The residual TOCTOU races above are closed at the architecture level by an **external supervisor**, since the
+in-process reaper cannot. In this environment cgroup v2 needs root and systemd-run has no user bus, but
+**`pidfd` is available without root** — a pidfd binds to a specific process INSTANCE, so a signal through it
+can never reach a reused PID.
+
+`belmont-browse/tools/chrome-supervisor.py` launches the eval serve as its child, learns the owned Chrome's
+`(pid, startTicks)` from the owner file, opens a **pidfd bound to that exact instance**, waits for serve to
+exit (any cause, including SIGKILL — the supervisor is serve's parent, so it always regains control), and if
+the instance is still alive reaps it through the pidfd (SIGTERM→SIGKILL). This closes the two windows the
+in-process reaper cannot: the **SIGKILL-orphan window** (boundary #1) and the **PID-reuse mis-kill** (A-3) —
+it never signals by raw pid/pgid, so it cannot mis-kill a number-inheriting process.
+
+Verified: `belmont-browse/tools/test-chrome-supervisor.py` — a self-crashing fake serve (SIGKILL) orphans a
+detached fake chrome; the supervisor reaps that exact instance via pidfd (PASS). Plus pidfd instance-binding
+safety: a dead instance's pidfd raises `ProcessLookupError`, so a reused pid is never signaled (PASS).
+
+To run the eval serve under the supervisor: `python3 belmont-browse/tools/chrome-supervisor.py <profileDir>
+-- <NODE> belmont-browse/src/serve.mjs <serve args...>`. The in-process reaper remains the fast path; the
+supervisor is the kernel-backed backstop.
+
 ## Regression
 
 `belmont-browse/test/chrome-orphan-ownership.test.mjs` — spawns a real detached sleeper as a stand-in
