@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 
 const REPO = process.env.BELMONT_REPO || process.cwd();
 const { evaluateProcedure, createEvaluationApi } = await import(pathToFileURL(path.join(REPO, "belmont-browse/src/procedure-evaluation.mjs")).href);
-const observer = await import("./g4g5-observer.mjs");
+const observer = await import("./form-observer.mjs");
 const CASE = process.argv[2];
 const OUT = process.argv[3] || `/tmp/g4g7-${CASE}.json`;
 const K = process.env.BELMONT_KNOWLEDGE_DIR || path.join(REPO, ".cache/eval-verify-909/knowledge");
