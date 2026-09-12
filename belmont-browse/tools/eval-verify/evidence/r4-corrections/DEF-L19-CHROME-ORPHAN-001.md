@@ -143,6 +143,32 @@ To run the eval serve under the supervisor: `python3 belmont-browse/tools/chrome
 -- <NODE> belmont-browse/src/serve.mjs <serve args...>`. The in-process reaper remains the fast path; the
 supervisor is the kernel-backed backstop.
 
+### Round-8 (GPT-6 Pro focused review of the supervisor) — mis-kill closed; residual documented
+
+GPT reproduced real holes in the first supervisor cut. Fixed (test-chrome-supervisor.py now covers them):
+- **Ownership mis-kill (reproduced: it SIGTERM'd another serve's control process)** → the supervisor now pins
+  only a chrome whose owner record names OUR serve child (`owner.servePid == serve_pid`) and carries a
+  start-ticks identity; a foreign serve's chrome is never pinned or killed. Regression: `test_ownership_no_miskill`.
+- **verify→open TOCTOU (pid reused between the start-ticks check and `pidfd_open`)** → after `pidfd_open` we
+  RE-READ the pid's start-ticks and confirm they still match; a wrong initial binding is closed and the fd
+  dropped.
+- **early-death orphan (chrome recorded then serve died before the next poll → orphan alive, exit 0)** → a
+  final sweep after serve exit re-attempts the identity-verified pin+reap.
+
+Still open (documented, not closed by this cut):
+- **whole-tree stragglers**: the supervisor signals the root instance via its pidfd; a child that left the
+  root's group (setsid) is not guaranteed reaped by the pidfd alone.
+- **supervisor's own death**: if the supervisor is SIGKILLed, its cleanup does not run (no PR_SET_PDEATHSIG /
+  scope tying the tree's lifetime to it). A cgroup/systemd scope (needs root/user-bus here) is the real fix.
+- **A-1 lock**: the supervisor does not serialize the in-process owner lock; that still needs a kernel
+  `flock` on a fixed file shared by all ownership paths.
+- The in-process `createChromeTreeStop` raw pid/pgid path still has its own (narrowed) TOCTOU independent of
+  the supervisor.
+
+Net: the **dangerous mis-kill** (killing an unrelated/foreign process) is closed at both layers; the core
+accumulation defect stays fixed+proven; the remaining items are narrow reap-completeness/liveness gaps whose
+full closure needs `flock` + a cgroup/systemd scope (root), tracked as the external-supervisor architecture task.
+
 ## Regression
 
 `belmont-browse/test/chrome-orphan-ownership.test.mjs` — spawns a real detached sleeper as a stand-in

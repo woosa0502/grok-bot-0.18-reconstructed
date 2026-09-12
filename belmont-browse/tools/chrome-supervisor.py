@@ -63,25 +63,41 @@ def main():
         os.execvp(serve_argv[0], serve_argv)  # child: become serve
         os._exit(127)
 
+    def pin_owned_chrome():
+        """Open a pidfd bound to the OWNED chrome instance, or None. Closes GPT round-8 holes:
+        - ownership: the owner record must name OUR serve child (owner.servePid == serve_pid) and carry
+          startTicks (no missing-identity binding), so we never pin another serve's chrome.
+        - verify->open TOCTOU: after pidfd_open we RE-READ the pid's start-ticks and confirm they still match
+          the expected value; a pid reused between the check and the open no longer matches, so we close the
+          fd and refuse to bind the wrong instance."""
+        o = read_owner(profile)
+        if not o or not isinstance(o.get("chromePid"), int) or o["chromePid"] <= 1:
+            return (None, None, None)
+        if o.get("servePid") != serve_pid:
+            return (None, None, None)  # not our serve's chrome
+        cp = o["chromePid"]; ct = o.get("startTicks")
+        if not isinstance(ct, int):
+            return (None, None, None)  # require a start-ticks identity
+        if start_ticks(cp) != ct:
+            return (None, None, None)  # pid not (yet) the expected instance
+        try:
+            f = os.pidfd_open(cp)
+        except (ProcessLookupError, OSError):
+            return (None, None, None)
+        if start_ticks(cp) != ct:   # re-verify AFTER open: reuse between check and open -> wrong bind
+            os.close(f); return (None, None, None)
+        return (f, cp, ct)
+
     # Parent: learn the owned Chrome instance and pin a pidfd to it.
     chrome_pid, chrome_ticks, fd = None, None, None
     deadline = time.time() + 60
     while time.time() < deadline:
-        # serve may exit before Chrome is ever recorded (startup failure) — stop waiting then.
+        fd, chrome_pid, chrome_ticks = pin_owned_chrome()
+        if fd is not None:
+            print(f"[supervisor] pinned chrome pid={chrome_pid} startTicks={chrome_ticks} via pidfd", flush=True); break
         wpid, _ = os.waitpid(serve_pid, os.WNOHANG)
         if wpid == serve_pid:
-            serve_pid = None; break
-        o = read_owner(profile)
-        if o and isinstance(o.get("chromePid"), int) and o["chromePid"] > 1:
-            cp = o["chromePid"]; ct = o.get("startTicks")
-            live_ticks = start_ticks(cp)
-            if live_ticks is not None and (ct is None or ct == live_ticks):
-                try:
-                    fd = os.pidfd_open(cp); chrome_pid, chrome_ticks = cp, live_ticks
-                    print(f"[supervisor] pinned chrome pid={cp} startTicks={live_ticks} via pidfd", flush=True)
-                    break
-                except (ProcessLookupError, OSError):
-                    pass
+            serve_pid = None; break  # serve exited; fall through to the final sweep
         time.sleep(0.5)
 
     # Wait for serve to exit (if it hasn't already).
@@ -90,8 +106,13 @@ def main():
         except ChildProcessError: pass
     print("[supervisor] serve exited; checking owned chrome", flush=True)
 
+    # Final sweep: even if we never pinned during the poll (chrome recorded then serve died before the next
+    # poll, or created after the 60s window), try once more now that serve is gone (closes the early-death
+    # "orphan alive but exit 0" counterexample).
     if fd is None:
-        print("[supervisor] no pinned chrome to reap", flush=True); return 0
+        fd, chrome_pid, chrome_ticks = pin_owned_chrome()
+    if fd is None:
+        print("[supervisor] no owned chrome to reap", flush=True); return 0
     if not pidfd_alive(fd):
         print("[supervisor] owned chrome already gone (reaped by serve or exited)", flush=True); os.close(fd); return 0
 
