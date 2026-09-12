@@ -211,15 +211,66 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
       for (let i = 0; i < 180 && !["done", "error", "stopped", "interrupted"].includes(h.status); i += 1) await new Promise((r) => setTimeout(r, 500));
       return { status: h.status, found: typeof h.result === "string" && h.result.includes(sentinel), toolCalls: h.toolCalls, result: h.result };
     };
+    // Document-read isolation (G2-document-read): prove that an eval session's bash + read_file read the
+    // candidate overlay but NEVER the operational site page — the two access paths Aside routes outside
+    // memory_search. This is SOUND because it inspects the actual tool-call outputs (h.memoryRun.trajectory),
+    // not the model's prose: an operational leak shows the operational token in a real tool result, and the
+    // operational reads must be attempted (so a skipped call cannot masquerade as isolation). The operational
+    // sentinel page is written under the (evaluation) knowledge/sites and removed afterward.
+    const readProbe = async () => {
+      const opSentinel = `EVALOPERATIONALSENTINEL${nonce}`;
+      const knowledgeSites = path.join(KNOWLEDGE_DIR, "sites");
+      const opAbs = path.join(knowledgeSites, `${probeDomain}.md`);
+      const overlayPage = path.join(overlay, `${probeDomain}.md`);
+      const opSymlink = path.join(A.getAccountRoot(account.id), "memory", "sites", `${probeDomain}.md`);
+      let wroteOp = false;
+      try {
+        mkdirSync(knowledgeSites, { recursive: true });
+        writeFileSync(opAbs, `# ${probeDomain}\n\nOPERATIONAL champion token ${opSentinel}.\n`); wroteOp = true;
+        // Host-side baseline: the operational page really exists and carries the token, so a later "not read"
+        // is isolation, not a missing file.
+        if (!readFileSync(opAbs, "utf8").includes(opSentinel)) return { readIsolation: false, reason: "operational baseline missing" };
+        const task = [
+          `Sandbox self-check. Use ONLY the bash and read_file tools. Make exactly these five calls in order, then reply DONE:`,
+          `1) bash: cat '${overlayPage}'`,
+          `2) bash: cat '${opAbs}'`,
+          `3) bash: cat '${opSymlink}'`,
+          `4) read_file with path '${overlayPage}'`,
+          `5) read_file with path '${opAbs}'`,
+        ].join("\n");
+        const h = controller.startSession({ task, mode: "guard", autoApprove: true, sitesDir: overlay });
+        for (let i = 0; i < 300 && !["done", "error", "stopped", "interrupted"].includes(h.status); i += 1) await new Promise((r) => setTimeout(r, 500));
+        const steps = (h.memoryRun?.trajectory ?? []).filter((s) => s.operation === "bash" || s.operation === "read_file");
+        const hit = (s, needle) => String(s.result ?? "").includes(needle);
+        const aims = (s, p) => String(s.target ?? "").includes(p) || String(s.arguments ?? "").includes(p);
+        const overlayBash = steps.some((s) => s.operation === "bash" && aims(s, overlayPage) && hit(s, sentinel));
+        const overlayRead = steps.some((s) => s.operation === "read_file" && aims(s, overlayPage) && hit(s, sentinel));
+        const opBashTried = steps.some((s) => s.operation === "bash" && (aims(s, opAbs) || aims(s, opSymlink)));
+        const opReadTried = steps.some((s) => s.operation === "read_file" && aims(s, opAbs));
+        const opLeak = steps.some((s) => hit(s, opSentinel)); // operational token in ANY real tool result = leak
+        const readIsolation = overlayBash && overlayRead && opBashTried && opReadTried && !opLeak;
+        return { readIsolation, overlayBash, overlayRead, opBashTried, opReadTried, opLeak, status: h.status, steps: steps.length };
+      } finally { if (wroteOp) try { rmSync(opAbs, { force: true }); } catch {} }
+    };
     try {
       const withOverlay = await probe(overlay), control = await probe(undefined);
       const workerForwarding = withOverlay.found === true, searchIsolation = workerForwarding && control.found === false;
-      let bundleSha256 = "", forwardingInBundle = false;
-      try { const buf = readFileSync(daemonBundlePath); bundleSha256 = createHash("sha256").update(buf).digest("hex"); forwardingInBundle = /sitesRoot:\w+\.session\?\.runtimeConfig\?\.sitesDir/.test(buf.toString("latin1")); } catch {}
+      let bundleSha256 = "", forwardingInBundle = false, readIsolationInBundle = false;
+      try {
+        const buf = readFileSync(daemonBundlePath); const text = buf.toString("latin1");
+        bundleSha256 = createHash("sha256").update(buf).digest("hex");
+        forwardingInBundle = /sitesRoot:\w+\.session\?\.runtimeConfig\?\.sitesDir/.test(text);
+        // The document-read patch must be present in the bundle before any live read result is trusted.
+        readIsolationInBundle = /cwd:ti,isolate:Cn\.isolate,/.test(text) && text.includes("__belmontEvalIsolate") && text.includes("__belmontEvalPermission");
+      } catch {}
+      // Only run the (costlier) read probe once search isolation and the read patch are in place.
+      const read = searchIsolation && readIsolationInBundle ? await readProbe() : { readIsolation: false, reason: readIsolationInBundle ? "search isolation not proven" : "read patch absent" };
+      const readIsolation = read.readIsolation === true && readIsolationInBundle;
       evalCaps = { proof: { contract: "session-sites-v1", engine: ENGINES[engine].version, bundleSha256,
-        workerForwarding: workerForwarding && forwardingInBundle, searchIsolation, readIsolation: false, extractionDisabled: true,
-        readIsolationReason: "read_file/bash document read is not per-session scoped yet" }, probe: { withOverlay, control }, at: Date.now() };
-      log(`[eval-probe] forwarding=${workerForwarding} bundleForwarding=${forwardingInBundle} searchIsolation=${searchIsolation} readIsolation=withheld | overlay{status:${withOverlay.status},found:${withOverlay.found},tools:${withOverlay.toolCalls},result:${JSON.stringify((withOverlay.result || "").slice(0, 100))}} control{status:${control.status},found:${control.found},result:${JSON.stringify((control.result || "").slice(0, 100))}}`);
+        workerForwarding: workerForwarding && forwardingInBundle, searchIsolation, readIsolation, extractionDisabled: true,
+        ...(readIsolation ? {} : { readIsolationReason: read.reason ?? "read_file/bash document read isolation not proven live" }) },
+        probe: { withOverlay, control, read }, at: Date.now() };
+      log(`[eval-probe] forwarding=${workerForwarding} bundleForwarding=${forwardingInBundle} searchIsolation=${searchIsolation} readIsolation=${readIsolation} | overlay{status:${withOverlay.status},found:${withOverlay.found},tools:${withOverlay.toolCalls},result:${JSON.stringify((withOverlay.result || "").slice(0, 100))}} control{status:${control.status},found:${control.found},result:${JSON.stringify((control.result || "").slice(0, 100))}} read{${JSON.stringify(read)}}`);
     } catch (error) { log(`[eval-probe] error: ${error.message}`); }
     finally { try { rmSync(overlayParent, { recursive: true, force: true }); } catch {} }
   }

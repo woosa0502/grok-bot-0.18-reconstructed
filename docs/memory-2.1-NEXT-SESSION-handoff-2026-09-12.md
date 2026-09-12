@@ -82,6 +82,36 @@ Memory 2.1 통합을 고정 9개 목록으로 검증(전부 실 제품 경로로
   - **Belmont 기억 → Aside task = 이미 배선됨**(오탐). `extension.ts:60` `createBrowseMemoryHooks` → `BrowseClient.create/continue`의 `#prepareMemory`가 기억 packet 주입(create·follow-up·answer 전부). origin엔 Memory 2.1이 없어 안 보였음.
   - **dreaming → 승급 게이트**: **canonical엔 존재**(`kernel/experience/loop.ts`: `ingest`는 candidate를 evidence로만 capture, `promote()`가 `evaluateProcedure`로 측정 후 `state:"accepted"`만, `lookup`은 accepted만 반환). **legacy 경로만 gap** — `patch-daemon-dream-procedures.py`가 절차를 활성 `sites/` Current에 직접 쓰고 learn-measure(drafts/→sites/)와 자동 hand-off 없음. **남은 작업**: 라이브 Aside 엔진 + 설계 결정 필요(데몬 write 재조정). 맹목 수정 금지.
 
+## 15. G2 원문읽기 데몬 배선 — 코드 완료·오프라인 검증 (2026-09-12, 이 세션)
+
+§14가 남긴 "데몬 배선⛔"을 구현했다. **전부 오프라인 확정(라이브 909 검증만 남음).**
+
+### 무엇을 만들었나 (tracked 소스 + 패치 스크립트)
+1. **`belmont-browse/src/bwrap-backend.mjs`** — isolate에 `excludeRoots` 추가(심링크-안전 subpath 바인드). 제외 대상이 허용 루트 안에 있으면 그 부모를 내려가며 자식만 개별 바인드하고 제외 자식(계정 `memory/sites` 심링크)은 건너뜀. 리터럴 경로 + realpath 둘 다 제외.
+2. **`belmont-browse/src/eval-isolation.mjs`** (신규) — 순수 계획기: `operationalSitesRoots`(계정 memory/sites 별칭 + knowledge/sites 대상, 리터럴+realpath), `evalReadableRoots`(운영 sites 루트만 제거, 계정 루트는 유지, 오버레이 추가), `evalIsolate`(bash용 isolate 계획), `evalPermission`(read_file용: 운영 sites 제거 + 오버레이 추가 + outsideRead/Write=deny).
+3. **`belmont-browse/src/session.mjs`** — `installDaemonHooks`가 `__belmontEvalIsolate`·`__belmontEvalPermission` 전역 설치(KNOWLEDGE_DIR 고정). 일반 세션엔 null/무변경.
+4. **`belmont-browse/tools/patch-daemon-eval-isolation.py`** (신규) — 3개 멱등·fail-closed 편집: (a) `spawnSandboxed`가 `isolate:Cn.isolate`를 백엔드로 포워딩, (b) bash 툴이 eval 세션에 `__belmontEvalIsolate` 계획 주입, (c) `checkPermission`이 resolvePermission 결과를 `__belmontEvalPermission`으로 감싼 뒤 hasPermission. 전역은 옵셔널 체이닝이라 훅 없는 데몬은 동작 불변.
+5. **`belmont-browse/src/core.mjs`** — `runEvaluationProbe`가 readIsolation을 **실측으로 증명**(하드코딩 false 제거). 운영 sentinel 페이지를 (평가) knowledge/sites에 쓰고, eval 세션이 bash cat + read_file로 오버레이(성공)·운영 절대경로·운영 심링크경로(거부)를 호출하게 한 뒤 **실제 tool 결과(h.memoryRun.trajectory)**를 검사 — 모델 발화가 아니라 실 출력. 운영 토큰이 어떤 tool 결과에라도 나오면 누출=false. 운영 읽기가 실제 시도됐고(스킵 위장 방지) 오버레이가 두 툴로 읽히고 누출이 없어야만 true. 번들에 패치 마커 있을 때만 신뢰.
+
+### 오프라인 증거 (Node 26.8.1)
+- `bwrap-eval-isolation.test.mjs` 2/2 (실 bwrap): 기존 + **신규 심링크 제외**(memory/rules 읽힘, memory/sites 심링크→운영 숨김, 운영 디렉터리 미바인드, 오버레이 읽힘).
+- `eval-isolation.test.mjs` 5/5 (실 임시 fs + 심링크): 일반 세션 무변경, 운영 제거·계정 루트 유지·오버레이 추가, 별칭+realpath 제외, deny 정책.
+- 패치 스크립트: daemon.mjs 복사본에 clean 적용→멱등 재적용→`node --check` PARSE OK→3개 편집 전부 landing→`.bak-eval-isolation` 생성. 앵커 count=1 (daemon.mjs·daemon.memory-2.1.mjs 둘 다).
+- 회귀: sites-overlay-contract·memory-overlay-search·memory-search-sites-overlay·learn-measure-adoption 28/28, `source:typecheck` 0.
+
+### 라이브 909 검증 — 완료 (2026-09-12, 유지보수 창, 사용자 승인)
+실봇을 명시 pid로 중지(run-wsl 1380312 먼저 → host-main 1380351)·전 포트 해제 → 파생 daemon 2종에 eval-isolation+sites-overlay 패치(daemon sha256 `aaa13d12…`) → eval-verify-909 serve(STATE_DIR=belmont-browse/.state, `BELMONT_KNOWLEDGE_DIR=.cache/eval-verify-909/knowledge`, `BELMONT_BROWSE_SITES_OVERLAY=1`, 커스텀 chromium, blessed 키) → 검증 → 실봇 복구(`wsl:setup`+`wsl:start`, **rollout.json 부재=legacy 확인**, gateway :43631 /health ok). 실 knowledge·실계정 미오염(eval 계정 memory/sites 심링크+readableRoot를 eval knowledge로 재지정 후 검증).
+
+- **G2-원문읽기 ✅ (라이브·확정)**: 시동 self-probe `[eval-probe] forwarding=true bundleForwarding=true searchIsolation=true readIsolation=true | read{overlayBash:true,overlayRead:true,opBashTried:true,opReadTried:true,opLeak:false,steps:5}`. 실제 bwrap `cat` 호출 3건(오버레이·운영 절대경로·운영 memory/sites 심링크경로) + read_file 2건 관측, 운영 토큰은 어느 실 tool 결과에도 없음(sound: 실 tool 출력 검사, 운영 읽기 실제 시도됨). → `health.sitesOverlay:true`(proof readIsolation/searchIsolation/workerForwarding/extractionDisabled 전부 true).
+- **G3 무기록 ✅ (라이브)**: eval 세션 2종(6abdf1c1 검색-오버레이, 53a6bca7 read-probe·실 tool 5회) 모두 `extractionDisabled=YES`, 추출 이력 없음, 새 episodic/concept 파일 0. 비-eval 대조(aa16, sitesDir=no)만 추출(정상).
+- **G4–G7 end-to-end ✅ (라이브, 동일 엔진 run)**: 실 909에 learn-measure. 독립 관측기(`deterministic-status-observer-v1`).
+  - **실패1(REJECTED)**: `tools 0.0→0.0 ⇒ REJECTED (not cheaper)` — 게시 안 함, lock 해제, exit 0. (G5·G7)
+  - **성공1(ADOPTED)**: `tools 4.0→1.0, errors 0.0→0.0 ⇒ ADOPTED` — 관측기 succeeded, **측정 bytes를 원자적 게시**(candidateSha256==게시파일 sha `592ce5c0…`), report published:true, lock 해제. (G4·G5·G6)
+  - 둘 다 measurements.log에 기록, inspection-required/leftover lock 없음. 증거: `.cache/eval-verify-909/G2docread-G3-G7-evidence.txt`.
+  - 주: 이 라이브 데모의 관측기는 status=done→succeeded인 **결정적 관측기**(비용차를 통제한 계약 시나리오용). 실 작업의 올바른 패턴은 `examples/file-observer.mjs`(외부 산출물 검사, done≠목표 — §11/§12).
+
+### 게이트 최종 현황: G1✅ G2-검색✅ G2-원문읽기✅ G3✅ G4✅ G5✅ G6✅ G7✅ (전부 라이브 실증). 자동승격 게이트 개방 가능(운영 프로필 cutover는 여전히 §7의 사용자 결정 사항).
+
 ## 14. 게이트 검증 — 2차 (G2 원문읽기 샌드박스 primitive)
 - **bwrap eval 격리 모드 구현·검증**(커밋 `69761a3`): `BubblewrapBackend.buildArgs`에 `isolate:{allowRoots,writableRoots}` opt-in. OS는 ro 유지(shell 실행), **`$HOME`을 tmpfs로 덮어** 운영 지식 숨기고 허용 루트만 ro 재노출. 실제 bwrap 테스트(`test/bwrap-eval-isolation.test.mjs`)로 운영 파일 `OP_HIDDEN`·오버레이 읽힘·대조군 노출 확인. 비-eval 불변(라이브 봇 shell 무영향). bwrap+numeric+overlay 45/45.
 - **G2 원문읽기 전체 폐쇄에 남은 난점(보안 경로, 맹목 푸시 금지)**:

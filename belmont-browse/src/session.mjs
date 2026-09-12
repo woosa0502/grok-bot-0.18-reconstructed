@@ -6,6 +6,7 @@ import { createMemorySearch } from "./memory-search.mjs";
 import { BubblewrapBackend } from "./bwrap-backend.mjs";
 import { createLocalWebSearch } from "./web-search.mjs";
 import { canonicalMemoryRequested, assertCanonicalMemoryGuard } from "./memory-belmont-runtime.mjs";
+import { evalIsolate, evalPermission } from "./eval-isolation.mjs";
 
 /** Belmont-owned knowledge store: site playbooks, browser-bot rules, lessons. Survives engine upgrades; readable by Belmont bots. */
 export const KNOWLEDGE_DIR = process.env.BELMONT_KNOWLEDGE_DIR || path.resolve(import.meta.dirname, "../../.cache/belmont-wsl-profile/sand-data/knowledge");
@@ -446,6 +447,10 @@ export function installDaemonHooks({ log = () => {}, memorySemanticAdapter = nul
     },
     __belmontMemoryCapabilities: () => memory.capabilities(),
     __belmontMemoryDescription: description,
+    // Per-session document-read isolation for eval sessions (bash + read_file). Ordinary sessions get null /
+    // the unchanged permission, so normal browsing is untouched. KNOWLEDGE_DIR pins the operational sites.
+    __belmontEvalIsolate: (args) => evalIsolate({ ...args, knowledgeDir: KNOWLEDGE_DIR }),
+    __belmontEvalPermission: (permission, session, accountRoot) => evalPermission(permission, session, accountRoot, KNOWLEDGE_DIR),
     ...(sandbox ? { __belmontSandboxBackend: sandbox } : {}),
   };
   Object.assign(globalThis, installed);

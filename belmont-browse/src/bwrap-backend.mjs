@@ -3,7 +3,7 @@
 // sandbox can actually execute: the whole filesystem is visible read-only, the home directory is hidden,
 // and only Aside's readableRoots/writableRoots are bound back in (read-only / read-write).
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -34,23 +34,40 @@ export class BubblewrapBackend {
     if (isolate) {
       const allow = uniqueRoots([...this.extraReadOnly, ...(isolate.allowRoots ?? []), ...(cwd ? [cwd] : [])]);
       const write = uniqueRoots(isolate.writableRoots ?? writableRoots ?? []);
+      // Subtrees that must stay hidden even when an allowed/writable PARENT is bound. An eval session's
+      // account memory (memory/) is re-exposed so the agent keeps its non-site memory, but memory/sites is a
+      // symlink to the operational knowledge; binding the parent must not smuggle that back in. Both the literal
+      // path (the symlink) and its realpath (the operational target) are excluded, so neither the alias nor the
+      // target is bound. The exclusion is enforced by descending a covering parent and binding its other
+      // children individually (subpath bind), which drops just the excluded child.
+      const realOf = (p) => { try { return realpathSync(p); } catch { return path.resolve(p); } };
+      const excluded = uniqueRoots([...(isolate.excludeRoots ?? []), ...(isolate.excludeRoots ?? []).map(realOf)]);
+      const isExcluded = (p) => excluded.some((ex) => covers(ex, p));               // p sits at/inside an excluded subtree
+      const containsExcluded = (p) => excluded.some((ex) => covers(p, ex) && path.resolve(p) !== ex); // an excluded path is strictly inside p
       const args = ["bwrap", "--die-with-parent", "--new-session", "--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts"];
       if (networkMode === "none") args.push("--unshare-net");
       // OS read-only for the shell/interpreter, then a tmpfs over $HOME hides every operational path under it.
       args.push("--ro-bind", filesystemRoot, filesystemRoot, "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", "/run", "--tmpfs", home);
       const bound = [];
-      // Writable roots first (rw bind); the agent's workspace (cwd) is writable. Only paths under $HOME need
-      // re-exposing — anything outside $HOME is already visible through the read-only OS bind above.
-      for (const root of uniqueRoots([...write, ...(cwd ? [cwd] : [])])) {
-        if (root === filesystemRoot || !covers(home, root) || bound.some((b) => covers(b, root))) continue;
-        try { mkdirSync(root, { recursive: true }); } catch { /* may be a file */ }
-        if (!existsSync(root)) continue;
-        args.push("--bind", root, root); bound.push(root);
-      }
-      for (const root of allow) {
-        if (!existsSync(root) || root === filesystemRoot || !covers(home, root) || bound.some((b) => covers(b, root))) continue;
-        args.push("--ro-bind", root, root); bound.push(root); // re-expose an allowed path read-only on the tmpfs home
-      }
+      // Only paths under $HOME need re-exposing — anything outside $HOME is already visible through the
+      // read-only OS bind above. An excluded subtree is never bound; a parent that contains one is descended
+      // so its safe children bind individually and the excluded child is skipped (symlink-safe subpath bind).
+      const bindSafely = (root, flag) => {
+        if (root === filesystemRoot || !covers(home, root) || bound.some((b) => covers(b, root))) return;
+        if (isExcluded(root)) return;
+        if (containsExcluded(root)) {
+          let entries;
+          try { entries = readdirSync(root, { withFileTypes: true }); } catch { return; }
+          for (const entry of entries) bindSafely(path.join(root, entry.name), flag);
+          return;
+        }
+        if (flag === "--bind") { try { mkdirSync(root, { recursive: true }); } catch { /* may be a file */ } }
+        if (!existsSync(root)) return;
+        args.push(flag, root, root); bound.push(root);
+      };
+      // Writable roots first (rw bind); the agent's workspace (cwd) is writable.
+      for (const root of uniqueRoots([...write, ...(cwd ? [cwd] : [])])) bindSafely(root, "--bind");
+      for (const root of allow) bindSafely(root, "--ro-bind"); // re-expose allowed paths read-only on the tmpfs home
       if (cwd && existsSync(cwd)) args.push("--chdir", cwd);
       args.push("--", ...command);
       return args;
