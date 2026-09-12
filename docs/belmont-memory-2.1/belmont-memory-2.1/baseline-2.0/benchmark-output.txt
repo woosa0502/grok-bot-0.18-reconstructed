@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "fixture": "synthetic-26-cases-v1",
+  "records": 522,
+  "answerableCases": 22,
+  "absentCases": 4,
+  "runtime": "v22.16.0",
+  "sqlite": "node:sqlite",
+  "generatedAt": "2026-09-11T05:14:57.556Z",
+  "limitation": "In-memory, warm synthetic microbenchmark. Not current Belmont baseline, not LoCoMo/LongMemEval, not pretrained dense retrieval, not production latency or LLM abstention.",
+  "results": [
+    {
+      "mode": "unicode61_only",
+      "recallAt5": 0.36363636363636365,
+      "ndcgAt5": 0.36363636363636365,
+      "emptyReturnRateOnAbsent": 1,
+      "p50Ms": 0.13192800000001625,
+      "p95Ms": 0.23306300000001556,
+      "measuredQueries": 780
+    },
+    {
+      "mode": "cjk_bigram",
+      "recallAt5": 0.9090909090909091,
+      "ndcgAt5": 0.9090909090909091,
+      "emptyReturnRateOnAbsent": 0.75,
+      "p50Ms": 0.1751369999999497,
+      "p95Ms": 0.32574299999998857,
+      "measuredQueries": 780
+    },
+    {
+      "mode": "cjk_plus_action_queries",
+      "recallAt5": 0.9545454545454546,
+      "ndcgAt5": 0.9545454545454546,
+      "emptyReturnRateOnAbsent": 0.75,
+      "p50Ms": 0.18057899999996607,
+      "p95Ms": 0.6969970000000103,
+      "measuredQueries": 780
+    }
+  ]
+}

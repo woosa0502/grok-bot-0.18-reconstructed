@@ -398,6 +398,7 @@ export const RESUME_TURN_ACTION = new ConversationAction({
 
 export interface TurnRunOptions {
   readonly requestSource?: string;
+  readonly memoryLearningSource?: "user" | "system";
   /** Distinguishes recovery work from optional hidden delivery nudges. */
   readonly upgradeResume?: boolean;
   readonly automationWake?: { readonly id: string };
@@ -769,6 +770,8 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         closingNudge: options.closingNudge === true,
         taskContinuation: options.taskContinuation === true,
         trimmedPrompt,
+        ...(rawTranscriptText == null ? {} : { memoryUserTurn: rawTranscriptText }),
+        ...(options.memoryLearningSource == null ? {} : { memoryLearningSource: options.memoryLearningSource }),
         session: prepared.session,
         baseContext: context,
         requestId,
@@ -856,6 +859,23 @@ export function createTurnRunShell(host: TurnRunShellHost) {
           effectivePrompt =
             `<system_reminder>\nbeforeSubmitPrompt hook context:\n${verdict.additionalContext}\n</system_reminder>\n\n${trimmedPrompt}`;
         }
+      }
+
+      if (memoryStore?.prepareMemoryTurn != null) {
+        try {
+          await memoryStore.prepareMemoryTurn({
+            conversationId: host.getConversationId(),
+            requestId,
+            query: trimmedPrompt,
+            isSubagent: host.isSubagentRunner,
+            isAutomation: requestSource === "automation" || turnAutomationId != null,
+          });
+        } catch {
+          // Retrieval is optional context; the facade retains sparse fallback.
+        }
+      }
+      if (controller.signal.aborted || !ownsRun()) {
+        throw new SandTurnInterruptedBeforeDispatchError();
       }
 
       prepared = await host.prepareTurn(

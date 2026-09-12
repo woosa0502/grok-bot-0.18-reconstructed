@@ -1,0 +1,5950 @@
+{
+  "dataset": "authored-multisession-closed-loop",
+  "modelState": "executed",
+  "model": {
+    "model": "intfloat/multilingual-e5-small",
+    "revision": "fd1525a9fd15316a2d503bf26ab031a61d056e98",
+    "dimension": 384,
+    "recipe": "e5-prefix-mean-l2-512-v1"
+  },
+  "learning": {
+    "episodes": [
+      {
+        "id": "e6f1b715b986ba986ed1bfa6",
+        "sessionId": "april-trip",
+        "start": 1775034000000,
+        "end": 1775034060000,
+        "turnIds": [
+          "t1",
+          "t2"
+        ],
+        "topic": "flight"
+      },
+      {
+        "id": "585879f55ade47143dd5ef09",
+        "sessionId": "april-hotels",
+        "start": 1775120400000,
+        "end": 1775120460000,
+        "turnIds": [
+          "t3",
+          "t4"
+        ],
+        "topic": "hotel"
+      },
+      {
+        "id": "eb6721b66eef90cbd964048d",
+        "sessionId": "daily-constraints",
+        "start": 1775206800000,
+        "end": 1775206800000,
+        "turnIds": [
+          "t5"
+        ],
+        "topic": "food"
+      },
+      {
+        "id": "18857414ac145e4547a58072",
+        "sessionId": "work",
+        "start": 1775293200000,
+        "end": 1775293200000,
+        "turnIds": [
+          "t6"
+        ],
+        "topic": "self"
+      },
+      {
+        "id": "a776923b58b204ae1d81c58d",
+        "sessionId": "people",
+        "start": 1775379600000,
+        "end": 1775379600000,
+        "turnIds": [
+          "t7"
+        ],
+        "topic": "relation"
+      },
+      {
+        "id": "ed50b81fd88ba99fcd6b7201",
+        "sessionId": "work-roles",
+        "start": 1775466000000,
+        "end": 1775466000000,
+        "turnIds": [
+          "t8"
+        ],
+        "topic": "project"
+      },
+      {
+        "id": "385a24eb1bcb26ebf57ce004",
+        "sessionId": "people2",
+        "start": 1775552400000,
+        "end": 1775552400000,
+        "turnIds": [
+          "t9"
+        ],
+        "topic": "relation"
+      },
+      {
+        "id": "e225d5087f4d74f4d0af3651",
+        "sessionId": "work-roles2",
+        "start": 1775638800000,
+        "end": 1775638800000,
+        "turnIds": [
+          "t10"
+        ],
+        "topic": "project"
+      },
+      {
+        "id": "19e1cf0b4c2f6512d5966633",
+        "sessionId": "development",
+        "start": 1775725200000,
+        "end": 1775725200000,
+        "turnIds": [
+          "t11"
+        ],
+        "topic": "knowledge"
+      },
+      {
+        "id": "34df55c42cdda97776174b8d",
+        "sessionId": "development",
+        "start": 1775725260000,
+        "end": 1775725260000,
+        "turnIds": [
+          "t12"
+        ],
+        "topic": "event"
+      },
+      {
+        "id": "c5a3f006ba4c50cfa8cf70d7",
+        "sessionId": "june-correction",
+        "start": 1780304400000,
+        "end": 1780304400000,
+        "turnIds": [
+          "t13"
+        ],
+        "topic": "flight"
+      },
+      {
+        "id": "3631ff5e5041d1d27d51ef7a",
+        "sessionId": "july-unconfirmed",
+        "start": 1782896400000,
+        "end": 1782896400000,
+        "turnIds": [
+          "t14"
+        ],
+        "topic": "flight"
+      },
+      {
+        "id": "c965aa6408d4402592e42f84",
+        "sessionId": "trivial",
+        "start": 1782982800000,
+        "end": 1782982860000,
+        "turnIds": [
+          "t15",
+          "t16"
+        ],
+        "topic": "other"
+      }
+    ],
+    "capturedEvidenceIds": [
+      "f1bc00ee-b2ae-46bc-98bd-f8be166d11b1",
+      "60f1e59d-0df2-40ae-bb2c-597def303b7b",
+      "a7de4249-bffe-46bd-8cbf-c0194cbac1ec",
+      "6fa0c25c-622c-48b5-8760-c0b89527c4a5",
+      "91cf07a2-cfd8-4a74-ad16-46693d1dfce8",
+      "9b260754-3765-41a8-8f2e-b7899d41aed9",
+      "7fb10fa0-bb56-4e3a-8608-963d543daf9a",
+      "a7e0a525-a000-48a9-892a-a8b45b708fd5",
+      "9d6dc3f4-faaa-4180-a053-9aabb26e6abf",
+      "59f9e8ce-fce6-4a29-bf63-c308fd22d656",
+      "188d6980-d5b0-4ab0-9977-e8935809307e",
+      "7d466407-ac16-49e8-a13c-5453ceea72a1",
+      "e4d9f832-5125-4541-a244-d4e62f6bf0c9",
+      "6f0b0b14-be57-42af-8419-de1aff1df247",
+      "f42ee31f-4455-4edc-a71c-47b216fe1273",
+      "30be9106-639f-4ae2-b5e6-43cbe580ddc4"
+    ],
+    "committedIds": [
+      "a7b75cb7-c596-40ad-b655-9aed3ff9d334",
+      "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+      "d8ec60a2-a470-420e-976a-98306ea9d47f",
+      "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+      "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+      "87efb4a0-e40b-4b06-b655-fe5f521d6e9a",
+      "00a5a062-8f10-4303-aca8-efa5bde7647a",
+      "c475c031-71c0-4198-8532-693761bfdc3f",
+      "3068533c-8e3a-401c-b90c-0a653739f312",
+      "0e8285d2-015e-4fc1-8f00-99e94e4b8d2e",
+      "96c0c55c-453d-4f17-bfdc-b3c2ed49cabe",
+      "fc10d600-af05-4d23-8d4f-61ecac926aad",
+      "f0de923f-1d4b-4d1b-b4c1-c862987dba41",
+      "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+    ],
+    "duplicateIds": [],
+    "deferred": [
+      {
+        "turnId": "t14",
+        "predicate": "flight.seat",
+        "reason": "EXPLICIT_OVERRIDES_UNCONFIRMED_CHANGE"
+      },
+      {
+        "turnId": "t15",
+        "reason": "NO_SUPPORTED_DURABLE_ATOM"
+      },
+      {
+        "turnId": "t16",
+        "reason": "NO_SUPPORTED_DURABLE_ATOM"
+      }
+    ],
+    "committedCount": 14,
+    "episodeCount": 13
+  },
+  "modes": {
+    "A_original_Belmont_FTS": {
+      "summary": {
+        "queries": 20,
+        "answerable": 16,
+        "recall5": 0.65625,
+        "recall10": 0.65625,
+        "ndcg5": 0.6090048091460573,
+        "ndcg10": 0.6090048091460573,
+        "evidencePrecision": 0.44270833333333337,
+        "abstention": 0.75,
+        "p50Ms": 0.10790499999998815,
+        "p95Ms": 0.4569180000000017,
+        "meanContextTokenEstimate": 260.85,
+        "meanContextBytes": 1042.4
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 0.17376000000001568,
+          "p95Ms": 0.17376000000001568,
+          "meanContextTokenEstimate": 250,
+          "meanContextBytes": 997
+        },
+        "Korean lexical": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 0.10330700000000093,
+          "p95Ms": 0.1343249999999898,
+          "meanContextTokenEstimate": 201.5,
+          "meanContextBytes": 804.5
+        },
+        "semantic paraphrase": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.03294199999999137,
+          "p95Ms": 0.04561599999999544,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean paraphrase": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.0302379999999971,
+          "p95Ms": 0.0302379999999971,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean morphology": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.75,
+          "abstention": null,
+          "p50Ms": 0.17553299999997307,
+          "p95Ms": 0.18388000000001625,
+          "meanContextTokenEstimate": 312.5,
+          "meanContextBytes": 1248.5
+        },
+        "temporal query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.75,
+          "ndcg10": 0.75,
+          "evidencePrecision": 0.16666666666666666,
+          "abstention": null,
+          "p50Ms": 0.2700330000000122,
+          "p95Ms": 0.33394499999999994,
+          "meanContextTokenEstimate": 641,
+          "meanContextBytes": 2563
+        },
+        "relationship query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 0.75,
+          "recall10": 0.75,
+          "ndcg5": 0.8065735963827292,
+          "ndcg10": 0.8065735963827292,
+          "evidencePrecision": 0.75,
+          "abstention": null,
+          "p50Ms": 0.16769899999999893,
+          "p95Ms": 0.17001300000001152,
+          "meanContextTokenEstimate": 275.5,
+          "meanContextBytes": 1100.5
+        },
+        "procedure query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.8154648767857288,
+          "ndcg10": 0.8154648767857288,
+          "evidencePrecision": 0.375,
+          "abstention": null,
+          "p50Ms": 0.3419499999999971,
+          "p95Ms": 0.5285049999999956,
+          "meanContextTokenEstimate": 818.5,
+          "meanContextBytes": 3271.5
+        },
+        "action cue": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.019978000000008933,
+          "p95Ms": 0.019978000000008933,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 0.75,
+          "p50Ms": 0.03705999999999676,
+          "p95Ms": 0.32880499999998847,
+          "meanContextTokenEstimate": 98.5,
+          "meanContextBytes": 393.75
+        }
+      },
+      "rows": [
+        {
+          "id": "c1",
+          "category": "exact fact",
+          "query": "Node 26.5.x",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.17376000000001568,
+            0.1093879999999956,
+            0.25287099999999896
+          ],
+          "bytes": 997,
+          "estimatedTokens": 250,
+          "denseState": "unused"
+        },
+        {
+          "id": "c2",
+          "category": "Korean lexical",
+          "query": "카페인",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.24966399999999567,
+            0.1343249999999898,
+            0.09078299999998762
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "unused"
+        },
+        {
+          "id": "c3",
+          "category": "semantic paraphrase",
+          "query": "Which side lets me get up without asking my neighbor?",
+          "truthAt": "2026-05-01T00:00:00Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.03750099999999179,
+            0.03252100000000269,
+            0.03294199999999137
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c4",
+          "category": "Korean paraphrase",
+          "query": "오랫동안 하늘에서 이동할 때 앉을 자리 취향",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.03232199999999352,
+            0.0302379999999971,
+            0.02981699999998
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c5",
+          "category": "Korean morphology",
+          "query": "카페인은 언제부터 피하나요",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a",
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.1773470000000259,
+            0.18388000000001625,
+            0.17553299999997307
+          ],
+          "bytes": 1700,
+          "estimatedTokens": 425,
+          "denseState": "unused"
+        },
+        {
+          "id": "c6",
+          "category": "temporal query",
+          "query": "2026-04-30 당시 비행 좌석 선호",
+          "truthAt": "2026-04-30T23:59:59.999Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.33394499999999994,
+            0.2700330000000122,
+            0.2671679999999981
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "unused"
+        },
+        {
+          "id": "c7",
+          "category": "temporal query",
+          "query": "현재 장거리 비행 좌석 선호",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.24631899999999973,
+            0.3495939999999962,
+            0.32480699999999274
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "unused"
+        },
+        {
+          "id": "c8",
+          "category": "relationship query",
+          "query": "내 동료와 연결된 일의 관계",
+          "target": [
+            {
+              "predicate": "relation.colleague",
+              "value": "민수"
+            },
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "returned": [
+            "c475c031-71c0-4198-8532-693761bfdc3f",
+            "0e8285d2-015e-4fc1-8f00-99e94e4b8d2e"
+          ],
+          "at5": {
+            "recall": 0.5,
+            "ndcg": 0.6131471927654584
+          },
+          "at10": {
+            "recall": 0.5,
+            "ndcg": 0.6131471927654584
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.17001300000001152,
+            0.16844999999997867,
+            0.16769899999999893
+          ],
+          "bytes": 1395,
+          "estimatedTokens": 349,
+          "denseState": "unused"
+        },
+        {
+          "id": "c9",
+          "category": "relationship query",
+          "query": "Belmont 담당자",
+          "target": [
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "returned": [
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.10168299999997998,
+            0.21154200000000856,
+            0.11453800000001024
+          ],
+          "bytes": 806,
+          "estimatedTokens": 202,
+          "denseState": "unused"
+        },
+        {
+          "id": "c10",
+          "category": "procedure query",
+          "query": "booking.example hotel_search",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.3419499999999971,
+            0.29128299999999285,
+            0.2710050000000024
+          ],
+          "bytes": 2530,
+          "estimatedTokens": 633,
+          "denseState": "unused"
+        },
+        {
+          "id": "c11",
+          "category": "procedure query",
+          "query": "Which verified workflow searches a hotel?",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            0.5285049999999956,
+            0.5431729999999959,
+            0.4569180000000017
+          ],
+          "bytes": 4013,
+          "estimatedTokens": 1004,
+          "denseState": "unused"
+        },
+        {
+          "id": "c12",
+          "category": "semantic paraphrase",
+          "query": "I need a room away from noisy crowds during vacation",
+          "context": {
+            "purpose": "leisure"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "quiet"
+            }
+          ],
+          "relevant": [
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.03282200000001012,
+            0.02836399999998207,
+            0.02699200000000701
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c13",
+          "category": "Korean morphology",
+          "query": "출장에서 묵을 숙소",
+          "context": {
+            "purpose": "business"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "location"
+            }
+          ],
+          "relevant": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5"
+          ],
+          "returned": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.2005320000000097,
+            0.12473699999998189,
+            0.10616200000001186
+          ],
+          "bytes": 797,
+          "estimatedTokens": 200,
+          "denseState": "unused"
+        },
+        {
+          "id": "c14",
+          "category": "action cue",
+          "query": "뉴욕 항공편 찾아줘",
+          "task": "flight_search",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            },
+            {
+              "predicate": "flight.tradeoff"
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.02321399999999585,
+            0.019978000000008933,
+            0.019816999999989093
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c15",
+          "category": "Korean lexical",
+          "query": "메모리 삭제 버그",
+          "target": [
+            {
+              "predicate": "event.outcome"
+            }
+          ],
+          "relevant": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "returned": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.10790499999998815,
+            0.10330700000000093,
+            0.09280700000002184
+          ],
+          "bytes": 805,
+          "estimatedTokens": 202,
+          "denseState": "unused"
+        },
+        {
+          "id": "c16",
+          "category": "semantic paraphrase",
+          "query": "What should we never skip before delivering a code change?",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.048271999999997206,
+            0.04561599999999544,
+            0.04427400000000148
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c17",
+          "category": "absent/unanswerable",
+          "query": "내 여권번호가 뭐야",
+          "absent": true,
+          "relevant": [],
+          "returned": [
+            "0e8285d2-015e-4fc1-8f00-99e94e4b8d2e",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            2.0200399999999945,
+            0.31092100000000755,
+            0.32880499999998847
+          ],
+          "bytes": 1395,
+          "estimatedTokens": 349,
+          "denseState": "unused"
+        },
+        {
+          "id": "c18",
+          "category": "absent/unanswerable",
+          "query": "What is my airline loyalty account number?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.036460000000005266,
+            0.03498699999997257,
+            0.06783899999999221
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c19",
+          "category": "absent/unanswerable",
+          "query": "저녁 식사의 칼로리는 몇이었지",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.044034000000010565,
+            0.037119999999987385,
+            0.03559699999999566
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c20",
+          "category": "absent/unanswerable",
+          "query": "What is my coworker's private email address?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.03705999999999676,
+            0.03552700000000186,
+            0.02760200000000168
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        }
+      ]
+    },
+    "A1_kernel_FTS": {
+      "summary": {
+        "queries": 20,
+        "answerable": 16,
+        "recall5": 0.59375,
+        "recall10": 0.59375,
+        "ndcg5": 0.5777548091460573,
+        "ndcg10": 0.5777548091460573,
+        "evidencePrecision": 0.42708333333333337,
+        "abstention": 0.75,
+        "p50Ms": 0.22988699999999085,
+        "p95Ms": 0.6105400000000145,
+        "meanContextTokenEstimate": 279.4,
+        "meanContextBytes": 1116.55
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 0.25622699999999554,
+          "p95Ms": 0.25622699999999554,
+          "meanContextTokenEstimate": 250,
+          "meanContextBytes": 997
+        },
+        "Korean lexical": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 0.24820200000002046,
+          "p95Ms": 0.3317610000000002,
+          "meanContextTokenEstimate": 201.5,
+          "meanContextBytes": 804.5
+        },
+        "semantic paraphrase": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.07807800000000498,
+          "p95Ms": 0.11691200000001345,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean paraphrase": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.08595299999998929,
+          "p95Ms": 0.08595299999998929,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean morphology": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.75,
+          "abstention": null,
+          "p50Ms": 0.25185899999999606,
+          "p95Ms": 0.2817759999999794,
+          "meanContextTokenEstimate": 312.5,
+          "meanContextBytes": 1248.5
+        },
+        "temporal query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 0.5,
+          "recall10": 0.5,
+          "ndcg5": 0.5,
+          "ndcg10": 0.5,
+          "evidencePrecision": 0.16666666666666666,
+          "abstention": null,
+          "p50Ms": 0.35361199999999826,
+          "p95Ms": 0.5592230000000029,
+          "meanContextTokenEstimate": 641,
+          "meanContextBytes": 2563
+        },
+        "relationship query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 0.75,
+          "recall10": 0.75,
+          "ndcg5": 0.8065735963827292,
+          "ndcg10": 0.8065735963827292,
+          "evidencePrecision": 0.75,
+          "abstention": null,
+          "p50Ms": 0.2266610000000071,
+          "p95Ms": 0.2802430000000129,
+          "meanContextTokenEstimate": 275.5,
+          "meanContextBytes": 1100.5
+        },
+        "procedure query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.8154648767857288,
+          "ndcg10": 0.8154648767857288,
+          "evidencePrecision": 0.25,
+          "abstention": null,
+          "p50Ms": 0.6105400000000145,
+          "p95Ms": 0.6578700000000026,
+          "meanContextTokenEstimate": 1004,
+          "meanContextBytes": 4013
+        },
+        "action cue": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.10467899999997599,
+          "p95Ms": 0.10467899999997599,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 0.75,
+          "p50Ms": 0.06546399999999153,
+          "p95Ms": 0.29709499999998457,
+          "meanContextTokenEstimate": 98.5,
+          "meanContextBytes": 393.75
+        }
+      },
+      "rows": [
+        {
+          "id": "c1",
+          "category": "exact fact",
+          "query": "Node 26.5.x",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.25622699999999554,
+            0.2267710000000136,
+            0.3094389999999976
+          ],
+          "bytes": 997,
+          "estimatedTokens": 250,
+          "denseState": "unused"
+        },
+        {
+          "id": "c2",
+          "category": "Korean lexical",
+          "query": "카페인",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.3303579999999897,
+            0.3317610000000002,
+            0.1940789999999879
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "unused"
+        },
+        {
+          "id": "c3",
+          "category": "semantic paraphrase",
+          "query": "Which side lets me get up without asking my neighbor?",
+          "truthAt": "2026-05-01T00:00:00Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.22988699999999085,
+            0.11691200000001345,
+            0.07741699999999696
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c4",
+          "category": "Korean paraphrase",
+          "query": "오랫동안 하늘에서 이동할 때 앉을 자리 취향",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.08595299999998929,
+            0.1208899999999744,
+            0.08033300000002441
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c5",
+          "category": "Korean morphology",
+          "query": "카페인은 언제부터 피하나요",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a",
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.39345800000000963,
+            0.276896000000022,
+            0.2399859999999876
+          ],
+          "bytes": 1700,
+          "estimatedTokens": 425,
+          "denseState": "unused"
+        },
+        {
+          "id": "c6",
+          "category": "temporal query",
+          "query": "2026-04-30 당시 비행 좌석 선호",
+          "truthAt": "2026-04-30T23:59:59.999Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.35361199999999826,
+            0.5592230000000029,
+            0.3511570000000006
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "unused"
+        },
+        {
+          "id": "c7",
+          "category": "temporal query",
+          "query": "현재 장거리 비행 좌석 선호",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.2840500000000077,
+            0.5717369999999846,
+            0.4298970000000111
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "unused"
+        },
+        {
+          "id": "c8",
+          "category": "relationship query",
+          "query": "내 동료와 연결된 일의 관계",
+          "target": [
+            {
+              "predicate": "relation.colleague",
+              "value": "민수"
+            },
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "returned": [
+            "c475c031-71c0-4198-8532-693761bfdc3f",
+            "0e8285d2-015e-4fc1-8f00-99e94e4b8d2e"
+          ],
+          "at5": {
+            "recall": 0.5,
+            "ndcg": 0.6131471927654584
+          },
+          "at10": {
+            "recall": 0.5,
+            "ndcg": 0.6131471927654584
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.41360599999998726,
+            0.2445950000000039,
+            0.2266610000000071
+          ],
+          "bytes": 1395,
+          "estimatedTokens": 349,
+          "denseState": "unused"
+        },
+        {
+          "id": "c9",
+          "category": "relationship query",
+          "query": "Belmont 담당자",
+          "target": [
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "returned": [
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.19427000000001726,
+            0.15689800000001242,
+            0.2802430000000129
+          ],
+          "bytes": 806,
+          "estimatedTokens": 202,
+          "denseState": "unused"
+        },
+        {
+          "id": "c10",
+          "category": "procedure query",
+          "query": "booking.example hotel_search",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            0.6105400000000145,
+            0.6414389999999912,
+            0.6747519999999838
+          ],
+          "bytes": 4013,
+          "estimatedTokens": 1004,
+          "denseState": "unused"
+        },
+        {
+          "id": "c11",
+          "category": "procedure query",
+          "query": "Which verified workflow searches a hotel?",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            0.6578700000000026,
+            0.5701840000000118,
+            0.5553150000000073
+          ],
+          "bytes": 4013,
+          "estimatedTokens": 1004,
+          "denseState": "unused"
+        },
+        {
+          "id": "c12",
+          "category": "semantic paraphrase",
+          "query": "I need a room away from noisy crowds during vacation",
+          "context": {
+            "purpose": "leisure"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "quiet"
+            }
+          ],
+          "relevant": [
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.09126399999999535,
+            0.0782389999999964,
+            0.07584399999998936
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c13",
+          "category": "Korean morphology",
+          "query": "출장에서 묵을 숙소",
+          "context": {
+            "purpose": "business"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "location"
+            }
+          ],
+          "relevant": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5"
+          ],
+          "returned": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.2470700000000079,
+            0.2817759999999794,
+            0.25185899999999606
+          ],
+          "bytes": 797,
+          "estimatedTokens": 200,
+          "denseState": "unused"
+        },
+        {
+          "id": "c14",
+          "category": "action cue",
+          "query": "뉴욕 항공편 찾아줘",
+          "task": "flight_search",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            },
+            {
+              "predicate": "flight.tradeoff"
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.14988500000001181,
+            0.10467899999997599,
+            0.09577199999998243
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c15",
+          "category": "Korean lexical",
+          "query": "메모리 삭제 버그",
+          "target": [
+            {
+              "predicate": "event.outcome"
+            }
+          ],
+          "relevant": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "returned": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.24820200000002046,
+            0.3898810000000026,
+            0.2281539999999893
+          ],
+          "bytes": 805,
+          "estimatedTokens": 202,
+          "denseState": "unused"
+        },
+        {
+          "id": "c16",
+          "category": "semantic paraphrase",
+          "query": "What should we never skip before delivering a code change?",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.07807800000000498,
+            0.07035300000001143,
+            0.0760840000000087
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c17",
+          "category": "absent/unanswerable",
+          "query": "내 여권번호가 뭐야",
+          "absent": true,
+          "relevant": [],
+          "returned": [
+            "0e8285d2-015e-4fc1-8f00-99e94e4b8d2e",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.34754999999998404,
+            0.25112699999999677,
+            0.29709499999998457
+          ],
+          "bytes": 1395,
+          "estimatedTokens": 349,
+          "denseState": "unused"
+        },
+        {
+          "id": "c18",
+          "category": "absent/unanswerable",
+          "query": "What is my airline loyalty account number?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.07225700000000757,
+            0.06196800000000735,
+            0.05974299999999744
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c19",
+          "category": "absent/unanswerable",
+          "query": "저녁 식사의 칼로리는 몇이었지",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.10305600000000936,
+            0.07230799999999249,
+            0.06546399999999153
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c20",
+          "category": "absent/unanswerable",
+          "query": "What is my coworker's private email address?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.061346000000014556,
+            0.05938299999996843,
+            0.05792999999999893
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        }
+      ]
+    },
+    "B_query_planning": {
+      "summary": {
+        "queries": 20,
+        "answerable": 16,
+        "recall5": 0.75,
+        "recall10": 0.75,
+        "ndcg5": 0.6988487685181939,
+        "ndcg10": 0.6988487685181939,
+        "evidencePrecision": 0.4729166666666667,
+        "abstention": 1,
+        "p50Ms": 0.21391699999998082,
+        "p95Ms": 0.932202000000018,
+        "meanContextTokenEstimate": 331,
+        "meanContextBytes": 1323.5
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 0.2985069999999723,
+          "p95Ms": 0.2985069999999723,
+          "meanContextTokenEstimate": 250,
+          "meanContextBytes": 997
+        },
+        "Korean lexical": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 0.13974600000000237,
+          "p95Ms": 0.17030399999998735,
+          "meanContextTokenEstimate": 201.5,
+          "meanContextBytes": 804.5
+        },
+        "semantic paraphrase": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.07277800000002799,
+          "p95Ms": 0.11061100000000579,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean paraphrase": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.07236699999998564,
+          "p95Ms": 0.07236699999998564,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean morphology": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.6666666666666666,
+          "abstention": null,
+          "p50Ms": 0.2655540000000087,
+          "p95Ms": 0.6251479999999674,
+          "meanContextTokenEstimate": 401,
+          "meanContextBytes": 1604
+        },
+        "temporal query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.8154648767857288,
+          "ndcg10": 0.8154648767857288,
+          "evidencePrecision": 0.3333333333333333,
+          "abstention": null,
+          "p50Ms": 0.7742210000000114,
+          "p95Ms": 0.8868459999999914,
+          "meanContextTokenEstimate": 614,
+          "meanContextBytes": 2454.5
+        },
+        "relationship query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.75,
+          "abstention": null,
+          "p50Ms": 0.620679999999993,
+          "p95Ms": 0.7453469999999811,
+          "meanContextTokenEstimate": 369,
+          "meanContextBytes": 1476
+        },
+        "procedure query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.8154648767857288,
+          "ndcg10": 0.8154648767857288,
+          "evidencePrecision": 0.2,
+          "abstention": null,
+          "p50Ms": 0.8099389999999858,
+          "p95Ms": 1.0508480000000304,
+          "meanContextTokenEstimate": 1219,
+          "meanContextBytes": 4876
+        },
+        "action cue": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9197207891481876,
+          "ndcg10": 0.9197207891481876,
+          "evidencePrecision": 0.6666666666666666,
+          "abstention": null,
+          "p50Ms": 0.6634809999999902,
+          "p95Ms": 0.6634809999999902,
+          "meanContextTokenEstimate": 641,
+          "meanContextBytes": 2563
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 1,
+          "p50Ms": 0.1439439999999763,
+          "p95Ms": 0.2874760000000265,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        }
+      },
+      "rows": [
+        {
+          "id": "c1",
+          "category": "exact fact",
+          "query": "Node 26.5.x",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.2985069999999723,
+            0.36018400000000383,
+            0.18214600000004566
+          ],
+          "bytes": 997,
+          "estimatedTokens": 250,
+          "denseState": "unused"
+        },
+        {
+          "id": "c2",
+          "category": "Korean lexical",
+          "query": "카페인",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.17030399999998735,
+            0.13794300000000703,
+            0.13110899999998082
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "unused"
+        },
+        {
+          "id": "c3",
+          "category": "semantic paraphrase",
+          "query": "Which side lets me get up without asking my neighbor?",
+          "truthAt": "2026-05-01T00:00:00Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.07277800000002799,
+            0.06688700000000836,
+            0.06429199999996627
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c4",
+          "category": "Korean paraphrase",
+          "query": "오랫동안 하늘에서 이동할 때 앉을 자리 취향",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.07553300000000718,
+            0.07236699999998564,
+            0.07075500000001966
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c5",
+          "category": "Korean morphology",
+          "query": "카페인은 언제부터 피하나요",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.2655540000000087,
+            0.2135160000000269,
+            0.1967239999999606
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "unused"
+        },
+        {
+          "id": "c6",
+          "category": "temporal query",
+          "query": "2026-04-30 당시 비행 좌석 선호",
+          "truthAt": "2026-04-30T23:59:59.999Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.8287159999999858,
+            0.8868459999999914,
+            0.7251880000000028
+          ],
+          "bytes": 2346,
+          "estimatedTokens": 587,
+          "denseState": "unused"
+        },
+        {
+          "id": "c7",
+          "category": "temporal query",
+          "query": "현재 장거리 비행 좌석 선호",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.9651939999999968,
+            0.7742210000000114,
+            0.6081360000000018
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "unused"
+        },
+        {
+          "id": "c8",
+          "category": "relationship query",
+          "query": "내 동료와 연결된 일의 관계",
+          "target": [
+            {
+              "predicate": "relation.colleague",
+              "value": "민수"
+            },
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "returned": [
+            "c475c031-71c0-4198-8532-693761bfdc3f",
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.5149789999999825,
+            0.7453469999999811,
+            0.620679999999993
+          ],
+          "bytes": 1476,
+          "estimatedTokens": 369,
+          "denseState": "unused"
+        },
+        {
+          "id": "c9",
+          "category": "relationship query",
+          "query": "Belmont 담당자",
+          "target": [
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "returned": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.7935579999999618,
+            0.6767710000000307,
+            0.4305580000000191
+          ],
+          "bytes": 1476,
+          "estimatedTokens": 369,
+          "denseState": "unused"
+        },
+        {
+          "id": "c10",
+          "category": "procedure query",
+          "query": "booking.example hotel_search",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            0.8099389999999858,
+            2.071711999999991,
+            0.932202000000018
+          ],
+          "bytes": 4876,
+          "estimatedTokens": 1219,
+          "denseState": "unused"
+        },
+        {
+          "id": "c11",
+          "category": "procedure query",
+          "query": "Which verified workflow searches a hotel?",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            1.0508480000000304,
+            0.7810949999999934,
+            0.7143879999999854
+          ],
+          "bytes": 4876,
+          "estimatedTokens": 1219,
+          "denseState": "unused"
+        },
+        {
+          "id": "c12",
+          "category": "semantic paraphrase",
+          "query": "I need a room away from noisy crowds during vacation",
+          "context": {
+            "purpose": "leisure"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "quiet"
+            }
+          ],
+          "relevant": [
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.08708500000000186,
+            0.0705340000000092,
+            0.06597499999998035
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c13",
+          "category": "Korean morphology",
+          "query": "출장에서 묵을 숙소",
+          "context": {
+            "purpose": "business"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "location"
+            }
+          ],
+          "relevant": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5"
+          ],
+          "returned": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.6039980000000469,
+            0.6251479999999674,
+            0.7287749999999846
+          ],
+          "bytes": 2404,
+          "estimatedTokens": 601,
+          "denseState": "unused"
+        },
+        {
+          "id": "c14",
+          "category": "action cue",
+          "query": "뉴욕 항공편 찾아줘",
+          "task": "flight_search",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            },
+            {
+              "predicate": "flight.tradeoff"
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "returned": [
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "evidencePrecision": 0.6666666666666666,
+          "latencies": [
+            0.6634809999999902,
+            0.7384940000000029,
+            0.538314000000014
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "unused"
+        },
+        {
+          "id": "c15",
+          "category": "Korean lexical",
+          "query": "메모리 삭제 버그",
+          "target": [
+            {
+              "predicate": "event.outcome"
+            }
+          ],
+          "relevant": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "returned": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.21391699999998082,
+            0.16131599999999935,
+            0.13974600000000237
+          ],
+          "bytes": 805,
+          "estimatedTokens": 202,
+          "denseState": "unused"
+        },
+        {
+          "id": "c16",
+          "category": "semantic paraphrase",
+          "query": "What should we never skip before delivering a code change?",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.11760399999997162,
+            0.11061100000000579,
+            0.10994900000002872
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c17",
+          "category": "absent/unanswerable",
+          "query": "내 여권번호가 뭐야",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.1782079999999837,
+            0.35162800000000516,
+            0.2874760000000265
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c18",
+          "category": "absent/unanswerable",
+          "query": "What is my airline loyalty account number?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.08612399999998388,
+            0.06675699999999551,
+            0.1439439999999763
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c19",
+          "category": "absent/unanswerable",
+          "query": "저녁 식사의 칼로리는 몇이었지",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.21450799999996661,
+            0.1469200000000228,
+            0.07633499999997184
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "c20",
+          "category": "absent/unanswerable",
+          "query": "What is my coworker's private email address?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.15350200000000314,
+            0.07935099999997419,
+            0.060586000000000695
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        }
+      ]
+    },
+    "C_plus_dense": {
+      "summary": {
+        "queries": 20,
+        "answerable": 16,
+        "recall5": 0.75,
+        "recall10": 0.75,
+        "ndcg5": 0.6988487685181939,
+        "ndcg10": 0.6988487685181939,
+        "evidencePrecision": 0.4729166666666667,
+        "abstention": 1,
+        "p50Ms": 8.029371999999967,
+        "p95Ms": 9.525749000000019,
+        "meanContextTokenEstimate": 331,
+        "meanContextBytes": 1323.5
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 9.042231999999956,
+          "p95Ms": 9.042231999999956,
+          "meanContextTokenEstimate": 250,
+          "meanContextBytes": 997
+        },
+        "Korean lexical": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 7.453928000000019,
+          "p95Ms": 8.680569999999989,
+          "meanContextTokenEstimate": 201.5,
+          "meanContextBytes": 804.5
+        },
+        "semantic paraphrase": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 7.909647000000007,
+          "p95Ms": 8.200191999999902,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean paraphrase": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 11.22306100000003,
+          "p95Ms": 11.22306100000003,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean morphology": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.6666666666666666,
+          "abstention": null,
+          "p50Ms": 7.844607999999994,
+          "p95Ms": 8.01488100000006,
+          "meanContextTokenEstimate": 401,
+          "meanContextBytes": 1604
+        },
+        "temporal query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.8154648767857288,
+          "ndcg10": 0.8154648767857288,
+          "evidencePrecision": 0.3333333333333333,
+          "abstention": null,
+          "p50Ms": 8.296044999999992,
+          "p95Ms": 8.939802999999984,
+          "meanContextTokenEstimate": 614,
+          "meanContextBytes": 2454.5
+        },
+        "relationship query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.75,
+          "abstention": null,
+          "p50Ms": 7.822943000000009,
+          "p95Ms": 9.335444999999936,
+          "meanContextTokenEstimate": 369,
+          "meanContextBytes": 1476
+        },
+        "procedure query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.8154648767857288,
+          "ndcg10": 0.8154648767857288,
+          "evidencePrecision": 0.2,
+          "abstention": null,
+          "p50Ms": 8.379985000000033,
+          "p95Ms": 8.734377000000109,
+          "meanContextTokenEstimate": 1219,
+          "meanContextBytes": 4876
+        },
+        "action cue": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9197207891481876,
+          "ndcg10": 0.9197207891481876,
+          "evidencePrecision": 0.6666666666666666,
+          "abstention": null,
+          "p50Ms": 8.49661100000003,
+          "p95Ms": 8.49661100000003,
+          "meanContextTokenEstimate": 641,
+          "meanContextBytes": 2563
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 1,
+          "p50Ms": 7.822783999999956,
+          "p95Ms": 8.456414999999993,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        }
+      },
+      "rows": [
+        {
+          "id": "c1",
+          "category": "exact fact",
+          "query": "Node 26.5.x",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.434484999999995,
+            9.042231999999956,
+            8.029371999999967
+          ],
+          "bytes": 997,
+          "estimatedTokens": 250,
+          "denseState": "used"
+        },
+        {
+          "id": "c2",
+          "category": "Korean lexical",
+          "query": "카페인",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.680569999999989,
+            6.991402999999991,
+            7.299029000000019
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "used"
+        },
+        {
+          "id": "c3",
+          "category": "semantic paraphrase",
+          "query": "Which side lets me get up without asking my neighbor?",
+          "truthAt": "2026-05-01T00:00:00Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.891214999999988,
+            9.132469000000015,
+            7.909647000000007
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c4",
+          "category": "Korean paraphrase",
+          "query": "오랫동안 하늘에서 이동할 때 앉을 자리 취향",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            17.492353000000037,
+            8.97824300000002,
+            11.22306100000003
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c5",
+          "category": "Korean morphology",
+          "query": "카페인은 언제부터 피하나요",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.844607999999994,
+            7.822921000000008,
+            9.34988199999998
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "used"
+        },
+        {
+          "id": "c6",
+          "category": "temporal query",
+          "query": "2026-04-30 당시 비행 좌석 선호",
+          "truthAt": "2026-04-30T23:59:59.999Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            8.939802999999984,
+            8.177122999999995,
+            8.296044999999992
+          ],
+          "bytes": 2346,
+          "estimatedTokens": 587,
+          "denseState": "used"
+        },
+        {
+          "id": "c7",
+          "category": "temporal query",
+          "query": "현재 장거리 비행 좌석 선호",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            9.48394200000007,
+            7.788950999999997,
+            8.64158800000007
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "used"
+        },
+        {
+          "id": "c8",
+          "category": "relationship query",
+          "query": "내 동료와 연결된 일의 관계",
+          "target": [
+            {
+              "predicate": "relation.colleague",
+              "value": "민수"
+            },
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "returned": [
+            "c475c031-71c0-4198-8532-693761bfdc3f",
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.335444999999936,
+            7.822943000000009,
+            8.576831000000084
+          ],
+          "bytes": 1476,
+          "estimatedTokens": 369,
+          "denseState": "used"
+        },
+        {
+          "id": "c9",
+          "category": "relationship query",
+          "query": "Belmont 담당자",
+          "target": [
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "returned": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            9.525749000000019,
+            7.1256779999999935,
+            7.248557000000005
+          ],
+          "bytes": 1476,
+          "estimatedTokens": 369,
+          "denseState": "used"
+        },
+        {
+          "id": "c10",
+          "category": "procedure query",
+          "query": "booking.example hotel_search",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            8.245064999999954,
+            8.581776999999988,
+            8.287593000000015
+          ],
+          "bytes": 4876,
+          "estimatedTokens": 1219,
+          "denseState": "used"
+        },
+        {
+          "id": "c11",
+          "category": "procedure query",
+          "query": "Which verified workflow searches a hotel?",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            8.734377000000109,
+            8.379985000000033,
+            8.882233000000042
+          ],
+          "bytes": 4876,
+          "estimatedTokens": 1219,
+          "denseState": "used"
+        },
+        {
+          "id": "c12",
+          "category": "semantic paraphrase",
+          "query": "I need a room away from noisy crowds during vacation",
+          "context": {
+            "purpose": "leisure"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "quiet"
+            }
+          ],
+          "relevant": [
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.886280000000056,
+            7.805251999999996,
+            8.200191999999902
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c13",
+          "category": "Korean morphology",
+          "query": "출장에서 묵을 숙소",
+          "context": {
+            "purpose": "business"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "location"
+            }
+          ],
+          "relevant": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5"
+          ],
+          "returned": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            8.010126000000014,
+            7.679171999999994,
+            8.01488100000006
+          ],
+          "bytes": 2404,
+          "estimatedTokens": 601,
+          "denseState": "used"
+        },
+        {
+          "id": "c14",
+          "category": "action cue",
+          "query": "뉴욕 항공편 찾아줘",
+          "task": "flight_search",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            },
+            {
+              "predicate": "flight.tradeoff"
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "returned": [
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "evidencePrecision": 0.6666666666666666,
+          "latencies": [
+            8.522404999999935,
+            8.057921999999962,
+            8.49661100000003
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "used"
+        },
+        {
+          "id": "c15",
+          "category": "Korean lexical",
+          "query": "메모리 삭제 버그",
+          "target": [
+            {
+              "predicate": "event.outcome"
+            }
+          ],
+          "relevant": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "returned": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.887348999999972,
+            7.453928000000019,
+            7.90239100000008
+          ],
+          "bytes": 805,
+          "estimatedTokens": 202,
+          "denseState": "used"
+        },
+        {
+          "id": "c16",
+          "category": "semantic paraphrase",
+          "query": "What should we never skip before delivering a code change?",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.829681999999934,
+            7.960281000000009,
+            8.012925999999993
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c17",
+          "category": "absent/unanswerable",
+          "query": "내 여권번호가 뭐야",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.28111100000001,
+            7.087522000000035,
+            7.283564999999953
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c18",
+          "category": "absent/unanswerable",
+          "query": "What is my airline loyalty account number?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.532755000000066,
+            7.837382000000048,
+            7.5705299999999625
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c19",
+          "category": "absent/unanswerable",
+          "query": "저녁 식사의 칼로리는 몇이었지",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.77590500000008,
+            8.317566000000056,
+            7.822783999999956
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c20",
+          "category": "absent/unanswerable",
+          "query": "What is my coworker's private email address?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.832829000000061,
+            8.456414999999993,
+            7.9265570000000025
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        }
+      ]
+    },
+    "D_plus_hierarchy": {
+      "summary": {
+        "queries": 20,
+        "answerable": 16,
+        "recall5": 0.75,
+        "recall10": 0.75,
+        "ndcg5": 0.7219156589199778,
+        "ndcg10": 0.7219156589199778,
+        "evidencePrecision": 0.4729166666666667,
+        "abstention": 1,
+        "p50Ms": 8.282968999999866,
+        "p95Ms": 11.951745999999957,
+        "meanContextTokenEstimate": 331,
+        "meanContextBytes": 1323.5
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 7.798846000000026,
+          "p95Ms": 7.798846000000026,
+          "meanContextTokenEstimate": 250,
+          "meanContextBytes": 997
+        },
+        "Korean lexical": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 6.565560000000005,
+          "p95Ms": 7.161743000000115,
+          "meanContextTokenEstimate": 201.5,
+          "meanContextBytes": 804.5
+        },
+        "semantic paraphrase": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 8.183193000000074,
+          "p95Ms": 8.427398999999923,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean paraphrase": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 8.84372499999995,
+          "p95Ms": 8.84372499999995,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean morphology": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.6666666666666666,
+          "abstention": null,
+          "p50Ms": 8.282968999999866,
+          "p95Ms": 8.569165999999996,
+          "meanContextTokenEstimate": 401,
+          "meanContextBytes": 1604
+        },
+        "temporal query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.3333333333333333,
+          "abstention": null,
+          "p50Ms": 8.69999400000006,
+          "p95Ms": 8.982535000000098,
+          "meanContextTokenEstimate": 614,
+          "meanContextBytes": 2454.5
+        },
+        "relationship query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.75,
+          "abstention": null,
+          "p50Ms": 9.280301000000009,
+          "p95Ms": 13.002078999999867,
+          "meanContextTokenEstimate": 369,
+          "meanContextBytes": 1476
+        },
+        "procedure query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.8154648767857288,
+          "ndcg10": 0.8154648767857288,
+          "evidencePrecision": 0.2,
+          "abstention": null,
+          "p50Ms": 9.230796000000055,
+          "p95Ms": 11.050494999999955,
+          "meanContextTokenEstimate": 1219,
+          "meanContextBytes": 4876
+        },
+        "action cue": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9197207891481876,
+          "ndcg10": 0.9197207891481876,
+          "evidencePrecision": 0.6666666666666666,
+          "abstention": null,
+          "p50Ms": 8.92204599999991,
+          "p95Ms": 8.92204599999991,
+          "meanContextTokenEstimate": 641,
+          "meanContextBytes": 2563
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 1,
+          "p50Ms": 7.680319000000054,
+          "p95Ms": 8.041406000000052,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        }
+      },
+      "rows": [
+        {
+          "id": "c1",
+          "category": "exact fact",
+          "query": "Node 26.5.x",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            16.19456200000002,
+            7.140047999999979,
+            7.798846000000026
+          ],
+          "bytes": 997,
+          "estimatedTokens": 250,
+          "denseState": "used"
+        },
+        {
+          "id": "c2",
+          "category": "Korean lexical",
+          "query": "카페인",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            6.565560000000005,
+            6.427267000000029,
+            6.2199779999998555
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "used"
+        },
+        {
+          "id": "c3",
+          "category": "semantic paraphrase",
+          "query": "Which side lets me get up without asking my neighbor?",
+          "truthAt": "2026-05-01T00:00:00Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.988299999999981,
+            8.405947999999853,
+            7.736026999999922
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c4",
+          "category": "Korean paraphrase",
+          "query": "오랫동안 하늘에서 이동할 때 앉을 자리 취향",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.490640999999869,
+            9.791810000000169,
+            8.84372499999995
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c5",
+          "category": "Korean morphology",
+          "query": "카페인은 언제부터 피하나요",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.282968999999866,
+            8.033192999999983,
+            8.396910000000162
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "used"
+        },
+        {
+          "id": "c6",
+          "category": "temporal query",
+          "query": "2026-04-30 당시 비행 좌석 선호",
+          "truthAt": "2026-04-30T23:59:59.999Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            9.56839100000002,
+            8.982535000000098,
+            8.69999400000006
+          ],
+          "bytes": 2346,
+          "estimatedTokens": 587,
+          "denseState": "used"
+        },
+        {
+          "id": "c7",
+          "category": "temporal query",
+          "query": "현재 장거리 비행 좌석 선호",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            8.29944300000011,
+            8.107654000000139,
+            8.807010999999875
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "used"
+        },
+        {
+          "id": "c8",
+          "category": "relationship query",
+          "query": "내 동료와 연결된 일의 관계",
+          "target": [
+            {
+              "predicate": "relation.colleague",
+              "value": "민수"
+            },
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "returned": [
+            "c475c031-71c0-4198-8532-693761bfdc3f",
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.650769000000082,
+            8.068508000000065,
+            9.280301000000009
+          ],
+          "bytes": 1476,
+          "estimatedTokens": 369,
+          "denseState": "used"
+        },
+        {
+          "id": "c9",
+          "category": "relationship query",
+          "query": "Belmont 담당자",
+          "target": [
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "returned": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            9.527360000000044,
+            13.763843000000179,
+            13.002078999999867
+          ],
+          "bytes": 1476,
+          "estimatedTokens": 369,
+          "denseState": "used"
+        },
+        {
+          "id": "c10",
+          "category": "procedure query",
+          "query": "booking.example hotel_search",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            11.951745999999957,
+            9.492410999999947,
+            11.050494999999955
+          ],
+          "bytes": 4876,
+          "estimatedTokens": 1219,
+          "denseState": "used"
+        },
+        {
+          "id": "c11",
+          "category": "procedure query",
+          "query": "Which verified workflow searches a hotel?",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            9.230796000000055,
+            8.988505999999916,
+            9.077855
+          ],
+          "bytes": 4876,
+          "estimatedTokens": 1219,
+          "denseState": "used"
+        },
+        {
+          "id": "c12",
+          "category": "semantic paraphrase",
+          "query": "I need a room away from noisy crowds during vacation",
+          "context": {
+            "purpose": "leisure"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "quiet"
+            }
+          ],
+          "relevant": [
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.183193000000074,
+            9.255762000000004,
+            7.98461199999997
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c13",
+          "category": "Korean morphology",
+          "query": "출장에서 묵을 숙소",
+          "context": {
+            "purpose": "business"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "location"
+            }
+          ],
+          "relevant": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5"
+          ],
+          "returned": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            9.126655999999912,
+            8.569165999999996,
+            7.921662999999853
+          ],
+          "bytes": 2404,
+          "estimatedTokens": 601,
+          "denseState": "used"
+        },
+        {
+          "id": "c14",
+          "category": "action cue",
+          "query": "뉴욕 항공편 찾아줘",
+          "task": "flight_search",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            },
+            {
+              "predicate": "flight.tradeoff"
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "returned": [
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "evidencePrecision": 0.6666666666666666,
+          "latencies": [
+            8.223392000000104,
+            10.51493000000005,
+            8.92204599999991
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "used"
+        },
+        {
+          "id": "c15",
+          "category": "Korean lexical",
+          "query": "메모리 삭제 버그",
+          "target": [
+            {
+              "predicate": "event.outcome"
+            }
+          ],
+          "relevant": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "returned": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.159673000000112,
+            7.161743000000115,
+            7.418380999999954
+          ],
+          "bytes": 805,
+          "estimatedTokens": 202,
+          "denseState": "used"
+        },
+        {
+          "id": "c16",
+          "category": "semantic paraphrase",
+          "query": "What should we never skip before delivering a code change?",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.337778000000071,
+            8.427398999999923,
+            8.078491000000213
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c17",
+          "category": "absent/unanswerable",
+          "query": "내 여권번호가 뭐야",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            6.883846000000176,
+            7.680319000000054,
+            7.467184000000088
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c18",
+          "category": "absent/unanswerable",
+          "query": "What is my airline loyalty account number?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.041406000000052,
+            7.9037080000000515,
+            7.909580000000005
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c19",
+          "category": "absent/unanswerable",
+          "query": "저녁 식사의 칼로리는 몇이었지",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.009654999999839,
+            7.641906000000063,
+            7.583444999999983
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c20",
+          "category": "absent/unanswerable",
+          "query": "What is my coworker's private email address?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.184537999999975,
+            7.768196999999873,
+            7.66270499999996
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        }
+      ]
+    },
+    "E_plus_graph": {
+      "summary": {
+        "queries": 20,
+        "answerable": 16,
+        "recall5": 0.75,
+        "recall10": 0.75,
+        "ndcg5": 0.7168982082417394,
+        "ndcg10": 0.7168982082417394,
+        "evidencePrecision": 0.4416666666666667,
+        "abstention": 1,
+        "p50Ms": 8.376456999999846,
+        "p95Ms": 9.256374999999935,
+        "meanContextTokenEstimate": 348.75,
+        "meanContextBytes": 1394.35
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 7.631366000000071,
+          "p95Ms": 7.631366000000071,
+          "meanContextTokenEstimate": 250,
+          "meanContextBytes": 997
+        },
+        "Korean lexical": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 6.63370000000009,
+          "p95Ms": 7.609915999999885,
+          "meanContextTokenEstimate": 201.5,
+          "meanContextBytes": 804.5
+        },
+        "semantic paraphrase": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 8.148795000000064,
+          "p95Ms": 8.654300000000148,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean paraphrase": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 8.59350500000005,
+          "p95Ms": 8.59350500000005,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "Korean morphology": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.6666666666666666,
+          "abstention": null,
+          "p50Ms": 7.8004470000000765,
+          "p95Ms": 8.853139000000056,
+          "meanContextTokenEstimate": 401,
+          "meanContextBytes": 1604
+        },
+        "temporal query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.3333333333333333,
+          "abstention": null,
+          "p50Ms": 8.70302300000003,
+          "p95Ms": 8.959184999999934,
+          "meanContextTokenEstimate": 614,
+          "meanContextBytes": 2454.5
+        },
+        "relationship query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9598603945740938,
+          "ndcg10": 0.9598603945740938,
+          "evidencePrecision": 0.5,
+          "abstention": null,
+          "p50Ms": 8.456323999999995,
+          "p95Ms": 9.102388000000019,
+          "meanContextTokenEstimate": 546.5,
+          "meanContextBytes": 2184.5
+        },
+        "procedure query": {
+          "queries": 2,
+          "answerable": 2,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.8154648767857288,
+          "ndcg10": 0.8154648767857288,
+          "evidencePrecision": 0.2,
+          "abstention": null,
+          "p50Ms": 8.672955999999886,
+          "p95Ms": 9.159677000000102,
+          "meanContextTokenEstimate": 1219,
+          "meanContextBytes": 4876
+        },
+        "action cue": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9197207891481876,
+          "ndcg10": 0.9197207891481876,
+          "evidencePrecision": 0.6666666666666666,
+          "abstention": null,
+          "p50Ms": 8.280194999999821,
+          "p95Ms": 8.280194999999821,
+          "meanContextTokenEstimate": 641,
+          "meanContextBytes": 2563
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 1,
+          "p50Ms": 8.152548000000024,
+          "p95Ms": 8.870932999999695,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        }
+      },
+      "rows": [
+        {
+          "id": "c1",
+          "category": "exact fact",
+          "query": "Node 26.5.x",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.9028769999999895,
+            7.1012929999999415,
+            7.631366000000071
+          ],
+          "bytes": 997,
+          "estimatedTokens": 250,
+          "denseState": "used"
+        },
+        {
+          "id": "c2",
+          "category": "Korean lexical",
+          "query": "카페인",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            6.63370000000009,
+            6.512059000000136,
+            6.305755999999974
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "used"
+        },
+        {
+          "id": "c3",
+          "category": "semantic paraphrase",
+          "query": "Which side lets me get up without asking my neighbor?",
+          "truthAt": "2026-05-01T00:00:00Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.90595600000006,
+            8.584495999999945,
+            8.148795000000064
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c4",
+          "category": "Korean paraphrase",
+          "query": "오랫동안 하늘에서 이동할 때 앉을 자리 취향",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.59350500000005,
+            8.839351999999963,
+            8.050584000000072
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c5",
+          "category": "Korean morphology",
+          "query": "카페인은 언제부터 피하나요",
+          "target": [
+            {
+              "predicate": "food.caffeine_cutoff"
+            }
+          ],
+          "relevant": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "returned": [
+            "87efb4a0-e40b-4b06-b655-fe5f521d6e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.8004470000000765,
+            7.527358000000049,
+            8.853139000000056
+          ],
+          "bytes": 804,
+          "estimatedTokens": 201,
+          "denseState": "used"
+        },
+        {
+          "id": "c6",
+          "category": "temporal query",
+          "query": "2026-04-30 당시 비행 좌석 선호",
+          "truthAt": "2026-04-30T23:59:59.999Z",
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "aisle"
+            }
+          ],
+          "relevant": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334"
+          ],
+          "returned": [
+            "a7b75cb7-c596-40ad-b655-9aed3ff9d334",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            8.70302300000003,
+            8.959184999999934,
+            8.91505600000005
+          ],
+          "bytes": 2346,
+          "estimatedTokens": 587,
+          "denseState": "used"
+        },
+        {
+          "id": "c7",
+          "category": "temporal query",
+          "query": "현재 장거리 비행 좌석 선호",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "returned": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            8.446314999999913,
+            8.302300999999943,
+            9.302721999999903
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "used"
+        },
+        {
+          "id": "c8",
+          "category": "relationship query",
+          "query": "내 동료와 연결된 일의 관계",
+          "target": [
+            {
+              "predicate": "relation.colleague",
+              "value": "민수"
+            },
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "returned": [
+            "c475c031-71c0-4198-8532-693761bfdc3f",
+            "0e8285d2-015e-4fc1-8f00-99e94e4b8d2e",
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "96c0c55c-453d-4f17-bfdc-b3c2ed49cabe"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            9.07594599999993,
+            8.412265999999818,
+            9.256374999999935
+          ],
+          "bytes": 2893,
+          "estimatedTokens": 724,
+          "denseState": "used"
+        },
+        {
+          "id": "c9",
+          "category": "relationship query",
+          "query": "Belmont 담당자",
+          "target": [
+            {
+              "predicate": "project.owner",
+              "value": "민수"
+            }
+          ],
+          "relevant": [
+            "3068533c-8e3a-401c-b90c-0a653739f312"
+          ],
+          "returned": [
+            "3068533c-8e3a-401c-b90c-0a653739f312",
+            "c475c031-71c0-4198-8532-693761bfdc3f"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            7.8404330000000755,
+            9.102388000000019,
+            8.456323999999995
+          ],
+          "bytes": 1476,
+          "estimatedTokens": 369,
+          "denseState": "used"
+        },
+        {
+          "id": "c10",
+          "category": "procedure query",
+          "query": "booking.example hotel_search",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            8.932128000000148,
+            8.251048000000083,
+            9.159677000000102
+          ],
+          "bytes": 4876,
+          "estimatedTokens": 1219,
+          "denseState": "used"
+        },
+        {
+          "id": "c11",
+          "category": "procedure query",
+          "query": "Which verified workflow searches a hotel?",
+          "procedure": true,
+          "relevant": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          ],
+          "returned": [
+            "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "e4683e62-af72-446b-9b55-33f5b168f2b8",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            10.04488399999991,
+            8.667646000000104,
+            8.672955999999886
+          ],
+          "bytes": 4876,
+          "estimatedTokens": 1219,
+          "denseState": "used"
+        },
+        {
+          "id": "c12",
+          "category": "semantic paraphrase",
+          "query": "I need a room away from noisy crowds during vacation",
+          "context": {
+            "purpose": "leisure"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "quiet"
+            }
+          ],
+          "relevant": [
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.928130999999894,
+            7.786410999999816,
+            8.033030000000053
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c13",
+          "category": "Korean morphology",
+          "query": "출장에서 묵을 숙소",
+          "context": {
+            "purpose": "business"
+          },
+          "target": [
+            {
+              "predicate": "hotel.priority",
+              "value": "location"
+            }
+          ],
+          "relevant": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5"
+          ],
+          "returned": [
+            "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+            "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            8.395273999999972,
+            9.165276999999605,
+            7.661462999999912
+          ],
+          "bytes": 2404,
+          "estimatedTokens": 601,
+          "denseState": "used"
+        },
+        {
+          "id": "c14",
+          "category": "action cue",
+          "query": "뉴욕 항공편 찾아줘",
+          "task": "flight_search",
+          "context": {
+            "distance": "long-haul"
+          },
+          "target": [
+            {
+              "predicate": "flight.seat",
+              "value": "window",
+              "context": {
+                "distance": "long-haul"
+              }
+            },
+            {
+              "predicate": "flight.tradeoff"
+            }
+          ],
+          "relevant": [
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a"
+          ],
+          "returned": [
+            "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+            "d8ec60a2-a470-420e-976a-98306ea9d47f",
+            "bcf913b0-ce30-4ab8-bf71-c878c10d865a"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.9197207891481876
+          },
+          "evidencePrecision": 0.6666666666666666,
+          "latencies": [
+            8.175931000000219,
+            8.48116600000003,
+            8.280194999999821
+          ],
+          "bytes": 2563,
+          "estimatedTokens": 641,
+          "denseState": "used"
+        },
+        {
+          "id": "c15",
+          "category": "Korean lexical",
+          "query": "메모리 삭제 버그",
+          "target": [
+            {
+              "predicate": "event.outcome"
+            }
+          ],
+          "relevant": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "returned": [
+            "f0de923f-1d4b-4d1b-b4c1-c862987dba41"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.744125000000167,
+            7.609915999999885,
+            7.476793000000271
+          ],
+          "bytes": 805,
+          "estimatedTokens": 202,
+          "denseState": "used"
+        },
+        {
+          "id": "c16",
+          "category": "semantic paraphrase",
+          "query": "What should we never skip before delivering a code change?",
+          "target": [
+            {
+              "predicate": "knowledge.rule",
+              "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+            }
+          ],
+          "relevant": [
+            "fc10d600-af05-4d23-8d4f-61ecac926aad"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.460321000000022,
+            8.654300000000148,
+            7.714745000000221
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c17",
+          "category": "absent/unanswerable",
+          "query": "내 여권번호가 뭐야",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.118720999999823,
+            6.830393000000186,
+            8.152548000000024
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c18",
+          "category": "absent/unanswerable",
+          "query": "What is my airline loyalty account number?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.405242000000271,
+            8.05258700000013,
+            8.670362999999725
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c19",
+          "category": "absent/unanswerable",
+          "query": "저녁 식사의 칼로리는 몇이었지",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.642201000000114,
+            8.064028000000235,
+            10.212487999999666
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "c20",
+          "category": "absent/unanswerable",
+          "query": "What is my coworker's private email address?",
+          "absent": true,
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            7.8422199999999975,
+            8.870932999999695,
+            8.376456999999846
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        }
+      ]
+    }
+  },
+  "actions": [
+    {
+      "name": "latest explicit long-haul seat",
+      "expected": {
+        "seatPreference": "window",
+        "pricePriority": null
+      },
+      "withoutMemory": {
+        "destination": "NYC"
+      },
+      "withMemory": {
+        "destination": "NYC",
+        "seatPreference": "window"
+      },
+      "bindings": [
+        {
+          "id": "bcf913b0-ce30-4ab8-bf71-c878c10d865a",
+          "version": 1,
+          "evidenceIds": [
+            "e4d9f832-5125-4541-a244-d4e62f6bf0c9"
+          ],
+          "argument": "seatPreference"
+        }
+      ],
+      "baselinePass": false,
+      "memoryPass": true
+    },
+    {
+      "name": "short-haul context",
+      "expected": {
+        "seatPreference": "window"
+      },
+      "withoutMemory": {
+        "destination": "fixture"
+      },
+      "withMemory": {
+        "destination": "fixture",
+        "seatPreference": "window"
+      },
+      "bindings": [
+        {
+          "id": "d8ec60a2-a470-420e-976a-98306ea9d47f",
+          "version": 1,
+          "evidenceIds": [
+            "60f1e59d-0df2-40ae-bb2c-597def303b7b"
+          ],
+          "argument": "seatPreference"
+        }
+      ],
+      "baselinePass": false,
+      "memoryPass": true
+    },
+    {
+      "name": "current turn beats memory",
+      "expected": {
+        "seatPreference": "aisle"
+      },
+      "withoutMemory": {
+        "destination": "NYC",
+        "seatPreference": "aisle"
+      },
+      "withMemory": {
+        "destination": "NYC",
+        "seatPreference": "aisle",
+        "pricePriority": "seat_over_price"
+      },
+      "bindings": [
+        {
+          "id": "cc0f9197-8314-43f2-bda4-b33835a19e9a",
+          "version": 1,
+          "evidenceIds": [
+            "f1bc00ee-b2ae-46bc-98bd-f8be166d11b1"
+          ],
+          "argument": "pricePriority"
+        }
+      ],
+      "baselinePass": true,
+      "memoryPass": true
+    },
+    {
+      "name": "unknown context abstains",
+      "expected": {
+        "seatPreference": null
+      },
+      "withoutMemory": {
+        "destination": "unknown"
+      },
+      "withMemory": {
+        "destination": "unknown"
+      },
+      "bindings": [],
+      "baselinePass": true,
+      "memoryPass": true
+    },
+    {
+      "name": "business hotel context",
+      "expected": {
+        "priority": "location"
+      },
+      "withoutMemory": {
+        "city": "Seoul"
+      },
+      "withMemory": {
+        "city": "Seoul",
+        "priority": "location"
+      },
+      "bindings": [
+        {
+          "id": "46e3e707-bd16-44ad-b5f0-6ba6820476f5",
+          "version": 1,
+          "evidenceIds": [
+            "a7de4249-bffe-46bd-8cbf-c0194cbac1ec"
+          ],
+          "argument": "priority"
+        }
+      ],
+      "baselinePass": false,
+      "memoryPass": true
+    },
+    {
+      "name": "leisure hotel context",
+      "expected": {
+        "priority": "quiet"
+      },
+      "withoutMemory": {
+        "city": "Seoul"
+      },
+      "withMemory": {
+        "city": "Seoul",
+        "priority": "quiet"
+      },
+      "bindings": [
+        {
+          "id": "4460b4dc-ba4a-4237-80af-7db386e60d0e",
+          "version": 1,
+          "evidenceIds": [
+            "6fa0c25c-622c-48b5-8760-c0b89527c4a5"
+          ],
+          "argument": "priority"
+        }
+      ],
+      "baselinePass": false,
+      "memoryPass": true
+    },
+    {
+      "name": "relationship continuity",
+      "expected": {
+        "recipientName": "민수"
+      },
+      "withoutMemory": {
+        "project": "Belmont"
+      },
+      "withMemory": {
+        "project": "Belmont",
+        "recipientName": "민수"
+      },
+      "bindings": [
+        {
+          "id": "3068533c-8e3a-401c-b90c-0a653739f312",
+          "version": 1,
+          "evidenceIds": [
+            "a7e0a525-a000-48a9-892a-a8b45b708fd5"
+          ],
+          "argument": "recipientName"
+        }
+      ],
+      "baselinePass": false,
+      "memoryPass": true
+    },
+    {
+      "name": "measured procedure reuse",
+      "expected": {
+        "procedureId": "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+      },
+      "withoutMemory": {
+        "domain": "booking.example",
+        "procedureTask": "hotel_search"
+      },
+      "withMemory": {
+        "domain": "booking.example",
+        "procedureTask": "hotel_search",
+        "steps": [
+          {
+            "operation": "navigate",
+            "target": "https://booking.example/search"
+          },
+          {
+            "operation": "fill",
+            "target": "#city",
+            "value": "${destination}"
+          },
+          {
+            "operation": "click",
+            "target": "#submit"
+          }
+        ],
+        "procedureId": "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+      },
+      "bindings": [
+        {
+          "id": "8a6ab7dd-f1ae-44ce-a143-6746a811481b",
+          "version": 1,
+          "evidenceIds": [
+            "01f8c969-addf-4331-b2b6-c049448b29aa",
+            "eebffdd5-7355-4027-b3eb-52b410b8e71d"
+          ],
+          "argument": "steps"
+        }
+      ],
+      "baselinePass": false,
+      "memoryPass": true
+    }
+  ],
+  "limitations": [
+    "Authored scenarios, not personal production logs",
+    "200 paired procedure inputs here are deterministic evaluator fixtures; live browser execution not claimed",
+    "Dense scores absent unless the pinned real model service was available",
+    "Token costs estimated as UTF-8 bytes/4; metadata/evidence format equal across modes"
+  ],
+  "actionAblation": {
+    "A_original_Belmont_FTS": {
+      "passed": 6,
+      "total": 8,
+      "rows": [
+        {
+          "name": "latest explicit long-haul seat",
+          "pass": false,
+          "arguments": {
+            "destination": "NYC"
+          }
+        },
+        {
+          "name": "short-haul context",
+          "pass": false,
+          "arguments": {
+            "destination": "fixture"
+          }
+        },
+        {
+          "name": "current turn beats memory",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "aisle"
+          }
+        },
+        {
+          "name": "unknown context abstains",
+          "pass": true,
+          "arguments": {
+            "destination": "unknown"
+          }
+        },
+        {
+          "name": "business hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "location"
+          }
+        },
+        {
+          "name": "leisure hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "quiet"
+          }
+        },
+        {
+          "name": "relationship continuity",
+          "pass": true,
+          "arguments": {
+            "project": "Belmont",
+            "recipientName": "민수"
+          }
+        },
+        {
+          "name": "measured procedure reuse",
+          "pass": true,
+          "arguments": {
+            "domain": "booking.example",
+            "procedureTask": "hotel_search",
+            "steps": [
+              {
+                "operation": "navigate",
+                "target": "https://booking.example/search"
+              },
+              {
+                "operation": "fill",
+                "target": "#city",
+                "value": "${destination}"
+              },
+              {
+                "operation": "click",
+                "target": "#submit"
+              }
+            ],
+            "procedureId": "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          }
+        }
+      ]
+    },
+    "A1_kernel_FTS": {
+      "passed": 6,
+      "total": 8,
+      "rows": [
+        {
+          "name": "latest explicit long-haul seat",
+          "pass": false,
+          "arguments": {
+            "destination": "NYC"
+          }
+        },
+        {
+          "name": "short-haul context",
+          "pass": false,
+          "arguments": {
+            "destination": "fixture"
+          }
+        },
+        {
+          "name": "current turn beats memory",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "aisle"
+          }
+        },
+        {
+          "name": "unknown context abstains",
+          "pass": true,
+          "arguments": {
+            "destination": "unknown"
+          }
+        },
+        {
+          "name": "business hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "location"
+          }
+        },
+        {
+          "name": "leisure hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "quiet"
+          }
+        },
+        {
+          "name": "relationship continuity",
+          "pass": true,
+          "arguments": {
+            "project": "Belmont",
+            "recipientName": "민수"
+          }
+        },
+        {
+          "name": "measured procedure reuse",
+          "pass": true,
+          "arguments": {
+            "domain": "booking.example",
+            "procedureTask": "hotel_search",
+            "steps": [
+              {
+                "operation": "navigate",
+                "target": "https://booking.example/search"
+              },
+              {
+                "operation": "fill",
+                "target": "#city",
+                "value": "${destination}"
+              },
+              {
+                "operation": "click",
+                "target": "#submit"
+              }
+            ],
+            "procedureId": "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          }
+        }
+      ]
+    },
+    "B_query_planning": {
+      "passed": 8,
+      "total": 8,
+      "rows": [
+        {
+          "name": "latest explicit long-haul seat",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "window"
+          }
+        },
+        {
+          "name": "short-haul context",
+          "pass": true,
+          "arguments": {
+            "destination": "fixture",
+            "seatPreference": "window"
+          }
+        },
+        {
+          "name": "current turn beats memory",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "aisle",
+            "pricePriority": "seat_over_price"
+          }
+        },
+        {
+          "name": "unknown context abstains",
+          "pass": true,
+          "arguments": {
+            "destination": "unknown"
+          }
+        },
+        {
+          "name": "business hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "location"
+          }
+        },
+        {
+          "name": "leisure hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "quiet"
+          }
+        },
+        {
+          "name": "relationship continuity",
+          "pass": true,
+          "arguments": {
+            "project": "Belmont",
+            "recipientName": "민수"
+          }
+        },
+        {
+          "name": "measured procedure reuse",
+          "pass": true,
+          "arguments": {
+            "domain": "booking.example",
+            "procedureTask": "hotel_search",
+            "steps": [
+              {
+                "operation": "navigate",
+                "target": "https://booking.example/search"
+              },
+              {
+                "operation": "fill",
+                "target": "#city",
+                "value": "${destination}"
+              },
+              {
+                "operation": "click",
+                "target": "#submit"
+              }
+            ],
+            "procedureId": "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          }
+        }
+      ]
+    },
+    "C_plus_dense": {
+      "passed": 8,
+      "total": 8,
+      "rows": [
+        {
+          "name": "latest explicit long-haul seat",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "window"
+          }
+        },
+        {
+          "name": "short-haul context",
+          "pass": true,
+          "arguments": {
+            "destination": "fixture",
+            "seatPreference": "window"
+          }
+        },
+        {
+          "name": "current turn beats memory",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "aisle",
+            "pricePriority": "seat_over_price"
+          }
+        },
+        {
+          "name": "unknown context abstains",
+          "pass": true,
+          "arguments": {
+            "destination": "unknown"
+          }
+        },
+        {
+          "name": "business hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "location"
+          }
+        },
+        {
+          "name": "leisure hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "quiet"
+          }
+        },
+        {
+          "name": "relationship continuity",
+          "pass": true,
+          "arguments": {
+            "project": "Belmont",
+            "recipientName": "민수"
+          }
+        },
+        {
+          "name": "measured procedure reuse",
+          "pass": true,
+          "arguments": {
+            "domain": "booking.example",
+            "procedureTask": "hotel_search",
+            "steps": [
+              {
+                "operation": "navigate",
+                "target": "https://booking.example/search"
+              },
+              {
+                "operation": "fill",
+                "target": "#city",
+                "value": "${destination}"
+              },
+              {
+                "operation": "click",
+                "target": "#submit"
+              }
+            ],
+            "procedureId": "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          }
+        }
+      ]
+    },
+    "D_plus_hierarchy": {
+      "passed": 8,
+      "total": 8,
+      "rows": [
+        {
+          "name": "latest explicit long-haul seat",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "window"
+          }
+        },
+        {
+          "name": "short-haul context",
+          "pass": true,
+          "arguments": {
+            "destination": "fixture",
+            "seatPreference": "window"
+          }
+        },
+        {
+          "name": "current turn beats memory",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "aisle",
+            "pricePriority": "seat_over_price"
+          }
+        },
+        {
+          "name": "unknown context abstains",
+          "pass": true,
+          "arguments": {
+            "destination": "unknown"
+          }
+        },
+        {
+          "name": "business hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "location"
+          }
+        },
+        {
+          "name": "leisure hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "quiet"
+          }
+        },
+        {
+          "name": "relationship continuity",
+          "pass": true,
+          "arguments": {
+            "project": "Belmont",
+            "recipientName": "민수"
+          }
+        },
+        {
+          "name": "measured procedure reuse",
+          "pass": true,
+          "arguments": {
+            "domain": "booking.example",
+            "procedureTask": "hotel_search",
+            "steps": [
+              {
+                "operation": "navigate",
+                "target": "https://booking.example/search"
+              },
+              {
+                "operation": "fill",
+                "target": "#city",
+                "value": "${destination}"
+              },
+              {
+                "operation": "click",
+                "target": "#submit"
+              }
+            ],
+            "procedureId": "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          }
+        }
+      ]
+    },
+    "E_plus_graph": {
+      "passed": 8,
+      "total": 8,
+      "rows": [
+        {
+          "name": "latest explicit long-haul seat",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "window"
+          }
+        },
+        {
+          "name": "short-haul context",
+          "pass": true,
+          "arguments": {
+            "destination": "fixture",
+            "seatPreference": "window"
+          }
+        },
+        {
+          "name": "current turn beats memory",
+          "pass": true,
+          "arguments": {
+            "destination": "NYC",
+            "seatPreference": "aisle",
+            "pricePriority": "seat_over_price"
+          }
+        },
+        {
+          "name": "unknown context abstains",
+          "pass": true,
+          "arguments": {
+            "destination": "unknown"
+          }
+        },
+        {
+          "name": "business hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "location"
+          }
+        },
+        {
+          "name": "leisure hotel context",
+          "pass": true,
+          "arguments": {
+            "city": "Seoul",
+            "priority": "quiet"
+          }
+        },
+        {
+          "name": "relationship continuity",
+          "pass": true,
+          "arguments": {
+            "project": "Belmont",
+            "recipientName": "민수"
+          }
+        },
+        {
+          "name": "measured procedure reuse",
+          "pass": true,
+          "arguments": {
+            "domain": "booking.example",
+            "procedureTask": "hotel_search",
+            "steps": [
+              {
+                "operation": "navigate",
+                "target": "https://booking.example/search"
+              },
+              {
+                "operation": "fill",
+                "target": "#city",
+                "value": "${destination}"
+              },
+              {
+                "operation": "click",
+                "target": "#submit"
+              }
+            ],
+            "procedureId": "8a6ab7dd-f1ae-44ce-a143-6746a811481b"
+          }
+        }
+      ]
+    }
+  },
+  "failureLearning": {
+    "beforeBlocked": false,
+    "afterBlocked": true,
+    "failedProcedureNotReplayed": true,
+    "meaning": "Known failure condition blocks reuse; successful autonomous repair is NOT asserted."
+  },
+  "longEpisodeContext": {
+    "fullBytes": 6870,
+    "spanBytes": 990,
+    "reduction": 0.8558951965065502,
+    "fullMemoryIds": [
+      "86936b08-2cc3-47f1-962e-4ab3cfdfc47e"
+    ],
+    "spanMemoryIds": [
+      "86936b08-2cc3-47f1-962e-4ab3cfdfc47e"
+    ]
+  },
+  "actionSummary": {
+    "cases": 8,
+    "baselinePassed": 2,
+    "memoryPassed": 8
+  }
+}

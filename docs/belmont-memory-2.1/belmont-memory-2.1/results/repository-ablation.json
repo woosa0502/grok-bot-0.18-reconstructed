@@ -1,0 +1,6476 @@
+{
+  "dataset": "repository-derived",
+  "modelState": "executed",
+  "model": {
+    "model": "intfloat/multilingual-e5-small",
+    "revision": "fd1525a9fd15316a2d503bf26ab031a61d056e98",
+    "dimension": 384,
+    "recipe": "e5-prefix-mean-l2-512-v1"
+  },
+  "measuredSemanticDenseGain": 0,
+  "corpusSha256": "2b9195518466414bae82d84c5205b930281945d7790f90f60bca8af71960faef",
+  "documents": 38,
+  "queries": 32,
+  "tokenizer": "utf8-bytes/4 estimate; NOT target-LLM token counts",
+  "limitations": [
+    "Authored query/qrels; no independent holdout",
+    "Source code excerpts, not personal production dialogues",
+    "Original FTS is an inspected-behavior port, not a running Belmont host",
+    "A vs A1 exposes tokenizer/prefix differences; B vs A1 isolates planning",
+    "Dense fallback metrics are not semantic embedding measurements",
+    "In-memory warm timings exclude cold start and disk IO"
+  ],
+  "modes": {
+    "A_original_Belmont_FTS": {
+      "summary": {
+        "queries": 32,
+        "answerable": 28,
+        "recall5": 0.7142857142857143,
+        "recall10": 0.75,
+        "ndcg5": 0.6879235538265327,
+        "ndcg10": 0.7006452390803907,
+        "evidencePrecision": 0.33720238095238086,
+        "abstention": 0.5,
+        "p50Ms": 0.2758440000000064,
+        "p95Ms": 0.9160310000000891,
+        "meanContextTokenEstimate": 1259.3125,
+        "meanContextBytes": 5036.125
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.7666666666666667,
+          "abstention": null,
+          "p50Ms": 0.2125540000000683,
+          "p95Ms": 0.2758440000000064,
+          "meanContextTokenEstimate": 399,
+          "meanContextBytes": 1594.4
+        },
+        "Korean lexical": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 0.10518000000001848,
+          "p95Ms": 0.10518000000001848,
+          "meanContextTokenEstimate": 273,
+          "meanContextBytes": 1090
+        },
+        "mixed": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.7000000000000001,
+          "abstention": null,
+          "p50Ms": 0.1450049999999692,
+          "p95Ms": 0.790593000000058,
+          "meanContextTokenEstimate": 951.3333333333334,
+          "meanContextBytes": 3803.3333333333335
+        },
+        "semantic paraphrase": {
+          "queries": 9,
+          "answerable": 9,
+          "recall5": 0.6666666666666666,
+          "recall10": 0.7777777777777778,
+          "ndcg5": 0.6256588615079397,
+          "ndcg10": 0.6652374378532755,
+          "evidencePrecision": 0.19444444444444448,
+          "abstention": null,
+          "p50Ms": 0.5922649999999976,
+          "p95Ms": 0.7742409999999609,
+          "meanContextTokenEstimate": 2079.3333333333335,
+          "meanContextBytes": 8316.111111111111
+        },
+        "Korean paraphrase": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.06351099999994858,
+          "p95Ms": 0.07954099999994924,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "procedure query": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9261859507142916,
+          "ndcg10": 0.9261859507142916,
+          "evidencePrecision": 0.15166666666666667,
+          "abstention": null,
+          "p50Ms": 0.7344559999999092,
+          "p95Ms": 1.0269819999999754,
+          "meanContextTokenEstimate": 2176.4,
+          "meanContextBytes": 8704.8
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 0.5,
+          "p50Ms": 0.07079499999997552,
+          "p95Ms": 0.738788999999997,
+          "meanContextTokenEstimate": 1376.25,
+          "meanContextBytes": 5503.75
+        }
+      },
+      "rows": [
+        {
+          "id": "r1",
+          "category": "exact fact",
+          "query": "SAND_KNOWLEDGE_DIR",
+          "relevant": [
+            "k1"
+          ],
+          "returned": [
+            "k1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.2758440000000064,
+            0.18232699999998658,
+            0.16216799999995146
+          ],
+          "bytes": 1234,
+          "estimatedTokens": 309,
+          "denseState": "unused"
+        },
+        {
+          "id": "r2",
+          "category": "exact fact",
+          "query": "MEMORY_MAX_CONTENT_LENGTH",
+          "relevant": [
+            "m3"
+          ],
+          "returned": [
+            "m3",
+            "m8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.2125540000000683,
+            0.3649840000000495,
+            0.21505799999999908
+          ],
+          "bytes": 1796,
+          "estimatedTokens": 449,
+          "denseState": "unused"
+        },
+        {
+          "id": "r3",
+          "category": "exact fact",
+          "query": "AVATAR_MAX_BYTES",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.2049090000000433,
+            0.13513699999998607,
+            0.09936899999991056
+          ],
+          "bytes": 884,
+          "estimatedTokens": 221,
+          "denseState": "unused"
+        },
+        {
+          "id": "r4",
+          "category": "exact fact",
+          "query": "DEFAULT_EPISODE_INTERVAL",
+          "relevant": [
+            "m4"
+          ],
+          "returned": [
+            "m4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.23436500000002525,
+            0.14204000000006545,
+            0.09817599999996673
+          ],
+          "bytes": 849,
+          "estimatedTokens": 213,
+          "denseState": "unused"
+        },
+        {
+          "id": "r5",
+          "category": "Korean lexical",
+          "query": "Korean CJK bigrams",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.12164100000006783,
+            0.10518000000001848,
+            0.10194300000000567
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "unused"
+        },
+        {
+          "id": "r6",
+          "category": "mixed",
+          "query": "Node.js 버전 26.5.x",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.1450049999999692,
+            0.13265200000000732,
+            0.12037899999995716
+          ],
+          "bytes": 993,
+          "estimatedTokens": 249,
+          "denseState": "unused"
+        },
+        {
+          "id": "r7",
+          "category": "semantic paraphrase",
+          "query": "How are two-syllable Korean words made searchable?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.14469499999995605,
+            0.1505059999999503,
+            0.1456270000001041
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "unused"
+        },
+        {
+          "id": "r8",
+          "category": "semantic paraphrase",
+          "query": "What must pass before I share a code change?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "s7",
+            "k10",
+            "g6",
+            "m9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            0.3897509999999329,
+            0.34229000000004817,
+            0.3346760000000586
+          ],
+          "bytes": 5744,
+          "estimatedTokens": 1436,
+          "denseState": "unused"
+        },
+        {
+          "id": "r9",
+          "category": "semantic paraphrase",
+          "query": "Where is browser know-how stored?",
+          "relevant": [
+            "k1",
+            "k5"
+          ],
+          "returned": [
+            "k2",
+            "k4",
+            "g7",
+            "s6",
+            "k3",
+            "k10",
+            "k9"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.533914999999979,
+            0.5700339999999642,
+            0.5735700000000179
+          ],
+          "bytes": 8053,
+          "estimatedTokens": 2014,
+          "denseState": "unused"
+        },
+        {
+          "id": "r10",
+          "category": "semantic paraphrase",
+          "query": "Can an agent modify measured site playbooks itself?",
+          "relevant": [
+            "k9"
+          ],
+          "returned": [
+            "k9",
+            "k5",
+            "s7",
+            "g1",
+            "g2",
+            "g4",
+            "g6",
+            "m9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.125,
+          "latencies": [
+            0.6881379999999808,
+            0.6501160000000255,
+            0.7200980000000072
+          ],
+          "bytes": 9042,
+          "estimatedTokens": 2261,
+          "denseState": "unused"
+        },
+        {
+          "id": "r11",
+          "category": "Korean paraphrase",
+          "query": "한국어 두 글자 단어도 찾도록 만드는 색인 방식은?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.07738700000004428,
+            0.07025299999997969,
+            0.06703700000002755
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r12",
+          "category": "Korean paraphrase",
+          "query": "코드를 공유하기 전에 실행할 검증 명령은?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.06351099999994858,
+            0.058140999999977794,
+            0.0720969999999852
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r13",
+          "category": "Korean paraphrase",
+          "query": "아바타 파일의 용량 제한은?",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.060875000000010004,
+            0.045196000000032654,
+            0.04165899999998146
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r14",
+          "category": "Korean paraphrase",
+          "query": "프로젝트에 가입하지 않은 에이전트의 기록은 어떻게 막아?",
+          "relevant": [
+            "s3"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.07954099999994924,
+            0.07740699999999379,
+            0.1247169999999187
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r15",
+          "category": "procedure query",
+          "query": "Run a single regression test and then verify everything",
+          "relevant": [
+            "g8"
+          ],
+          "returned": [
+            "g3",
+            "g8",
+            "g1",
+            "k10",
+            "g2",
+            "g4",
+            "g6",
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.125,
+          "latencies": [
+            0.7733799999999746,
+            0.676435999999967,
+            0.7964240000000018
+          ],
+          "bytes": 8462,
+          "estimatedTokens": 2116,
+          "denseState": "unused"
+        },
+        {
+          "id": "r16",
+          "category": "procedure query",
+          "query": "install locked dependencies npm ci",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1",
+            "g2",
+            "g3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            1.5364510000000564,
+            0.27894100000003164,
+            0.23437599999999748
+          ],
+          "bytes": 2727,
+          "estimatedTokens": 682,
+          "denseState": "unused"
+        },
+        {
+          "id": "r17",
+          "category": "procedure query",
+          "query": "How to disable memory prompt freeze SAND_DISABLE_MEMORY_FREEZE",
+          "relevant": [
+            "m7"
+          ],
+          "returned": [
+            "m7",
+            "m1",
+            "k11",
+            "m2",
+            "k3",
+            "k10",
+            "g6",
+            "s5",
+            "m8",
+            "m6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.6574590000000171,
+            0.5988889999999856,
+            0.8751140000000532
+          ],
+          "bytes": 9880,
+          "estimatedTokens": 2470,
+          "denseState": "unused"
+        },
+        {
+          "id": "r18",
+          "category": "procedure query",
+          "query": "How to disable knowledge search SAND_KNOWLEDGE_STORE",
+          "relevant": [
+            "k2"
+          ],
+          "returned": [
+            "k2",
+            "k10",
+            "k11",
+            "m7",
+            "k5",
+            "k3",
+            "k9",
+            "k1",
+            "g6",
+            "m9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.7344559999999092,
+            0.9537429999999176,
+            0.7833490000000438
+          ],
+          "bytes": 11180,
+          "estimatedTokens": 2795,
+          "denseState": "unused"
+        },
+        {
+          "id": "r19",
+          "category": "exact fact",
+          "query": "bm25 6.0 4.0 1.0 1.5",
+          "relevant": [
+            "k4"
+          ],
+          "returned": [
+            "k4",
+            "m1",
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.26872100000002774,
+            0.26284899999996014,
+            0.26036499999997886
+          ],
+          "bytes": 3209,
+          "estimatedTokens": 803,
+          "denseState": "unused"
+        },
+        {
+          "id": "r20",
+          "category": "semantic paraphrase",
+          "query": "How does the index avoid rereading unchanged files?",
+          "relevant": [
+            "k6"
+          ],
+          "returned": [
+            "k10",
+            "k6",
+            "k3",
+            "g7",
+            "g8",
+            "m9",
+            "k9",
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.125,
+          "latencies": [
+            0.7094079999999394,
+            0.5790309999999863,
+            0.660596000000055
+          ],
+          "bytes": 8730,
+          "estimatedTokens": 2183,
+          "denseState": "unused"
+        },
+        {
+          "id": "r21",
+          "category": "semantic paraphrase",
+          "query": "Why are files outside the knowledge directory refused?",
+          "relevant": [
+            "k7"
+          ],
+          "returned": [
+            "k10",
+            "k9",
+            "m9",
+            "k5",
+            "k1",
+            "g7",
+            "g8",
+            "k2",
+            "g1"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.6877969999999323,
+            0.6679499999999052,
+            0.7742409999999609
+          ],
+          "bytes": 9887,
+          "estimatedTokens": 2472,
+          "denseState": "unused"
+        },
+        {
+          "id": "r22",
+          "category": "mixed",
+          "query": "StateWriteResult 성공 detail 실패 reason",
+          "relevant": [
+            "s1"
+          ],
+          "returned": [
+            "s1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.14401299999997264,
+            0.13617899999997007,
+            0.1485219999999572
+          ],
+          "bytes": 1060,
+          "estimatedTokens": 265,
+          "denseState": "unused"
+        },
+        {
+          "id": "r23",
+          "category": "mixed",
+          "query": "memory compactionEpoch 캐시",
+          "relevant": [
+            "m6"
+          ],
+          "returned": [
+            "m6",
+            "s5",
+            "m1",
+            "m8",
+            "s2",
+            "m10",
+            "m7",
+            "m2",
+            "m3",
+            "m5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.790593000000058,
+            2.19198700000004,
+            0.6978369999999359
+          ],
+          "bytes": 9357,
+          "estimatedTokens": 2340,
+          "denseState": "unused"
+        },
+        {
+          "id": "r24",
+          "category": "semantic paraphrase",
+          "query": "What generated outputs should not be committed?",
+          "relevant": [
+            "g5"
+          ],
+          "returned": [
+            "g5",
+            "m9",
+            "g2",
+            "k9",
+            "s5",
+            "s2",
+            "g7",
+            "m10",
+            "s6",
+            "k10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.5522190000000364,
+            0.5330529999999953,
+            0.6537319999999909
+          ],
+          "bytes": 10944,
+          "estimatedTokens": 2736,
+          "denseState": "unused"
+        },
+        {
+          "id": "r25",
+          "category": "Korean paraphrase",
+          "query": "매번 주입하는 최근 기억의 문자 예산은?",
+          "relevant": [
+            "m1"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.05027599999993981,
+            0.04672899999991387,
+            0.04602799999997842
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r26",
+          "category": "semantic paraphrase",
+          "query": "Does a note have lower importance than an episode?",
+          "relevant": [
+            "m10"
+          ],
+          "returned": [
+            "m10",
+            "m4",
+            "s5",
+            "s2",
+            "g1",
+            "k10",
+            "s3",
+            "g2",
+            "g4",
+            "g6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.9160310000000891,
+            0.5922649999999976,
+            0.5406080000000202
+          ],
+          "bytes": 10439,
+          "estimatedTokens": 2610,
+          "denseState": "unused"
+        },
+        {
+          "id": "r27",
+          "category": "procedure query",
+          "query": "What is the project TypeScript coding style?",
+          "relevant": [
+            "g4"
+          ],
+          "returned": [
+            "g4",
+            "g7",
+            "s6",
+            "s3",
+            "m9",
+            "k10",
+            "k2",
+            "k9",
+            "g8",
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.6985980000000609,
+            0.6977570000000242,
+            1.0269819999999754
+          ],
+          "bytes": 11275,
+          "estimatedTokens": 2819,
+          "denseState": "unused"
+        },
+        {
+          "id": "r28",
+          "category": "semantic paraphrase",
+          "query": "Which evidence should not become durable personal memory?",
+          "relevant": [
+            "m9"
+          ],
+          "returned": [
+            "s5",
+            "k9",
+            "g6",
+            "s2",
+            "m10",
+            "m9",
+            "m1",
+            "m8",
+            "g5",
+            "m6"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.3562071871080222
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.5942099999999755,
+            0.6496449999999641,
+            1.10015199999998
+          ],
+          "bytes": 10916,
+          "estimatedTokens": 2729,
+          "denseState": "unused"
+        },
+        {
+          "id": "r29",
+          "category": "absent/unanswerable",
+          "query": "What is the user passport number?",
+          "relevant": [],
+          "returned": [
+            "s7",
+            "m9",
+            "g7",
+            "k10",
+            "k2",
+            "k9",
+            "g8",
+            "s6",
+            "k3",
+            "g1"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.738788999999997,
+            0.5952009999999746,
+            0.528844999999933
+          ],
+          "bytes": 11182,
+          "estimatedTokens": 2796,
+          "denseState": "unused"
+        },
+        {
+          "id": "r30",
+          "category": "absent/unanswerable",
+          "query": "SAND_MEMORY_ENCRYPTION_KEY",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.022874000000001615,
+            0.022231999999917207,
+            0.03817300000002888
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r31",
+          "category": "absent/unanswerable",
+          "query": "현재 사용자의 신용카드 번호는?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.04543699999999262,
+            0.04319199999997636,
+            0.07079499999997552
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r32",
+          "category": "absent/unanswerable",
+          "query": "Which embedding model is already used in knowledge-store.ts?",
+          "relevant": [],
+          "returned": [
+            "m9",
+            "k2",
+            "k3",
+            "k10",
+            "g7",
+            "s6",
+            "k9",
+            "k6",
+            "m4",
+            "g1"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.5750329999999622,
+            0.5666780000000244,
+            0.8344759999999951
+          ],
+          "bytes": 10713,
+          "estimatedTokens": 2679,
+          "denseState": "unused"
+        }
+      ]
+    },
+    "A1_kernel_FTS": {
+      "summary": {
+        "queries": 32,
+        "answerable": 28,
+        "recall5": 0.7142857142857143,
+        "recall10": 0.7142857142857143,
+        "ndcg5": 0.6832474911989806,
+        "ndcg10": 0.6832474911989806,
+        "evidencePrecision": 0.21765873015873008,
+        "abstention": 0.25,
+        "p50Ms": 0.6147680000000264,
+        "p95Ms": 1.2182759999999462,
+        "meanContextTokenEstimate": 1475.71875,
+        "meanContextBytes": 5901.8125
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.20722222222222225,
+          "abstention": null,
+          "p50Ms": 0.7227440000000342,
+          "p95Ms": 2.075935999999956,
+          "meanContextTokenEstimate": 1688.2,
+          "meanContextBytes": 6751.8
+        },
+        "Korean lexical": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 0.135646999999949,
+          "p95Ms": 0.135646999999949,
+          "meanContextTokenEstimate": 273,
+          "meanContextBytes": 1090
+        },
+        "mixed": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.4222222222222223,
+          "abstention": null,
+          "p50Ms": 0.5439139999999725,
+          "p95Ms": 0.9463490000000547,
+          "meanContextTokenEstimate": 1361.3333333333333,
+          "meanContextBytes": 5443.333333333333
+        },
+        "semantic paraphrase": {
+          "queries": 9,
+          "answerable": 9,
+          "recall5": 0.6666666666666666,
+          "recall10": 0.6666666666666666,
+          "ndcg5": 0.6111111111111112,
+          "ndcg10": 0.6111111111111112,
+          "evidencePrecision": 0.22592592592592592,
+          "abstention": null,
+          "p50Ms": 0.6242959999999584,
+          "p95Ms": 1.2182759999999462,
+          "meanContextTokenEstimate": 1741,
+          "meanContextBytes": 6962.888888888889
+        },
+        "Korean paraphrase": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": null,
+          "p50Ms": 0.10144300000001749,
+          "p95Ms": 0.17593399999998383,
+          "meanContextTokenEstimate": 15,
+          "meanContextBytes": 60
+        },
+        "procedure query": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9261859507142916,
+          "ndcg10": 0.9261859507142916,
+          "evidencePrecision": 0.15166666666666667,
+          "abstention": null,
+          "p50Ms": 0.7869160000000193,
+          "p95Ms": 1.202996999999982,
+          "meanContextTokenEstimate": 2180.2,
+          "meanContextBytes": 8719.2
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 0.25,
+          "p50Ms": 0.8434230000000298,
+          "p95Ms": 1.0149300000000494,
+          "meanContextTokenEstimate": 1945,
+          "meanContextBytes": 7779.25
+        }
+      },
+      "rows": [
+        {
+          "id": "r1",
+          "category": "exact fact",
+          "query": "SAND_KNOWLEDGE_DIR",
+          "relevant": [
+            "k1"
+          ],
+          "returned": [
+            "k1",
+            "k2",
+            "k5",
+            "m7",
+            "k10",
+            "k9",
+            "k7",
+            "m9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.125,
+          "latencies": [
+            1.1967949999999519,
+            0.7227440000000342,
+            0.6836090000000468
+          ],
+          "bytes": 9175,
+          "estimatedTokens": 2294,
+          "denseState": "unused"
+        },
+        {
+          "id": "r2",
+          "category": "exact fact",
+          "query": "MEMORY_MAX_CONTENT_LENGTH",
+          "relevant": [
+            "m3"
+          ],
+          "returned": [
+            "m3",
+            "m8",
+            "k8",
+            "s2",
+            "m10",
+            "s4",
+            "s5",
+            "m1",
+            "m6",
+            "m7"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            1.0181850000000168,
+            1.0714809999999488,
+            2.513702999999964
+          ],
+          "bytes": 9312,
+          "estimatedTokens": 2328,
+          "denseState": "unused"
+        },
+        {
+          "id": "r3",
+          "category": "exact fact",
+          "query": "AVATAR_MAX_BYTES",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4",
+            "s9",
+            "k8",
+            "m3",
+            "m8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.2,
+          "latencies": [
+            0.5957319999999982,
+            0.4215310000000727,
+            0.48446100000001024
+          ],
+          "bytes": 4816,
+          "estimatedTokens": 1204,
+          "denseState": "unused"
+        },
+        {
+          "id": "r4",
+          "category": "exact fact",
+          "query": "DEFAULT_EPISODE_INTERVAL",
+          "relevant": [
+            "m4"
+          ],
+          "returned": [
+            "m4",
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.26118700000006356,
+            0.20749400000011065,
+            0.19500000000005002
+          ],
+          "bytes": 1897,
+          "estimatedTokens": 475,
+          "denseState": "unused"
+        },
+        {
+          "id": "r5",
+          "category": "Korean lexical",
+          "query": "Korean CJK bigrams",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.137862000000041,
+            0.135646999999949,
+            0.13104899999996178
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "unused"
+        },
+        {
+          "id": "r6",
+          "category": "mixed",
+          "query": "Node.js 버전 26.5.x",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1",
+            "m10",
+            "g3",
+            "s4",
+            "g8",
+            "k4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.16666666666666666,
+          "latencies": [
+            0.6433429999999589,
+            0.5439139999999725,
+            0.4814049999999952
+          ],
+          "bytes": 5913,
+          "estimatedTokens": 1479,
+          "denseState": "unused"
+        },
+        {
+          "id": "r7",
+          "category": "semantic paraphrase",
+          "query": "How are two-syllable Korean words made searchable?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3",
+            "g4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.2609259999999267,
+            0.3483519999999771,
+            0.2907030000000077
+          ],
+          "bytes": 2170,
+          "estimatedTokens": 543,
+          "denseState": "unused"
+        },
+        {
+          "id": "r8",
+          "category": "semantic paraphrase",
+          "query": "What must pass before I share a code change?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "g6",
+            "m9",
+            "s6",
+            "g8",
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.16666666666666666,
+          "latencies": [
+            0.6475710000000845,
+            0.6350270000000364,
+            0.5299479999999903
+          ],
+          "bytes": 6827,
+          "estimatedTokens": 1707,
+          "denseState": "unused"
+        },
+        {
+          "id": "r9",
+          "category": "semantic paraphrase",
+          "query": "Where is browser know-how stored?",
+          "relevant": [
+            "k1",
+            "k5"
+          ],
+          "returned": [
+            "k4",
+            "g7",
+            "k3",
+            "s6",
+            "k10",
+            "k9"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.45678799999996045,
+            0.5558560000000625,
+            0.5060009999999693
+          ],
+          "bytes": 7005,
+          "estimatedTokens": 1752,
+          "denseState": "unused"
+        },
+        {
+          "id": "r10",
+          "category": "semantic paraphrase",
+          "query": "Can an agent modify measured site playbooks itself?",
+          "relevant": [
+            "k9"
+          ],
+          "returned": [
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.18522200000006706,
+            0.17400099999997565,
+            0.2769670000000133
+          ],
+          "bytes": 1494,
+          "estimatedTokens": 374,
+          "denseState": "unused"
+        },
+        {
+          "id": "r11",
+          "category": "Korean paraphrase",
+          "query": "한국어 두 글자 단어도 찾도록 만드는 색인 방식은?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.17593399999998383,
+            0.11184300000002168,
+            0.10098199999993085
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r12",
+          "category": "Korean paraphrase",
+          "query": "코드를 공유하기 전에 실행할 검증 명령은?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.08889899999996942,
+            0.08566299999995408,
+            0.08453099999996994
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r13",
+          "category": "Korean paraphrase",
+          "query": "아바타 파일의 용량 제한은?",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.07006300000000465,
+            0.07072500000003856,
+            0.06912099999999555
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r14",
+          "category": "Korean paraphrase",
+          "query": "프로젝트에 가입하지 않은 에이전트의 기록은 어떻게 막아?",
+          "relevant": [
+            "s3"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.11100099999998747,
+            0.10522000000003118,
+            0.10606200000006538
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r15",
+          "category": "procedure query",
+          "query": "Run a single regression test and then verify everything",
+          "relevant": [
+            "g8"
+          ],
+          "returned": [
+            "g3",
+            "g8",
+            "g2",
+            "g1",
+            "g6",
+            "k9",
+            "s6",
+            "g4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.125,
+          "latencies": [
+            2.7862460000000056,
+            0.7794020000000046,
+            0.6495550000000776
+          ],
+          "bytes": 8457,
+          "estimatedTokens": 2115,
+          "denseState": "unused"
+        },
+        {
+          "id": "r16",
+          "category": "procedure query",
+          "query": "install locked dependencies npm ci",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1",
+            "g2",
+            "g3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.31636199999991277,
+            0.28462200000001303,
+            0.35992399999997815
+          ],
+          "bytes": 2727,
+          "estimatedTokens": 682,
+          "denseState": "unused"
+        },
+        {
+          "id": "r17",
+          "category": "procedure query",
+          "query": "How to disable memory prompt freeze SAND_DISABLE_MEMORY_FREEZE",
+          "relevant": [
+            "m7"
+          ],
+          "returned": [
+            "m7",
+            "m1",
+            "m2",
+            "s5",
+            "k2",
+            "m8",
+            "k3",
+            "m6",
+            "s2",
+            "k1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.9677890000000389,
+            1.202996999999982,
+            1.0232349999999997
+          ],
+          "bytes": 9955,
+          "estimatedTokens": 2489,
+          "denseState": "unused"
+        },
+        {
+          "id": "r18",
+          "category": "procedure query",
+          "query": "How to disable knowledge search SAND_KNOWLEDGE_STORE",
+          "relevant": [
+            "k2"
+          ],
+          "returned": [
+            "k2",
+            "k10",
+            "k9",
+            "k1",
+            "k5",
+            "m9",
+            "m7",
+            "k3",
+            "g6",
+            "s7"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.7771870000000263,
+            0.8103310000000192,
+            0.8787399999999934
+          ],
+          "bytes": 11295,
+          "estimatedTokens": 2824,
+          "denseState": "unused"
+        },
+        {
+          "id": "r19",
+          "category": "exact fact",
+          "query": "bm25 6.0 4.0 1.0 1.5",
+          "relevant": [
+            "k4"
+          ],
+          "returned": [
+            "k4",
+            "m10",
+            "m4",
+            "m1",
+            "m7",
+            "s4",
+            "k2",
+            "m8",
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1111111111111111,
+          "latencies": [
+            0.751749000000018,
+            2.075935999999956,
+            0.8484929999999622
+          ],
+          "bytes": 8559,
+          "estimatedTokens": 2140,
+          "denseState": "unused"
+        },
+        {
+          "id": "r20",
+          "category": "semantic paraphrase",
+          "query": "How does the index avoid rereading unchanged files?",
+          "relevant": [
+            "k6"
+          ],
+          "returned": [
+            "k10",
+            "g7",
+            "m9",
+            "k9",
+            "g8",
+            "g1"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.7770669999999882,
+            0.6242959999999584,
+            0.5151490000000649
+          ],
+          "bytes": 6724,
+          "estimatedTokens": 1681,
+          "denseState": "unused"
+        },
+        {
+          "id": "r21",
+          "category": "semantic paraphrase",
+          "query": "Why are files outside the knowledge directory refused?",
+          "relevant": [
+            "k7"
+          ],
+          "returned": [
+            "k10",
+            "k9",
+            "m9",
+            "k5",
+            "k1",
+            "k2",
+            "g7",
+            "g8",
+            "g1"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.7747819999999592,
+            0.8814350000000104,
+            0.6744619999999486
+          ],
+          "bytes": 9887,
+          "estimatedTokens": 2472,
+          "denseState": "unused"
+        },
+        {
+          "id": "r22",
+          "category": "mixed",
+          "query": "StateWriteResult 성공 detail 실패 reason",
+          "relevant": [
+            "s1"
+          ],
+          "returned": [
+            "s1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.17224700000008397,
+            0.15855100000010225,
+            0.15348200000005363
+          ],
+          "bytes": 1060,
+          "estimatedTokens": 265,
+          "denseState": "unused"
+        },
+        {
+          "id": "r23",
+          "category": "mixed",
+          "query": "memory compactionEpoch 캐시",
+          "relevant": [
+            "m6"
+          ],
+          "returned": [
+            "m6",
+            "s5",
+            "m1",
+            "m8",
+            "s2",
+            "m10",
+            "m7",
+            "m3",
+            "m2",
+            "m5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.8770279999999957,
+            0.9463490000000547,
+            1.0712560000000622
+          ],
+          "bytes": 9357,
+          "estimatedTokens": 2340,
+          "denseState": "unused"
+        },
+        {
+          "id": "r24",
+          "category": "semantic paraphrase",
+          "query": "What generated outputs should not be committed?",
+          "relevant": [
+            "g5"
+          ],
+          "returned": [
+            "g5",
+            "m9",
+            "k9",
+            "g7",
+            "s6",
+            "k10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.16666666666666666,
+          "latencies": [
+            0.7125039999999672,
+            0.6147680000000264,
+            0.5800719999999728
+          ],
+          "bytes": 6884,
+          "estimatedTokens": 1721,
+          "denseState": "unused"
+        },
+        {
+          "id": "r25",
+          "category": "Korean paraphrase",
+          "query": "매번 주입하는 최근 기억의 문자 예산은?",
+          "relevant": [
+            "m1"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.10144300000001749,
+            0.13957600000003367,
+            0.18549299999995128
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r26",
+          "category": "semantic paraphrase",
+          "query": "Does a note have lower importance than an episode?",
+          "relevant": [
+            "m10"
+          ],
+          "returned": [
+            "m10",
+            "m4",
+            "s5",
+            "s2",
+            "g2",
+            "k10",
+            "g6",
+            "s6",
+            "k9",
+            "g8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.9200479999999516,
+            1.2182759999999462,
+            1.1685809999999037
+          ],
+          "bytes": 10651,
+          "estimatedTokens": 2663,
+          "denseState": "unused"
+        },
+        {
+          "id": "r27",
+          "category": "procedure query",
+          "query": "What is the project TypeScript coding style?",
+          "relevant": [
+            "g4"
+          ],
+          "returned": [
+            "g4",
+            "g7",
+            "s6",
+            "s3",
+            "m9",
+            "k10",
+            "k9",
+            "k3",
+            "g8",
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.7727179999999407,
+            0.7869160000000193,
+            0.8543339999999944
+          ],
+          "bytes": 11162,
+          "estimatedTokens": 2791,
+          "denseState": "unused"
+        },
+        {
+          "id": "r28",
+          "category": "semantic paraphrase",
+          "query": "Which evidence should not become durable personal memory?",
+          "relevant": [
+            "m9"
+          ],
+          "returned": [
+            "g6",
+            "k9",
+            "m9",
+            "g5",
+            "s5",
+            "g7",
+            "s6",
+            "k10",
+            "s2",
+            "m1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            1.9006830000000718,
+            1.2777090000000726,
+            1.1552159999999958
+          ],
+          "bytes": 11024,
+          "estimatedTokens": 2756,
+          "denseState": "unused"
+        },
+        {
+          "id": "r29",
+          "category": "absent/unanswerable",
+          "query": "What is the user passport number?",
+          "relevant": [],
+          "returned": [
+            "s7",
+            "g7",
+            "m9",
+            "k10",
+            "k9",
+            "k3",
+            "s6",
+            "g8",
+            "g1"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.7545049999999947,
+            1.0149300000000494,
+            0.7976659999999356
+          ],
+          "bytes": 10134,
+          "estimatedTokens": 2534,
+          "denseState": "unused"
+        },
+        {
+          "id": "r30",
+          "category": "absent/unanswerable",
+          "query": "SAND_MEMORY_ENCRYPTION_KEY",
+          "relevant": [],
+          "returned": [
+            "m6",
+            "m7",
+            "k2",
+            "k1",
+            "s5",
+            "m1",
+            "m8",
+            "s2",
+            "m10",
+            "m3"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.9258499999999685,
+            1.002514999999903,
+            0.9466999999999643
+          ],
+          "bytes": 9963,
+          "estimatedTokens": 2491,
+          "denseState": "unused"
+        },
+        {
+          "id": "r31",
+          "category": "absent/unanswerable",
+          "query": "현재 사용자의 신용카드 번호는?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.09584200000006149,
+            0.08265699999992648,
+            0.0792509999999993
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r32",
+          "category": "absent/unanswerable",
+          "query": "Which embedding model is already used in knowledge-store.ts?",
+          "relevant": [],
+          "returned": [
+            "m9",
+            "k9",
+            "k10",
+            "k2",
+            "k5",
+            "g7",
+            "k1",
+            "g3",
+            "g4",
+            "k3"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.9189870000000155,
+            1.0181350000000293,
+            0.8434230000000298
+          ],
+          "bytes": 10960,
+          "estimatedTokens": 2740,
+          "denseState": "unused"
+        }
+      ]
+    },
+    "B_query_planning": {
+      "summary": {
+        "queries": 32,
+        "answerable": 28,
+        "recall5": 0.8571428571428571,
+        "recall10": 0.8571428571428571,
+        "ndcg5": 0.8261046340561234,
+        "ndcg10": 0.8261046340561234,
+        "evidencePrecision": 0.5511904761904761,
+        "abstention": 0.75,
+        "p50Ms": 0.45877199999995355,
+        "p95Ms": 0.9558359999999766,
+        "meanContextTokenEstimate": 570.46875,
+        "meanContextBytes": 2280.5
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.8,
+          "abstention": null,
+          "p50Ms": 0.4433530000000019,
+          "p95Ms": 0.6468499999999722,
+          "meanContextTokenEstimate": 357,
+          "meanContextBytes": 1426.6
+        },
+        "Korean lexical": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 0.1811640000000807,
+          "p95Ms": 0.1811640000000807,
+          "meanContextTokenEstimate": 273,
+          "meanContextBytes": 1090
+        },
+        "mixed": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.7000000000000001,
+          "abstention": null,
+          "p50Ms": 0.3378219999999601,
+          "p95Ms": 0.8437229999999545,
+          "meanContextTokenEstimate": 951.3333333333334,
+          "meanContextBytes": 3803.3333333333335
+        },
+        "semantic paraphrase": {
+          "queries": 9,
+          "answerable": 9,
+          "recall5": 0.6666666666666666,
+          "recall10": 0.6666666666666666,
+          "ndcg5": 0.6111111111111112,
+          "ndcg10": 0.6111111111111112,
+          "evidencePrecision": 0.4444444444444444,
+          "abstention": null,
+          "p50Ms": 0.4366899999999987,
+          "p95Ms": 1.024357000000009,
+          "meanContextTokenEstimate": 684.7777777777778,
+          "meanContextBytes": 2737.4444444444443
+        },
+        "Korean paraphrase": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 0.8,
+          "recall10": 0.8,
+          "ndcg5": 0.8,
+          "ndcg10": 0.8,
+          "evidencePrecision": 0.4666666666666666,
+          "abstention": null,
+          "p50Ms": 0.2638120000000299,
+          "p95Ms": 0.906802999999968,
+          "meanContextTokenEstimate": 413.6,
+          "meanContextBytes": 1653.8
+        },
+        "procedure query": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9261859507142916,
+          "ndcg10": 0.9261859507142916,
+          "evidencePrecision": 0.4,
+          "abstention": null,
+          "p50Ms": 0.7004610000000184,
+          "p95Ms": 0.9347869999999148,
+          "meanContextTokenEstimate": 945.8,
+          "meanContextBytes": 3781.6
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 0.75,
+          "p50Ms": 0.5249479999999949,
+          "p95Ms": 0.6401069999999436,
+          "meanContextTokenEstimate": 95.75,
+          "meanContextBytes": 382.25
+        }
+      },
+      "rows": [
+        {
+          "id": "r1",
+          "category": "exact fact",
+          "query": "SAND_KNOWLEDGE_DIR",
+          "relevant": [
+            "k1"
+          ],
+          "returned": [
+            "k1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.45877199999995355,
+            0.36153699999999844,
+            0.3403369999999768
+          ],
+          "bytes": 1234,
+          "estimatedTokens": 309,
+          "denseState": "unused"
+        },
+        {
+          "id": "r2",
+          "category": "exact fact",
+          "query": "MEMORY_MAX_CONTENT_LENGTH",
+          "relevant": [
+            "m3"
+          ],
+          "returned": [
+            "m3",
+            "m8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.7465389999999843,
+            0.6468499999999722,
+            0.5888899999999921
+          ],
+          "bytes": 1796,
+          "estimatedTokens": 449,
+          "denseState": "unused"
+        },
+        {
+          "id": "r3",
+          "category": "exact fact",
+          "query": "AVATAR_MAX_BYTES",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.3382729999999583,
+            0.4433530000000019,
+            0.3146679999999833
+          ],
+          "bytes": 884,
+          "estimatedTokens": 221,
+          "denseState": "unused"
+        },
+        {
+          "id": "r4",
+          "category": "exact fact",
+          "query": "DEFAULT_EPISODE_INTERVAL",
+          "relevant": [
+            "m4"
+          ],
+          "returned": [
+            "m4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.17036399999994956,
+            0.24944399999992584,
+            0.23931500000003325
+          ],
+          "bytes": 849,
+          "estimatedTokens": 213,
+          "denseState": "unused"
+        },
+        {
+          "id": "r5",
+          "category": "Korean lexical",
+          "query": "Korean CJK bigrams",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.24403400000005604,
+            0.1811640000000807,
+            0.14139799999998104
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "unused"
+        },
+        {
+          "id": "r6",
+          "category": "mixed",
+          "query": "Node.js 버전 26.5.x",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.33041800000000876,
+            0.3158700000000181,
+            0.36033500000007734
+          ],
+          "bytes": 993,
+          "estimatedTokens": 249,
+          "denseState": "unused"
+        },
+        {
+          "id": "r7",
+          "category": "semantic paraphrase",
+          "query": "How are two-syllable Korean words made searchable?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.23056899999994585,
+            0.30387800000005427,
+            0.25545599999998103
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "unused"
+        },
+        {
+          "id": "r8",
+          "category": "semantic paraphrase",
+          "query": "What must pass before I share a code change?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "g6",
+            "g8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.7629200000000083,
+            0.6392749999999978,
+            0.6628500000000486
+          ],
+          "bytes": 3080,
+          "estimatedTokens": 770,
+          "denseState": "unused"
+        },
+        {
+          "id": "r9",
+          "category": "semantic paraphrase",
+          "query": "Where is browser know-how stored?",
+          "relevant": [
+            "k1",
+            "k5"
+          ],
+          "returned": [
+            "k4"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.4216110000000981,
+            0.46051599999998416,
+            0.3570190000000366
+          ],
+          "bytes": 1322,
+          "estimatedTokens": 331,
+          "denseState": "unused"
+        },
+        {
+          "id": "r10",
+          "category": "semantic paraphrase",
+          "query": "Can an agent modify measured site playbooks itself?",
+          "relevant": [
+            "k9"
+          ],
+          "returned": [
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.2342750000000251,
+            0.18817799999999352,
+            0.17272800000000643
+          ],
+          "bytes": 1494,
+          "estimatedTokens": 374,
+          "denseState": "unused"
+        },
+        {
+          "id": "r11",
+          "category": "Korean paraphrase",
+          "query": "한국어 두 글자 단어도 찾도록 만드는 색인 방식은?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.24325199999998404,
+            0.23595799999998235,
+            0.2310690000000477
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "unused"
+        },
+        {
+          "id": "r12",
+          "category": "Korean paraphrase",
+          "query": "코드를 공유하기 전에 실행할 검증 명령은?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "g8",
+            "g6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.5097890000000689,
+            0.6216009999999415,
+            0.5728390000000445
+          ],
+          "bytes": 3080,
+          "estimatedTokens": 770,
+          "denseState": "unused"
+        },
+        {
+          "id": "r13",
+          "category": "Korean paraphrase",
+          "query": "아바타 파일의 용량 제한은?",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4",
+            "s9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.2810749999999871,
+            0.2638120000000299,
+            0.2628700000000208
+          ],
+          "bytes": 2331,
+          "estimatedTokens": 583,
+          "denseState": "unused"
+        },
+        {
+          "id": "r14",
+          "category": "Korean paraphrase",
+          "query": "프로젝트에 가입하지 않은 에이전트의 기록은 어떻게 막아?",
+          "relevant": [
+            "s3"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.14991500000007818,
+            0.1297660000000178,
+            0.10949800000003052
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r15",
+          "category": "procedure query",
+          "query": "Run a single regression test and then verify everything",
+          "relevant": [
+            "g8"
+          ],
+          "returned": [
+            "g3",
+            "g8",
+            "g2",
+            "g6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            0.9347869999999148,
+            0.6906930000000102,
+            0.7614469999999756
+          ],
+          "bytes": 3919,
+          "estimatedTokens": 980,
+          "denseState": "unused"
+        },
+        {
+          "id": "r16",
+          "category": "procedure query",
+          "query": "install locked dependencies npm ci",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.23467599999992217,
+            0.22409600000003138,
+            0.21303499999999076
+          ],
+          "bytes": 993,
+          "estimatedTokens": 249,
+          "denseState": "unused"
+        },
+        {
+          "id": "r17",
+          "category": "procedure query",
+          "query": "How to disable memory prompt freeze SAND_DISABLE_MEMORY_FREEZE",
+          "relevant": [
+            "m7"
+          ],
+          "returned": [
+            "m7",
+            "m1",
+            "m2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            0.8848619999999983,
+            0.7737210000000232,
+            0.9849849999999378
+          ],
+          "bytes": 2523,
+          "estimatedTokens": 631,
+          "denseState": "unused"
+        },
+        {
+          "id": "r18",
+          "category": "procedure query",
+          "query": "How to disable knowledge search SAND_KNOWLEDGE_STORE",
+          "relevant": [
+            "k2"
+          ],
+          "returned": [
+            "k2",
+            "k10",
+            "k9",
+            "k1",
+            "k5",
+            "m9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.16666666666666666,
+          "latencies": [
+            0.7476309999999557,
+            0.7004610000000184,
+            0.7742020000000593
+          ],
+          "bytes": 6973,
+          "estimatedTokens": 1744,
+          "denseState": "unused"
+        },
+        {
+          "id": "r19",
+          "category": "exact fact",
+          "query": "bm25 6.0 4.0 1.0 1.5",
+          "relevant": [
+            "k4"
+          ],
+          "returned": [
+            "k4",
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.5097789999999804,
+            0.44565799999998035,
+            0.634115999999949
+          ],
+          "bytes": 2370,
+          "estimatedTokens": 593,
+          "denseState": "unused"
+        },
+        {
+          "id": "r20",
+          "category": "semantic paraphrase",
+          "query": "How does the index avoid rereading unchanged files?",
+          "relevant": [
+            "k6"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.31059000000004744,
+            0.2988279999999577,
+            0.28733599999998205
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r21",
+          "category": "semantic paraphrase",
+          "query": "Why are files outside the knowledge directory refused?",
+          "relevant": [
+            "k7"
+          ],
+          "returned": [
+            "k10",
+            "k9",
+            "m9",
+            "k5",
+            "k1",
+            "k2"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.8520700000000261,
+            0.7831189999999424,
+            1.955628000000047
+          ],
+          "bytes": 6973,
+          "estimatedTokens": 1744,
+          "denseState": "unused"
+        },
+        {
+          "id": "r22",
+          "category": "mixed",
+          "query": "StateWriteResult 성공 detail 실패 reason",
+          "relevant": [
+            "s1"
+          ],
+          "returned": [
+            "s1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.3378219999999601,
+            0.3316300000000183,
+            0.30292500000007294
+          ],
+          "bytes": 1060,
+          "estimatedTokens": 265,
+          "denseState": "unused"
+        },
+        {
+          "id": "r23",
+          "category": "mixed",
+          "query": "memory compactionEpoch 캐시",
+          "relevant": [
+            "m6"
+          ],
+          "returned": [
+            "m6",
+            "s5",
+            "m1",
+            "m8",
+            "s2",
+            "m10",
+            "m7",
+            "m3",
+            "m2",
+            "m5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            0.8437229999999545,
+            0.7962329999999156,
+            0.9558359999999766
+          ],
+          "bytes": 9357,
+          "estimatedTokens": 2340,
+          "denseState": "unused"
+        },
+        {
+          "id": "r24",
+          "category": "semantic paraphrase",
+          "query": "What generated outputs should not be committed?",
+          "relevant": [
+            "g5"
+          ],
+          "returned": [
+            "g5",
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.3809840000000122,
+            0.4366899999999987,
+            0.40334599999994225
+          ],
+          "bytes": 2445,
+          "estimatedTokens": 612,
+          "denseState": "unused"
+        },
+        {
+          "id": "r25",
+          "category": "Korean paraphrase",
+          "query": "매번 주입하는 최근 기억의 문자 예산은?",
+          "relevant": [
+            "m1"
+          ],
+          "returned": [
+            "m1",
+            "m2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            0.6795819999999821,
+            0.906802999999968,
+            0.9983780000000024
+          ],
+          "bytes": 1708,
+          "estimatedTokens": 427,
+          "denseState": "unused"
+        },
+        {
+          "id": "r26",
+          "category": "semantic paraphrase",
+          "query": "Does a note have lower importance than an episode?",
+          "relevant": [
+            "m10"
+          ],
+          "returned": [
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            0.6391649999999345,
+            0.5403169999999591,
+            0.499608999999964
+          ],
+          "bytes": 1106,
+          "estimatedTokens": 277,
+          "denseState": "unused"
+        },
+        {
+          "id": "r27",
+          "category": "procedure query",
+          "query": "What is the project TypeScript coding style?",
+          "relevant": [
+            "g4"
+          ],
+          "returned": [
+            "g4",
+            "g7",
+            "s6",
+            "s3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            0.6141969999999901,
+            0.5657759999999143,
+            0.5874259999999367
+          ],
+          "bytes": 4500,
+          "estimatedTokens": 1125,
+          "denseState": "unused"
+        },
+        {
+          "id": "r28",
+          "category": "semantic paraphrase",
+          "query": "Which evidence should not become durable personal memory?",
+          "relevant": [
+            "m9"
+          ],
+          "returned": [
+            "g6",
+            "k9",
+            "m9",
+            "s5",
+            "s2",
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "evidencePrecision": 0.16666666666666666,
+          "latencies": [
+            2.3332960000000185,
+            1.024357000000009,
+            0.8851230000000214
+          ],
+          "bytes": 7067,
+          "estimatedTokens": 1767,
+          "denseState": "unused"
+        },
+        {
+          "id": "r29",
+          "category": "absent/unanswerable",
+          "query": "What is the user passport number?",
+          "relevant": [],
+          "returned": [
+            "s7"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.5249479999999949,
+            0.5104599999999664,
+            0.5047799999999825
+          ],
+          "bytes": 1349,
+          "estimatedTokens": 338,
+          "denseState": "unused"
+        },
+        {
+          "id": "r30",
+          "category": "absent/unanswerable",
+          "query": "SAND_MEMORY_ENCRYPTION_KEY",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.5522599999999329,
+            0.5261600000000044,
+            0.6083159999999452
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r31",
+          "category": "absent/unanswerable",
+          "query": "현재 사용자의 신용카드 번호는?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.1929169999999658,
+            0.11593099999993228,
+            0.09233500000004824
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        },
+        {
+          "id": "r32",
+          "category": "absent/unanswerable",
+          "query": "Which embedding model is already used in knowledge-store.ts?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            0.6401069999999436,
+            0.6780390000000125,
+            0.6130949999999302
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "unused"
+        }
+      ]
+    },
+    "C_plus_dense": {
+      "summary": {
+        "queries": 32,
+        "answerable": 28,
+        "recall5": 0.8571428571428571,
+        "recall10": 0.8571428571428571,
+        "ndcg5": 0.8261046340561234,
+        "ndcg10": 0.8261046340561234,
+        "evidencePrecision": 0.5194444444444444,
+        "abstention": 0.5,
+        "p50Ms": 8.760616000000027,
+        "p95Ms": 11.65595200000007,
+        "meanContextTokenEstimate": 634.8125,
+        "meanContextBytes": 2537.6875
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.6222222222222222,
+          "abstention": null,
+          "p50Ms": 8.511054000000058,
+          "p95Ms": 11.85147799999993,
+          "meanContextTokenEstimate": 728,
+          "meanContextBytes": 2910
+        },
+        "Korean lexical": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 7.367516999999907,
+          "p95Ms": 7.367516999999907,
+          "meanContextTokenEstimate": 273,
+          "meanContextBytes": 1090
+        },
+        "mixed": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.7000000000000001,
+          "abstention": null,
+          "p50Ms": 7.9656559999998535,
+          "p95Ms": 8.760616000000027,
+          "meanContextTokenEstimate": 951.3333333333334,
+          "meanContextBytes": 3803.3333333333335
+        },
+        "semantic paraphrase": {
+          "queries": 9,
+          "answerable": 9,
+          "recall5": 0.6666666666666666,
+          "recall10": 0.6666666666666666,
+          "ndcg5": 0.6111111111111112,
+          "ndcg10": 0.6111111111111112,
+          "evidencePrecision": 0.4444444444444444,
+          "abstention": null,
+          "p50Ms": 8.972083999999995,
+          "p95Ms": 9.958389000000125,
+          "meanContextTokenEstimate": 684.7777777777778,
+          "meanContextBytes": 2737.4444444444443
+        },
+        "Korean paraphrase": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 0.8,
+          "recall10": 0.8,
+          "ndcg5": 0.8,
+          "ndcg10": 0.8,
+          "evidencePrecision": 0.4666666666666666,
+          "abstention": null,
+          "p50Ms": 8.925911999999926,
+          "p95Ms": 11.65595200000007,
+          "meanContextTokenEstimate": 413.6,
+          "meanContextBytes": 1653.8
+        },
+        "procedure query": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9261859507142916,
+          "ndcg10": 0.9261859507142916,
+          "evidencePrecision": 0.4,
+          "abstention": null,
+          "p50Ms": 9.47175500000003,
+          "p95Ms": 11.865950000000112,
+          "meanContextTokenEstimate": 945.8,
+          "meanContextBytes": 3781.6
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 0.5,
+          "p50Ms": 8.49971400000004,
+          "p95Ms": 9.979233000000022,
+          "meanContextTokenEstimate": 146.75,
+          "meanContextBytes": 585.5
+        }
+      },
+      "rows": [
+        {
+          "id": "r1",
+          "category": "exact fact",
+          "query": "SAND_KNOWLEDGE_DIR",
+          "relevant": [
+            "k1"
+          ],
+          "returned": [
+            "k1",
+            "k2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            12.377577000000088,
+            11.85147799999993,
+            9.003160999999977
+          ],
+          "bytes": 2282,
+          "estimatedTokens": 571,
+          "denseState": "used"
+        },
+        {
+          "id": "r2",
+          "category": "exact fact",
+          "query": "MEMORY_MAX_CONTENT_LENGTH",
+          "relevant": [
+            "m3"
+          ],
+          "returned": [
+            "m3",
+            "m8",
+            "s2",
+            "m10",
+            "k8",
+            "m2",
+            "m1",
+            "s5",
+            "m5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1111111111111111,
+          "latencies": [
+            10.475683000000004,
+            11.645465999999942,
+            9.814354999999978
+          ],
+          "bytes": 8165,
+          "estimatedTokens": 2042,
+          "denseState": "used"
+        },
+        {
+          "id": "r3",
+          "category": "exact fact",
+          "query": "AVATAR_MAX_BYTES",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.457372000000078,
+            8.019002999999998,
+            8.511054000000058
+          ],
+          "bytes": 884,
+          "estimatedTokens": 221,
+          "denseState": "used"
+        },
+        {
+          "id": "r4",
+          "category": "exact fact",
+          "query": "DEFAULT_EPISODE_INTERVAL",
+          "relevant": [
+            "m4"
+          ],
+          "returned": [
+            "m4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.812249999999949,
+            7.999600999999984,
+            7.9792529999999715
+          ],
+          "bytes": 849,
+          "estimatedTokens": 213,
+          "denseState": "used"
+        },
+        {
+          "id": "r5",
+          "category": "Korean lexical",
+          "query": "Korean CJK bigrams",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.367516999999907,
+            8.039327000000071,
+            7.357430000000022
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "used"
+        },
+        {
+          "id": "r6",
+          "category": "mixed",
+          "query": "Node.js 버전 26.5.x",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.701233000000002,
+            8.478134999999952,
+            7.799319999999966
+          ],
+          "bytes": 993,
+          "estimatedTokens": 249,
+          "denseState": "used"
+        },
+        {
+          "id": "r7",
+          "category": "semantic paraphrase",
+          "query": "How are two-syllable Korean words made searchable?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.092814999999973,
+            8.972083999999995,
+            8.207569000000035
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "used"
+        },
+        {
+          "id": "r8",
+          "category": "semantic paraphrase",
+          "query": "What must pass before I share a code change?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "g6",
+            "g8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            9.138601000000108,
+            9.213216999999986,
+            9.748149999999896
+          ],
+          "bytes": 3080,
+          "estimatedTokens": 770,
+          "denseState": "used"
+        },
+        {
+          "id": "r9",
+          "category": "semantic paraphrase",
+          "query": "Where is browser know-how stored?",
+          "relevant": [
+            "k1",
+            "k5"
+          ],
+          "returned": [
+            "k4"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.400437999999895,
+            7.7150749999998425,
+            8.95928600000002
+          ],
+          "bytes": 1322,
+          "estimatedTokens": 331,
+          "denseState": "used"
+        },
+        {
+          "id": "r10",
+          "category": "semantic paraphrase",
+          "query": "Can an agent modify measured site playbooks itself?",
+          "relevant": [
+            "k9"
+          ],
+          "returned": [
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.140570000000025,
+            7.695301999999856,
+            8.277528999999959
+          ],
+          "bytes": 1494,
+          "estimatedTokens": 374,
+          "denseState": "used"
+        },
+        {
+          "id": "r11",
+          "category": "Korean paraphrase",
+          "query": "한국어 두 글자 단어도 찾도록 만드는 색인 방식은?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.708357999999862,
+            8.550529000000097,
+            8.925911999999926
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "used"
+        },
+        {
+          "id": "r12",
+          "category": "Korean paraphrase",
+          "query": "코드를 공유하기 전에 실행할 검증 명령은?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "g8",
+            "g6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            18.52934100000016,
+            8.537548000000015,
+            8.37483999999995
+          ],
+          "bytes": 3080,
+          "estimatedTokens": 770,
+          "denseState": "used"
+        },
+        {
+          "id": "r13",
+          "category": "Korean paraphrase",
+          "query": "아바타 파일의 용량 제한은?",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4",
+            "s9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            7.927790999999843,
+            8.321003999999903,
+            10.012380000000121
+          ],
+          "bytes": 2331,
+          "estimatedTokens": 583,
+          "denseState": "used"
+        },
+        {
+          "id": "r14",
+          "category": "Korean paraphrase",
+          "query": "프로젝트에 가입하지 않은 에이전트의 기록은 어떻게 막아?",
+          "relevant": [
+            "s3"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.170026000000007,
+            8.232112000000143,
+            9.730641999999989
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "r15",
+          "category": "procedure query",
+          "query": "Run a single regression test and then verify everything",
+          "relevant": [
+            "g8"
+          ],
+          "returned": [
+            "g3",
+            "g8",
+            "g2",
+            "g6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            9.47175500000003,
+            8.290939999999864,
+            9.058508999999958
+          ],
+          "bytes": 3919,
+          "estimatedTokens": 980,
+          "denseState": "used"
+        },
+        {
+          "id": "r16",
+          "category": "procedure query",
+          "query": "install locked dependencies npm ci",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.74999200000002,
+            11.865950000000112,
+            7.9153060000001005
+          ],
+          "bytes": 993,
+          "estimatedTokens": 249,
+          "denseState": "used"
+        },
+        {
+          "id": "r17",
+          "category": "procedure query",
+          "query": "How to disable memory prompt freeze SAND_DISABLE_MEMORY_FREEZE",
+          "relevant": [
+            "m7"
+          ],
+          "returned": [
+            "m7",
+            "m1",
+            "m2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            10.420346999999992,
+            10.701671999999917,
+            12.726166000000148
+          ],
+          "bytes": 2523,
+          "estimatedTokens": 631,
+          "denseState": "used"
+        },
+        {
+          "id": "r18",
+          "category": "procedure query",
+          "query": "How to disable knowledge search SAND_KNOWLEDGE_STORE",
+          "relevant": [
+            "k2"
+          ],
+          "returned": [
+            "k2",
+            "k10",
+            "k9",
+            "k1",
+            "k5",
+            "m9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.16666666666666666,
+          "latencies": [
+            9.514615999999933,
+            9.922921999999971,
+            9.795749999999998
+          ],
+          "bytes": 6973,
+          "estimatedTokens": 1744,
+          "denseState": "used"
+        },
+        {
+          "id": "r19",
+          "category": "exact fact",
+          "query": "bm25 6.0 4.0 1.0 1.5",
+          "relevant": [
+            "k4"
+          ],
+          "returned": [
+            "k4",
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            8.179157000000032,
+            8.345434000000068,
+            8.092221999999992
+          ],
+          "bytes": 2370,
+          "estimatedTokens": 593,
+          "denseState": "used"
+        },
+        {
+          "id": "r20",
+          "category": "semantic paraphrase",
+          "query": "How does the index avoid rereading unchanged files?",
+          "relevant": [
+            "k6"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            11.640412000000197,
+            9.646480999999994,
+            8.41263099999992
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "r21",
+          "category": "semantic paraphrase",
+          "query": "Why are files outside the knowledge directory refused?",
+          "relevant": [
+            "k7"
+          ],
+          "returned": [
+            "k10",
+            "k9",
+            "m9",
+            "k5",
+            "k1",
+            "k2"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.195868999999902,
+            9.958389000000125,
+            8.574678999999833
+          ],
+          "bytes": 6973,
+          "estimatedTokens": 1744,
+          "denseState": "used"
+        },
+        {
+          "id": "r22",
+          "category": "mixed",
+          "query": "StateWriteResult 성공 detail 실패 reason",
+          "relevant": [
+            "s1"
+          ],
+          "returned": [
+            "s1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.8274730000000545,
+            7.9656559999998535,
+            7.963727999999946
+          ],
+          "bytes": 1060,
+          "estimatedTokens": 265,
+          "denseState": "used"
+        },
+        {
+          "id": "r23",
+          "category": "mixed",
+          "query": "memory compactionEpoch 캐시",
+          "relevant": [
+            "m6"
+          ],
+          "returned": [
+            "m6",
+            "s5",
+            "m1",
+            "m8",
+            "s2",
+            "m10",
+            "m7",
+            "m3",
+            "m2",
+            "m5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            8.760616000000027,
+            9.285348999999997,
+            8.658688999999868
+          ],
+          "bytes": 9357,
+          "estimatedTokens": 2340,
+          "denseState": "used"
+        },
+        {
+          "id": "r24",
+          "category": "semantic paraphrase",
+          "query": "What generated outputs should not be committed?",
+          "relevant": [
+            "g5"
+          ],
+          "returned": [
+            "g5",
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            11.628372999999783,
+            9.271293000000014,
+            9.69503799999984
+          ],
+          "bytes": 2445,
+          "estimatedTokens": 612,
+          "denseState": "used"
+        },
+        {
+          "id": "r25",
+          "category": "Korean paraphrase",
+          "query": "매번 주입하는 최근 기억의 문자 예산은?",
+          "relevant": [
+            "m1"
+          ],
+          "returned": [
+            "m1",
+            "m2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            8.984924999999976,
+            8.957912000000078,
+            11.65595200000007
+          ],
+          "bytes": 1708,
+          "estimatedTokens": 427,
+          "denseState": "used"
+        },
+        {
+          "id": "r26",
+          "category": "semantic paraphrase",
+          "query": "Does a note have lower importance than an episode?",
+          "relevant": [
+            "m10"
+          ],
+          "returned": [
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.005226999999877,
+            8.942494000000124,
+            8.09955600000012
+          ],
+          "bytes": 1106,
+          "estimatedTokens": 277,
+          "denseState": "used"
+        },
+        {
+          "id": "r27",
+          "category": "procedure query",
+          "query": "What is the project TypeScript coding style?",
+          "relevant": [
+            "g4"
+          ],
+          "returned": [
+            "g4",
+            "g7",
+            "s6",
+            "s3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            9.174740000000156,
+            9.016538999999966,
+            9.163868999999977
+          ],
+          "bytes": 4500,
+          "estimatedTokens": 1125,
+          "denseState": "used"
+        },
+        {
+          "id": "r28",
+          "category": "semantic paraphrase",
+          "query": "Which evidence should not become durable personal memory?",
+          "relevant": [
+            "m9"
+          ],
+          "returned": [
+            "g6",
+            "k9",
+            "m9",
+            "s5",
+            "s2",
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "evidencePrecision": 0.16666666666666666,
+          "latencies": [
+            9.413347999999814,
+            8.10347999999999,
+            9.045142999999825
+          ],
+          "bytes": 7067,
+          "estimatedTokens": 1767,
+          "denseState": "used"
+        },
+        {
+          "id": "r29",
+          "category": "absent/unanswerable",
+          "query": "What is the user passport number?",
+          "relevant": [],
+          "returned": [
+            "s7"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.38063000000011,
+            7.63454200000001,
+            8.172885000000178
+          ],
+          "bytes": 1349,
+          "estimatedTokens": 338,
+          "denseState": "used"
+        },
+        {
+          "id": "r30",
+          "category": "absent/unanswerable",
+          "query": "SAND_MEMORY_ENCRYPTION_KEY",
+          "relevant": [],
+          "returned": [
+            "m7"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.266435000000001,
+            8.49971400000004,
+            8.77186699999993
+          ],
+          "bytes": 873,
+          "estimatedTokens": 219,
+          "denseState": "used"
+        },
+        {
+          "id": "r31",
+          "category": "absent/unanswerable",
+          "query": "현재 사용자의 신용카드 번호는?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.514734999999973,
+            8.447123000000147,
+            8.202892999999904
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "r32",
+          "category": "absent/unanswerable",
+          "query": "Which embedding model is already used in knowledge-store.ts?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            10.656762999999955,
+            9.979233000000022,
+            8.535275000000183
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        }
+      ]
+    },
+    "D_plus_hierarchy": {
+      "summary": {
+        "queries": 32,
+        "answerable": 28,
+        "recall5": 0.8571428571428571,
+        "recall10": 0.8928571428571429,
+        "ndcg5": 0.8261046340561234,
+        "ndcg10": 0.8380093959608853,
+        "evidencePrecision": 0.5236961451247165,
+        "abstention": 0.5,
+        "p50Ms": 9.379323999999997,
+        "p95Ms": 12.186289000000215,
+        "meanContextTokenEstimate": 656.4375,
+        "meanContextBytes": 2624.375
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.6222222222222222,
+          "abstention": null,
+          "p50Ms": 9.351170999999795,
+          "p95Ms": 10.348579999999856,
+          "meanContextTokenEstimate": 728,
+          "meanContextBytes": 2910
+        },
+        "Korean lexical": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 7.964570000000094,
+          "p95Ms": 7.964570000000094,
+          "meanContextTokenEstimate": 273,
+          "meanContextBytes": 1090
+        },
+        "mixed": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.7000000000000001,
+          "abstention": null,
+          "p50Ms": 9.74795899999981,
+          "p95Ms": 12.335778000000118,
+          "meanContextTokenEstimate": 951.3333333333334,
+          "meanContextBytes": 3803.3333333333335
+        },
+        "semantic paraphrase": {
+          "queries": 9,
+          "answerable": 9,
+          "recall5": 0.6666666666666666,
+          "recall10": 0.7777777777777778,
+          "ndcg5": 0.6111111111111112,
+          "ndcg10": 0.6481481481481483,
+          "evidencePrecision": 0.46031746031746024,
+          "abstention": null,
+          "p50Ms": 9.289041999999881,
+          "p95Ms": 11.443693000000167,
+          "meanContextTokenEstimate": 723.2222222222222,
+          "meanContextBytes": 2891.5555555555557
+        },
+        "Korean paraphrase": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 0.8,
+          "recall10": 0.8,
+          "ndcg5": 0.8,
+          "ndcg10": 0.8,
+          "evidencePrecision": 0.4666666666666666,
+          "abstention": null,
+          "p50Ms": 9.161746000000221,
+          "p95Ms": 10.28260599999976,
+          "meanContextTokenEstimate": 413.6,
+          "meanContextBytes": 1653.8
+        },
+        "procedure query": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9261859507142916,
+          "ndcg10": 0.9261859507142916,
+          "evidencePrecision": 0.3952380952380952,
+          "abstention": null,
+          "p50Ms": 10.101482000000033,
+          "p95Ms": 12.411212000000432,
+          "meanContextTokenEstimate": 1015,
+          "meanContextBytes": 4059
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 0.5,
+          "p50Ms": 9.350202999999965,
+          "p95Ms": 10.57662399999981,
+          "meanContextTokenEstimate": 146.75,
+          "meanContextBytes": 585.5
+        }
+      },
+      "rows": [
+        {
+          "id": "r1",
+          "category": "exact fact",
+          "query": "SAND_KNOWLEDGE_DIR",
+          "relevant": [
+            "k1"
+          ],
+          "returned": [
+            "k1",
+            "k2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            8.34624000000008,
+            8.049277999999958,
+            8.395946999999978
+          ],
+          "bytes": 2282,
+          "estimatedTokens": 571,
+          "denseState": "used"
+        },
+        {
+          "id": "r2",
+          "category": "exact fact",
+          "query": "MEMORY_MAX_CONTENT_LENGTH",
+          "relevant": [
+            "m3"
+          ],
+          "returned": [
+            "m3",
+            "m8",
+            "m10",
+            "s2",
+            "m2",
+            "m1",
+            "k8",
+            "s5",
+            "m5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1111111111111111,
+          "latencies": [
+            9.452587999999878,
+            9.697944000000007,
+            9.896142000000054
+          ],
+          "bytes": 8165,
+          "estimatedTokens": 2042,
+          "denseState": "used"
+        },
+        {
+          "id": "r3",
+          "category": "exact fact",
+          "query": "AVATAR_MAX_BYTES",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.226857999999993,
+            9.351170999999795,
+            9.914459999999963
+          ],
+          "bytes": 884,
+          "estimatedTokens": 221,
+          "denseState": "used"
+        },
+        {
+          "id": "r4",
+          "category": "exact fact",
+          "query": "DEFAULT_EPISODE_INTERVAL",
+          "relevant": [
+            "m4"
+          ],
+          "returned": [
+            "m4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            10.348579999999856,
+            9.040144000000055,
+            9.167145000000346
+          ],
+          "bytes": 849,
+          "estimatedTokens": 213,
+          "denseState": "used"
+        },
+        {
+          "id": "r5",
+          "category": "Korean lexical",
+          "query": "Korean CJK bigrams",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.964570000000094,
+            7.564339000000018,
+            8.058379000000059
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "used"
+        },
+        {
+          "id": "r6",
+          "category": "mixed",
+          "query": "Node.js 버전 26.5.x",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            12.335778000000118,
+            9.692218000000139,
+            12.186289000000215
+          ],
+          "bytes": 993,
+          "estimatedTokens": 249,
+          "denseState": "used"
+        },
+        {
+          "id": "r7",
+          "category": "semantic paraphrase",
+          "query": "How are two-syllable Korean words made searchable?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            10.297844000000168,
+            12.244826000000103,
+            9.289041999999881
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "used"
+        },
+        {
+          "id": "r8",
+          "category": "semantic paraphrase",
+          "query": "What must pass before I share a code change?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "g6",
+            "g8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            10.587546000000202,
+            9.30931499999997,
+            10.19828299999972
+          ],
+          "bytes": 3080,
+          "estimatedTokens": 770,
+          "denseState": "used"
+        },
+        {
+          "id": "r9",
+          "category": "semantic paraphrase",
+          "query": "Where is browser know-how stored?",
+          "relevant": [
+            "k1",
+            "k5"
+          ],
+          "returned": [
+            "k4"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.954310999999961,
+            9.509620999999697,
+            8.605937999999696
+          ],
+          "bytes": 1322,
+          "estimatedTokens": 331,
+          "denseState": "used"
+        },
+        {
+          "id": "r10",
+          "category": "semantic paraphrase",
+          "query": "Can an agent modify measured site playbooks itself?",
+          "relevant": [
+            "k9"
+          ],
+          "returned": [
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.228457000000162,
+            8.821608999999626,
+            9.318567000000257
+          ],
+          "bytes": 1494,
+          "estimatedTokens": 374,
+          "denseState": "used"
+        },
+        {
+          "id": "r11",
+          "category": "Korean paraphrase",
+          "query": "한국어 두 글자 단어도 찾도록 만드는 색인 방식은?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.51845800000001,
+            10.28260599999976,
+            9.211099000000104
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "used"
+        },
+        {
+          "id": "r12",
+          "category": "Korean paraphrase",
+          "query": "코드를 공유하기 전에 실행할 검증 명령은?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "g6",
+            "g8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            11.559063000000151,
+            8.435237000000143,
+            8.321738000000096
+          ],
+          "bytes": 3080,
+          "estimatedTokens": 770,
+          "denseState": "used"
+        },
+        {
+          "id": "r13",
+          "category": "Korean paraphrase",
+          "query": "아바타 파일의 용량 제한은?",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4",
+            "s9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            8.744208999999955,
+            9.161746000000221,
+            9.507723999999598
+          ],
+          "bytes": 2331,
+          "estimatedTokens": 583,
+          "denseState": "used"
+        },
+        {
+          "id": "r14",
+          "category": "Korean paraphrase",
+          "query": "프로젝트에 가입하지 않은 에이전트의 기록은 어떻게 막아?",
+          "relevant": [
+            "s3"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.1602469999998,
+            8.810397999999623,
+            8.921057000000019
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "r15",
+          "category": "procedure query",
+          "query": "Run a single regression test and then verify everything",
+          "relevant": [
+            "g8"
+          ],
+          "returned": [
+            "g3",
+            "g8",
+            "g2",
+            "g6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            10.690627999999833,
+            10.835967999999866,
+            10.346720000000005
+          ],
+          "bytes": 3919,
+          "estimatedTokens": 980,
+          "denseState": "used"
+        },
+        {
+          "id": "r16",
+          "category": "procedure query",
+          "query": "install locked dependencies npm ci",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.996324999999615,
+            8.454514999999901,
+            9.875442000000021
+          ],
+          "bytes": 993,
+          "estimatedTokens": 249,
+          "denseState": "used"
+        },
+        {
+          "id": "r17",
+          "category": "procedure query",
+          "query": "How to disable memory prompt freeze SAND_DISABLE_MEMORY_FREEZE",
+          "relevant": [
+            "m7"
+          ],
+          "returned": [
+            "m7",
+            "m1",
+            "m2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            12.411212000000432,
+            16.1244700000002,
+            10.488396000000193
+          ],
+          "bytes": 2523,
+          "estimatedTokens": 631,
+          "denseState": "used"
+        },
+        {
+          "id": "r18",
+          "category": "procedure query",
+          "query": "How to disable knowledge search SAND_KNOWLEDGE_STORE",
+          "relevant": [
+            "k2"
+          ],
+          "returned": [
+            "k2",
+            "k10",
+            "k9",
+            "k1",
+            "k5",
+            "m9",
+            "k7"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.14285714285714285,
+          "latencies": [
+            11.94563700000026,
+            9.976772999999866,
+            10.101482000000033
+          ],
+          "bytes": 8360,
+          "estimatedTokens": 2090,
+          "denseState": "used"
+        },
+        {
+          "id": "r19",
+          "category": "exact fact",
+          "query": "bm25 6.0 4.0 1.0 1.5",
+          "relevant": [
+            "k4"
+          ],
+          "returned": [
+            "k4",
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            9.193343999999797,
+            9.92419000000018,
+            11.73488099999986
+          ],
+          "bytes": 2370,
+          "estimatedTokens": 593,
+          "denseState": "used"
+        },
+        {
+          "id": "r20",
+          "category": "semantic paraphrase",
+          "query": "How does the index avoid rereading unchanged files?",
+          "relevant": [
+            "k6"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            11.443693000000167,
+            9.403615000000173,
+            11.908866000000216
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "r21",
+          "category": "semantic paraphrase",
+          "query": "Why are files outside the knowledge directory refused?",
+          "relevant": [
+            "k7"
+          ],
+          "returned": [
+            "k10",
+            "k9",
+            "m9",
+            "k5",
+            "k1",
+            "k2",
+            "k7"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.3333333333333333
+          },
+          "evidencePrecision": 0.14285714285714285,
+          "latencies": [
+            9.568628999999873,
+            9.661634999999933,
+            9.699090999999953
+          ],
+          "bytes": 8360,
+          "estimatedTokens": 2090,
+          "denseState": "used"
+        },
+        {
+          "id": "r22",
+          "category": "mixed",
+          "query": "StateWriteResult 성공 detail 실패 reason",
+          "relevant": [
+            "s1"
+          ],
+          "returned": [
+            "s1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.62043100000028,
+            8.840899999999692,
+            9.74795899999981
+          ],
+          "bytes": 1060,
+          "estimatedTokens": 265,
+          "denseState": "used"
+        },
+        {
+          "id": "r23",
+          "category": "mixed",
+          "query": "memory compactionEpoch 캐시",
+          "relevant": [
+            "m6"
+          ],
+          "returned": [
+            "m6",
+            "m8",
+            "m1",
+            "s5",
+            "m10",
+            "m3",
+            "m7",
+            "s2",
+            "m2",
+            "m5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            10.12439600000016,
+            15.813388000000032,
+            9.199958000000152
+          ],
+          "bytes": 9357,
+          "estimatedTokens": 2340,
+          "denseState": "used"
+        },
+        {
+          "id": "r24",
+          "category": "semantic paraphrase",
+          "query": "What generated outputs should not be committed?",
+          "relevant": [
+            "g5"
+          ],
+          "returned": [
+            "g5",
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            8.77047599999969,
+            8.544938000000002,
+            8.373661999999968
+          ],
+          "bytes": 2445,
+          "estimatedTokens": 612,
+          "denseState": "used"
+        },
+        {
+          "id": "r25",
+          "category": "Korean paraphrase",
+          "query": "매번 주입하는 최근 기억의 문자 예산은?",
+          "relevant": [
+            "m1"
+          ],
+          "returned": [
+            "m1",
+            "m2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            9.9726169999999,
+            9.072570000000269,
+            9.850008000000344
+          ],
+          "bytes": 1708,
+          "estimatedTokens": 427,
+          "denseState": "used"
+        },
+        {
+          "id": "r26",
+          "category": "semantic paraphrase",
+          "query": "Does a note have lower importance than an episode?",
+          "relevant": [
+            "m10"
+          ],
+          "returned": [
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.044582999999875,
+            9.202532999999676,
+            9.230324999999993
+          ],
+          "bytes": 1106,
+          "estimatedTokens": 277,
+          "denseState": "used"
+        },
+        {
+          "id": "r27",
+          "category": "procedure query",
+          "query": "What is the project TypeScript coding style?",
+          "relevant": [
+            "g4"
+          ],
+          "returned": [
+            "g4",
+            "g7",
+            "s3",
+            "s6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            9.311408999999912,
+            9.779303999999684,
+            9.379323999999997
+          ],
+          "bytes": 4500,
+          "estimatedTokens": 1125,
+          "denseState": "used"
+        },
+        {
+          "id": "r28",
+          "category": "semantic paraphrase",
+          "query": "Which evidence should not become durable personal memory?",
+          "relevant": [
+            "m9"
+          ],
+          "returned": [
+            "g6",
+            "k9",
+            "m9",
+            "m10",
+            "s5",
+            "s2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "evidencePrecision": 0.16666666666666666,
+          "latencies": [
+            8.494962000000214,
+            8.510893000000124,
+            9.155679000000418
+          ],
+          "bytes": 7067,
+          "estimatedTokens": 1767,
+          "denseState": "used"
+        },
+        {
+          "id": "r29",
+          "category": "absent/unanswerable",
+          "query": "What is the user passport number?",
+          "relevant": [],
+          "returned": [
+            "s7"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.063122000000021,
+            9.510287999999946,
+            9.350202999999965
+          ],
+          "bytes": 1349,
+          "estimatedTokens": 338,
+          "denseState": "used"
+        },
+        {
+          "id": "r30",
+          "category": "absent/unanswerable",
+          "query": "SAND_MEMORY_ENCRYPTION_KEY",
+          "relevant": [],
+          "returned": [
+            "m7"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.33489899999995,
+            10.034789000000274,
+            9.996818000000076
+          ],
+          "bytes": 873,
+          "estimatedTokens": 219,
+          "denseState": "used"
+        },
+        {
+          "id": "r31",
+          "category": "absent/unanswerable",
+          "query": "현재 사용자의 신용카드 번호는?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.330600000000231,
+            8.024118000000271,
+            7.828016999999818
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "r32",
+          "category": "absent/unanswerable",
+          "query": "Which embedding model is already used in knowledge-store.ts?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            10.878970000000209,
+            10.184709999999995,
+            10.57662399999981
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        }
+      ]
+    },
+    "E_plus_graph": {
+      "summary": {
+        "queries": 32,
+        "answerable": 28,
+        "recall5": 0.8571428571428571,
+        "recall10": 0.8928571428571429,
+        "ndcg5": 0.8261046340561234,
+        "ndcg10": 0.8380093959608853,
+        "evidencePrecision": 0.5236961451247165,
+        "abstention": 0.5,
+        "p50Ms": 9.271753999999873,
+        "p95Ms": 12.733995000000505,
+        "meanContextTokenEstimate": 656.4375,
+        "meanContextBytes": 2624.375
+      },
+      "byCategory": {
+        "exact fact": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.6222222222222222,
+          "abstention": null,
+          "p50Ms": 8.911446000000069,
+          "p95Ms": 11.778876999999738,
+          "meanContextTokenEstimate": 728,
+          "meanContextBytes": 2910
+        },
+        "Korean lexical": {
+          "queries": 1,
+          "answerable": 1,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 1,
+          "abstention": null,
+          "p50Ms": 8.936697999999978,
+          "p95Ms": 8.936697999999978,
+          "meanContextTokenEstimate": 273,
+          "meanContextBytes": 1090
+        },
+        "mixed": {
+          "queries": 3,
+          "answerable": 3,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 1,
+          "ndcg10": 1,
+          "evidencePrecision": 0.7000000000000001,
+          "abstention": null,
+          "p50Ms": 9.343264999999974,
+          "p95Ms": 10.169104999999945,
+          "meanContextTokenEstimate": 951.3333333333334,
+          "meanContextBytes": 3803.3333333333335
+        },
+        "semantic paraphrase": {
+          "queries": 9,
+          "answerable": 9,
+          "recall5": 0.6666666666666666,
+          "recall10": 0.7777777777777778,
+          "ndcg5": 0.6111111111111112,
+          "ndcg10": 0.6481481481481483,
+          "evidencePrecision": 0.46031746031746024,
+          "abstention": null,
+          "p50Ms": 9.307440999999926,
+          "p95Ms": 11.844891000000644,
+          "meanContextTokenEstimate": 723.2222222222222,
+          "meanContextBytes": 2891.5555555555557
+        },
+        "Korean paraphrase": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 0.8,
+          "recall10": 0.8,
+          "ndcg5": 0.8,
+          "ndcg10": 0.8,
+          "evidencePrecision": 0.4666666666666666,
+          "abstention": null,
+          "p50Ms": 9.674769999999626,
+          "p95Ms": 11.301862000000256,
+          "meanContextTokenEstimate": 413.6,
+          "meanContextBytes": 1653.8
+        },
+        "procedure query": {
+          "queries": 5,
+          "answerable": 5,
+          "recall5": 1,
+          "recall10": 1,
+          "ndcg5": 0.9261859507142916,
+          "ndcg10": 0.9261859507142916,
+          "evidencePrecision": 0.3952380952380952,
+          "abstention": null,
+          "p50Ms": 9.626447999999982,
+          "p95Ms": 13.547019999999975,
+          "meanContextTokenEstimate": 1015,
+          "meanContextBytes": 4059
+        },
+        "absent/unanswerable": {
+          "queries": 4,
+          "answerable": 0,
+          "recall5": 0,
+          "recall10": 0,
+          "ndcg5": 0,
+          "ndcg10": 0,
+          "evidencePrecision": 0,
+          "abstention": 0.5,
+          "p50Ms": 8.974790000000212,
+          "p95Ms": 9.72631900000033,
+          "meanContextTokenEstimate": 146.75,
+          "meanContextBytes": 585.5
+        }
+      },
+      "rows": [
+        {
+          "id": "r1",
+          "category": "exact fact",
+          "query": "SAND_KNOWLEDGE_DIR",
+          "relevant": [
+            "k1"
+          ],
+          "returned": [
+            "k1",
+            "k2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            8.282991999999922,
+            8.557017999999971,
+            7.864188000000013
+          ],
+          "bytes": 2282,
+          "estimatedTokens": 571,
+          "denseState": "used"
+        },
+        {
+          "id": "r2",
+          "category": "exact fact",
+          "query": "MEMORY_MAX_CONTENT_LENGTH",
+          "relevant": [
+            "m3"
+          ],
+          "returned": [
+            "m3",
+            "m8",
+            "m10",
+            "s2",
+            "m2",
+            "m1",
+            "k8",
+            "s5",
+            "m5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1111111111111111,
+          "latencies": [
+            9.237544999999955,
+            9.707542999999987,
+            9.49141200000031
+          ],
+          "bytes": 8165,
+          "estimatedTokens": 2042,
+          "denseState": "used"
+        },
+        {
+          "id": "r3",
+          "category": "exact fact",
+          "query": "AVATAR_MAX_BYTES",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.911446000000069,
+            11.778876999999738,
+            18.78420099999994
+          ],
+          "bytes": 884,
+          "estimatedTokens": 221,
+          "denseState": "used"
+        },
+        {
+          "id": "r4",
+          "category": "exact fact",
+          "query": "DEFAULT_EPISODE_INTERVAL",
+          "relevant": [
+            "m4"
+          ],
+          "returned": [
+            "m4"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            10.822811999999885,
+            9.157165999999961,
+            8.372163
+          ],
+          "bytes": 849,
+          "estimatedTokens": 213,
+          "denseState": "used"
+        },
+        {
+          "id": "r5",
+          "category": "Korean lexical",
+          "query": "Korean CJK bigrams",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.493905000000268,
+            8.936697999999978,
+            9.353895000000193
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "used"
+        },
+        {
+          "id": "r6",
+          "category": "mixed",
+          "query": "Node.js 버전 26.5.x",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            10.087214000000131,
+            9.073953999999958,
+            11.258363999999801
+          ],
+          "bytes": 993,
+          "estimatedTokens": 249,
+          "denseState": "used"
+        },
+        {
+          "id": "r7",
+          "category": "semantic paraphrase",
+          "query": "How are two-syllable Korean words made searchable?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.807871999999861,
+            9.307440999999926,
+            9.271753999999873
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "used"
+        },
+        {
+          "id": "r8",
+          "category": "semantic paraphrase",
+          "query": "What must pass before I share a code change?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "g6",
+            "g8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            10.472205999999915,
+            10.208263999999872,
+            10.172516000000087
+          ],
+          "bytes": 3080,
+          "estimatedTokens": 770,
+          "denseState": "used"
+        },
+        {
+          "id": "r9",
+          "category": "semantic paraphrase",
+          "query": "Where is browser know-how stored?",
+          "relevant": [
+            "k1",
+            "k5"
+          ],
+          "returned": [
+            "k4"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.925035999999636,
+            8.55640399999993,
+            9.192589999999655
+          ],
+          "bytes": 1322,
+          "estimatedTokens": 331,
+          "denseState": "used"
+        },
+        {
+          "id": "r10",
+          "category": "semantic paraphrase",
+          "query": "Can an agent modify measured site playbooks itself?",
+          "relevant": [
+            "k9"
+          ],
+          "returned": [
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            8.230470000000423,
+            8.493023999999878,
+            15.339697999999771
+          ],
+          "bytes": 1494,
+          "estimatedTokens": 374,
+          "denseState": "used"
+        },
+        {
+          "id": "r11",
+          "category": "Korean paraphrase",
+          "query": "한국어 두 글자 단어도 찾도록 만드는 색인 방식은?",
+          "relevant": [
+            "k3"
+          ],
+          "returned": [
+            "k3"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            10.06952100000035,
+            11.218695000000025,
+            9.603469000000132
+          ],
+          "bytes": 1090,
+          "estimatedTokens": 273,
+          "denseState": "used"
+        },
+        {
+          "id": "r12",
+          "category": "Korean paraphrase",
+          "query": "코드를 공유하기 전에 실행할 검증 명령은?",
+          "relevant": [
+            "g2"
+          ],
+          "returned": [
+            "g2",
+            "g6",
+            "g8"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            9.828742000000148,
+            9.62963499999978,
+            11.194036999999753
+          ],
+          "bytes": 3080,
+          "estimatedTokens": 770,
+          "denseState": "used"
+        },
+        {
+          "id": "r13",
+          "category": "Korean paraphrase",
+          "query": "아바타 파일의 용량 제한은?",
+          "relevant": [
+            "s4"
+          ],
+          "returned": [
+            "s4",
+            "s9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            9.719833000000108,
+            11.301862000000256,
+            8.659246000000167
+          ],
+          "bytes": 2331,
+          "estimatedTokens": 583,
+          "denseState": "used"
+        },
+        {
+          "id": "r14",
+          "category": "Korean paraphrase",
+          "query": "프로젝트에 가입하지 않은 에이전트의 기록은 어떻게 막아?",
+          "relevant": [
+            "s3"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.295117000000118,
+            8.943850999999995,
+            12.078399999999874
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "r15",
+          "category": "procedure query",
+          "query": "Run a single regression test and then verify everything",
+          "relevant": [
+            "g8"
+          ],
+          "returned": [
+            "g3",
+            "g8",
+            "g2",
+            "g6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.6309297535714575
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            9.301906000000145,
+            9.018712999999934,
+            9.101900999999998
+          ],
+          "bytes": 3919,
+          "estimatedTokens": 980,
+          "denseState": "used"
+        },
+        {
+          "id": "r16",
+          "category": "procedure query",
+          "query": "install locked dependencies npm ci",
+          "relevant": [
+            "g1"
+          ],
+          "returned": [
+            "g1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            7.842384999999922,
+            7.91048899999987,
+            7.814393999999993
+          ],
+          "bytes": 993,
+          "estimatedTokens": 249,
+          "denseState": "used"
+        },
+        {
+          "id": "r17",
+          "category": "procedure query",
+          "query": "How to disable memory prompt freeze SAND_DISABLE_MEMORY_FREEZE",
+          "relevant": [
+            "m7"
+          ],
+          "returned": [
+            "m7",
+            "m1",
+            "m2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.3333333333333333,
+          "latencies": [
+            14.074759000000086,
+            13.547019999999975,
+            12.72311099999979
+          ],
+          "bytes": 2523,
+          "estimatedTokens": 631,
+          "denseState": "used"
+        },
+        {
+          "id": "r18",
+          "category": "procedure query",
+          "query": "How to disable knowledge search SAND_KNOWLEDGE_STORE",
+          "relevant": [
+            "k2"
+          ],
+          "returned": [
+            "k2",
+            "k10",
+            "k9",
+            "k1",
+            "k5",
+            "m9",
+            "k7"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.14285714285714285,
+          "latencies": [
+            11.16165699999965,
+            10.24427199999991,
+            10.222410999999738
+          ],
+          "bytes": 8360,
+          "estimatedTokens": 2090,
+          "denseState": "used"
+        },
+        {
+          "id": "r19",
+          "category": "exact fact",
+          "query": "bm25 6.0 4.0 1.0 1.5",
+          "relevant": [
+            "k4"
+          ],
+          "returned": [
+            "k4",
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            8.566303999999946,
+            8.385463999999956,
+            8.36336300000039
+          ],
+          "bytes": 2370,
+          "estimatedTokens": 593,
+          "denseState": "used"
+        },
+        {
+          "id": "r20",
+          "category": "semantic paraphrase",
+          "query": "How does the index avoid rereading unchanged files?",
+          "relevant": [
+            "k6"
+          ],
+          "returned": [],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.916948999999931,
+            10.680300999999872,
+            11.505389999999807
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "r21",
+          "category": "semantic paraphrase",
+          "query": "Why are files outside the knowledge directory refused?",
+          "relevant": [
+            "k7"
+          ],
+          "returned": [
+            "k10",
+            "k9",
+            "m9",
+            "k5",
+            "k1",
+            "k2",
+            "k7"
+          ],
+          "at5": {
+            "recall": 0,
+            "ndcg": 0
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.3333333333333333
+          },
+          "evidencePrecision": 0.14285714285714285,
+          "latencies": [
+            9.580225000000155,
+            8.741665999999896,
+            8.948499999999967
+          ],
+          "bytes": 8360,
+          "estimatedTokens": 2090,
+          "denseState": "used"
+        },
+        {
+          "id": "r22",
+          "category": "mixed",
+          "query": "StateWriteResult 성공 detail 실패 reason",
+          "relevant": [
+            "s1"
+          ],
+          "returned": [
+            "s1"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            10.169104999999945,
+            8.637153000000126,
+            9.917791999999736
+          ],
+          "bytes": 1060,
+          "estimatedTokens": 265,
+          "denseState": "used"
+        },
+        {
+          "id": "r23",
+          "category": "mixed",
+          "query": "memory compactionEpoch 캐시",
+          "relevant": [
+            "m6"
+          ],
+          "returned": [
+            "m6",
+            "m8",
+            "m1",
+            "s5",
+            "m10",
+            "m3",
+            "m7",
+            "s2",
+            "m2",
+            "m5"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.1,
+          "latencies": [
+            8.745593000000099,
+            9.343264999999974,
+            8.619198999999753
+          ],
+          "bytes": 9357,
+          "estimatedTokens": 2340,
+          "denseState": "used"
+        },
+        {
+          "id": "r24",
+          "category": "semantic paraphrase",
+          "query": "What generated outputs should not be committed?",
+          "relevant": [
+            "g5"
+          ],
+          "returned": [
+            "g5",
+            "k9"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            16.87744600000042,
+            9.204652000000351,
+            8.848148000000037
+          ],
+          "bytes": 2445,
+          "estimatedTokens": 612,
+          "denseState": "used"
+        },
+        {
+          "id": "r25",
+          "category": "Korean paraphrase",
+          "query": "매번 주입하는 최근 기억의 문자 예산은?",
+          "relevant": [
+            "m1"
+          ],
+          "returned": [
+            "m1",
+            "m2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.5,
+          "latencies": [
+            9.263328000000001,
+            9.144853000000694,
+            9.674769999999626
+          ],
+          "bytes": 1708,
+          "estimatedTokens": 427,
+          "denseState": "used"
+        },
+        {
+          "id": "r26",
+          "category": "semantic paraphrase",
+          "query": "Does a note have lower importance than an episode?",
+          "relevant": [
+            "m10"
+          ],
+          "returned": [
+            "m10"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 1,
+          "latencies": [
+            9.346971999999369,
+            9.41198600000007,
+            9.467091999999866
+          ],
+          "bytes": 1106,
+          "estimatedTokens": 277,
+          "denseState": "used"
+        },
+        {
+          "id": "r27",
+          "category": "procedure query",
+          "query": "What is the project TypeScript coding style?",
+          "relevant": [
+            "g4"
+          ],
+          "returned": [
+            "g4",
+            "g7",
+            "s3",
+            "s6"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 1
+          },
+          "evidencePrecision": 0.25,
+          "latencies": [
+            8.96285799999987,
+            9.626447999999982,
+            9.912562000000435
+          ],
+          "bytes": 4500,
+          "estimatedTokens": 1125,
+          "denseState": "used"
+        },
+        {
+          "id": "r28",
+          "category": "semantic paraphrase",
+          "query": "Which evidence should not become durable personal memory?",
+          "relevant": [
+            "m9"
+          ],
+          "returned": [
+            "g6",
+            "k9",
+            "m9",
+            "m10",
+            "s5",
+            "s2"
+          ],
+          "at5": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "at10": {
+            "recall": 1,
+            "ndcg": 0.5
+          },
+          "evidencePrecision": 0.16666666666666666,
+          "latencies": [
+            8.687403000000813,
+            8.580780000000232,
+            11.844891000000644
+          ],
+          "bytes": 7067,
+          "estimatedTokens": 1767,
+          "denseState": "used"
+        },
+        {
+          "id": "r29",
+          "category": "absent/unanswerable",
+          "query": "What is the user passport number?",
+          "relevant": [],
+          "returned": [
+            "s7"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            8.331154000000424,
+            8.514247000000069,
+            9.72631900000033
+          ],
+          "bytes": 1349,
+          "estimatedTokens": 338,
+          "denseState": "used"
+        },
+        {
+          "id": "r30",
+          "category": "absent/unanswerable",
+          "query": "SAND_MEMORY_ENCRYPTION_KEY",
+          "relevant": [],
+          "returned": [
+            "m7"
+          ],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.516679000000295,
+            8.974790000000212,
+            8.914494999999988
+          ],
+          "bytes": 873,
+          "estimatedTokens": 219,
+          "denseState": "used"
+        },
+        {
+          "id": "r31",
+          "category": "absent/unanswerable",
+          "query": "현재 사용자의 신용카드 번호는?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.067111999999725,
+            8.073440000000119,
+            8.268896999999924
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        },
+        {
+          "id": "r32",
+          "category": "absent/unanswerable",
+          "query": "Which embedding model is already used in knowledge-store.ts?",
+          "relevant": [],
+          "returned": [],
+          "at5": {
+            "recall": null,
+            "ndcg": null
+          },
+          "at10": {
+            "recall": null,
+            "ndcg": null
+          },
+          "evidencePrecision": 0,
+          "latencies": [
+            9.343319999999949,
+            12.733995000000505,
+            9.16055200000028
+          ],
+          "bytes": 60,
+          "estimatedTokens": 15,
+          "denseState": "used"
+        }
+      ]
+    }
+  }
+}

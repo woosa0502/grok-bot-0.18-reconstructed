@@ -116,6 +116,9 @@ export interface CompletedTurnArgs {
   /** A hidden task-continuation run (the runtime handed the turn back over an unfinished todo list). */
   readonly taskContinuation?: boolean;
   readonly trimmedPrompt: string;
+  /** The persisted human text before workflow, recovery, or hook expansion. */
+  readonly memoryUserTurn?: string;
+  readonly memoryLearningSource?: "user" | "system";
   readonly session: TurnSession;
   readonly baseContext: unknown;
   readonly requestId?: string;
@@ -402,6 +405,7 @@ export function createTurnSettle(
     // model call inside the child's settle, delaying the Task result.
     const shouldRemember =
       !host.isSubagentRunner
+      && args.memoryLearningSource !== "system"
       && scope.isRunSuperseded?.() !== true
       && !host.isRunSuperseded()
       && scope.memoryStore != null
@@ -414,7 +418,7 @@ export function createTurnSettle(
 
     if (shouldRemember && scope.memoryStore != null) {
       const exchange = {
-        user: args.trimmedPrompt,
+        user: args.memoryUserTurn ?? args.trimmedPrompt,
         agent: [...agentMessages, text]
           .filter((part) => part.trim().length > 0)
           .join("\n"),
@@ -426,6 +430,10 @@ export function createTurnSettle(
         args.baseContext,
         args.turnStartedAtMs,
         exchange,
+        {
+          conversationId: scope.conversationId,
+          ...(args.requestId == null ? {} : { requestId: args.requestId }),
+        },
       );
     }
   }

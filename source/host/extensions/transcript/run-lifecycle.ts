@@ -287,6 +287,13 @@ export class RunLifecycle {
       this.tm.sessions.pendingSessionOpens.get(session.id) === pending
     )
       this.tm.sessions.pendingSessionOpens.delete(session.id);
+    try {
+      this.tm.memory.onConversationLifecycle?.({
+        agentId: session.id,
+        conversationId: session.id,
+        reason: "close",
+      });
+    } catch {}
     await session.agentStore.dispose();
     session.db.close();
   }

@@ -61,6 +61,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
     const parts = url.pathname.split("/").filter(Boolean);
     if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, ...serviceIdentity, engine: engine.version, model: engine.A.settings(engine.account.id).get("defaultModel") ?? model, ...engine.stats() });
+    if (req.method === "POST" && url.pathname === "/memory/context") return json(res, 200, engine.memoryTaskContext((await readBody(req)).task));
     // Aside-side view: what the fork's own chat UI shows (sessions of the daemon account), for the bot mirror.
     if (parts[0] === "aside") {
       if (req.method === "GET" && parts[1] === "sessions" && parts.length === 2) return json(res, 200, engine.listAsideSessions(Number(url.searchParams.get("limit") ?? 20)));
@@ -79,6 +80,7 @@ const server = http.createServer(async (req, res) => {
         model: requestedModel === undefined ? undefined : resolveModelSelection(engine.A.settings(engine.account.id).get("defaultModel") ?? model, requestedModel),
         mode: body.mode ?? opt.mode,
         autoApprove: body.autoApprove ?? opt["auto-approve"],
+        memoryContext: body.memoryContext,
       });
       log(`[session ${h.id}] start mode=${h.mode} model=${h.model.modelId}/${h.model.thinkingLevel}: ${h.task.slice(0, 100)}`);
       return json(res, 201, h.toJSON());
@@ -93,7 +95,10 @@ const server = http.createServer(async (req, res) => {
       log(`[session ${h.id}] answered`);
       return json(res, 200, h.toJSON());
     }
-    if (req.method === "POST" && parts[2] === "continue") { h.continue((await readBody(req)).text); log(`[session ${h.id}] continue`); return json(res, 200, h.toJSON()); }
+    if (req.method === "POST" && parts[2] === "continue") { const body = await readBody(req); h.continue(body.text, body.memoryContext); log(`[session ${h.id}] continue`); return json(res, 200, h.toJSON()); }
+    // Explicit outcome producers can attach observed grades/candidate material.
+    // Scope, authority, trial arrays and procedure acceptance never enter here.
+    if (req.method === "POST" && parts[2] === "outcome") { const body = await readBody(req); h.reportOutcome(body.eventId, body.outcome); return json(res, 200, h.toJSON()); }
     if (req.method === "POST" && parts[2] === "steer") { await h.steer((await readBody(req)).text); return json(res, 200, h.toJSON()); }
     if (req.method === "POST" && parts[2] === "stop") { await h.stop(); log(`[session ${h.id}] stopped`); return json(res, 200, h.toJSON()); }
     return json(res, 404, { error: "not found" });

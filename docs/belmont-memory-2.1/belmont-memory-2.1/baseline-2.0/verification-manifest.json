@@ -1,0 +1,21 @@
+{
+  "date": "2026-09-11T05:18:43.836Z",
+  "node": "v22.16.0",
+  "sqlite": "3.49.1",
+  "platform": "linux",
+  "arch": "x64",
+  "typescript": "5.8.3",
+  "nodeTypes": "25.1.0",
+  "testCount": 61,
+  "passed": 61,
+  "failed": 0,
+  "skipped": 0,
+  "build": "strict TypeScript: passed",
+  "dependencyInstall": "not completed; preinstalled toolchain used",
+  "originalBelmontFullCI": "not run",
+  "targetBelmontNode": "26.5.x",
+  "remoteChanges": false,
+  "asideCodeReviewed": false,
+  "publicBenchmarksRun": false,
+  "actualDenseModelRun": false
+}

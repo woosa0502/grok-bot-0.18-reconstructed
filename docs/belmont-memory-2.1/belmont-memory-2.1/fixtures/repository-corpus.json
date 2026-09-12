@@ -1,0 +1,637 @@
+{
+  "provenance": "Four source files fetched through connected GitHub on 2026-09-11. No personal production logs. Queries/qrels authored for this engineering evaluation, not an independent held-out benchmark.",
+  "repository": "woosa0502/Belmont",
+  "documents": [
+    {
+      "id": "k1",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "resolveKnowledgeDir",
+      "content": "export function resolveKnowledgeDir(): string { return process.env.SAND_KNOWLEDGE_DIR?.trim() || join(getSandRootDir(), \"knowledge\"); }",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k2",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "isKnowledgeStoreEnabled",
+      "content": "export function isKnowledgeStoreEnabled(): boolean { return process.env.SAND_KNOWLEDGE_STORE !== \"0\"; }",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k3",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "Korean retrieval",
+      "content": "Korean is handled by indexing CJK bigrams next to unicode61 tokens so two-syllable words still match.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k4",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "weighted retrieval",
+      "content": "SELECT path, title, date, body, snippet(k, 3, '', '', '…', 24) AS snip, bm25(k, 0, 6.0, 4.0, 1.0, 1.5) AS score FROM k WHERE k MATCH ? ORDER BY score LIMIT ?",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k5",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "KNOWLEDGE_SUBDIRS",
+      "content": "export const KNOWLEDGE_SUBDIRS = [\"sites\", \"rules\", \"lessons\"] as const;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k6",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "incremental indexing",
+      "content": "const mtime = statSync(file).mtimeMs;\nif (this.#indexed.get(file) === mtime) continue;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k7",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "readKnowledgePage",
+      "content": "try { root = realpathSync(dir); target = realpathSync(requested); } catch { return null; }\nif (!target.endsWith(\".md\") || !(target === root || target.startsWith(root + sep))) return null;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k8",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "PAGE_MAX_CHARS",
+      "content": "const PAGE_MAX_CHARS = 16_000;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k9",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "knowledge ownership",
+      "content": "The store is curated by measurement: do not edit sites/ pages yourself. If you learn a durable site quirk, record it in your own memory (update_state) and mention that it belongs in the knowledge store.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k10",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "shared knowledge singleton",
+      "content": "/** One index per host process; returns undefined when the store is disabled or the directory does not exist yet. */",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "k11",
+      "source": {
+        "path": "source/host/runner/knowledge-store.ts",
+        "blob": "7deb45178afd60a2a66c6f456111691978ee95a9"
+      },
+      "title": "fts tokenizer",
+      "content": "CREATE VIRTUAL TABLE k USING fts5(path UNINDEXED, title, aliases, body, ngrams, date UNINDEXED, tokenize='unicode61 remove_diacritics 2')",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "s1",
+      "source": {
+        "path": "source/host/extensions/memory/agent-state.ts",
+        "blob": "a77977763c7da46877a0b0ce3b7efdf10f6401ef"
+      },
+      "title": "StateWriteResult",
+      "content": "export type StateWriteResult = { ok: true; detail: string } | { ok: false; reason: string };",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "s2",
+      "source": {
+        "path": "source/host/extensions/memory/agent-state.ts",
+        "blob": "a77977763c7da46877a0b0ce3b7efdf10f6401ef"
+      },
+      "title": "Memory writer origin",
+      "content": "const record = store.addMemory(tier === \"note\" ? `${MEMORY_NOTE_PREFIX}${content.trim()}` : content, at, tier === \"profile\" ? \"profile\" : \"log\", \"explicit\");",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "s3",
+      "source": {
+        "path": "source/host/extensions/memory/agent-state.ts",
+        "blob": "a77977763c7da46877a0b0ce3b7efdf10f6401ef"
+      },
+      "title": "Project membership guard",
+      "content": "if (!deps.membership.read().has(slug)) return fail(`you haven't joined project \"${slug}\" yet. Join it first (target \"project\", action \"join\").`);",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "s4",
+      "source": {
+        "path": "source/host/extensions/memory/agent-state.ts",
+        "blob": "a77977763c7da46877a0b0ce3b7efdf10f6401ef"
+      },
+      "title": "Avatar size limit",
+      "content": "export const AVATAR_MAX_BYTES = 5 * 1024 * 1024;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "s5",
+      "source": {
+        "path": "source/host/extensions/memory/agent-state.ts",
+        "blob": "a77977763c7da46877a0b0ce3b7efdf10f6401ef"
+      },
+      "title": "Memory note prefix",
+      "content": "export const MEMORY_NOTE_PREFIX = \"Note: \";",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "s6",
+      "source": {
+        "path": "source/host/extensions/memory/agent-state.ts",
+        "blob": "a77977763c7da46877a0b0ce3b7efdf10f6401ef"
+      },
+      "title": "Project slug safety",
+      "content": "if (!isSafeFolderId(slug)) return fail(`\"${slug}\" is not a valid project slug — use a short kebab-case id.`);",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "s7",
+      "source": {
+        "path": "source/host/extensions/memory/agent-state.ts",
+        "blob": "a77977763c7da46877a0b0ce3b7efdf10f6401ef"
+      },
+      "title": "Shared user shard",
+      "content": "if (scope === \"user\") return { store: new FileMemoryStore(getUserMemoryShardDir(deps.sandRoot, deps.agentId), immediateDebounce), label: \"shared user memory\" };",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "s8",
+      "source": {
+        "path": "source/host/extensions/memory/agent-state.ts",
+        "blob": "a77977763c7da46877a0b0ce3b7efdf10f6401ef"
+      },
+      "title": "Automation create",
+      "content": "async createAutomation({ spec }: { spec: unknown }) { return describeAutomation(deps.automations.upsert(spec, now()), \"Saved\"); }",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "s9",
+      "source": {
+        "path": "source/host/extensions/memory/agent-state.ts",
+        "blob": "a77977763c7da46877a0b0ce3b7efdf10f6401ef"
+      },
+      "title": "Avatar accepted types",
+      "content": "const avatarExtension = (mime: string): string | null => ({ \"image/png\": \"png\", \"image/jpeg\": \"jpg\", \"image/webp\": \"webp\", \"image/gif\": \"gif\", \"image/svg+xml\": \"svg\" })[mime] ?? null;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "g1",
+      "source": {
+        "path": "AGENTS.md",
+        "blob": "c6ebff93e84657459bba8f16bbf078278235f267"
+      },
+      "title": "Runtime version and installation",
+      "content": "Use Node.js 26.5.x (see `.node-version`) and install the locked graph with `npm ci`.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "g2",
+      "source": {
+        "path": "AGENTS.md",
+        "blob": "c6ebff93e84657459bba8f16bbf078278235f267"
+      },
+      "title": "Pre-share verification",
+      "content": "Before sharing a change, run `npm run check` and `npm run frontend:build`.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "g3",
+      "source": {
+        "path": "AGENTS.md",
+        "blob": "c6ebff93e84657459bba8f16bbf078278235f267"
+      },
+      "title": "Regression test command",
+      "content": "`npm test` — run `node:test` suites in `tests/*.test.mjs`.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "g4",
+      "source": {
+        "path": "AGENTS.md",
+        "blob": "c6ebff93e84657459bba8f16bbf078278235f267"
+      },
+      "title": "Coding style",
+      "content": "Use ESM, strict TypeScript, two-space indentation, double quotes, semicolons, and trailing commas in multiline literals.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "g5",
+      "source": {
+        "path": "AGENTS.md",
+        "blob": "c6ebff93e84657459bba8f16bbf078278235f267"
+      },
+      "title": "Generated trees",
+      "content": "Do not commit generated trees such as `.build/`, `.cache/`, `dist/`, or `src/app/dist/`.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "g6",
+      "source": {
+        "path": "AGENTS.md",
+        "blob": "c6ebff93e84657459bba8f16bbf078278235f267"
+      },
+      "title": "Verification integrity",
+      "content": "Never weaken checksum, bundle-identity, signing, or clean-export checks to obtain a pass, and never commit credentials or local forensic evidence.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "g7",
+      "source": {
+        "path": "AGENTS.md",
+        "blob": "c6ebff93e84657459bba8f16bbf078278235f267"
+      },
+      "title": "Frontend source",
+      "content": "`frontend/` is the editable React/TypeScript reconstruction; it is not the checksum-pinned packaged renderer.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "g8",
+      "source": {
+        "path": "AGENTS.md",
+        "blob": "c6ebff93e84657459bba8f16bbf078278235f267"
+      },
+      "title": "Targeted test invocation",
+      "content": "Run a targeted test with `node --test tests/<name>.test.mjs`, then run the full check.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m1",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Memory prompt budget",
+      "content": "export const MEMORY_RECENT_PROMPT_CHAR_BUDGET = 4_000;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m2",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Profile count cap",
+      "content": "export const MEMORY_PROFILE_PROMPT_LIMIT = 100;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m3",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Maximum fact length",
+      "content": "export const MEMORY_MAX_CONTENT_LENGTH = 500;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m4",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Default episode interval",
+      "content": "export const DEFAULT_EPISODE_INTERVAL = 6;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m5",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Recall decay",
+      "content": "export const MEMORY_DECAY_HALF_LIFE_DAYS = 30;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m6",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Frozen memory key",
+      "content": "if (args.snapshot != null && args.snapshot.compactionEpoch === args.compactionEpoch) return { render: args.snapshot.render };",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m7",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Freeze switch",
+      "content": "return env.SAND_DISABLE_MEMORY_FREEZE !== \"1\";",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m8",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Normalized memory",
+      "content": "return raw.replace(/\\s+/g, \" \").trim().slice(0, MEMORY_MAX_CONTENT_LENGTH);",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m9",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Extraction scope exclusions",
+      "content": "Do NOT record one-off request mechanics, what the assistant did this turn, general knowledge, or anything already present in the existing memory list.",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    },
+    {
+      "id": "m10",
+      "source": {
+        "path": "source/host/runner/sand-memory.ts",
+        "blob": "89c42cd03f7c8929586643aea4661e12ab6bfbf8"
+      },
+      "title": "Importance weighting",
+      "content": "return content.startsWith(MEMORY_EPISODE_PREFIX) ? 1.5 : content.startsWith(MEMORY_NOTE_PREFIX) ? 0.5 : 1;",
+      "kind": "audited_repository_excerpt_whitespace_normalized"
+    }
+  ],
+  "queries": [
+    {
+      "id": "r1",
+      "category": "exact fact",
+      "query": "SAND_KNOWLEDGE_DIR",
+      "relevant": [
+        "k1"
+      ]
+    },
+    {
+      "id": "r2",
+      "category": "exact fact",
+      "query": "MEMORY_MAX_CONTENT_LENGTH",
+      "relevant": [
+        "m3"
+      ]
+    },
+    {
+      "id": "r3",
+      "category": "exact fact",
+      "query": "AVATAR_MAX_BYTES",
+      "relevant": [
+        "s4"
+      ]
+    },
+    {
+      "id": "r4",
+      "category": "exact fact",
+      "query": "DEFAULT_EPISODE_INTERVAL",
+      "relevant": [
+        "m4"
+      ]
+    },
+    {
+      "id": "r5",
+      "category": "Korean lexical",
+      "query": "Korean CJK bigrams",
+      "relevant": [
+        "k3"
+      ]
+    },
+    {
+      "id": "r6",
+      "category": "mixed",
+      "query": "Node.js 버전 26.5.x",
+      "relevant": [
+        "g1"
+      ]
+    },
+    {
+      "id": "r7",
+      "category": "semantic paraphrase",
+      "query": "How are two-syllable Korean words made searchable?",
+      "relevant": [
+        "k3"
+      ]
+    },
+    {
+      "id": "r8",
+      "category": "semantic paraphrase",
+      "query": "What must pass before I share a code change?",
+      "relevant": [
+        "g2"
+      ]
+    },
+    {
+      "id": "r9",
+      "category": "semantic paraphrase",
+      "query": "Where is browser know-how stored?",
+      "relevant": [
+        "k1",
+        "k5"
+      ]
+    },
+    {
+      "id": "r10",
+      "category": "semantic paraphrase",
+      "query": "Can an agent modify measured site playbooks itself?",
+      "relevant": [
+        "k9"
+      ]
+    },
+    {
+      "id": "r11",
+      "category": "Korean paraphrase",
+      "query": "한국어 두 글자 단어도 찾도록 만드는 색인 방식은?",
+      "relevant": [
+        "k3"
+      ]
+    },
+    {
+      "id": "r12",
+      "category": "Korean paraphrase",
+      "query": "코드를 공유하기 전에 실행할 검증 명령은?",
+      "relevant": [
+        "g2"
+      ]
+    },
+    {
+      "id": "r13",
+      "category": "Korean paraphrase",
+      "query": "아바타 파일의 용량 제한은?",
+      "relevant": [
+        "s4"
+      ]
+    },
+    {
+      "id": "r14",
+      "category": "Korean paraphrase",
+      "query": "프로젝트에 가입하지 않은 에이전트의 기록은 어떻게 막아?",
+      "relevant": [
+        "s3"
+      ]
+    },
+    {
+      "id": "r15",
+      "category": "procedure query",
+      "query": "Run a single regression test and then verify everything",
+      "relevant": [
+        "g8"
+      ]
+    },
+    {
+      "id": "r16",
+      "category": "procedure query",
+      "query": "install locked dependencies npm ci",
+      "relevant": [
+        "g1"
+      ]
+    },
+    {
+      "id": "r17",
+      "category": "procedure query",
+      "query": "How to disable memory prompt freeze SAND_DISABLE_MEMORY_FREEZE",
+      "relevant": [
+        "m7"
+      ]
+    },
+    {
+      "id": "r18",
+      "category": "procedure query",
+      "query": "How to disable knowledge search SAND_KNOWLEDGE_STORE",
+      "relevant": [
+        "k2"
+      ]
+    },
+    {
+      "id": "r19",
+      "category": "exact fact",
+      "query": "bm25 6.0 4.0 1.0 1.5",
+      "relevant": [
+        "k4"
+      ]
+    },
+    {
+      "id": "r20",
+      "category": "semantic paraphrase",
+      "query": "How does the index avoid rereading unchanged files?",
+      "relevant": [
+        "k6"
+      ]
+    },
+    {
+      "id": "r21",
+      "category": "semantic paraphrase",
+      "query": "Why are files outside the knowledge directory refused?",
+      "relevant": [
+        "k7"
+      ]
+    },
+    {
+      "id": "r22",
+      "category": "mixed",
+      "query": "StateWriteResult 성공 detail 실패 reason",
+      "relevant": [
+        "s1"
+      ]
+    },
+    {
+      "id": "r23",
+      "category": "mixed",
+      "query": "memory compactionEpoch 캐시",
+      "relevant": [
+        "m6"
+      ]
+    },
+    {
+      "id": "r24",
+      "category": "semantic paraphrase",
+      "query": "What generated outputs should not be committed?",
+      "relevant": [
+        "g5"
+      ]
+    },
+    {
+      "id": "r25",
+      "category": "Korean paraphrase",
+      "query": "매번 주입하는 최근 기억의 문자 예산은?",
+      "relevant": [
+        "m1"
+      ]
+    },
+    {
+      "id": "r26",
+      "category": "semantic paraphrase",
+      "query": "Does a note have lower importance than an episode?",
+      "relevant": [
+        "m10"
+      ]
+    },
+    {
+      "id": "r27",
+      "category": "procedure query",
+      "query": "What is the project TypeScript coding style?",
+      "relevant": [
+        "g4"
+      ]
+    },
+    {
+      "id": "r28",
+      "category": "semantic paraphrase",
+      "query": "Which evidence should not become durable personal memory?",
+      "relevant": [
+        "m9"
+      ]
+    },
+    {
+      "id": "r29",
+      "category": "absent/unanswerable",
+      "query": "What is the user passport number?",
+      "relevant": []
+    },
+    {
+      "id": "r30",
+      "category": "absent/unanswerable",
+      "query": "SAND_MEMORY_ENCRYPTION_KEY",
+      "relevant": []
+    },
+    {
+      "id": "r31",
+      "category": "absent/unanswerable",
+      "query": "현재 사용자의 신용카드 번호는?",
+      "relevant": []
+    },
+    {
+      "id": "r32",
+      "category": "absent/unanswerable",
+      "query": "Which embedding model is already used in knowledge-store.ts?",
+      "relevant": []
+    }
+  ]
+}

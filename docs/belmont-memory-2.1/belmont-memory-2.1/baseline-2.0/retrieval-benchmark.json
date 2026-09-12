@@ -1,0 +1,1001 @@
+{
+  "schema": 1,
+  "fixture": "synthetic-26-cases-v1",
+  "records": 522,
+  "answerableCases": 22,
+  "absentCases": 4,
+  "runtime": "v22.16.0",
+  "sqlite": "node:sqlite",
+  "generatedAt": "2026-09-11T05:14:57.556Z",
+  "limitation": "In-memory, warm synthetic microbenchmark. Not current Belmont baseline, not LoCoMo/LongMemEval, not pretrained dense retrieval, not production latency or LLM abstention.",
+  "results": [
+    {
+      "mode": "unicode61_only",
+      "recallAt5": 0.36363636363636365,
+      "ndcgAt5": 0.36363636363636365,
+      "emptyReturnRateOnAbsent": 1,
+      "p50Ms": 0.13192800000001625,
+      "p95Ms": 0.23306300000001556,
+      "measuredQueries": 780
+    },
+    {
+      "mode": "cjk_bigram",
+      "recallAt5": 0.9090909090909091,
+      "ndcgAt5": 0.9090909090909091,
+      "emptyReturnRateOnAbsent": 0.75,
+      "p50Ms": 0.1751369999999497,
+      "p95Ms": 0.32574299999998857,
+      "measuredQueries": 780
+    },
+    {
+      "mode": "cjk_plus_action_queries",
+      "recallAt5": 0.9545454545454546,
+      "ndcgAt5": 0.9545454545454546,
+      "emptyReturnRateOnAbsent": 0.75,
+      "p50Ms": 0.18057899999996607,
+      "p95Ms": 0.6969970000000103,
+      "measuredQueries": 780
+    }
+  ],
+  "details": [
+    {
+      "mode": "unicode61_only",
+      "cases": [
+        {
+          "caseId": "ko-통로석",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "60b7c58d-82b2-4da2-922a-4c2d46b45657"
+          ],
+          "expected": [
+            "eaaabab6-2bcc-4931-9075-39adc470c7d8"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-카페인",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "213c3685-7be3-47a3-98c9-f6121868a2df"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-반려견",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "b77631d0-e062-4a58-9099-1d17937ce631"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-주차장",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "ce7c6fe1-9aa0-4405-954a-68d209694fc8"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-채식",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "6d8b674b-b305-4b9f-882e-e6be728d3120"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-자전거",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "4960ed6d-3090-437e-8cc9-c9a9bc854957"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-도서관",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "64c17bd7-0266-453c-851b-af78923c3f37"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-회의실",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "c0fbf582-ac08-4a46-9fa2-cc4025debd68"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-오사카",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "2d995b05-b360-4c7c-9312-fb2925831b73"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-제주도",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "c82b9bfa-e023-406b-8fb5-14a5658e7e16"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-예약번호",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "3285a44d-5170-4588-872f-55a0fb4a28bb"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-배포시간",
+          "kind": "korean_suffix",
+          "retrieved": [],
+          "expected": [
+            "c8ba8a53-df00-47ca-97a0-fbcda1405489"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-SQLite",
+          "kind": "exact",
+          "retrieved": [
+            "0b6f30bb-2ccf-43af-a2c1-6517604e3bde"
+          ],
+          "expected": [
+            "0b6f30bb-2ccf-43af-a2c1-6517604e3bde"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-TypeScript",
+          "kind": "exact",
+          "retrieved": [
+            "54f4327b-37ae-452c-8c52-c4b4a60460e6"
+          ],
+          "expected": [
+            "54f4327b-37ae-452c-8c52-c4b4a60460e6"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-Electron",
+          "kind": "exact",
+          "retrieved": [
+            "b211cc16-852e-4630-b6b6-9353ef4fa354"
+          ],
+          "expected": [
+            "b211cc16-852e-4630-b6b6-9353ef4fa354"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-Belmont",
+          "kind": "exact",
+          "retrieved": [
+            "e29332f1-5205-484c-ac87-80e60dd27422"
+          ],
+          "expected": [
+            "e29332f1-5205-484c-ac87-80e60dd27422"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-React",
+          "kind": "exact",
+          "retrieved": [
+            "51ad0776-a411-4dc2-93a9-7b4c457e41d0"
+          ],
+          "expected": [
+            "51ad0776-a411-4dc2-93a9-7b4c457e41d0"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-Docker",
+          "kind": "exact",
+          "retrieved": [
+            "26e0dd33-d915-4ae7-b2d4-81a4eebce160"
+          ],
+          "expected": [
+            "26e0dd33-d915-4ae7-b2d4-81a4eebce160"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-PRAGMAs",
+          "kind": "exact",
+          "retrieved": [
+            "eb90d0d3-8cdd-4a3d-a933-0651871f5372"
+          ],
+          "expected": [
+            "eb90d0d3-8cdd-4a3d-a933-0651871f5372"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-FTS5",
+          "kind": "exact",
+          "retrieved": [
+            "f6904e48-1152-4ef6-adfe-6cf985e2fed5"
+          ],
+          "expected": [
+            "f6904e48-1152-4ef6-adfe-6cf985e2fed5"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "implicit-flight",
+          "kind": "implicit",
+          "retrieved": [],
+          "expected": [
+            "60b7c58d-82b2-4da2-922a-4c2d46b45657"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "implicit-paraphrase",
+          "kind": "implicit",
+          "retrieved": [],
+          "expected": [
+            "f0f38f8b-bf2f-4eb1-96c3-2463402b5596"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "absent-UNSEENXYZ",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        },
+        {
+          "caseId": "absent-지하잠수정",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        },
+        {
+          "caseId": "absent-QZXVV071",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        },
+        {
+          "caseId": "absent-행성간순간이동",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        }
+      ]
+    },
+    {
+      "mode": "cjk_bigram",
+      "cases": [
+        {
+          "caseId": "ko-통로석",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "eaaabab6-2bcc-4931-9075-39adc470c7d8",
+            "60b7c58d-82b2-4da2-922a-4c2d46b45657"
+          ],
+          "expected": [
+            "eaaabab6-2bcc-4931-9075-39adc470c7d8"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-카페인",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "213c3685-7be3-47a3-98c9-f6121868a2df"
+          ],
+          "expected": [
+            "213c3685-7be3-47a3-98c9-f6121868a2df"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-반려견",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "b77631d0-e062-4a58-9099-1d17937ce631"
+          ],
+          "expected": [
+            "b77631d0-e062-4a58-9099-1d17937ce631"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-주차장",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "ce7c6fe1-9aa0-4405-954a-68d209694fc8"
+          ],
+          "expected": [
+            "ce7c6fe1-9aa0-4405-954a-68d209694fc8"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-채식",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "6d8b674b-b305-4b9f-882e-e6be728d3120"
+          ],
+          "expected": [
+            "6d8b674b-b305-4b9f-882e-e6be728d3120"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-자전거",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "4960ed6d-3090-437e-8cc9-c9a9bc854957"
+          ],
+          "expected": [
+            "4960ed6d-3090-437e-8cc9-c9a9bc854957"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-도서관",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "64c17bd7-0266-453c-851b-af78923c3f37"
+          ],
+          "expected": [
+            "64c17bd7-0266-453c-851b-af78923c3f37"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-회의실",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "c0fbf582-ac08-4a46-9fa2-cc4025debd68"
+          ],
+          "expected": [
+            "c0fbf582-ac08-4a46-9fa2-cc4025debd68"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-오사카",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "2d995b05-b360-4c7c-9312-fb2925831b73"
+          ],
+          "expected": [
+            "2d995b05-b360-4c7c-9312-fb2925831b73"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-제주도",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "c82b9bfa-e023-406b-8fb5-14a5658e7e16"
+          ],
+          "expected": [
+            "c82b9bfa-e023-406b-8fb5-14a5658e7e16"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-예약번호",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "3285a44d-5170-4588-872f-55a0fb4a28bb"
+          ],
+          "expected": [
+            "3285a44d-5170-4588-872f-55a0fb4a28bb"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-배포시간",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "c8ba8a53-df00-47ca-97a0-fbcda1405489"
+          ],
+          "expected": [
+            "c8ba8a53-df00-47ca-97a0-fbcda1405489"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-SQLite",
+          "kind": "exact",
+          "retrieved": [
+            "0b6f30bb-2ccf-43af-a2c1-6517604e3bde"
+          ],
+          "expected": [
+            "0b6f30bb-2ccf-43af-a2c1-6517604e3bde"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-TypeScript",
+          "kind": "exact",
+          "retrieved": [
+            "54f4327b-37ae-452c-8c52-c4b4a60460e6"
+          ],
+          "expected": [
+            "54f4327b-37ae-452c-8c52-c4b4a60460e6"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-Electron",
+          "kind": "exact",
+          "retrieved": [
+            "b211cc16-852e-4630-b6b6-9353ef4fa354"
+          ],
+          "expected": [
+            "b211cc16-852e-4630-b6b6-9353ef4fa354"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-Belmont",
+          "kind": "exact",
+          "retrieved": [
+            "e29332f1-5205-484c-ac87-80e60dd27422"
+          ],
+          "expected": [
+            "e29332f1-5205-484c-ac87-80e60dd27422"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-React",
+          "kind": "exact",
+          "retrieved": [
+            "51ad0776-a411-4dc2-93a9-7b4c457e41d0"
+          ],
+          "expected": [
+            "51ad0776-a411-4dc2-93a9-7b4c457e41d0"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-Docker",
+          "kind": "exact",
+          "retrieved": [
+            "26e0dd33-d915-4ae7-b2d4-81a4eebce160"
+          ],
+          "expected": [
+            "26e0dd33-d915-4ae7-b2d4-81a4eebce160"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-PRAGMAs",
+          "kind": "exact",
+          "retrieved": [
+            "eb90d0d3-8cdd-4a3d-a933-0651871f5372"
+          ],
+          "expected": [
+            "eb90d0d3-8cdd-4a3d-a933-0651871f5372"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-FTS5",
+          "kind": "exact",
+          "retrieved": [
+            "f6904e48-1152-4ef6-adfe-6cf985e2fed5"
+          ],
+          "expected": [
+            "f6904e48-1152-4ef6-adfe-6cf985e2fed5"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "implicit-flight",
+          "kind": "implicit",
+          "retrieved": [],
+          "expected": [
+            "60b7c58d-82b2-4da2-922a-4c2d46b45657"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "implicit-paraphrase",
+          "kind": "implicit",
+          "retrieved": [],
+          "expected": [
+            "f0f38f8b-bf2f-4eb1-96c3-2463402b5596"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "absent-UNSEENXYZ",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        },
+        {
+          "caseId": "absent-지하잠수정",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        },
+        {
+          "caseId": "absent-QZXVV071",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        },
+        {
+          "caseId": "absent-행성간순간이동",
+          "kind": "unanswerable",
+          "retrieved": [
+            "f0f38f8b-bf2f-4eb1-96c3-2463402b5596"
+          ],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": false
+        }
+      ]
+    },
+    {
+      "mode": "cjk_plus_action_queries",
+      "cases": [
+        {
+          "caseId": "ko-통로석",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "eaaabab6-2bcc-4931-9075-39adc470c7d8",
+            "60b7c58d-82b2-4da2-922a-4c2d46b45657"
+          ],
+          "expected": [
+            "eaaabab6-2bcc-4931-9075-39adc470c7d8"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-카페인",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "213c3685-7be3-47a3-98c9-f6121868a2df"
+          ],
+          "expected": [
+            "213c3685-7be3-47a3-98c9-f6121868a2df"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-반려견",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "b77631d0-e062-4a58-9099-1d17937ce631"
+          ],
+          "expected": [
+            "b77631d0-e062-4a58-9099-1d17937ce631"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-주차장",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "ce7c6fe1-9aa0-4405-954a-68d209694fc8"
+          ],
+          "expected": [
+            "ce7c6fe1-9aa0-4405-954a-68d209694fc8"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-채식",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "6d8b674b-b305-4b9f-882e-e6be728d3120"
+          ],
+          "expected": [
+            "6d8b674b-b305-4b9f-882e-e6be728d3120"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-자전거",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "4960ed6d-3090-437e-8cc9-c9a9bc854957"
+          ],
+          "expected": [
+            "4960ed6d-3090-437e-8cc9-c9a9bc854957"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-도서관",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "64c17bd7-0266-453c-851b-af78923c3f37"
+          ],
+          "expected": [
+            "64c17bd7-0266-453c-851b-af78923c3f37"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-회의실",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "c0fbf582-ac08-4a46-9fa2-cc4025debd68"
+          ],
+          "expected": [
+            "c0fbf582-ac08-4a46-9fa2-cc4025debd68"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-오사카",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "2d995b05-b360-4c7c-9312-fb2925831b73"
+          ],
+          "expected": [
+            "2d995b05-b360-4c7c-9312-fb2925831b73"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-제주도",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "c82b9bfa-e023-406b-8fb5-14a5658e7e16"
+          ],
+          "expected": [
+            "c82b9bfa-e023-406b-8fb5-14a5658e7e16"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-예약번호",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "3285a44d-5170-4588-872f-55a0fb4a28bb"
+          ],
+          "expected": [
+            "3285a44d-5170-4588-872f-55a0fb4a28bb"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "ko-배포시간",
+          "kind": "korean_suffix",
+          "retrieved": [
+            "c8ba8a53-df00-47ca-97a0-fbcda1405489"
+          ],
+          "expected": [
+            "c8ba8a53-df00-47ca-97a0-fbcda1405489"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-SQLite",
+          "kind": "exact",
+          "retrieved": [
+            "0b6f30bb-2ccf-43af-a2c1-6517604e3bde"
+          ],
+          "expected": [
+            "0b6f30bb-2ccf-43af-a2c1-6517604e3bde"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-TypeScript",
+          "kind": "exact",
+          "retrieved": [
+            "54f4327b-37ae-452c-8c52-c4b4a60460e6"
+          ],
+          "expected": [
+            "54f4327b-37ae-452c-8c52-c4b4a60460e6"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-Electron",
+          "kind": "exact",
+          "retrieved": [
+            "b211cc16-852e-4630-b6b6-9353ef4fa354"
+          ],
+          "expected": [
+            "b211cc16-852e-4630-b6b6-9353ef4fa354"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-Belmont",
+          "kind": "exact",
+          "retrieved": [
+            "e29332f1-5205-484c-ac87-80e60dd27422"
+          ],
+          "expected": [
+            "e29332f1-5205-484c-ac87-80e60dd27422"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-React",
+          "kind": "exact",
+          "retrieved": [
+            "51ad0776-a411-4dc2-93a9-7b4c457e41d0"
+          ],
+          "expected": [
+            "51ad0776-a411-4dc2-93a9-7b4c457e41d0"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-Docker",
+          "kind": "exact",
+          "retrieved": [
+            "26e0dd33-d915-4ae7-b2d4-81a4eebce160"
+          ],
+          "expected": [
+            "26e0dd33-d915-4ae7-b2d4-81a4eebce160"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-PRAGMAs",
+          "kind": "exact",
+          "retrieved": [
+            "eb90d0d3-8cdd-4a3d-a933-0651871f5372"
+          ],
+          "expected": [
+            "eb90d0d3-8cdd-4a3d-a933-0651871f5372"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "exact-FTS5",
+          "kind": "exact",
+          "retrieved": [
+            "f6904e48-1152-4ef6-adfe-6cf985e2fed5"
+          ],
+          "expected": [
+            "f6904e48-1152-4ef6-adfe-6cf985e2fed5"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "implicit-flight",
+          "kind": "implicit",
+          "retrieved": [
+            "60b7c58d-82b2-4da2-922a-4c2d46b45657",
+            "eaaabab6-2bcc-4931-9075-39adc470c7d8"
+          ],
+          "expected": [
+            "60b7c58d-82b2-4da2-922a-4c2d46b45657"
+          ],
+          "recall5": 1,
+          "ndcg5": 1,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "implicit-paraphrase",
+          "kind": "implicit",
+          "retrieved": [
+            "60b7c58d-82b2-4da2-922a-4c2d46b45657",
+            "eaaabab6-2bcc-4931-9075-39adc470c7d8"
+          ],
+          "expected": [
+            "f0f38f8b-bf2f-4eb1-96c3-2463402b5596"
+          ],
+          "recall5": 0,
+          "ndcg5": 0,
+          "correctEmpty": null
+        },
+        {
+          "caseId": "absent-UNSEENXYZ",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        },
+        {
+          "caseId": "absent-지하잠수정",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        },
+        {
+          "caseId": "absent-QZXVV071",
+          "kind": "unanswerable",
+          "retrieved": [],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": true
+        },
+        {
+          "caseId": "absent-행성간순간이동",
+          "kind": "unanswerable",
+          "retrieved": [
+            "f0f38f8b-bf2f-4eb1-96c3-2463402b5596"
+          ],
+          "expected": [],
+          "recall5": null,
+          "ndcg5": null,
+          "correctEmpty": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "result": {
+    "status": "committed",
+    "id": "ced05f72-135d-445e-9065-77826446a6c0",
+    "version": 1
+  },
+  "packet": {
+    "role": "untrusted_memory_data",
+    "memories": [
+      {
+        "id": "ced05f72-135d-445e-9065-77826446a6c0",
+        "version": 1,
+        "content": "장거리 비행에서는 통로석을 선호한다",
+        "authority": "user_explicit",
+        "evidence": [
+          {
+            "id": "d252853e-b48b-44d0-895c-9ba9e39374d6",
+            "source": "user-message",
+            "quote": "장거리 비행에서는 통로석을 선호한다"
+          }
+        ]
+      }
+    ]
+  }
+}
+forget: { forgotten: 1, epoch: 1 }
+after forget: []

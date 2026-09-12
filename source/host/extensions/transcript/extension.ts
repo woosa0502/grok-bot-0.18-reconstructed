@@ -4,6 +4,7 @@ import {
 } from "../../../internal/scheduling.js";
 import { defineHostExtension } from "../../../internal/host-extensions.js";
 import { getSandRootDir } from "../../host-paths.js";
+import { subscribeTranscriptMutations } from "../../transcript-mutation-events.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 import { PromptAcceptanceLedger } from "./prompt-acceptance-ledger.js";
 import { OUTLINE_STREAM_COALESCE_MS } from "./roster-projection.js";
@@ -68,6 +69,18 @@ export const transcriptExtension = defineHostExtension<
     manager.setProductAnalytics(deps.telemetry.analytics);
     manager.setTraceFlusher(deps.telemetry.flushTracing);
     manager.setMemory(deps.memory);
+    const unsubscribeMemoryMutations = subscribeTranscriptMutations((mutation) => {
+      if (
+        (mutation.kind === "conversation-cleared" || mutation.kind === "agent-removed")
+        && typeof mutation.agentId === "string"
+      ) {
+        manager.memory.onConversationLifecycle?.({
+          agentId: mutation.agentId,
+          conversationId: mutation.agentId,
+          reason: "clear",
+        });
+      }
+    });
     manager.setContentSearch(deps[HostExtensions.ContentSearch]);
     manager.setAttachments(deps.attachments);
     manager.setTrayErrors(deps.trays);
@@ -116,7 +129,10 @@ export const transcriptExtension = defineHostExtension<
         );
       },
     );
-    context.onStop(() => manager.dispose());
+    context.onStop(() => {
+      unsubscribeMemoryMutations();
+      return manager.dispose();
+    });
     return manager;
   },
 });
