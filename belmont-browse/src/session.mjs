@@ -350,7 +350,7 @@ export async function initializeLocalLifecycle(A, { accountId, startBackground =
   return lifecycle;
 }
 
-export function createBrowseSession(A, { accountId, cwd, title, permissionMode, model, profileId, windowId, anchorTargetId }) {
+export function createBrowseSession(A, { accountId, cwd, title, permissionMode, model, profileId, windowId, anchorTargetId, sitesDir }) {
   const id = randomUUID().replace(/-/g, "").slice(0, 21);
   const createdAt = new Date();
   mkdirSync(cwd, { recursive: true });
@@ -367,7 +367,7 @@ export function createBrowseSession(A, { accountId, cwd, title, permissionMode, 
     model,
     browserBinding: { profileId, windowId, ...(anchorTargetId ? { anchorTargetId } : {}) },
     incognito: false,
-    runtimeConfig: { workingDirs: [cwd], ...(canonicalMemoryRequested() ? { memoryExtractionDisabled: true } : {}) },
+    runtimeConfig: { workingDirs: [cwd], ...(canonicalMemoryRequested() ? { memoryExtractionDisabled: true } : {}), ...(sitesDir ? { sitesDir } : {}) },
   });
   return session;
 }

@@ -381,14 +381,17 @@ export function createSessionController({ A, account, profileId, ext, model = DE
     }
   }
 
-  function startSession({ task, model: requestedModel, thinking, mode = "guard", autoApprove = false, memoryContext }) {
+  function startSession({ task, model: requestedModel, thinking, mode = "guard", autoApprove = false, memoryContext, sitesDir }) {
     if (closed) throw sessionError("ENGINE_CLOSED", "engine is closed", 503);
     const text = requireText(String(task ?? "").replace(BOUNDARY_RE, ""));
+    if (sitesDir !== undefined && (typeof sitesDir !== "string" || !sitesDir.trim())) throw sessionError("INVALID_SITES_DIR", "sitesDir, when given, must be a non-empty string", 400);
     const memoryBinding = prepareMemory(memoryContext);
     const currentDefault = A.settings?.(account.id)?.get("defaultModel") ?? model;
     const requested = typeof requestedModel === "string" ? { modelId: requestedModel } : requestedModel;
     const selection = resolveModelSelection(currentDefault, { ...requested, ...(thinking !== undefined ? { thinkingLevel: thinking } : {}) });
-    const record = createRecord(A, { accountId: account.id, cwd, title: text.slice(0, 80), permissionMode: mode, model: selection, profileId, windowId: ext.windowId });
+    // A per-session sites overlay (used by the learn-measure evaluation harness) scopes this session's site
+    // knowledge to an isolated directory so the operational pages are neither read nor mutated while measuring.
+    const record = createRecord(A, { accountId: account.id, cwd, title: text.slice(0, 80), permissionMode: mode, model: selection, profileId, windowId: ext.windowId, sitesDir });
     const h = bareHandle({ id: record.id, task: text, mode, model: selection, autoApprove });
     h.memoryContext = memoryBinding;
     persistMemoryBinding(h);

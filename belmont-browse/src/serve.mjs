@@ -60,7 +60,10 @@ const server = http.createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${token}`) return json(res, 401, { error: "unauthorized" });
     const url = new URL(req.url, "http://127.0.0.1");
     const parts = url.pathname.split("/").filter(Boolean);
-    if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, ...serviceIdentity, engine: engine.version, model: engine.A.settings(engine.account.id).get("defaultModel") ?? model, ...engine.stats() });
+    // sitesOverlay is advertised only when the operator has enabled it (BELMONT_BROWSE_SITES_OVERLAY=1) on a
+    // daemon bundle whose memory_search forwards the per-session sitesDir. learn-measure refuses to run without
+    // it, so it never exposes an unapproved draft on a service that cannot isolate the evaluation.
+    if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, ...serviceIdentity, engine: engine.version, model: engine.A.settings(engine.account.id).get("defaultModel") ?? model, sitesOverlay: process.env.BELMONT_BROWSE_SITES_OVERLAY === "1", ...engine.stats() });
     if (req.method === "POST" && url.pathname === "/memory/context") return json(res, 200, engine.memoryTaskContext((await readBody(req)).task));
     // Aside-side view: what the fork's own chat UI shows (sessions of the daemon account), for the bot mirror.
     if (parts[0] === "aside") {
@@ -81,6 +84,7 @@ const server = http.createServer(async (req, res) => {
         mode: body.mode ?? opt.mode,
         autoApprove: body.autoApprove ?? opt["auto-approve"],
         memoryContext: body.memoryContext,
+        sitesDir: body.sitesDir,
       });
       log(`[session ${h.id}] start mode=${h.mode} model=${h.model.modelId}/${h.model.thinkingLevel}: ${h.task.slice(0, 100)}`);
       return json(res, 201, h.toJSON());

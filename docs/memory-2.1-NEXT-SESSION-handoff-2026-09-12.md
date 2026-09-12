@@ -81,3 +81,14 @@ Memory 2.1 통합을 고정 9개 목록으로 검증(전부 실 제품 경로로
 - **연결 2건 재검증(리뷰어는 origin을 봐서 오탐 가능)**:
   - **Belmont 기억 → Aside task = 이미 배선됨**(오탐). `extension.ts:60` `createBrowseMemoryHooks` → `BrowseClient.create/continue`의 `#prepareMemory`가 기억 packet 주입(create·follow-up·answer 전부). origin엔 Memory 2.1이 없어 안 보였음.
   - **dreaming → 승급 게이트**: **canonical엔 존재**(`kernel/experience/loop.ts`: `ingest`는 candidate를 evidence로만 capture, `promote()`가 `evaluateProcedure`로 측정 후 `state:"accepted"`만, `lookup`은 accepted만 반환). **legacy 경로만 gap** — `patch-daemon-dream-procedures.py`가 절차를 활성 `sites/` Current에 직접 쓰고 learn-measure(drafts/→sites/)와 자동 hand-off 없음. **남은 작업**: 라이브 Aside 엔진 + 설계 결정 필요(데몬 write 재조정). 맹목 수정 금지.
+
+## 11. 2차 ZIP 리뷰 후속 수정 (d7d9f9c 재검토 대응)
+리뷰어가 `d7d9f9c`를 정확히 고정해 재검토. learn-measure 수정은 유효하나 P1 2건·P2 2건·테스트 검출력 부족을 지적 — 다음과 같이 처리.
+- **P1-1 목표검증 재작성**: `runOnce`가 결과를 100자로 자른 뒤 검사하던 truncation 결함 제거 — **전체 result**로 검증. 판정은 succeeded/failed/**unknown** 3분류(`goalVerdict`): 실패 표현이면 failed, `--goal`(운영자 지정 관찰가능 성공 표지)이 전체 결과에 있으면 succeeded, 아니면 unknown. **unknown은 절대 승격 안 함**(실패어 부재 ≠ 성공). `--goal` 없으면 전부 unknown → 아무것도 승격 불가(보수적).
+- **P1-2 평가중 운영 페이지 격리**: 측정 중 운영 `sites/<domain>.md`를 **절대 건드리지 않음**. 후보는 격리된 eval 디렉터리(`.state/learn-eval/<domain>-<pid>/sites`, KNOWLEDGE_DIR 밖)에서 측정하고 세션에 `sitesDir`로 전달. 승인 시에만 운영 페이지를 atomic(temp→rename) publish. 독립 reader는 평가 내내 CHAMPION만 봄(회귀 테스트로 증명). 서비스가 오버레이를 광고(`health.sitesOverlay`)하지 않으면 **측정 거부**(노출 원천 차단).
+  - 배선(우리 코드, 테스트됨): `serve.mjs`(health.sitesOverlay는 `BELMONT_BROWSE_SITES_OVERLAY=1` env 게이트, `/sessions`가 `sitesDir` 수용) → `core.mjs` startSession → `session.mjs` createBrowseSession(`runtimeConfig.sitesDir`) → `memory-search.mjs` per-session `sitesRoot`(운영 sites 심링크는 allowed에서 빠져 자연 배제, distinct 인덱스 키로 격리; 단위테스트 `memory-search-sites-overlay.test.mjs`).
+  - **남은 배선(라이브 검증 필요)**: 데몬의 agent `memory_search`가 세션의 `runtimeConfig.sitesDir`를 `__belmontMemorySearch({sitesRoot})`로 포워딩해야 오버레이가 worker에 실제 적용됨. **주의**: 벤더 909 데몬은 이미 패치된 형태라 `patch-daemon.py`에 맹목 추가 시 bootstrap assert가 깨짐 — 실제 번들 대조 + 라이브 스모크 필요. 그전까지 learn-measure는 안전하게 거부(운영 노출 0, 다만 adoption 비활성).
+- **P2-3 복구**: 새 설계는 운영 페이지를 측정 중 안 건드리므로 **저널·복원 단계 자체가 없음**(복원 실패 시 저널 삭제 결함 근본 해소). crash(SIGKILL) 시 운영 페이지는 CHAMPION 유지(회귀 테스트).
+- **P2-3b lock**: 살아있는 소유자 PID의 lock은 **시간 경과만으로 탈취하지 않음**(죽은 PID만 탈취), release는 **자기 lock만**.
+- **P2-4 테스트 검출력**: 부정 시나리오(done-without-goal·more-errors 등) 후보 비용을 1 call(< champion 2)로 낮춰 **비용만으론 기각 불가 → 목표·오류 게이트가 실제로 작동해야** 기각되게 함. `adopted = goalOk && errorsOk && cheaper`를 `adopted = cheaper`로 변형하면 12개 중 4개 실패(검출) 확인.
+- **테스트**: `test/learn-measure-adoption.test.mjs` 12개(강화 fixture+목표+격리+lock+양성) + `test/memory-search-sites-overlay.test.mjs` 1개, Node 26.8.1로 전부 통과, mutation으로 검출력 확인. 리뷰어가 확인한 synthesis bounded-retry(프로세스 내 최대 5패스, 재시작 초과 영속성은 범위 밖)·연결 2건(memory→Aside 배선 존재, canonical ExperienceLoop 게이트 존재) 판정은 유지.

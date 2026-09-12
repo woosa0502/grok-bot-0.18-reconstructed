@@ -112,7 +112,7 @@ export function chunkMemoryFile(file, text, { maxChunkChars = DEFAULT_CHUNK_CHAR
   return chunks;
 }
 
-function listMarkdown(memoryDir, allowedRoots, log) {
+function listMarkdown(walkRoots, allowedRoots, log) {
   const out = [];
   const visited = new Set();
   const files = new Set();
@@ -140,7 +140,7 @@ function listMarkdown(memoryDir, allowedRoots, log) {
       } catch { log("[memory-search] skipped an unreadable or concurrently removed entry"); }
     }
   }
-  walk(memoryDir);
+  for (const r of walkRoots) walk(r);
   return out;
 }
 
@@ -189,38 +189,44 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
     try { return realpathSync(resolved); } catch { return resolved; }
   }
 
-  function refresh(accountRoot) {
+  function refresh(accountRoot, sitesRoot) {
     if (closed) throw new Error("memory search is closed");
     const root = rootPath(accountRoot);
     const memoryDir = path.join(root, "memory");
-    const allowed = [memoryDir, ...allowedRoots].map((dir) => {
-      try { return realpathSync(dir); } catch { return path.resolve(dir); }
-    });
-    const indexed = roots.get(root) ?? new Map();
-    roots.set(root, indexed);
-    const files = listMarkdown(memoryDir, allowed, log);
+    const real = (dir) => { try { return realpathSync(dir); } catch { return path.resolve(dir); } };
+    // A per-session sites overlay replaces the operational site knowledge FOR THAT SESSION ONLY: the overlay
+    // is walked and allowed, while the global KNOWLEDGE_DIR sites (reached through the account's memory/sites
+    // symlink) fall outside the allowed set and are excluded. It is indexed under a distinct key so an eval
+    // session's candidate page never mixes into — or leaks out of — the shared per-account view.
+    const sites = sitesRoot ? real(sitesRoot) : null;
+    const allowed = (sites ? [memoryDir, sites] : [memoryDir, ...allowedRoots]).map(real);
+    const walkRoots = sites ? [memoryDir, sites] : [memoryDir];
+    const key = sites ? `${root} ${sites}` : root;
+    const indexed = roots.get(key) ?? new Map();
+    roots.set(key, indexed);
+    const files = listMarkdown(walkRoots, allowed, log);
     const found = new Set(files.map(({ file }) => file));
-    for (const file of indexed.keys()) if (!found.has(file)) { remove.run(root, file); indexed.delete(file); }
+    for (const file of indexed.keys()) if (!found.has(file)) { remove.run(key, file); indexed.delete(file); }
     let changed = 0;
     for (const { file, target, stat } of files) {
       const fingerprint = [target, stat.mtimeMs, stat.ctimeMs, stat.size, stat.ino].join(":");
       if (indexed.get(file)?.fingerprint === fingerprint) continue;
       let chunks;
       try { chunks = chunkMemoryFile(file, readFileSync(file, "utf8"), { maxChunkChars }); }
-      catch { remove.run(root, file); indexed.delete(file); continue; }
-      remove.run(root, file);
+      catch { remove.run(key, file); indexed.delete(file); continue; }
+      remove.run(key, file);
       for (const chunk of chunks) {
         const grams = cjkBigrams(chunk.text).join(" ");
         const chars = (compactCjk(chunk.text).match(CJK_RUNS) ?? []).flatMap((run) => [...run]).join(" ");
         const context = isContextAwarenessMemoryPath(file) || isContextAwarenessMemoryPath(target) ? 1 : 0;
         chunk.context = Boolean(context);
-        insert.run(root, chunk.id, file, normalize(chunk.title), normalize(chunk.aliases), normalize(chunk.headings), normalize(chunk.body), grams, chars, chunk.date, context);
+        insert.run(key, chunk.id, file, normalize(chunk.title), normalize(chunk.aliases), normalize(chunk.headings), normalize(chunk.body), grams, chars, chunk.date, context);
       }
       indexed.set(file, { fingerprint, chunks });
       changed += 1;
     }
-    if (changed) log(`[memory-search] indexed ${changed} file(s), read-only chunk index`);
-    return root;
+    if (changed) log(`[memory-search] indexed ${changed} file(s)${sites ? " (session sites overlay)" : ""}, read-only chunk index`);
+    return key;
   }
 
   function capabilities() {
@@ -233,13 +239,14 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
   }
 
   /** Aside's maxResults is PER QUERY; separate chunks in one file are independent hits. */
-  async function runSearchMany({ accountRoot, queries, maxResults = 5, range, excludeContextAwareness = false }) {
+  async function runSearchMany({ accountRoot, sitesRoot, queries, maxResults = 5, range, excludeContextAwareness = false }) {
     if (!Array.isArray(queries) || queries.some((query) => typeof query !== "string")) throw new TypeError("queries must be an array of strings");
     if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 10) throw new RangeError("maxResults must be between 1 and 10 per query");
+    if (sitesRoot !== undefined && (typeof sitesRoot !== "string" || !sitesRoot.trim())) throw new TypeError("sitesRoot, when given, must be a non-empty string");
     const from = range?.from === undefined ? "" : day(range.from);
     const to = range?.to === undefined ? "" : day(range.to);
     if ((range?.from !== undefined && !from) || (range?.to !== undefined && !to) || (from && to && from > to)) throw new RangeError("range requires valid inclusive dates with from <= to");
-    const root = refresh(accountRoot);
+    const root = refresh(accountRoot, sitesRoot);
     const chunks = [...roots.get(root).values()].flatMap((entry) => entry.chunks).filter((chunk) =>
       (!excludeContextAwareness || !chunk.context) && (!chunk.date || ((!from || chunk.date >= from) && (!to || chunk.date <= to))));
     const byId = new Map(chunks.map((chunk) => [chunk.id, chunk]));

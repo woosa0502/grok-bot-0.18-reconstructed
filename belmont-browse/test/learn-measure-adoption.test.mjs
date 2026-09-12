@@ -1,137 +1,194 @@
-// Regression tests for belmont-browse/src/learn-measure.mjs adoption rules.
+// Regression tests for belmont-browse/src/learn-measure.mjs adoption + isolation rules.
 //
-// These INVERT the external reviewer's diagnostic repros (belmont-review/review-repros.test.mjs): where the
-// repros asserted the old defects (a worse challenger adopted because the baseline was "no page"; a terminal
-// "done" accepted as task success; fewer tools overriding more errors; a transport error leaving the live
-// page missing or an unapproved draft live), these assert the CORRECTED behavior after the fix:
-//   - the bar is the CURRENT approved procedure (no-page is only a diagnostic / the bar when none exists),
-//   - a draft is adopted only if every run reaches the goal, errors are no worse, and it is strictly cheaper,
-//   - the live page is restored on every exit; it becomes the draft only after approval.
-//
-// Worker responses and timers are test doubles (no real browser, Aside service, site, account or API). Each
-// scenario runs the real module in a child process against a temp knowledge dir and inspects the files.
+// The candidate is delivered to the worker through a per-session sites overlay (the `sitesDir` the service
+// advertises via health.sitesOverlay); the operational page knowledge/sites/<domain>.md is the thing live bot
+// sessions read. The mock worker reads the OVERLAY the session was given, while an independent reader reads
+// the OPERATIONAL page — so these tests prove the operational page is never an unapproved draft during a
+// trial, that a draft is adopted only when it is cheaper AND proven to reach the goal AND no worse on errors,
+// and that the single-writer lock and crash behavior are safe. No live browser, Aside service, site, account
+// or booking API is used; file writes, child processes, an independent reader, SIGKILL and the lock are real.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, copyFileSync } from "node:fs";
+import fs from "node:fs";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-const moduleUrl = new URL("../src/learn-measure.mjs", import.meta.url);
-const moduleFile = fileURLToPath(moduleUrl);
+const moduleFile = fileURLToPath(new URL("../src/learn-measure.mjs", import.meta.url));
 
-function runScenario(scenario, { seedChampion = true } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "belmont-learn-"));
-  for (const sub of ["src", ".state", "knowledge/sites", "knowledge/drafts", "knowledge/lessons"]) mkdirSync(join(root, sub), { recursive: true });
-  copyFileSync(moduleFile, join(root, "src/learn-measure.mjs"));
-  writeFileSync(join(root, "src/session.mjs"), "export const KNOWLEDGE_DIR = process.env.REVIEW_KNOWLEDGE_DIR;\n");
-  writeFileSync(join(root, ".state/serve.json"), JSON.stringify({ port: 1, token: "test-only-not-a-secret" }));
-  if (seedChampion) writeFileSync(join(root, "knowledge/sites/example.com.md"), "CHAMPION");
-  writeFileSync(join(root, "knowledge/drafts/example.com.md"), "DRAFT");
-  const preload = join(root, "mock-runtime.mjs");
-  writeFileSync(preload, `
-import { readFileSync, existsSync, appendFileSync } from "node:fs";
+function makeRoot(seedChampion = true) {
+  const root = fs.mkdtempSync(join(tmpdir(), "belmont-learn-"));
+  for (const sub of ["src", ".state", "knowledge/sites", "knowledge/drafts", "knowledge/lessons"]) fs.mkdirSync(join(root, sub), { recursive: true });
+  fs.copyFileSync(moduleFile, join(root, "src/learn-measure.mjs"));
+  fs.writeFileSync(join(root, "src/session.mjs"), "export const KNOWLEDGE_DIR = process.env.REVIEW_KNOWLEDGE_DIR;\n");
+  fs.writeFileSync(join(root, ".state/serve.json"), JSON.stringify({ port: 1, token: "test-only-not-a-secret" }));
+  if (seedChampion) fs.writeFileSync(join(root, "knowledge/sites/example.com.md"), "CHAMPION");
+  fs.writeFileSync(join(root, "knowledge/drafts/example.com.md"), "DRAFT");
+  // The worker reads the per-session overlay it was given (sitesDir in the POST body); an independent reader
+  // reads the operational page. `cheaperDraft` scenarios make the draft cost 1 call (< champion's 2) so the
+  // goal/error guards — not the cost comparison — are what must reject them (detection power).
+  fs.writeFileSync(join(root, "mock.mjs"), String.raw`
+import fs from "node:fs";
 import { join } from "node:path";
-const root = process.env.REVIEW_ROOT;
-const scenario = process.env.REVIEW_SCENARIO;
-const page = join(root, "knowledge/sites/example.com.md");
+import { spawnSync } from "node:child_process";
+const root = process.env.REVIEW_ROOT, scenario = process.env.REVIEW_SCENARIO;
+const opPage = join(root, "knowledge/sites/example.com.md"); // operational page live readers use
+const log = join(root, "knowledge/lessons/measurements.log");
 const trace = join(root, "trace.jsonl");
-let created = 0;
+let lastSitesDir = null, created = 0, readerRan = false;
 globalThis.setTimeout = (fn) => { queueMicrotask(fn); return 0; };
-globalThis.fetch = async (_url, options) => {
-  const content = existsSync(page) ? readFileSync(page, "utf8") : "NONE";
-  appendFileSync(trace, JSON.stringify({ method: options.method, content }) + "\\n");
+globalThis.fetch = async (url, options) => {
+  const u = String(url);
+  if (u.endsWith("/health")) return { json: async () => ({ ok: true, sitesOverlay: true }) };
+  if (options.method === "POST" && u.endsWith("/sessions")) {
+    const body = options.body ? JSON.parse(options.body) : {};
+    lastSitesDir = body.sitesDir ?? null;
+    return { json: async () => ({ id: "test-" + (++created) }) };
+  }
+  const overlayPage = lastSitesDir ? join(lastSitesDir, "example.com.md") : null;
+  const content = overlayPage && fs.existsSync(overlayPage) ? fs.readFileSync(overlayPage, "utf8") : "NONE";
+  fs.appendFileSync(trace, JSON.stringify({ scenario, content, opPage: fs.existsSync(opPage) ? fs.readFileSync(opPage, "utf8") : null, verdictExists: fs.existsSync(log) }) + "\n");
   if (scenario === "throw-baseline" && content === "NONE") throw new Error("simulated transport failure");
   if (scenario === "throw-draft" && content === "DRAFT") throw new Error("simulated transport failure");
-  if (options.method === "POST") return { json: async () => ({ id: "test-" + (++created) }) };
-  const tools = content === "NONE" ? 10 : content === "CHAMPION" ? 2 : (scenario === "better-draft" || scenario === "adopt-no-current") ? 1 : 6;
-  const failedResult = scenario === "done-without-goal" && content === "DRAFT";
+  if (scenario === "kill-during-draft" && content === "DRAFT") process.kill(process.pid, "SIGKILL");
+  if (scenario === "unapproved-reader" && content === "DRAFT" && !readerRan) {
+    readerRan = true;
+    const script = 'const f=require("node:fs");console.log(JSON.stringify({opPage:f.existsSync(process.argv[1])?f.readFileSync(process.argv[1],"utf8"):null,verdictExists:f.existsSync(process.argv[2])}))';
+    const reader = spawnSync(process.execPath, ["-e", script, opPage, log], { encoding: "utf8" });
+    if (reader.status !== 0) throw new Error(reader.stderr);
+    fs.writeFileSync(join(root, "independent-reader.json"), reader.stdout);
+  }
+  const cheaperDraft = ["better-draft", "adopt-no-current", "done-without-goal", "more-errors", "goal-failure-after-100", "goal-unknown"].includes(scenario);
+  const toolCalls = content === "CHAMPION" ? 2 : content === "DRAFT" ? (cheaperDraft ? 1 : 6) : 10;
   const moreErrors = scenario === "more-errors" && content === "DRAFT";
-  return { json: async () => ({ status: "done", toolCalls: tools, modelCalls: tools,
-    activity: moreErrors ? ["ERROR unsafe partial failure", "ERROR known failed step"] : [],
-    result: failedResult ? "Unable to complete the requested task: target item not found" : "Goal achieved" }) };
+  let result = "Goal achieved";
+  if (content === "DRAFT" && scenario === "done-without-goal") result = "Unable to complete the requested task: no booking was made.";
+  if (content === "DRAFT" && scenario === "goal-failure-after-100") result = "Read the itinerary and compared route candidates. ".repeat(4) + "Unable to complete the requested task: no booking was made.";
+  if (content === "DRAFT" && scenario === "goal-unknown") result = "예약은 아직 미완료 상태이며, 항공권을 발권하지 않았습니다.";
+  return { json: async () => ({ status: "done", activity: moreErrors ? ["ERROR unsafe partial failure", "ERROR known failed step"] : [], toolCalls, modelCalls: toolCalls, result }) };
 };
 `);
-  const child = spawnSync(process.execPath, ["--import", preload, join(root, "src/learn-measure.mjs"), "--domain", "example.com", "--task", "Read-only test task", "--runs", "2"], {
-    encoding: "utf8", timeout: 15000,
-    env: { ...process.env, REVIEW_ROOT: root, REVIEW_KNOWLEDGE_DIR: join(root, "knowledge"), REVIEW_SCENARIO: scenario },
-  });
-  const readOptional = (p) => existsSync(join(root, p)) ? readFileSync(join(root, p), "utf8") : null;
-  const result = { status: child.status, stdout: child.stdout, stderr: child.stderr,
-    page: readOptional("knowledge/sites/example.com.md"),
-    backup: readOptional("knowledge/sites/example.com.md.bak"),
-    draft: readOptional("knowledge/drafts/example.com.md"),
-    log: readOptional("knowledge/lessons/measurements.log"),
-    trace: (readOptional("trace.jsonl") || "").trim().split("\n").filter(Boolean).map(JSON.parse),
-  };
-  rmSync(root, { recursive: true, force: true });
-  return result;
+  return root;
 }
 
-// ---- inverted repros: the old defects must NOT happen -------------------------------------------------
-test("a 6-call challenger does NOT replace a 2-call champion (bar is the current procedure, not no-page)", () => {
-  const r = runScenario("worse-than-champion");
-  assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.page, "CHAMPION");            // champion kept
-  assert.match(r.log, /REJECTED/);
-  assert.doesNotMatch(r.log, /ADOPTED/);
-  assert.equal(r.trace.some((x) => x.content === "CHAMPION"), true); // the champion was actually measured
-  assert.equal(r.backup, null);                // backup cleaned up
-  assert.equal(r.draft, "DRAFT");              // draft retained for revision
-});
+function run(scenario, { seedChampion = true, goal = "Goal achieved", prelock = false } = {}) {
+  const root = makeRoot(seedChampion);
+  try {
+    if (prelock) fs.writeFileSync(join(root, ".state/learn-measure.lock"), JSON.stringify({ pid: process.pid, at: Date.now() - 3600001, domain: "example.com" }));
+    const args = ["--import", join(root, "mock.mjs"), join(root, "src/learn-measure.mjs"), "--domain", "example.com", "--task", "Complete the test booking", "--runs", "2"];
+    if (goal) args.push("--goal", goal);
+    const child = spawnSync(process.execPath, args, {
+      encoding: "utf8", timeout: 15000,
+      env: { ...process.env, REVIEW_ROOT: root, REVIEW_KNOWLEDGE_DIR: join(root, "knowledge"), REVIEW_SCENARIO: scenario },
+    });
+    const read = (p) => fs.existsSync(join(root, p)) ? fs.readFileSync(join(root, p), "utf8") : null;
+    return {
+      status: child.status, signal: child.signal, stdout: child.stdout, stderr: child.stderr,
+      page: read("knowledge/sites/example.com.md"), draft: read("knowledge/drafts/example.com.md"),
+      backup: read("knowledge/sites/example.com.md.bak"), lock: read(".state/learn-measure.lock"),
+      log: read("knowledge/lessons/measurements.log"), reader: read("independent-reader.json"), trace: read("trace.jsonl"),
+      evalLeftover: fs.existsSync(join(root, ".state/learn-eval")) ? fs.readdirSync(join(root, ".state/learn-eval")) : [],
+    };
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+}
 
-test("a terminal 'done' that reports it could not finish is REJECTED (done != goal)", () => {
-  const r = runScenario("done-without-goal");
+// ---- adoption rules (strengthened: negative scenarios use a cheaper draft so goal/error gates must reject) ----
+test("a 6-call challenger does NOT replace a 2-call champion (bar is the current procedure)", () => {
+  const r = run("worse-than-champion");
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.page, "CHAMPION");
   assert.match(r.log, /REJECTED/);
-  assert.match(r.log, /goal not reached/);
+  assert.doesNotMatch(r.log, /ADOPTED/);
+  assert.equal(r.draft, "DRAFT");
+});
+
+test("a terminal 'done' that reports it could not finish is REJECTED even when cheaper (done != goal)", () => {
+  const r = run("done-without-goal");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.page, "CHAMPION");
+  assert.match(r.log, /REJECTED \(goal not reached/);
   assert.equal(r.draft, "DRAFT");
 });
 
 test("fewer tools do NOT override an increased error count", () => {
-  const r = runScenario("more-errors");
+  const r = run("more-errors");
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.log, /errors 0\.0 → 2\.0/);   // champion 0 errors vs draft 2 errors
-  assert.match(r.log, /REJECTED/);
+  assert.match(r.log, /errors 0\.0 → 2\.0/);
+  assert.match(r.log, /REJECTED \(errors worse\)/);
   assert.equal(r.page, "CHAMPION");
 });
 
-test("a transport error during baseline leaves the live page intact (not missing)", () => {
-  const r = runScenario("throw-baseline");
+test("a transport error during baseline leaves the operational page intact", () => {
+  const r = run("throw-baseline");
   assert.notEqual(r.status, 0);
-  assert.equal(r.page, "CHAMPION");            // restored, not null
-  assert.equal(r.backup, null);                // no stray backup left behind
-  assert.equal(r.draft, "DRAFT");
-  assert.equal(r.log, null);                   // no verdict written on abort
+  assert.equal(r.page, "CHAMPION");
+  assert.equal(r.log, null);
 });
 
-test("a transport error during the challenger does NOT leave an unapproved draft live", () => {
-  const r = runScenario("throw-draft");
+test("a transport error during the challenger leaves the operational page intact (no unapproved draft)", () => {
+  const r = run("throw-draft");
   assert.notEqual(r.status, 0);
-  assert.equal(r.page, "CHAMPION");            // champion restored, draft not promoted
-  assert.equal(r.backup, null);
+  assert.equal(r.page, "CHAMPION");
   assert.equal(r.draft, "DRAFT");
   assert.equal(r.log, null);
 });
 
-// ---- positive paths: a genuinely better draft IS adopted ---------------------------------------------
-test("a draft strictly cheaper than the champion, reaching the goal, is ADOPTED (atomic replace on approval)", () => {
-  const r = runScenario("better-draft");             // DRAFT -> 1 tool call < champion's 2
+test("a draft strictly cheaper than the champion AND proven to reach the goal is ADOPTED (atomic publish)", () => {
+  const r = run("better-draft");
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.page, "DRAFT");               // live page atomically replaced with the approved draft
+  assert.equal(r.page, "DRAFT");
   assert.match(r.log, /ADOPTED/);
-  assert.equal(r.backup, null);                // backup cleaned up
-  assert.equal(r.draft, null);                 // draft consumed on adoption
+  assert.equal(r.draft, null); // consumed on adoption
 });
 
-test("with no current procedure, a draft beating the no-page bar is ADOPTED", () => {
-  const r = runScenario("adopt-no-current", { seedChampion: false }); // no champion; DRAFT 1 < no-page 10
+test("with no current procedure, a goal-reaching draft beating the no-page bar is ADOPTED", () => {
+  const r = run("adopt-no-current", { seedChampion: false });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.page, "DRAFT");
   assert.match(r.log, /bar=no-page/);
   assert.match(r.log, /ADOPTED/);
+});
+
+// ---- goal verification (P1-1): full result, succeeded/failed/unknown ----
+test("a failure admission after character 100 is caught (verified on the full result, not a preview)", () => {
+  const r = run("goal-failure-after-100");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.log, /REJECTED \(goal not reached/);
+  assert.equal(r.page, "CHAMPION");
+});
+
+test("an incomplete result outside the failure vocabulary is 'unknown' and is NOT promoted", () => {
+  const r = run("goal-unknown");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.log, /REJECTED \(goal not reached/);
+  assert.match(r.log, /unknown/);
+  assert.equal(r.page, "CHAMPION");
+});
+
+// ---- isolation (P1-2): operational page never shows an unapproved draft during a trial ----
+test("an independent reader sees the champion — never the draft — during an ultimately REJECTED trial", () => {
+  const r = run("unapproved-reader");
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.reader), { opPage: "CHAMPION", verdictExists: false });
+  assert.match(r.log, /REJECTED/);
+  assert.equal(r.page, "CHAMPION");
+});
+
+// ---- crash + lock (P2-3 / P2-3b) ----
+test("a SIGKILL during the draft trial leaves the operational page untouched (no backup/journal to mishandle)", () => {
+  const r = run("kill-during-draft");
+  assert.equal(r.signal, "SIGKILL");
+  assert.equal(r.page, "CHAMPION"); // operational page was never written during measurement
+  assert.equal(r.draft, "DRAFT");
   assert.equal(r.backup, null);
-  assert.equal(r.draft, null);
+});
+
+test("a live lock owner is NOT evicted merely because the lock is older than an hour", () => {
+  const r = run("worse-than-champion", { prelock: true });
+  assert.equal(r.status, 3, r.stderr); // refused; single-writer preserved
+  assert.match(r.stderr, /refusing concurrent measurement/);
+  assert.ok(r.lock); // the live owner's lock is still there, not stolen
+  assert.equal(r.page, "CHAMPION");
+  assert.equal(r.log, null);
 });
