@@ -157,6 +157,11 @@ export function createNativeMemoryRuntime({ accountId, accountRoot, memoryManage
   function searchMany(args) {
     return track(async () => {
       validate(args);
+      // An evaluation session carries a per-session sites overlay (args.sitesRoot). It MUST read its isolated
+      // overlay and never the account's native memory, so it bypasses the native MemoryManager (which cannot
+      // scope to an overlay and would both ignore the candidate page and leak operational/account memory) and
+      // uses the isolated lexical view directly. Ordinary sessions are unchanged: native first, lexical on failure.
+      if (args.sitesRoot) return lexical.searchMany({ ...args, accountId, accountRoot: root });
       try { return await runNative(args); }
       catch (error) { unavailable(error); }
       return lexical.searchMany({ ...args, accountId, accountRoot: root });

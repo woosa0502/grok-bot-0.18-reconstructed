@@ -1,8 +1,8 @@
 // belmont-browse: reusable engine + session handles for the serve/MCP adapters (our code).
 import { browserAlive } from "./browser-lifecycle.mjs";
 import path from "node:path";
-import { createPrivateKey, randomUUID } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { createPrivateKey, randomUUID, createHash } from "node:crypto";
+import { writeFileSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { ensureChrome } from "./chrome.mjs";
 import { startPipedChrome } from "./cdp-relay.mjs";
 import { ensureInstallationKeys, startDaemonServer } from "./daemon-server.mjs";
@@ -190,8 +190,45 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
   cleanup.add("stage observation", () => { stage.stopDiscovery?.(); if (stage.timer) clearInterval(stage.timer); });
   engineReady = true;
   if (shutdownRequested) queueMicrotask(() => Promise.resolve(requestShutdown()).catch((error) => log(`[engine] shutdown failed: ${error.message}`)));
+
+  // Evaluation-overlay capability: a HOST-OWNED self-probe (not a model-chosen behavior, not an env flag) that
+  // proves this engine forwards a session's runtimeConfig.sitesDir into the agent memory_search AND that the
+  // overlay is scoped to the evaluation session only. The read_file/bash document-read path is NOT yet scoped
+  // per session, so readIsolation is WITHHELD and the overlay stays disabled (sitesOverlayHealth requires it);
+  // the probe still records G1 (session wiring / forwarding) and G2-search evidence in the engine log. Runs
+  // only when the operator is setting evaluation up (BELMONT_BROWSE_SITES_OVERLAY=1), so ordinary boots do not.
+  const daemonBundlePath = path.resolve(ROOT, "vendor", `aside-${engine}`, "apps", "daemon", "build", canonicalMemoryRequested() ? "daemon.memory-2.1.mjs" : "daemon.mjs");
+  let evalCaps = null;
+  async function runEvaluationProbe() {
+    const nonce = randomUUID().replace(/-/g, "").slice(0, 10);
+    const probeDomain = `eval-probe-${nonce}.test`, sentinel = `EVALOVERLAYSENTINEL${nonce}`;
+    const overlayParent = path.join(stateDir, "learn-eval", `selfprobe-${nonce}`), overlay = path.join(overlayParent, "sites");
+    mkdirSync(overlay, { recursive: true });
+    writeFileSync(path.join(overlay, `${probeDomain}.md`), `# ${probeDomain}\n\nThe site confirmation token is ${sentinel}.\n`);
+    const ask = `Call the memory_search tool once with the query ${sentinel}. If any result contains that exact token, reply with the token verbatim; otherwise reply exactly NOTFOUND. Use no other tool.`;
+    const probe = async (sitesDir) => {
+      const h = controller.startSession({ task: ask, mode: "guard", autoApprove: true, ...(sitesDir ? { sitesDir } : {}) });
+      for (let i = 0; i < 180 && !["done", "error", "stopped", "interrupted"].includes(h.status); i += 1) await new Promise((r) => setTimeout(r, 500));
+      return { status: h.status, found: typeof h.result === "string" && h.result.includes(sentinel), toolCalls: h.toolCalls, result: h.result };
+    };
+    try {
+      const withOverlay = await probe(overlay), control = await probe(undefined);
+      const workerForwarding = withOverlay.found === true, searchIsolation = workerForwarding && control.found === false;
+      let bundleSha256 = "", forwardingInBundle = false;
+      try { const buf = readFileSync(daemonBundlePath); bundleSha256 = createHash("sha256").update(buf).digest("hex"); forwardingInBundle = /sitesRoot:\w+\.session\?\.runtimeConfig\?\.sitesDir/.test(buf.toString("latin1")); } catch {}
+      evalCaps = { proof: { contract: "session-sites-v1", engine: ENGINES[engine].version, bundleSha256,
+        workerForwarding: workerForwarding && forwardingInBundle, searchIsolation, readIsolation: false, extractionDisabled: true,
+        readIsolationReason: "read_file/bash document read is not per-session scoped yet" }, probe: { withOverlay, control }, at: Date.now() };
+      log(`[eval-probe] forwarding=${workerForwarding} bundleForwarding=${forwardingInBundle} searchIsolation=${searchIsolation} readIsolation=withheld | overlay{status:${withOverlay.status},found:${withOverlay.found},tools:${withOverlay.toolCalls},result:${JSON.stringify((withOverlay.result || "").slice(0, 100))}} control{status:${control.status},found:${control.found},result:${JSON.stringify((control.result || "").slice(0, 100))}}`);
+    } catch (error) { log(`[eval-probe] error: ${error.message}`); }
+    finally { try { rmSync(overlayParent, { recursive: true, force: true }); } catch {} }
+  }
+  const evaluationProbe = process.env.BELMONT_BROWSE_SITES_OVERLAY === "1" ? runEvaluationProbe() : Promise.resolve();
+  const evaluationCapabilities = () => evalCaps?.proof ?? null;
+
   return {
     A, account, ext, cdp, home, chrome, engine, transport, lifecycle, hooks, model: selectedModel, version: ENGINES[engine].version,
+    evaluationCapabilities, evaluationProbe, daemonBundlePath,
     ...controller,
     // ready is the daemon *and* the owned browser: after the fork crashed (2026-09-09 16:51) health kept saying
     // ready while chromePid was gone, and Belmont's aside-browse bot would have queued work against a dead UI.
