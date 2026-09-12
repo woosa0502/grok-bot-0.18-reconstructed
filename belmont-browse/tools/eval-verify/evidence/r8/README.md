@@ -47,3 +47,13 @@ A 5-sub-agent map verified every plan-doc feature area against real code (HEAD 1
 Remaining high-value untested areas (see the map): eval-isolation/sites-overlay secret battery (L27/L12),
 browser tool matrix (L02), attachments SHA/dedup (L38), PWA file-path policy (L42, ties to the deny-list gap),
 idempotency/durable-accept (L16), vault/secrets (L37), subagent isolation (L10).
+
+## Stream 2 (follow-up) — "봇이 봇 만들기" + "봇끼리 그룹 토론" = LIVE PASS
+`ev-bot-group-discuss.json` (driver `../../design-bot-group-discuss.mjs`), against the Host gateway (42611, auth-ON):
+- **createAgent (bot makes bots)**: two test agents created (roster 14→16); same clientNonce is idempotent (no dup).
+- **createGroup (bots form a group)**: a group room with both members (isGroup:true, memberCount 2).
+- **group discussion (bots debate)**: sendPrompt to the room drove BOTH members' turns; each posted ONE
+  in-character SendMessage to the room — Alice argued apples, Bob argued bananas. External artifact = the room
+  transcript authored by two distinct agent ids (entry shape {kind,id,message:{type:"text",content},timestampMs,author:{id,name}}).
+- **cleanup**: the two test agents + group deleted; roster restored to 14, zero leftover; the 14 real agents untouched.
+Both features exist and work end-to-end (unlike Telegram/autopost which are confirmed-absent). Verdict PASS.
