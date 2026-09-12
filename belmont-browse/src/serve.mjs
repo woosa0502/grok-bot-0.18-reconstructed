@@ -117,7 +117,7 @@ await new Promise((resolve, reject) => {
   server.listen(Number(opt.port), "127.0.0.1", () => {
     try {
       mkdirSync(path.dirname(stateFile), { recursive: true });
-      writeFileSync(stateFile, JSON.stringify({ port: Number(opt.port), token, ...serviceIdentity, engine: engine.version, model, mode: opt.mode, transport: engine.transport, chromePid: engine.chrome.child?.pid ?? null, cdpWsUrl: engine.chrome.wsUrl ?? null }, null, 2), { mode: 0o600 });
+      writeFileSync(stateFile, JSON.stringify({ port: Number(opt.port), token, ...serviceIdentity, engine: engine.version, model, mode: opt.mode, transport: engine.transport, chromePid: engine.chrome.child?.pid ?? engine.chrome.pid ?? null, cdpWsUrl: engine.chrome.wsUrl ?? null }, null, 2), { mode: 0o600 });
       log(`[serve] listening on http://127.0.0.1:${opt.port} (token in ${stateFile})`);
       resolve();
     } catch (error) { reject(error); }

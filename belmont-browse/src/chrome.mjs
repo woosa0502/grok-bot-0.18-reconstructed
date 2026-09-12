@@ -52,10 +52,10 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
       const stop = createAdoptedChromeStop({ browserPid: owner.chromePid, pgid, profileDir, timeoutMs: shutdownTimeoutMs, log,
         requestClose: ({ signal }) => requestCloseViaCdp({ baseUrl, signal, timeoutMs: Math.min(shutdownTimeoutMs, 2000) }) });
       const detach = async () => { /* keep the adopted browser alive; leave the owner file for the next serve */ };
-      return { baseUrl, child: null, adopted: true, stop, detach };
+      return { baseUrl, child: null, adopted: true, pid: owner.chromePid, stop, detach };
     }
     log(`[chrome] reusing CDP at ${baseUrl} (${plan.mode}: ${plan.reason})`);
-    return { baseUrl, child: null, stop: async () => {}, detach: async () => {} };
+    return { baseUrl, child: null, pid: plan.mode === "shared" && owner ? owner.chromePid : null, stop: async () => {}, detach: async () => {} };
   }
   mkdirSync(profileDir, { recursive: true });
   const bin = chromeBinary ?? findChromeBinary();
@@ -114,6 +114,7 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
         // Record ownership so a restart after a crash can adopt+reap this tree (child.pid is the pgid
         // because we spawned detached).
         writeChromeOwner(profileDir, { servePid: process.pid, chromePid: child.pid, pgid: child.pid });
+        const pid = child.pid;
         const detach = async () => {
           // Explicit --keep-chrome releases only parent event-loop ownership. CDP,
           // process and profile stay intact; the CLI can finish without killing Chrome.
@@ -121,7 +122,7 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
           child.unref();
           child.stderr?.unref?.();
         };
-        return { baseUrl, child, stop, detach };
+        return { baseUrl, child, pid, stop, detach };
       }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }

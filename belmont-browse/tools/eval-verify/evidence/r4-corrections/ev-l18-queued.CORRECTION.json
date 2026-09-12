@@ -20,5 +20,10 @@
   },
   "what_is_NOT_supported": "The full L18.QUEUED gate ('a cancelled QUEUED task must never start EVEN AFTER the slot frees via A completing NORMALLY') is not closed: A's start/normal-completion was never confirmed (aStartedMarker=false), and A was force-stopped rather than allowed to complete, so the 'slot frees naturally' path was never exercised.",
   "resulting_verdict": "L18.QUEUED narrow observation = supported; full gate = NOT CLOSED. Re-run in R5 as L18.QUEUED with: A confirmed started (ASTART observed) AND A allowed to COMPLETE NORMALLY (not force-stopped) so the slot frees on its own, then confirm cancelled B still never starts.",
-  "affects_pass_count": "L18.QUEUED remains NOT a full functional PASS until the corrected re-run"
+  "affects_pass_count": "L18.QUEUED remains NOT a full functional PASS until the corrected re-run",
+  "resolution": {
+    "status": "RE-RUN CLOSED (R5)",
+    "evidence": "../r5/ev-l18-queued-r5.json",
+    "result": "FULL PASS: A started (ASTART marker) + observed running + completed NORMALLY (status done, ADONE marker) so the slot freed on its own; B queued -> cancelled -> stopped, BSTART marker never appeared even after the slot freed; C ran to completion. All via external markers; A not force-stopped."
+  }
 }

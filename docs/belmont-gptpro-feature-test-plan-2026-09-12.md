@@ -911,3 +911,16 @@ GPT-6 Pro 라운드4가 위 R4-subset 항목의 두 주장을 기각했다. **�
 4. **L19.DONE.{PERSISTED,EFFECT_ONLY}** + **L19.CONTINUE.NO_DUP**.
 
 증거는 manifest→trial/session/owner identity→kill/restart/reconcile raw→process/dispatch/effect→per-assertion(expected/actual/status/evidence)로 연결, full source/harness commit + full daemon SHA-256 포함.
+
+## R5 실행 결과 (라이브, 실제 909 eval serve) — Claude
+
+라이브 eval serve 기동: Aside chromium `out/aside/chrome`(Chromium 151), engine 1.26.909.1820, CDP 9333 / daemon 21420 / serve 9360, dev 프로필+dev knowledge, `mode:guard` `autoApprove:false`. 증거는 외부 산출물(세션별 마커 파일)+프로세스/소유자 파일 상태. (기동 시 stock google-chrome는 native-component 초기화에서 SIGTRAP → 이전 검증과 동일하게 Aside chromium 사용해야 함을 확인.)
+
+- **L18.QUEUED (full gate) = PASS** — `belmont-browse/tools/eval-verify/evidence/r5/ev-l18-queued-r5.json`. R4 결함(aStart 부재, A 강제종료) 해소: A가 시작(ASTART 마커)+running 관측 후 **정상 완료**(status done, ADONE 마커)로 슬롯 자연 해제 → 큐 상태에서 취소된 B는 슬롯 해제 후에도 미시작(BSTART 부재) → C 정상 완료. A 강제종료 없음.
+- **L19.RUNNING.NO_CLEANUP = PASS** — `.../r5/ev-l19-nocleanup-r5.json`. R4 `UNKNOWN_EVIDENCE_CONFLICT` 해소: 재실행 여부를 bash 시작 시 1회 기록하는 `BOOT-<nonce>` 마커로 측정(SIGKILL 고아 자식 heartbeat 혼입에 면역) → bootBefore=1, bootAfter=1 → **재실행 없음**. 복구 세션은 실제 스냅샷으로 보존: `interrupted`(resumed:null, error:null). **동시에 DEF-L19-CHROME-ORPHAN-001 수정을 라이브 실증**: serve SIGKILL → chrome 고아(소유 serve 사망) → 무개입 재시작이 같은 chrome을 **adopt**(adoptLogged, ownerAfter.adoptedFrom=사망 serve, freshChromeStarted=false, serve.json이 adopt된 pid 기록). R5 동안 chrome 1개(pid 1540795)가 4세대 serve에 걸쳐 정확히 1개로 유지, 누수 0.
+
+**부수 개선(관측성):** adopt 경로는 child 핸들이 없어 serve.json `chromePid`가 null이었음 → chrome.mjs가 `pid`(owned=child.pid, adopt=owner.chromePid)를 반환하고 serve.mjs가 `engine.chrome.child?.pid ?? engine.chrome.pid`로 기록하도록 보강. 이제 adopt된 chrome도 serve.json에 보인다.
+
+- L4/L18/L19 정정: `r4-corrections/*.CORRECTION.json`의 `resolution` 필드로 R5 재실행 종결 링크.
+
+남은 R5: L13.BROWSER.{DENY/ALLOW}(원래 브라우저 도구 승인 경계) 타당성 조사 후 실행 → L19.PENDING → L18.SHELL.TREE → L19.DONE.{PERSISTED,EFFECT_ONLY}/CONTINUE.NO_DUP.

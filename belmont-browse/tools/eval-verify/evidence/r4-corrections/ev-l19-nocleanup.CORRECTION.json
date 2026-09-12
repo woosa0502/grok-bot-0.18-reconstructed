@@ -24,5 +24,10 @@
     "note": "The box-exec singleton (1337) self-freeing on crash and the orphan-chrome leak count are independent observations not affected by the heartbeat miscomputation. The leak is tracked as defect DEF-L19-CHROME-ORPHAN-001."
   },
   "resulting_verdict": "UNKNOWN_EVIDENCE_CONFLICT -> L19.RUNNING.NO_CLEANUP recovery status is UNVERIFIED. NOT counted as a functional PASS. Must be re-run in R5 capturing (a) raw heartbeat trace with post-restart delta, and (b) an actual recovered-session snapshot.",
-  "affects_pass_count": "REMOVES L19.RUNNING.NO_CLEANUP from the live-PASS set until re-run"
+  "affects_pass_count": "REMOVES L19.RUNNING.NO_CLEANUP from the live-PASS set until re-run",
+  "resolution": {
+    "status": "RE-RUN CLOSED (R5)",
+    "evidence": "../r5/ev-l19-nocleanup-r5.json",
+    "result": "PASS with proper raw evidence. Re-execution measured by a BOOT-<nonce> marker written ONCE at bash start (immune to the orphaned-child heartbeat confound): bootBefore=1, bootAfter=1 -> reExecuted=false. Recovered session status captured as a real snapshot: interrupted (resumed:null, error:null). Also live-validated the DEF-L19-CHROME-ORPHAN-001 fix: SIGKILL serve -> orphan -> restart ADOPTED the same chrome (adoptLogged, ownerAfter.adoptedFrom=dead serve, freshChromeStarted=false, serve.json records the adopted pid); chrome adopted across 4 serve generations as exactly ONE process, never leaked."
+  }
 }
