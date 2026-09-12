@@ -104,13 +104,29 @@ Memory 2.1 통합을 고정 9개 목록으로 검증(전부 실 제품 경로로
 
 - **G2-원문읽기 ✅ (라이브·확정)**: 시동 self-probe `[eval-probe] forwarding=true bundleForwarding=true searchIsolation=true readIsolation=true | read{overlayBash:true,overlayRead:true,opBashTried:true,opReadTried:true,opLeak:false,steps:5}`. 실제 bwrap `cat` 호출 3건(오버레이·운영 절대경로·운영 memory/sites 심링크경로) + read_file 2건 관측, 운영 토큰은 어느 실 tool 결과에도 없음(sound: 실 tool 출력 검사, 운영 읽기 실제 시도됨). → `health.sitesOverlay:true`(proof readIsolation/searchIsolation/workerForwarding/extractionDisabled 전부 true).
 - **G3 무기록 ✅ (라이브)**: eval 세션 2종(6abdf1c1 검색-오버레이, 53a6bca7 read-probe·실 tool 5회) 모두 `extractionDisabled=YES`, 추출 이력 없음, 새 episodic/concept 파일 0. 비-eval 대조(aa16, sitesDir=no)만 추출(정상).
-- **G4–G7 end-to-end ✅ (라이브, 동일 엔진 run)**: 실 909에 learn-measure. 독립 관측기(`deterministic-status-observer-v1`).
-  - **실패1(REJECTED)**: `tools 0.0→0.0 ⇒ REJECTED (not cheaper)` — 게시 안 함, lock 해제, exit 0. (G5·G7)
-  - **성공1(ADOPTED)**: `tools 4.0→1.0, errors 0.0→0.0 ⇒ ADOPTED` — 관측기 succeeded, **측정 bytes를 원자적 게시**(candidateSha256==게시파일 sha `592ce5c0…`), report published:true, lock 해제. (G4·G5·G6)
-  - 둘 다 measurements.log에 기록, inspection-required/leftover lock 없음. 증거: `.cache/eval-verify-909/G2docread-G3-G7-evidence.txt`.
-  - 주: 이 라이브 데모의 관측기는 status=done→succeeded인 **결정적 관측기**(비용차를 통제한 계약 시나리오용). 실 작업의 올바른 패턴은 `examples/file-observer.mjs`(외부 산출물 검사, done≠목표 — §11/§12).
+- **G4–G7 실행 경로만 실증 (⚠ 목표 달성 검증 아님)**: 실 909에 learn-measure. 이번 데모 관측기 `deterministic-status-observer-v1`은 **status==done→succeeded** — 종료 상태를 성공으로 복사한 것이라 **목표 달성의 독립 검증기가 아니다**(§11/§12 "done≠목표"). 두 실행이 모두 done이어도 "조건 입력·제출까지 한 것"과 "생략하고 종료한 것"을 구분 못 한다. 따라서 실증된 것은 **관측기 호출 → 판정 전달 → 채택/기각 로직 실행**의 연결이지, 작업이 실제로 성공했는지가 아니다.
+  - **기각 경로(REJECTED)**: `tools 0.0→0.0 ⇒ REJECTED (not cheaper)` — 게시 안 함, lock 해제, exit 0. → **정상 기각의 정상 종료**만 증명(timeout·취소·통신장애 등 비정상 수명주기 아님).
+  - **채택 경로(ADOPTED)**: `tools 4.0→1.0 ⇒ ADOPTED` — **측정 bytes 원자적 게시**(candidateSha256==게시파일 sha `592ce5c0…`), published:true, lock 해제. → 게시 배선(G6)은 실증, 단 "4→1이 같은 목표를 더 싸게"인지는 위 관측기 한계로 미검증(G5는 G4에 의존).
+  - 증거: `.cache/eval-verify-909/G2docread-G3-G7-evidence.txt`, measurements.log.
 
-### 게이트 최종 현황: G1✅ G2-검색✅ G2-원문읽기✅ G3✅ G4✅ G5✅ G6✅ G7✅ (전부 라이브 실증). 자동승격 게이트 개방 가능(운영 프로필 cutover는 여전히 §7의 사용자 결정 사항).
+### 게이트 판정 정정 — 이전의 "G1~G7 전부 라이브 실증"은 과대 판정, 철회
+아래는 **보고된 증거의 범위** 판정이며, 코드에 새 결함이 있다는 뜻이 아니다.
+
+| 게이트 | 이번 라이브 보고로 인정되는 범위 | 완료(라이브) 판정에 남은 조건 |
+|---|---|---|
+| G1 세션 배선 | 실 909 포워딩 실증 | 푸시된 소스 + 동일 세션 원시 기록 확인 |
+| G2 검색·원문 격리 | 검색 + bash·read_file 경로 격리 실증(운영 거부+오버레이 성공) | 시험한 경로 한정 — 모든 읽기 경로 일반 증명으로 확대 금지 |
+| G3 학습오염 방지 | 관측 세션 2종 추출 0·새 memory 0 | 관측 기간·포함 extraction/backfill 경로 명시 |
+| G4 완료관측 | 관측기 호출·판정 전달·채택/기각 배선 | **외부 산출물로 실제 성공 vs 목표 미달 구분**(status 복사 아님) |
+| G5 비용비교 | 계약 시나리오 4→1·채택 분기 | 양쪽 동일 목표 달성을 G4로 확인해야 비용 근거 성립 |
+| G6 게시·동시성 | 측정 bytes==게시 sha·정상 게시 실증 | 변경감지 중단·게시 실패·게시후 감사실패는 라이브/오프라인 구분 |
+| G7 실패종료 | ADOPTED/REJECTED 정상 종료·lock 해제 | **timeout·취소·suspended·통신장애·생성불명** 실제 처리 |
+
+정확한 한 문장: **"실 909의 평가 격리(G1·G2·G3)와 정상 채택·기각 실행 경로(G6 게시 배선 포함)를 실증했다. 작업별 외부 결과 관측(G4·G5)과 비정상 종료 조건(G7)은 기존 오프라인 검증과 구분해 남겨 둔다."** 운영 봇 legacy·운영 자동승격 OFF 유지.
+
+### 남은 검증 묶음 (재설계 없음 — 한 번에)
+1. **작업별 외부-산출물 관측기로 G4+G5 라이브**: 통제 로컬 테스트 페이지(제출 폼) 하나면 됨. 각 trial 초기화 시작, 관측기는 worker 답변/status가 아니라 **페이지 실제 제출 결과/결과 저장소**를 검사(같은 trial? 목적지==NYC? 좌석==aisle? 실제 제출?). 3경우: (기존 절차 충족=성공)·(후보 더 적은 호출로 충족=성공+비용비교)·(후보 입력/제출 생략 done=목표미달 기각). `examples/file-observer.mjs` 활용하되 검사 파일은 **해당 trial의 실제 결과**(테스트가 미리 성공으로 만든 파일 금지), 비용은 fixture 지정치 vs 실 daemon 측정치 구분 기록.
+2. **G6·G7 실패 조건 라이브**: 게시 경계(후보·승인본 변경 시 중단, 게시실패 vs 게시후 감사실패 구분)·알려진 실행 실패(timeout·취소·suspended·통신실패 후 stop→terminal 확인·정리)·실행상태 불명확(세션 생성 응답 유실·stop 미확인 시 자동 재시도 금지, lock·점검 보존). 기존 오프라인 fault-injection 결과 재사용 가능, 단 **오프라인/라이브 구분 표기** 필수.
 
 ## 14. 게이트 검증 — 2차 (G2 원문읽기 샌드박스 primitive)
 - **bwrap eval 격리 모드 구현·검증**(커밋 `69761a3`): `BubblewrapBackend.buildArgs`에 `isolate:{allowRoots,writableRoots}` opt-in. OS는 ro 유지(shell 실행), **`$HOME`을 tmpfs로 덮어** 운영 지식 숨기고 허용 루트만 ro 재노출. 실제 bwrap 테스트(`test/bwrap-eval-isolation.test.mjs`)로 운영 파일 `OP_HIDDEN`·오버레이 읽힘·대조군 노출 확인. 비-eval 불변(라이브 봇 shell 무영향). bwrap+numeric+overlay 45/45.
