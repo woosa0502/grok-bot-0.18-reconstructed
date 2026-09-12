@@ -96,6 +96,31 @@ Round-6 accepted B4 (the pgid>1 guard) but reproduced further defects; all fixed
 Live: `L19.CHROME.ADOPT.FINAL_REAP` still PASSes on the round-7 code (adopt → normal stop → eval-profile census
 root=0/tree=0, owner cleared, control browser survives). Regression suite: 14/14; lifecycle 11/11.
 
+## Round-7 residual (GPT-6 Pro): the pure-Node floor — remaining races need kernel primitives
+
+After the A-1..A-6 fixes, GPT's focused re-review found two residual **TOCTOU** races that pure-Node userspace
+cannot fully close (GPT flagged this class in round-6 too):
+
+- **A-1 lock — two-stealer window.** Two processes can read the same genuinely-dead lock; one steals+acquires,
+  the other's `renameSync` can still move the winner's fresh lock aside. Narrowed this round (never steal a
+  *live* holder on age; after stealing, restore if the removed record's token ≠ the one judged stale), but the
+  microsecond rename window remains. The robust fix is a kernel `flock(2)` on a fixed lock file — Node exposes
+  no native flock without an addon/helper binary.
+- **A-3 signal binding — PID/PGID reuse window.** Between `reverify()` and the actual `kill`, if the owned
+  group fully dies AND the kernel reuses the same pid/pgid, a group signal could reach the new group. Narrowed
+  (ownership proven on the live root, re-verified before each signal), but a check→signal gap is inherent in
+  userspace. The robust fix is `pidfd_open(2)` + `pidfd_send_signal(2)` to bind the signal to a specific
+  process *instance* — again not exposed by Node without native code.
+
+**Assessment (proportionality).** The *core* defect this record was opened for — unbounded orphan accumulation
+across restarts — is fixed and proven (census stays root=1/tree-stable across crash→restart→adopt;
+`FINAL_REAP` reaps the whole owned tree on normal stop with a control browser surviving). The residuals are
+narrow races that (a) require the eval harness to hit a sub-millisecond PID-reuse window or two concurrent
+serves stealing the same dead lock on one profile, and (b) are only fully closable with kernel primitives
+(`flock`/`pidfd`) or an external **cgroup/systemd-scope supervisor** — the architecture GPT identified as the
+correct end state and a *separate task* from the in-process reaper. Recorded here as known limitations; the
+in-process reaper is at its pure-Node floor.
+
 ## Regression
 
 `belmont-browse/test/chrome-orphan-ownership.test.mjs` — spawns a real detached sleeper as a stand-in

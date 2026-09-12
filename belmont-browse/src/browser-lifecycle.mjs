@@ -72,10 +72,20 @@ function acquireOwnerLock(profileDir, { retries = 12, staleMs = 120000 } = {}) {
       try { unlinkSync(tmp); } catch {}
       if (error.code !== "EEXIST") return null;
       let holder = null; try { holder = JSON.parse(readFileSync(lock, "utf8")); } catch {}
-      const stale = !holder || (Number.isSafeInteger(holder.pid) && !isProcessAlive(holder.pid)) || (Date.now() - (holder.ts || 0) > staleMs);
+      // Only ever steal a lock whose holder PID is genuinely DEAD (never a live holder on age alone — that
+      // was the round-7 A-1 concern). staleMs only widens "dead" for an unparseable/corrupt record.
+      const stale = !holder || (Number.isSafeInteger(holder.pid) ? !isProcessAlive(holder.pid) : (Date.now() - (holder.ts || 0) > staleMs));
       if (!stale) return null; // a live holder owns it; caller acts conservatively
+      // Steal, then confirm we removed the SAME record we judged stale (token match). If a racing stealer
+      // already replaced it with a live lock, put it back and retry rather than clobbering their lock.
       const aside = `${lock}.stale.${process.pid}.${token.slice(0, 8)}`;
-      try { renameSync(lock, aside); unlinkSync(aside); } catch {} // atomic steal; loser's rename fails -> retry
+      try {
+        renameSync(lock, aside);
+        let stolen = null; try { stolen = JSON.parse(readFileSync(aside, "utf8")); } catch {}
+        if (holder && stolen && stolen.token && holder.token && stolen.token !== holder.token) {
+          try { renameSync(aside, lock); } catch { try { unlinkSync(aside); } catch {} } // not the record we judged stale -> restore
+        } else { try { unlinkSync(aside); } catch {} }
+      } catch { /* someone else stole/refreshed first -> retry */ }
     }
   }
   return null;
