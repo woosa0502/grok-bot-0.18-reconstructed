@@ -882,3 +882,32 @@ L09 MCP나 L04 잔여 도구, L30 승격으로 범위를 넓혀 이 경계들의
 **실제 결함 1건**: 크래시(serve SIGKILL) 시 브라우저(chrome) 프로세스 누수. GPT 라운드4 검토에서 심각도·원인 경로·조치 판단 요청 중. 정상 stop 경로(engine cleanup)는 chrome을 종료하나, 크래시 우회 시 리퍼 부재.
 
 남은 R4: L13.BROWSER.{DENY/ALLOW/STALE/SELF}, L18.SHELL.TREE, L19.PENDING, L19.DONE.{PERSISTED,EFFECT_ONLY}, L19.CONTINUE.NO_DUP.
+
+---
+
+# 라운드4 검토 반영 + AUDIT.R4.EVIDENCE (GPT-6 Pro round-4) — Claude
+
+GPT-6 Pro 라운드4가 위 R4-subset 항목의 두 주장을 기각했다. **둘 다 받아들이고 실증 PASS 집합에서 철회한다.** 원본 증거는 `belmont-browse/tools/eval-verify/evidence/r4-originals/`에 보존, 정정은 `.../r4-corrections/`에 별도 작성(원본 미수정).
+
+- **L19.RUNNING.NO_CLEANUP → UNVERIFIED (was PASS).** 증거 자기모순(`UNKNOWN_EVIDENCE_CONFLICT`): 필드 `auto_re_exec_after_unattended_restart:true` ↔ 판정 "무재실행". 원인은 **내 하네스 오산** — `int(hbCount)>2`(정적 카운트 3 = 크래시 전 2줄 + 크래시가 남긴 진행중 1줄)로, 재실행(=재시작 후 증가량>0)을 재지 않는다. 원본 번들은 부울값·요약문자열만 저장하고 **원시 heartbeat 추이·세션 스냅샷이 없어** "무재실행"도 증명 불가 → 필드·`recovered_status` 모두 UNVERIFIED. R5에서 원시 추이+스냅샷과 함께 재실행. (독립 관측인 box:1337 자가해제, chrome 고아 36개 누수는 유효 — 아래 결함으로 추적.)
+- **L18.QUEUED → 전체 게이트 미종결 (narrow 관측만 유효).** 원본 `verdict_pass:false`가 옳다: `aStartedMarker=false`라 A의 슬롯 점유가 미확인이고, A를 정상 완료가 아니라 강제 종료했으므로 "슬롯이 자연 해제된 뒤에도 취소된 B가 미시작" 경로는 미검증. 유효한 것은 좁은 관측(큐 상태의 작업을 취소하면 시작되지 않음, 이후 C 정상 실행)뿐. R5에서 A를 **정상 완료**시켜 재실행.
+
+**정정 문서:** `belmont-browse/tools/eval-verify/evidence/r4-corrections/AUDIT.R4.EVIDENCE.md` + 두 `*.CORRECTION.json`.
+
+## 결함 DEF-L19-CHROME-ORPHAN-001 (S2/Major, P1) — 수정+회귀 완료
+
+- **범위:** `belmont-browse` eval/browse 엔진. 라이브 legacy 봇은 `source/`→`.build/belmont-wsl-runtime` 별도 경로라 영향 없음.
+- **근원(코드 확인):** ① `chrome.mjs` 재사용 분기가 `stop: async()=>{}`(noop) 반환 → 고아를 채택해도 종료 책임 0. ② `detached:false`+소유자 미추적 → serve SIGKILL 시 chrome 트리가 init으로 재부모화되어 생존, 다음 serve가 noop-stop으로 또 재사용 → **재시작마다 누적**.
+- **수정(경계 #2·#3):** 소유 chrome을 `detached:true`(프로세스 그룹 리더)로 기동 + `<profileDir>/.belmont-chrome-owner.json`에 소유자 기록(정상 stop 시 삭제). 재사용 분기는 소유자 파일을 읽어 판정 — **adopt**(소유 serve 사망 = 고아 → 그룹 SIGTERM→SIGKILL로 실제 종료하는 stop 부여), **shared**(소유 serve 생존 → noop, 남의 브라우저 미살해), **foreign**(소유자 파일 없음 → noop). 누적을 **≤1**로 한정, 정상 종료 시 트리 전체 리핑.
+- **잔여(경계 #1, 문서화):** in-process 핸들러는 SIGKILL에서 못 돈다. 크래시~다음 기동 사이 창을 ~0으로 줄이려면 cgroup/systemd scope 외부 감독 필요. eval 워크플로는 다음 eval마다 새 serve가 채택+리핑하므로 누적 결함은 해소.
+- **회귀:** `belmont-browse/test/chrome-orphan-ownership.test.mjs` — 실제 detached 프로세스 트리(그랜드차일드 포함)를 chrome 대역으로 띄워 ① 사망 소유자→adopt→그룹킬로 트리 전체 종료 ② 생존 소유자→shared(무살해) ③ 소유자 파일 없음→foreign 을 검증. `node --test`: 신규 4 + 라이프사이클/샌드박스 기존 통과, belmont-browse 전체 201 pass(잔여 3 실패는 사전존재: vendor daemon 부재 2 + 실제 chrome/네트워크 필요 1).
+
+## R5 배치 계획 (GPT 우선순위)
+
+0. ~~AUDIT.R4.EVIDENCE~~ (완료, 본 절) → ~~chrome 결함 수정+회귀~~ (완료, DEF-L19-CHROME-ORPHAN-001).
+1. **L13.BROWSER.{DENY/ALLOW}** — 원래 브라우저(fill/submit) 경계.
+2. **L19.PENDING** — 재시작 시 pending 작업 처리.
+3. **L18.QUEUED 재실행** — A 정상 시작+완료로 슬롯 자연 해제 후 취소 B 미시작 + **L18.SHELL.TREE**.
+4. **L19.DONE.{PERSISTED,EFFECT_ONLY}** + **L19.CONTINUE.NO_DUP**.
+
+증거는 manifest→trial/session/owner identity→kill/restart/reconcile raw→process/dispatch/effect→per-assertion(expected/actual/status/evidence)로 연결, full source/harness commit + full daemon SHA-256 포함.

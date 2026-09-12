@@ -1,0 +1,28 @@
+{
+  "case": "l19-nocleanup",
+  "correction_of": "../r4-originals/ev-l19-nocleanup.json",
+  "corrected_at": "2026-09-12",
+  "corrected_by": "AUDIT.R4.EVIDENCE (GPT-6 Pro round-4 priority-0)",
+  "field_disputes": [
+    {
+      "field": "auto_re_exec_after_unattended_restart",
+      "original_value": true,
+      "corrected_value": "UNVERIFIED",
+      "root_cause": "harness miscomputation: the field was computed as int(hbCount) > 2, where hbCount was the STATIC heartbeat line count read once after restart (=3: 2 pre-crash lines + 1 in-flight partial line left by the crash). A static count > 2 does not measure re-execution. The correct test for 're-exec occurred' is heartbeat GROWTH after restart (post-restart delta > 0 over a fixed window), which was not recorded.",
+      "why_not_simply_false": "The preserved evidence saved only the boolean plus a summary string; no raw heartbeat trace over time was stored, so 'no re-exec' cannot be proven from it either. The field is reclassified UNVERIFIED, not flipped to false."
+    },
+    {
+      "field": "recovered_status",
+      "original_value": "interrupted (see log/snapshot)",
+      "issue": "summary string only; no session snapshot was captured in the evidence bundle. The recovered-status claim is therefore UNVERIFIED.",
+      "corrected_value": "UNVERIFIED"
+    }
+  ],
+  "still_supported": {
+    "box1337_selfFreedOnCrash": true,
+    "orphan_chrome_leaked_on_crash": 36,
+    "note": "The box-exec singleton (1337) self-freeing on crash and the orphan-chrome leak count are independent observations not affected by the heartbeat miscomputation. The leak is tracked as defect DEF-L19-CHROME-ORPHAN-001."
+  },
+  "resulting_verdict": "UNKNOWN_EVIDENCE_CONFLICT -> L19.RUNNING.NO_CLEANUP recovery status is UNVERIFIED. NOT counted as a functional PASS. Must be re-run in R5 capturing (a) raw heartbeat trace with post-restart delta, and (b) an actual recovered-session snapshot.",
+  "affects_pass_count": "REMOVES L19.RUNNING.NO_CLEANUP from the live-PASS set until re-run"
+}
