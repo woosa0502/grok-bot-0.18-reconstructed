@@ -350,3 +350,28 @@ All wired into verify-eval-isolation.sh (supervisor tests, real adopt-producer t
 regressions, L15 grader test). Remaining is live/product verification (recovery (pid,startTicks)+termination
 traces, bot autonomous createAgent trace, L26 canonical positive path, L13 approval flow, L15 matrix, map-row
 disposition) — a maintenance-window scope, independent of the code phase.
+
+## FINAL VERDICT — code/regression phase COMPLETE at dbb96fb (GPT-6 Pro, whole-project review)
+
+After four iterative rounds of whole-project GitHub review + fixes, GPT-6 Pro judged the CODE/REGRESSION phase
+COMPLETE at `dbb96fbd6f0549f97f32037522d9f3eab8ef339c`. It re-verified R2 (register-before-ownership + the
+supervisor-integration regression genuinely locks it) and L19 (independently ran the driver AND two mutations —
+dropping the post-C re-measure, and feeding the pre-C value to the verdict — both make the late-execution
+scenario a wrong PASS and FAIL the regression with exit 1). No new code counterexamples. Verdict quote:
+"dbb96fb를 이번 코드·회귀시험 단계의 종결 기준점으로 확정해도 됩니다. 다음 단계는 이미 정리된 라이브·제품 검증입니다."
+
+Closed (code phase): C-1, C-2, A-1(flock), R1, R2, R3, L19 (shared module + A/B + required-observation gate +
+driver regression), L15 (three graders), the real adopt-producer regression, and the supported-launcher
+alignment. Explicit non-guarantees unchanged: spawn→register crash window, whole-tree stragglers, supervisor
+self-SIGKILL.
+
+STILL OPEN — live/product verification (needs a maintenance window on the live 909 stack; NOT part of this
+code phase): recovery re-verify with per-stage (pid,startTicks)+termination traces (HEALTH.DEAD, DOUBLE_CRASH);
+a bot AUTONOMOUSLY calling createAgent with the tool-call trace; L26 canonical-mode POSITIVE paths (needs a
+serve patched with patch-daemon-canonical-memory); L13 full approval flow with external effects; the L15
+auth/Origin matrix; and disposition (verify OR explicit scope-out) of map rows L41, L12/L27, L02, L16, L37,
+L38, L42, L10, L46–50.
+
+Process note: rounds 1–4 ran in one GPT thread (per the user's method); that thread's context grew heavy enough
+to stall generation, so this FINAL verdict was obtained in a fresh GPT thread carrying a compact self-contained
+state summary + the same whole-project GitHub-review method (user-approved switch).
