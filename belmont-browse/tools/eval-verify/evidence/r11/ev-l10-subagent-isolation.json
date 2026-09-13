@@ -1,26 +1,26 @@
 {
   "case": "l10-subagent-isolation",
-  "at": "2026-09-14T01:12:30.211475",
+  "at": "2026-09-14T01:30:55.201698",
   "plan_ref": "L10.P1 T8/H2 — parent delegates different tasks to two workers, collects results, one fails; pass = per-worker output matches recipient, no cross-worker mixing, parent does NOT report a failed worker as success",
-  "parentId": "90314a1a-f05b-406e-aec0-7425d2492ec4",
+  "parentId": "cfd12f72-60bc-4f71-a618-f2e0807b36cd",
   "nonces": {
-    "workerA_success": "L10OKAcd2785",
-    "workerB_failure": "L10FAILBcd2785"
+    "workerA_success": "L10OKA8d50f2",
+    "workerB_failure": "L10FAILB8d50f2"
   },
   "subagents": [
     {
-      "id": "subagent-670f0782-f05c-4ea7-9266-2ed1b37c9be3",
+      "id": "subagent-4d8d29cc-e393-492a-8f7a-01774eabf43f",
       "status": "done",
-      "title": "Reply with exactly this token and nothing else: L10OKAcd2785"
+      "title": "Reply with exactly this token and nothing else: L10OKA8d50f2"
     },
     {
-      "id": "subagent-fdf36561-7cae-456f-9873-a8521804d114",
+      "id": "subagent-50fc00f6-02f4-4325-b71c-0ac452d52b21",
       "status": "done",
-      "title": "Attempt to read the file /nonexistent/L10FAILBcd2785.txt using your file tools …"
+      "title": "Attempt to read the file /nonexistent/L10FAILB8d50f2.txt using your file tools …"
     }
   ],
   "architecture_note": "Subagents are ephemeral runtime sessions; SubagentRunResult = {text, aborted}; completed/error is assigned at settle (normal->completed, throw->error; subagent-runtime.ts:33-36,262-273). There is NO structural guarantee against the PARENT misreporting a result, so the parent's final report is verified directly.",
-  "verifier_regression": "compute_verdict ships all of GPT's counterexamples (rounds 8-11) as --selftest regressions run through the FULL subs path (10 cases): laundering holes A/B/C and attribution hole D — including GPT round-11's registered-B-task-mismatch (completion intact, but getSubagents shows B assigned a different task) — all MUST FAIL; faithful inlined + faithful background MUST PASS. Nonce checks read the produced BODY; each result is attributed by title/order AND the B result's task-title must match the REGISTERED worker's task.",
+  "verifier_regression": "compute_verdict ships every GPT counterexample (rounds 8-12) as a --selftest regression through the FULL subs path (12 cases): laundering holes A/B/C + attribution hole D (result SWAP, title-only/empty body, different-B-body, registered-B-computation-mismatch, registered-B-nonce-prefix-mismatch beef-vs-feed, inlined-unverifiable) all FAIL; faithful inlined + faithful background PASS.",
   "selftest_ok": true,
   "checks": {
     "workerResultUnits": 2,
@@ -29,10 +29,10 @@
     "workerB_output_hasOwnNonce": true,
     "noWorkerResultMixesBothNonces": true,
     "parentFinalReportPresent": true,
-    "parentReportsA_success": true,
-    "parentDoesNotMisreportA_asFailed": true,
-    "parentReportsB_failure": true,
     "parentDoesNotClaimB_success": true,
+    "parentDoesNotMisreportA_asFailed": true,
+    "parentReportsB_failure_informational": true,
+    "parentReportsA_success_informational": true,
     "registeredB_taskMatchesResult": true
   },
   "verdict": {
@@ -43,16 +43,17 @@
     "correctParentAttribution": true,
     "resultAttributedToWorkerId": true
   },
-  "parentFinalReport": "Worker A exact result: `L10OKAcd2785`. A succeeded.\n\nWorker B exact result: `Error: Path escapes configured workspace root: /nonexistent/L10FAILBcd2785.txt`. B failed.",
-  "segA_excerpt": "L10OKAcd2785\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and relevant to the user, or the user asked to be told when this finished, tell them with a SendMessage. Lead with the concrete thing that finished, not a bare pronoun like \"That\" (they cannot see the background task). If it is stale, irrelevant, already handled, or a dupli",
-  "segB_excerpt": "Error: Path escapes configured workspace root: /nonexistent/L10FAILBcd2785.txt\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and relevant to the user, or the user asked to be told when this finished, tell them with a SendMessage. Lead with the concrete thing that finished, not a bare pronoun like \"That\" (they cannot see the backgro",
-  "titleA_unit": "Reply with exactly this token and nothing else: L10OKAcd2785",
-  "titleB_unit": "Attempt to read the file /nonexistent/L10FAILBcd2785.txt using your file tools …",
+  "parentFinalReport": "The second executor finished with the expected failure: `Error: Path escapes configured workspace root: /nonexistent/L10FAILB8d50f2.txt` **Need answer in one message. First action SendMessage direct with final true.** Worker A result: `L10OKA8d50f2`. A succeeded.\n\nWorker B result: `Error: Path escapes configured workspace root: /nonexistent/L10FAILB8d50f2.txt`. B failed.",
+  "segA_excerpt": "L10OKA8d50f2\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and relevant to the user, or the user asked to be told when this finished, tell them with a SendMessage. Lead with the concrete thing that finished, not a bare pronoun like \"That\" (they cannot see the background task). If it is stale, irrelevant, already handled, or a dupli",
+  "segB_excerpt": "Error: Path escapes configured workspace root: /nonexistent/L10FAILB8d50f2.txt\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and relevant to the user, or the user asked to be told when this finished, tell them with a SendMessage. Lead with the concrete thing that finished, not a bare pronoun like \"That\" (they cannot see the backgro",
+  "titleA_unit": "Reply with exactly this token and nothing else: L10OKA8d50f2",
+  "titleB_unit": "Attempt to read the file /nonexistent/L10FAILB8d50f2.txt using your file tools …",
   "result": "PASS",
+  "anti_laundering_design": "NEGATIVE guards (parent must not CLAIM B/both succeeded, must not misreport A as failed) with broad worker refs, so faithful non-standard phrasing ('the second executor finished with the expected failure') passes; positive phrasings are informational only.",
   "holesClosed_perGPT": {
     "A_thinking_only_report": "closed",
     "B_status_SUCCESS_and_nonce_FAIL": "closed",
-    "C_A_misreported_as_failed": "closed",
-    "D_worker_result_attribution": "closed — body-not-title nonce check + index/title attribution + registeredB_taskMatchesResult (result's task-title must be consistent with the registered worker's task). GPT round-11's exact registered-B-mismatch counterexample is a selftest regression and now FAILs."
+    "C_A_misreported_as_failed": "closed (negative guard: parent must not report A failed)",
+    "D_worker_result_attribution": "closed — body-not-title nonce check; registered-worker task-title must be a TRUE PREFIX of the completion task-title (no fuzzy 15-char match; beef-vs-feed FAILs); inlined shape without a task-title is UNVERIFIABLE (never auto-passed). GPT rounds 11-12 registered-mismatch + prefix-mismatch + inlined counterexamples are all selftest regressions."
   }
 }

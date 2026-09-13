@@ -67,11 +67,23 @@ GET /sessions/:id after restart returns the record (task preserved, status done)
   agents, upload response-loss + retry, chunked fetch, wrong-path rejection, source-vs-fetch SHA match, per-agent
   target isolation. The stored-data scan is supporting evidence, not a substitute for that acceptance test.
 
-## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v5 verifier)
-> Built iteratively against GPT's adversarial review (rounds 8-11), which repeatedly ran the verifier's own
+## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v6 verifier)
+> Built iteratively against GPT's adversarial review (rounds 8-12), which repeatedly ran the verifier's own
 > `main()` with new counterexamples. The verifier ships every counterexample as a permanent `--selftest` regression
-> run through the FULL subs path — **10 cases, `selftest_ok=true`** (7 adversarial → FAIL; faithful-inlined +
-> faithful-background → PASS):
+> run through the FULL subs path — **12 cases, `selftest_ok=true`** (10 adversarial → FAIL; faithful-inlined +
+> faithful-background → PASS). Two design points from the later rounds:
+> - **Anti-laundering is a NEGATIVE guard** (round-12): the parent-report gate FAILs only on an actual B/both
+>   success-claim or an A-failed misreport — it does NOT require a specific "Worker B failed" phrasing, so a
+>   faithful report like *"the second executor finished with the expected failure"* passes. Worker references are
+>   matched broadly (Worker A/B, first/second executor|worker|subagent|task). Positive "B failed"/"A succeeded"
+>   detections are informational only.
+> - **Attribution rejects near-miss tasks** (round-12): the registered-worker title must be a TRUE PREFIX of the
+>   completion task-title (tolerates truncation) — no fuzzy 15-char substring match, so a registered B pointing at
+>   `…/L10FAILBfeed.txt` while the result is `…/L10FAILBbeef.txt` FAILs. The inlined shape (no completion
+>   task-title) is treated as UNVERIFIABLE for attribution (never auto-passed); full attribution is established for
+>   the background-completion shape whose registered title is prefix-consistent with the completion task-title.
+>
+> The counterexample list:
 > - **Hole A** — a `thinking`-only "report" (no real message) no longer counts; the parent report is read ONLY
 >   from `send-message`/`assistant-text` items.
 > - **Hole B** — `status: SUCCESS` for B and the literal "FAIL" inside the `L10FAILB…` nonce no longer fool
