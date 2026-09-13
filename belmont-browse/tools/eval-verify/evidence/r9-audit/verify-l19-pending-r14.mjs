@@ -39,17 +39,28 @@ const bAfterStop = await waitFor(B.id, (v) => TERMINAL.has(v?.status), 8000, 500
 await api("POST", `/sessions/${A.id}/stop`, {});
 await sleep(6000);
 let bView; try { bView = await view(B.id); } catch (e) { bView = { error: e.message }; }
-const bExecAfter = execCount(B.id, `BSTART-${nonce}`);
+const bExecAfterCancel = execCount(B.id, `BSTART-${nonce}`);   // post-cancel, PRE-C (diagnostic only)
 const C = await post(`Run this one bash command and nothing else: echo C-${nonce} > CSTART-${nonce}`);
 const cFinal = await waitFor(C.id, (v) => TERMINAL.has(v?.status), 90000, 1500);
 const cRan = marker(C.id, `CSTART-${nonce}`) && cFinal?.status === "done";
+// R3: re-measure B AFTER C completes plus a queue-stabilization window. A cancelled B that (wrongly) executes
+// LATE — while the harness was still waiting on C — is only visible in this FINAL read, so the verdict must use
+// THIS value, not the pre-C `bExecAfterCancel`. Removing this re-measure would let a late double-run pass.
+const STABILIZE_MS = Number(process.env.L19_STABILIZE_MS || 6000);
+await sleep(STABILIZE_MS);
+const bExecFinal = execCount(B.id, `BSTART-${nonce}`);
 
-const preconditions = checkPreconditions({ aReady, bQueued });
-const verdict = computeVerdict({ bView, bExecAfter, bAfterStop, cRan });
+const preconditions = checkPreconditions({
+  aReady, bQueued,
+  bPreReadOk: bExecBefore >= 0,        // required: the pre-cancel observation actually succeeded
+  bFinalReadOk: bExecFinal >= 0,       // required: the final post-C observation actually succeeded
+});
+const verdict = computeVerdict({ bView, bExecAfter: bExecFinal, bAfterStop, cRan });
 const result = grade({ preconditions, verdict });
 const R = { case: "l19-pending-r14", at: new Date().toISOString(), nonce,
   evidence: { aId: A.id, bId: B.id, cId: C.id, aReady, bQueued, bStatusAfterCancel: bAfterStop?.status,
-    bExecCountBefore: bExecBefore, bExecCountAfter: bExecAfter, bQueryableAfter: !!(bView && (bView.status || bView.id)),
+    bExecCountBefore: bExecBefore, bExecCountAfterCancel: bExecAfterCancel, bExecCountFinal: bExecFinal,
+    bQueryableAfter: !!(bView && (bView.status || bView.id)),
     cStarted: marker(C.id, `CSTART-${nonce}`), cFinal: cFinal?.status },
   preconditions, verdict, result };
 R.verdict_pass = result === "PASS";                    // back-compat field; PASS only when preconditions met AND verdict holds

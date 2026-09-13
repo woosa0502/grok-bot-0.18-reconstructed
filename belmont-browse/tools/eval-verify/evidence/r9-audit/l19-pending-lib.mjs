@@ -22,23 +22,30 @@ export function execCountFromDir(dir, name) {
   catch (e) { return e.code === "ENOENT" ? 0 : -1; }
 }
 
-// PURE verdict from observations.
+// PURE verdict from observations. Read-success is NOT decided here (a read failure is "we could not observe",
+// which is INVALID/UNKNOWN, not a real FAIL) — it is gated in checkPreconditions via bPreReadOk/bFinalReadOk.
+// bExecAfter here is the FINAL execution count, re-measured AFTER C completes (R3), so a B that executes late —
+// while the harness is still waiting on C — is caught (bExecAfter >= 1 -> not "never executed" -> FAIL).
 export function computeVerdict({ bView, bExecAfter, bAfterStop, cRan }) {
   return {
     b_not_lost: !!(bView && (bView.status || bView.id)),
-    b_exec_read_ok: bExecAfter >= 0,                 // not a read failure
-    b_never_executed: bExecAfter === 0,              // EXECUTION count: catches a double run (>=2) too
+    b_never_executed: bExecAfter === 0,              // EXECUTION count: catches a double/late run (>=1) too
     b_cancelled_terminal: TERMINAL.has(bAfterStop?.status),
     c_ran: !!cRan,
   };
 }
 export const verdictPass = (v) => Object.values(v).every(Boolean);
 
-// PRECONDITIONS gate: the run only MEANS anything if B was actually queued behind a still-running A. If A never
-// reached the running+marker state, or B was never queued (it started immediately), then "B never executed"
-// is vacuous — the pending/cancel path was not exercised. Such a run is INVALID/UNKNOWN, never PASS.
-export function checkPreconditions({ aReady, bQueued }) {
-  return { ok: !!aReady && !!bQueued, aReady: !!aReady, bQueued: !!bQueued };
+// PRECONDITIONS + REQUIRED-OBSERVATION gate. The run only MEANS anything if B was actually queued behind a
+// still-running A (test validity), AND every required observation actually succeeded (we could observe). If A
+// never reached running+marker, or B was never queued, or a required read failed, the run is INVALID/UNKNOWN —
+// never PASS. Required reads (R3): the pre-cancel read (bPreReadOk = bExecBefore >= 0) and the FINAL post-C read
+// (bFinalReadOk = bExecAfter >= 0). A read failure must never be laundered into a PASS or a FAIL.
+export function checkPreconditions({ aReady, bQueued, bPreReadOk, bFinalReadOk }) {
+  return {
+    ok: !!aReady && !!bQueued && !!bPreReadOk && !!bFinalReadOk,
+    aReady: !!aReady, bQueued: !!bQueued, bPreReadOk: !!bPreReadOk, bFinalReadOk: !!bFinalReadOk,
+  };
 }
 
 // Overall grade: INVALID when preconditions are unmet, else PASS/FAIL from the verdict.

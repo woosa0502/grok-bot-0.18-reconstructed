@@ -34,13 +34,31 @@ export async function isCdpUp(baseUrl) {
   }
 }
 
-/** Push-register an owned chrome instance to an external supervisor's append-only log (if $BELMONT_CHROME_REG
- * is set), synchronously. BOTH the fresh-spawn and the orphan-ADOPT paths call this so the supervisor
- * discovers EVERY owned instance without depending on owner-file polling (closes C-1/C-2). Best-effort. */
+/** Push-register an owned chrome instance to an external supervisor's append-only log, synchronously. BOTH the
+ * fresh-spawn and the orphan-ADOPT paths call this so the supervisor discovers EVERY owned instance without
+ * depending on owner-file polling (closes C-1/C-2).
+ *
+ * Returns true on success. When NOT supervised ($BELMONT_CHROME_REG unset) there is nothing to register, so it
+ * returns true (a direct, non-supervised launch is unaffected). When supervised, registration is REQUIRED: an
+ * append failure returns FALSE so the caller can fail-closed rather than return a launch the supervisor cannot
+ * track (whole-project review R2 — the old code swallowed the error and reported success). */
 function registerChromeInstance({ pid, pgid, startTicks }) {
   const reg = process.env.BELMONT_CHROME_REG;
-  if (!reg || !Number.isSafeInteger(pid)) return;
-  try { appendFileSync(reg, JSON.stringify({ pid, pgid, startTicks, servePid: process.pid, ts: Date.now() }) + "\n"); } catch {}
+  if (!reg) return true;                              // not supervised: nothing to register
+  if (!Number.isSafeInteger(pid)) return false;      // cannot register an invalid pid under supervision
+  try {
+    appendFileSync(reg, JSON.stringify({ pid, pgid, startTicks, servePid: process.pid, ts: Date.now() }) + "\n");
+    return true;
+  } catch {
+    return false;                                     // supervised registration FAILED -> caller must fail-closed
+  }
+}
+
+/** Best-effort kill of a just-spawned detached chrome and its whole group (it leads its own group; pid==pgid).
+ * Used only on a fail-closed abort before the normal stop() is wired, so a rejected launch leaves no orphan. */
+function killSpawnedTree(child) {
+  if (Number.isSafeInteger(child?.pid) && child.pid > 1) { try { process.kill(-child.pid, "SIGKILL"); } catch {} }
+  try { child?.kill?.("SIGKILL"); } catch {}
 }
 
 export async function ensureChrome({ port = 9333, display = ":99", profileDir, windowSize = "1280,800", startUrl = "about:blank", log = console.error, chromeBinary, nativeComponentVersion, asideHome, startupTimeoutMs = 20000, shutdownTimeoutMs = 10000, pollIntervalMs = 250 }) {
@@ -70,7 +88,13 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
       log(`[chrome] adopting orphaned CDP at ${baseUrl} (owner serve pid=${owner.servePid} dead; chrome pid=${owner.chromePid}, pgid=${pgid}); taking termination ownership`);
       // C-2: register the ADOPTED instance too, under THIS serve's pid, so an external supervisor pins it and
       // reaps it on our exit — the spawn path is not the only way an owned chrome comes under our ownership.
-      registerChromeInstance({ pid: owner.chromePid, pgid, startTicks });
+      // R2: under supervision, registration is REQUIRED. If it fails, do NOT claim a successful (but untracked)
+      // adoption. We must not kill the pre-existing browser (a transient reg error should not destroy a live
+      // session), so we roll back by leaving our owner record in place — since this serve then aborts, its
+      // servePid becomes dead and the next serve re-adopts (and re-registers) the same orphan.
+      if (!registerChromeInstance({ pid: owner.chromePid, pgid, startTicks })) {
+        throw new Error("failed to register adopted chrome with the supervisor; aborted adoption to avoid an untracked browser (owner record left for re-adoption)");
+      }
       // Re-verify ownership right before we terminate: our generation still stands, the pid was not
       // reused, and the live CDP endpoint is actually our owned browser process (B3).
       const verifyIdentity = async () => {
@@ -130,9 +154,14 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
   // PUSH registration for an external supervisor (closes the owner-file poll-gap: an append-only log the
   // supervisor tails sees EVERY owned chrome the instant it exists, even if the owner file is later
   // replaced/deleted). Written synchronously right after spawn, before any await — the residual spawn->append
-  // microgap is far tighter than owner-file polling. Best-effort: never blocks a launch. The SAME helper runs
-  // on the adopt path (C-2), so the supervisor discovers cross-serve-adopted chrome too.
-  registerChromeInstance({ pid: child.pid, pgid: child.pid, startTicks });
+  // microgap is far tighter than owner-file polling. The SAME helper runs on the adopt path (C-2), so the
+  // supervisor discovers cross-serve-adopted chrome too.
+  // R2: under supervision, registration is REQUIRED. If it fails, reap the just-spawned tree and abort rather
+  // than returning an untracked browser the supervisor can never reap.
+  if (!registerChromeInstance({ pid: child.pid, pgid: child.pid, startTicks })) {
+    killSpawnedTree(child);
+    throw new Error("failed to register spawned chrome with the supervisor; aborted launch to avoid an untracked browser");
+  }
   // Record ownership immediately after spawn — before CDP is up — so a crash during startup still leaves
   // an adoptable/reap-able record (closes the spawn->ready->write gap, B5). child.pid is the pgid
   // (spawned detached). The generation scopes deletion so a stale stop cannot delete a newer owner (B1/B5).

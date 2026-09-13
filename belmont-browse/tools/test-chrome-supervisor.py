@@ -392,5 +392,54 @@ def test_profile_lock_rejects_second_run():
     first.communicate(timeout=20)
     print("PASS profile-lock: a second supervised serve on the same profile is rejected (exit 4) and never runs serve")
 
+REG_HOLD_SERVE = r'''
+import os, sys, json, time, subprocess, signal
+profile = sys.argv[1]; reg = os.environ.get("BELMONT_CHROME_REG")
+assert reg, "supervisor must set BELMONT_CHROME_REG before exec"
+def ticks(pid):
+    with open(f"/proc/{pid}/stat") as f: raw = f.read()
+    return int(raw[raw.rfind(")") + 2:].split()[19])
+A = subprocess.Popen(["sleep", "600"], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+with open(reg, "a") as f:   # NO owner file: reaping depends entirely on the reg log surviving the rival
+    f.write(json.dumps({"pid": A.pid, "pgid": A.pid, "startTicks": ticks(A.pid), "servePid": os.getpid(), "ts": time.time()}) + "\n")
+open(os.path.join(profile, "serve-ready"), "w").write(str(A.pid))
+time.sleep(6)               # hold the profile lock long enough for a rival run to be rejected
+os.kill(os.getpid(), signal.SIGKILL)
+'''
+
+def test_rejected_second_run_preserves_registration():
+    """R1 (whole-project review): a rejected second supervised serve must NOT truncate the winner's shared
+    registration log. Before the fix the loser did `open(reg,"w")` BEFORE the flock check, wiping the winner's
+    registrations. Assert: the rival exits 4, does NOT run serve, the winner's reg line is preserved across the
+    rival, and the winner still reaps its target."""
+    profile = tempfile.mkdtemp(prefix="sup-r1-")
+    fs = os.path.join(profile, "reg-hold-serve.py"); open(fs, "w").write(REG_HOLD_SERVE)
+    winner = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs, profile],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    ready = os.path.join(profile, "serve-ready"); a_pid = None
+    for _ in range(200):
+        if os.path.exists(ready): a_pid = int(open(ready).read().strip()); break
+        time.sleep(0.05)
+    assert a_pid, "winner serve never registered its chrome"
+    reg_path = os.path.join(profile, ".belmont-chrome-reg.jsonl")
+    # confirm the winner's registration is present before the rival runs
+    before = [l for l in open(reg_path).read().splitlines() if l.strip()]
+    assert len(before) == 1, f"expected 1 winner registration before the rival, got {before}"
+    # rival run on the same profile while the winner holds the lock
+    rival_sentinel = os.path.join(profile, "rival-serve-ran")
+    fs2 = os.path.join(profile, "rival-sentinel.py"); open(fs2, "w").write(SENTINEL_SERVE)
+    rival = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs2, rival_sentinel],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    out2, _ = rival.communicate(timeout=20)
+    assert rival.returncode == 4, f"rival should be rejected with exit 4, got {rival.returncode}\n{out2}"
+    assert not os.path.exists(rival_sentinel), "rival exec'd serve despite the profile lock\n" + out2
+    # THE R1 ASSERTION: the winner's registration log is intact after the rejected rival
+    after = [l for l in open(reg_path).read().splitlines() if l.strip()]
+    assert after == before, f"rival TRUNCATED the winner's registration log (R1): before={before} after={after}"
+    # and the winner still reaps its target
+    winner.communicate(timeout=20); time.sleep(0.5)
+    assert not alive(a_pid), "winner failed to reap its target after the rejected rival\n"
+    print("PASS r1-preserve-registration: a rejected rival (exit 4) leaves the winner's reg log intact and the target is still reaped")
+
 if __name__ == "__main__":
-    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_polled_chrome_reaped_after_owner_deleted(); test_repin_then_owner_deleted_reaps_current(); test_poll_gap_registered_chrome_reaped(); test_pidfd_reuse_safety(); test_profile_missing_created_and_registers(); test_reg_channel_unavailable_fails_closed(); test_adopt_path_registration_reaped(); test_profile_lock_rejects_second_run(); print("ALL SUPERVISOR TESTS PASS")
+    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_polled_chrome_reaped_after_owner_deleted(); test_repin_then_owner_deleted_reaps_current(); test_poll_gap_registered_chrome_reaped(); test_pidfd_reuse_safety(); test_profile_missing_created_and_registers(); test_reg_channel_unavailable_fails_closed(); test_adopt_path_registration_reaped(); test_profile_lock_rejects_second_run(); test_rejected_second_run_preserves_registration(); print("ALL SUPERVISOR TESTS PASS")

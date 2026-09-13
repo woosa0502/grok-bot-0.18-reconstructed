@@ -289,3 +289,34 @@ Explicitly-agreed NON-guarantees (GPT concurred these are honest boundaries, not
 spawn→register crash microgap; whole-tree stragglers beyond the owned group root; and the supervisor's own
 SIGKILL (a self-terminating supervisor cannot reap after it is itself killed — that needs a delegated cgroup +
 a survivor, which needs root/user-bus unavailable here).
+
+## Whole-project review round 2 (GPT-6 Pro @ df3414c) — R1/R2/R3
+
+GPT confirmed C-1, C-2, the L19 shared-module + A/B precondition gate, and the three named L15 false-PASSes are
+CLOSED (verified against real producer code). Three new defects, each reproduced, now fixed:
+
+- **R1 — supervisor truncated the shared reg log BEFORE taking the flock (fixed)**: a rejected second supervised
+  serve did `open(reg,"w")` (wiping the winner's registrations) before the flock check turned it away. Fix:
+  reorder to makedirs → **flock** → (winner only) truncate+fsync the reg log; a loser returns at the lock having
+  touched nothing shared. Regression `test_rejected_second_run_preserves_registration` (rival exit 4 AND the
+  winner's reg line preserved across the rival AND target still reaped). Supervisor tests now 13/13.
+- **R2 — registration WRITE failure was swallowed (fixed)**: `registerChromeInstance` caught the append error and
+  the spawn/adopt branches reported success, returning an untracked browser. Fix: the helper returns success
+  (true when unsupervised — nothing to register; true/false on the append when supervised). Under supervision a
+  failure fails-closed: **spawn** reaps the just-spawned tree (group SIGKILL) and throws; **adopt** throws
+  without killing the pre-existing browser and leaves our owner record so the next serve re-adopts+re-registers.
+  Regression `testAdoptRegistrationFailClosed` in test-chrome-adopt-registration.mjs (real ensureChrome() adopt
+  with a fault-injected reg path: throws, browser stays alive, owner left re-adoptable).
+- **R3 — L19 measured B only BEFORE C, and the pre-cancel read wasn't gated (fixed)**: a cancelled B that
+  executed LATE (while the harness waited on C) was missed, and a pre-read failure (-1) still PASSed. Fix: the
+  verifier now RE-MEASURES B after C completes + a stabilization window and grades on that FINAL count; the
+  shared gate now requires bPreReadOk (pre-cancel read ok) and bFinalReadOk (final read ok) — a read failure
+  grades INVALID/UNKNOWN, never PASS/FAIL; and the verdict's read-success check moved into the gate. The
+  self-test adds late-execution→FAIL, pre/final-read-failure→INVALID, and a load-bearing pair proving a dropped
+  re-measure would regress to a false-PASS.
+
+Producer-vs-consumer test coverage (GPT's note): the Python supervisor tests exercise the CONSUMER; the real
+`chrome.mjs` PRODUCER adopt call + its R2 fail-closed are pinned by test-chrome-adopt-registration.mjs, which
+drives the actual ensureChrome() adopt branch (removing chrome.mjs's adopt registerChromeInstance call, or its
+fail-closed throw, fails that test). Supported-launch-path alignment (verify-eval-isolation.sh under the
+supervisor) landed in af4dd36 (after the df3414c GPT reviewed).
