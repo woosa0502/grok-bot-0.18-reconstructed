@@ -58,6 +58,14 @@ def main():
     serve_argv = sys.argv[sep + 1:]
     grace_ms = int(os.environ.get("BELMONT_SUPERVISOR_GRACE_MS", "4000"))
 
+    # Append-only registration log the serve writes at each chrome spawn; we TAIL it so discovery does not
+    # depend on polling a deletable owner file (closes the round-12/13 poll-gap: a chrome registered at spawn
+    # is seen even if the owner file is replaced/deleted before the next poll).
+    reg_path = os.path.join(profile, ".belmont-chrome-reg.jsonl")
+    try: open(reg_path, "w").close()
+    except OSError: reg_path = None
+    if reg_path: os.environ["BELMONT_CHROME_REG"] = reg_path
+
     child_pid = os.fork()
     if child_pid == 0:
         os.execvp(serve_argv[0], serve_argv)  # child: become serve
@@ -65,6 +73,32 @@ def main():
     # child_pid is IMMUTABLE (the forked serve). Exit is tracked by a separate flag so it never collides with
     # the ownership comparison (round-9 fix).
     serve_exited = False
+    reg_offset = 0
+
+    def drain_registrations(tracked):
+        """Tail the append-only registration log; pin a pidfd for each newly-registered owned chrome we do not
+        already track (verifying servePid==our child and start-ticks, then re-verifying after pidfd_open)."""
+        nonlocal reg_offset
+        if not reg_path: return
+        try:
+            with open(reg_path) as f:
+                f.seek(reg_offset)
+                data = f.read(); reg_offset = f.tell()
+        except OSError: return
+        for line in data.splitlines():
+            line = line.strip()
+            if not line: continue
+            try: e = json.loads(line)
+            except Exception: continue
+            cp, ct, sp = e.get("pid"), e.get("startTicks"), e.get("servePid")
+            if not (isinstance(cp, int) and cp > 1 and isinstance(ct, int) and sp == child_pid): continue
+            if cp in tracked: continue
+            if start_ticks(cp) != ct: continue         # already a different/dead instance
+            try: f2 = os.pidfd_open(cp)
+            except (ProcessLookupError, OSError): continue
+            if start_ticks(cp) != ct: os.close(f2); continue   # reuse between check and open
+            tracked[cp] = (f2, ct)
+            print(f"[supervisor] pinned chrome pid={cp} startTicks={ct} via pidfd (registration)", flush=True)
 
     def pin_owned_chrome():
         """Open a pidfd bound to the OWNED chrome instance, or None. Closes GPT round-8 holes:
@@ -102,7 +136,8 @@ def main():
     # serve-exit we hold a pidfd for every still-live owned instance regardless of restarts or owner deletion.
     tracked = {}   # chromePid -> (fd, startTicks)
     while True:
-        f, cp, ct = pin_owned_chrome()
+        drain_registrations(tracked)   # primary discovery: push-registered at spawn (no owner-file poll-gap)
+        f, cp, ct = pin_owned_chrome() # secondary: current owner (compat / cross-serve adopt)
         if f is not None:
             if cp in tracked: os.close(f)                       # already tracked
             else: tracked[cp] = (f, ct); print(f"[supervisor] pinned chrome pid={cp} startTicks={ct} via pidfd", flush=True)
@@ -114,6 +149,7 @@ def main():
         if wpid == child_pid:
             serve_exited = True; break
         time.sleep(0.5)
+    drain_registrations(tracked)   # final drain: catch a chrome registered right at serve-exit
     print("[supervisor] serve exited; reaping tracked owned chrome instances", flush=True)
 
     def reap_via_fd(fd, chrome_pid):

@@ -115,6 +115,13 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
   });
   const observed = observeChild(child);
   const startTicks = processStartTicks(child.pid);
+  // PUSH registration for an external supervisor (closes the owner-file poll-gap: an append-only log the
+  // supervisor tails sees EVERY spawned chrome the instant it exists, even if the owner file is later
+  // replaced/deleted). Written synchronously right after spawn, before any await — the residual spawn->append
+  // microgap is far tighter than owner-file polling. Best-effort: never blocks a launch.
+  if (process.env.BELMONT_CHROME_REG) {
+    try { appendFileSync(process.env.BELMONT_CHROME_REG, JSON.stringify({ pid: child.pid, pgid: child.pid, startTicks, servePid: process.pid, ts: Date.now() }) + "\n"); } catch {}
+  }
   // Record ownership immediately after spawn — before CDP is up — so a crash during startup still leaves
   // an adoptable/reap-able record (closes the spawn->ready->write gap, B5). child.pid is the pgid
   // (spawned detached). The generation scopes deletion so a stale stop cannot delete a newer owner (B1/B5).

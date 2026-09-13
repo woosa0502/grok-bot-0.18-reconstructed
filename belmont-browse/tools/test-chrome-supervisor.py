@@ -216,6 +216,45 @@ def test_repin_then_owner_deleted_reaps_current():
     assert not alive(b_pid), "supervisor leaked B after an A->B restart followed by owner deletion\n" + out
     print("PASS repin+owner-deleted: B (post-restart) is reaped even though the owner file was deleted")
 
+
+POLL_GAP_SERVE = r'''
+import os, sys, json, time, subprocess, signal
+profile = sys.argv[1]; owner = os.path.join(profile, ".belmont-chrome-owner.json"); reg = os.environ.get("BELMONT_CHROME_REG")
+def ticks(pid):
+    with open(f"/proc/{pid}/stat") as f: raw = f.read()
+    return int(raw[raw.rfind(")") + 2:].split()[19])
+def register(pid):
+    if reg:
+        with open(reg, "a") as f: f.write(json.dumps({"pid": pid, "pgid": pid, "startTicks": ticks(pid), "servePid": os.getpid(), "ts": time.time()}) + "\n")
+def own(pid):
+    tmp = owner + ".tmp"; json.dump({"servePid": os.getpid(), "chromePid": pid, "pgid": pid, "startTicks": ticks(pid), "generation": "pg"}, open(tmp, "w")); os.replace(tmp, owner)
+def spawn(): return subprocess.Popen(["sleep", "600"], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+A = spawn(); register(A.pid); own(A.pid); open(os.path.join(profile, "serve-ready"), "w").write(str(A.pid))
+time.sleep(2.5)                    # supervisor pins A
+A.kill(); A.wait()
+# THE POLL GAP: register+own B, then DELETE the owner immediately, all within one 0.5s poll window, then die.
+B = spawn(); register(B.pid); own(B.pid)
+os.remove(owner)                   # owner gone before the next poll -> pin_owned_chrome can't find B
+open(os.path.join(profile, "serve-ready-b"), "w").write(str(B.pid))
+os.kill(os.getpid(), signal.SIGKILL)
+'''
+
+def test_poll_gap_registered_chrome_reaped():
+    """GPT whole-project counterexample: B is spawned+registered+owner-published then the owner is DELETED
+    within one poll window before SIGKILL. Owner-polling alone misses B; the registration tail must catch+reap it."""
+    profile = tempfile.mkdtemp(prefix="sup-pollgap-")
+    fs = os.path.join(profile, "pollgap-serve.py"); open(fs, "w").write(POLL_GAP_SERVE)
+    sup = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs, profile],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    rb = os.path.join(profile, "serve-ready-b"); b_pid = None
+    for _ in range(240):
+        if os.path.exists(rb): b_pid = int(open(rb).read().strip()); break
+        time.sleep(0.05)
+    assert b_pid, "serve never registered B"
+    out, _ = sup.communicate(timeout=45); time.sleep(0.5)
+    assert not alive(b_pid), "supervisor missed B (owner deleted in the poll gap); registration tail failed\n" + out
+    print("PASS poll-gap: a chrome registered at spawn is reaped even when its owner is deleted within the poll window")
+
 def test_pidfd_reuse_safety():
     p = subprocess.Popen(["sleep", "0.2"]); fd = os.pidfd_open(p.pid); p.wait(); time.sleep(0.2)
     try:
@@ -226,4 +265,4 @@ def test_pidfd_reuse_safety():
         os.close(fd)
 
 if __name__ == "__main__":
-    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_polled_chrome_reaped_after_owner_deleted(); test_repin_then_owner_deleted_reaps_current(); test_pidfd_reuse_safety(); print("ALL SUPERVISOR TESTS PASS")
+    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_polled_chrome_reaped_after_owner_deleted(); test_repin_then_owner_deleted_reaps_current(); test_poll_gap_registered_chrome_reaped(); test_pidfd_reuse_safety(); print("ALL SUPERVISOR TESTS PASS")

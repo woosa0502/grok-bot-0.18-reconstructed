@@ -26,3 +26,22 @@ whole-tree + supervisor-death + same-profile flock; recovery re-run via the real
 (supervised vs orphan-adopt separated); L13 full approval flow / canonical-mode L26 / L15 missing matrix;
 bot autonomous-creation trace. Plus verify-or-scope-out the untested map areas (L41,L12/L27,L02,L16,L37,L38,
 L42,L10,L46-50). Tracked in this thread with GPT.
+
+## P0 (Chrome 소유권) — poll-gap first-discovery — FIXED (push registration at spawn)
+GPT's whole-project review + rounds 10-13 kept reproducing a single-serve leak the owner-file-POLLING
+supervisor could not close: `pin A → (within the 0.5s poll gap) A dies, B spawns+publishes owner, owner
+deleted → SIGKILL` leaves B untracked (owner gone, never polled). Reducing the interval or adding a final
+sweep does not fix the class — discovery cannot depend on a deletable file that is only sampled periodically.
+
+Fix (the append-only registration GPT recommended): `chrome.mjs` now, at each owned chrome spawn, appends
+`{pid,pgid,startTicks,servePid,ts}` to `$BELMONT_CHROME_REG` synchronously (before any await). The supervisor
+sets that env to `<profile>/.belmont-chrome-reg.jsonl`, creates the fork with it inherited, and TAILS the log
+every poll (+ a final drain at serve-exit), pidfd-pinning every newly-registered owned chrome (servePid==our
+child, start-ticks verified, re-verified after pidfd_open). Owner-polling remains only as a secondary/compat
+path. Regression `test_poll_gap_registered_chrome_reaped` (register B + delete owner within the poll window →
+B reaped). Supervisor 8/8; Node orphan-ownership + lifecycle regressions still green.
+
+Residual (spawn→append microgap): a crash in the ~microseconds between the OS spawn returning the pid and the
+appendFileSync would still leave an unregistered chrome. Fully closing that needs the manager to OWN creation
+(spawn chrome itself) or a per-run cgroup — the external-manager/cgroup architecture GPT named, tracked as the
+remaining architectural item alongside whole-tree stragglers, the supervisor's own SIGKILL, and A-1 flock.
