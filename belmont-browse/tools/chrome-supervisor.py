@@ -111,6 +111,18 @@ def main():
     # child_pid is IMMUTABLE (the forked serve). Exit is tracked by a separate flag so it never collides with
     # the ownership comparison (round-9 fix).
     serve_exited = False
+    # Diagnostic: record the serve's AUTHORITATIVE identity captured by the parent RIGHT AFTER fork — the serve is
+    # alive and holds this PID, so there is no reuse window (whole-project review round-5: a test harness reading
+    # /proc later could bind to a reused PID). A test can read this to bind to the ORIGINAL serve instance, and
+    # read the exit record below to verify HOW the serve actually died. Purely observational; does not affect
+    # chrome reaping.
+    serve_id_path = os.path.join(profile, ".belmont-serve-identity.json")
+    try:
+        with open(serve_id_path, "w") as f:
+            json.dump({"pid": child_pid, "startTicks": start_ticks(child_pid), "supervisorPid": os.getpid(), "ts": time.time()}, f)
+            f.flush(); os.fsync(f.fileno())
+    except OSError:
+        pass
     reg_offset = 0
 
     def drain_registrations(tracked):
@@ -183,9 +195,19 @@ def main():
             try: os.close(tracked[pid][0])
             except OSError: pass
             del tracked[pid]
-        wpid, _ = os.waitpid(child_pid, os.WNOHANG)
+        wpid, wstatus = os.waitpid(child_pid, os.WNOHANG)
         if wpid == child_pid:
-            serve_exited = True; break
+            serve_exited = True
+            # Diagnostic: record HOW the serve actually died so a test can verify a crash was truly by SIGKILL
+            # (not a self-exit misreported as a delivered signal). Observational only.
+            try:
+                rec = ({"signalled": True, "termsig": os.WTERMSIG(wstatus)} if os.WIFSIGNALED(wstatus)
+                       else {"signalled": False, "exitcode": os.WEXITSTATUS(wstatus)} if os.WIFEXITED(wstatus)
+                       else {"signalled": None})
+                with open(os.path.join(profile, ".belmont-serve-exit.json"), "w") as f:
+                    json.dump({**rec, "pid": child_pid, "ts": time.time()}, f); f.flush(); os.fsync(f.fileno())
+            except OSError: pass
+            break
         time.sleep(0.5)
     drain_registrations(tracked)   # final drain: catch a chrome registered right at serve-exit
     print("[supervisor] serve exited; reaping tracked owned chrome instances", flush=True)

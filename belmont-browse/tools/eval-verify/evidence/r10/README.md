@@ -121,8 +121,18 @@ stand; these fix the drivers so they can't PASS on a failure path):
   - **distinct helper results + SIGNALLED-gated injections**: the helper now returns SIGNALLED(0)/ALREADY_GONE(10)/
     REFUSED(3)/ERROR(4), and the crash/stop injections REQUIRE an actually-delivered SIGNALLED result, gated in
     the verdict (serveCrashSignalled / serve1CrashSignalled / serve2StopSignalled) — so a no-op helper exit with
-    the process dying for another reason can no longer PASS. Both re-ran PASS (supervised 4 conditions;
-    orphan-adopt 14 conditions).
+    the process dying for another reason can no longer PASS.
+  - **round-6: zombie SIGNALLED + authoritative identity + crash-cause**: (i) the helper now detects an
+    ALREADY-EXITED (zombie) target via a pidfd POLLIN poll + /proc state Z and returns ALREADY_GONE instead of
+    SIGNALLED (GPT reproduced `exit(17)` being misreported as SIGNALLED); self-tested against a real zombie. (ii)
+    the serve's identity is now taken from `.belmont-serve-identity.json`, which the SUPERVISOR (the serve's
+    parent) writes RIGHT AFTER fork — the authoritative capture with no reuse window — instead of the harness
+    reading /proc at first sighting (which could bind to a PID reused before first observation). (iii) the crash
+    is verified to have ACTUALLY killed the serve BY SIGKILL: supervised checks the supervisor's waitpid record
+    (`.belmont-serve-exit.json`, WTERMSIG==9 -> serveCrashBySigkill); orphan-adopt checks the serve1 ChildProcess
+    exit signal (==='SIGKILL' -> serve1KilledBySigkill). Both re-ran PASS (supervised 5 conditions; orphan-adopt
+    15 conditions). The supervisor's identity/exit records are observational only and do not affect chrome reaping
+    (supervisor suite still 14/14).
 - **L13 approve gate**: `approveGrantsEffect` now also requires `allReadsOk === true`, so EVERY scenario
   uniformly gates observation-read success (GPT round-3).
 - **orphan-adopt verdict**: now requires serve1 actually died, the owner names the SPAWNED serve2 pid

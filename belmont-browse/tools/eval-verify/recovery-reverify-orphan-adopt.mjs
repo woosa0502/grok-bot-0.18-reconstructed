@@ -64,8 +64,11 @@ rec("control-started", { controlPid, controlTicks });
 try { fs.rmSync(SERVE_JSON, { force: true }); } catch {} try { fs.rmSync(OWNER, { force: true }); } catch {}
 
 // serve1 (direct). Capture its identity AT SPAWN (before waitReady) so a die+reuse during the wait cannot make
-// us adopt a reused PID's ticks as the "expected" identity.
+// us adopt a reused PID's ticks as the "expected" identity. Also capture its EXIT (code, signal) via the
+// ChildProcess so the crash can be verified to have actually killed it BY SIGKILL (round-5: a self-exit must not
+// count as a delivered crash).
 const s1 = startServe(); const s1Pid = s1.pid; const s1Ticks = earlyTicks(s1Pid);
+let s1Exit = null; s1.on("exit", (code, sig) => { s1Exit = { code, signal: sig }; });
 const h1 = await waitReady();
 const o1 = ownerNow(); const chromePid = o1?.chromePid ?? h1.chromePid; const chromeTicks = o1?.startTicks ?? (chromePid ? startTicks(chromePid) : null);
 const serve1JsonPid = readJson(SERVE_JSON)?.pid;
@@ -78,8 +81,9 @@ if (h1.ready !== true || !Number.isSafeInteger(chromePid)) { rec("ABORT", { reas
 // CRASH serve1 with no supervisor -> chrome is orphaned (survives). Instance-bound crash signal via the helper;
 // the injection REQUIRES an actually-delivered SIGNALLED result (not merely a non-error helper exit).
 const crash1Code = safeKill(s1Pid, s1Ticks, "SIGKILL");
-rec("serve1-crash-signal", { code: crash1Code, signalled: crash1Code === SIGNALLED });
 let sw = 0; while (alive(s1Pid) && sw < 8000) { await sleep(200); sw += 200; }
+await sleep(300);   // let the ChildProcess 'exit' event settle
+rec("serve1-crash-signal", { code: crash1Code, signalled: crash1Code === SIGNALLED, exit: s1Exit, killedBySigkill: s1Exit?.signal === "SIGKILL" });
 await sleep(1500);
 const serve1Died = !alive(s1Pid);
 rec("after-serve1-crash", { s1SpawnedPid: s1Pid, serve1Died, chromeAlive: alive(chromePid), chromeTicksMatch: startTicks(chromePid) === chromeTicks, ownerStillNamesDeadServe1: ownerNow()?.servePid === s1Pid, orphanSurvived: serve1Died && alive(chromePid) });
@@ -111,6 +115,7 @@ const stop = trace.stages.find((s) => s.stage === "after-serve2-stop");
 trace.verdict = {
   serve1JsonMatchesSpawned: ready1?.jsonMatchesSpawned === true,
   serve1CrashSignalled: crashSig?.signalled === true,
+  serve1KilledBySigkill: crashSig?.killedBySigkill === true,   // the crash actually killed it BY SIGKILL, not a self-exit
   serve1Died: crash?.serve1Died === true,
   chromeTicksMatchAfterCrash: crash?.chromeTicksMatch === true,
   ownerStillNamesDeadServe1: crash?.ownerStillNamesDeadServe1 === true,

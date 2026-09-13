@@ -16,16 +16,33 @@ SIGNALLED or ALREADY_GONE.
 Usage: safe-pidfd-kill.py <pid> <expectedStartTicks> [SIGKILL|SIGTERM]
 An expectedStartTicks that is not a positive integer is REFUSED (identity is required, never skipped).
 """
-import os, sys, signal
+import os, sys, signal, select
 
 SIGNALLED, ALREADY_GONE, REFUSED, ERROR, USAGE = 0, 10, 3, 4, 2
 
+def _fields(pid):
+    with open(f"/proc/{pid}/stat") as f: raw = f.read()
+    return raw[raw.rfind(")") + 2:].split()   # fields AFTER "(comm)": [0]=state [2]=pgrp ... [19]=starttime
+
 def start_ticks(pid):
+    try: return int(_fields(pid)[19])
+    except Exception: return None
+
+def proc_state(pid):
+    try: return _fields(pid)[0]   # R/S/D/Z/X/t ...
+    except Exception: return None
+
+def has_exited(pid, fd):
+    """True iff the instance has ALREADY terminated (zombie/dead) — so a 'successful' pidfd_send_signal to it is a
+    no-op, NOT a signal that caused the death. A pidfd becomes readable (POLLIN) once its process exits; and a
+    zombie shows state Z/X. Either => already gone (whole-project review round-5: exit(17) was misreported as
+    SIGNALLED)."""
     try:
-        with open(f"/proc/{pid}/stat") as f: raw = f.read()
-        return int(raw[raw.rfind(")") + 2:].split()[19])
-    except Exception:
-        return None
+        if select.select([fd], [], [], 0)[0]: return True   # pidfd readable => process has exited
+    except OSError:
+        return True
+    st = proc_state(pid)
+    return st is None or st in ("Z", "X", "x")
 
 def out(word, code):
     print(f"[safe-kill] {word}", file=sys.stderr); return code
@@ -54,7 +71,9 @@ def main():
     try:
         if start_ticks(pid) != expected:      # re-verify AFTER open: reuse between check and open -> refuse
             return out("REFUSED: pid reused between check and pidfd_open", REFUSED)
-        signal.pidfd_send_signal(fd, sig)     # bound to the instance; can never reach a reused pid
+        if has_exited(pid, fd):               # already terminated (zombie/dead) -> our signal would be a no-op
+            return out("ALREADY_GONE: instance already exited (zombie)", ALREADY_GONE)
+        signal.pidfd_send_signal(fd, sig)     # bound to a LIVE instance; can never reach a reused pid
         return out(f"SIGNALLED {sig}", SIGNALLED)
     except ProcessLookupError:
         return out("ALREADY_GONE: gone before signal", ALREADY_GONE)

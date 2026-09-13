@@ -58,9 +58,11 @@ await sleep(150);
 const controlPid = control.pid, controlTicks = startTicks(controlPid);
 rec("control-started", { controlPid, controlTicks, alive: alive(controlPid) });
 
-// clean any stale serve.json/owner so we detect the fresh ones
+// clean any stale serve.json/owner + serve identity/exit records so we detect the fresh ones
 try { fs.rmSync(SERVE_JSON, { force: true }); } catch {}
 try { fs.rmSync(OWNER, { force: true }); } catch {}
+try { fs.rmSync(path.join(PROFILE, ".belmont-serve-identity.json"), { force: true }); } catch {}
+try { fs.rmSync(path.join(PROFILE, ".belmont-serve-exit.json"), { force: true }); } catch {}
 
 const env = { ...process.env,
   BELMONT_BROWSE_ENGINE: "909", BELMONT_BROWSE_TRANSPORT: "port", BELMONT_BROWSE_NATIVE_COMPONENTS: "1",
@@ -74,12 +76,17 @@ const sup = spawn("python3", [SUP, PROFILE, "--", NODE, SERVE, ...serveArgs], { 
 let supOut = ""; sup.stdout.on("data", (d) => { supOut += d; }); sup.stderr.on("data", (d) => { supOut += d; });
 let supExit = null; sup.on("exit", (code, sig) => { supExit = { code, sig }; });
 
-// Capture the serve's identity at the FIRST serve.json sighting (earliest the harness can observe a non-child
-// process), BEFORE the ready-wait completes — so a die+reuse during a long wait can't make us adopt a reused
-// PID's ticks (GPT round-4). The residual (<= one 100ms poll between serve.json write and our read) is inherent
-// to observing a non-child process via serve.json; the serve is alive and just announced itself in that window.
-let servePid0 = null, serveTicks = null;
-for (let i = 0; i < 600 && servePid0 === null; i++) { const sp = readJson(SERVE_JSON)?.pid; if (Number.isSafeInteger(sp)) { servePid0 = sp; serveTicks = startTicks(sp); break; } await sleep(100); }
+// AUTHORITATIVE serve identity: the SUPERVISOR (the serve's parent) captures the serve's (pid, startTicks) RIGHT
+// AFTER fork — the serve is alive and holds the PID, so there is NO reuse window — and writes it to
+// .belmont-serve-identity.json. We use THAT as the expected identity (round-5: reading /proc ourselves at first
+// sighting could bind to a PID reused before our first observation, since the parent may have already reaped the
+// original). No fallback to a self-observed /proc tick.
+const SERVE_ID = path.join(PROFILE, ".belmont-serve-identity.json");
+const SERVE_EXIT = path.join(PROFILE, ".belmont-serve-exit.json");
+let serveIdent = null;
+for (let i = 0; i < 600 && !serveIdent; i++) { const j = readJson(SERVE_ID); if (Number.isSafeInteger(j?.pid) && Number.isSafeInteger(j?.startTicks)) { serveIdent = j; break; } await sleep(100); }
+const servePid0 = serveIdent?.pid ?? null;
+const serveTicks = serveIdent?.startTicks ?? null;
 // then wait for /health ready:true
 let ready = false;
 for (let i = 0; i < 180 && !ready; i++) { const h = await health(); if (h.ready === true) { ready = true; break; } await sleep(500); }
@@ -117,12 +124,17 @@ rec("post-crash", {
   supMentionsReap: /reaping owned chrome instance|chrome exited on SIG/.test(supOut),
 });
 
-// verdict — the crash signal must have been actually DELIVERED (SIGNALLED), not a no-op helper exit
+// verdict — the crash signal must have been actually DELIVERED (SIGNALLED) AND the serve must have actually died
+// BY SIGKILL (the supervisor's waitpid recorded WTERMSIG==9), so a self-exit (e.g. exit(17)) misreported as a
+// delivered signal can no longer PASS (round-5 zombie counterexample).
 const crashSig = trace.stages.find((s) => s.stage === "serve-crash-signal");
+const serveExit = readJson(SERVE_EXIT);
+const serveCrashBySigkill = serveExit?.signalled === true && serveExit?.termsig === 9;
+rec("serve-exit-status", { serveExit, serveCrashBySigkill });
 const chromeReaped = !alive(chromePid);
 const controlUntouched = alive(controlPid) && startTicks(controlPid) === controlTicks;
 const supClean = supExit && supExit.code === 0;
-trace.verdict = { serveCrashSignalled: crashSig?.signalled === true, chromeReaped, controlUntouched, supExitClean: supClean };
+trace.verdict = { serveCrashSignalled: crashSig?.signalled === true, serveCrashBySigkill, chromeReaped, controlUntouched, supExitClean: supClean };
 trace.result = Object.values(trace.verdict).every(Boolean) ? "PASS" : "FAIL";
 trace.supervisorLog = supOut.slice(-2500);
 
