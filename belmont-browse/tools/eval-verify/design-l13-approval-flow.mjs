@@ -92,7 +92,7 @@ const all = [a, d, inv, c];
 R.verdict = {
   suspendsBeforeEffect: all.every((s) => s.suspendedOnApproval && s.beforeSuspended === true),
   noEffectBeforeDecision: all.every((s) => s.beforeRead === true && s.beforePresent === false),          // observed, not an HTTP error
-  approveGrantsEffect: a.decisionStatus === 200 && a.everPresent === true,
+  approveGrantsEffect: a.decisionStatus === 200 && a.everPresent === true && a.allReadsOk === true,   // every scenario gates observation-read success
   validDenyNoEffect: d.decisionStatus === 200 && d.finalStatus === "done" && d.everPresent === false && d.allReadsOk === true,
   invalidDecisionFailClosed: inv.decisionStatus === 400 && inv.finalStatus === "suspended" && inv.everPresent === false && inv.allReadsOk === true,
   cancelNoEffect: c.decisionStatus === 200 && c.finalStatus === "stopped" && c.everPresent === false && c.allReadsOk === true,

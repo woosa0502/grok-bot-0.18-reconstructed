@@ -42,10 +42,12 @@ const startServe = () => spawn(NODE, [SERVE, ...serveArgs], { env, stdio: ["igno
 // Safety (round-2): cleanup signals ONLY through a pidfd bound to a verified instance (safe-pidfd-kill.py),
 // never a raw pid, never a group-number signal. Identity REQUIRED — no valid startTicks => REFUSE (no raw-PID
 // fallback). Closes the check->signal reuse race; same kernel primitive as the product supervisor.
+// ALL signals here — the serve1 crash, the serve2 stop, ABORT cleanup, and final cleanup — go through this helper
+// (GPT round-3: unify every termination path; no raw-PID fallback). Identity REQUIRED.
 const SAFE_KILL = path.join(REPO, "belmont-browse/tools/safe-pidfd-kill.py");
-function safeKill(pid, expectedTicks) {
-  if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(expectedTicks) || expectedTicks <= 0) return;
-  try { spawnSync("python3", [SAFE_KILL, String(pid), String(expectedTicks), "SIGKILL"], { stdio: "ignore" }); } catch {}
+function safeKill(pid, expectedTicks, sig = "SIGKILL") {
+  if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(expectedTicks) || expectedTicks <= 0) return false;
+  try { const r = spawnSync("python3", [SAFE_KILL, String(pid), String(expectedTicks), sig], { stdio: "ignore" }); return r.status === 0; } catch { return false; }
 }
 async function waitReady(ms = 90000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { const h = await health(); if (h.ready === true) return h; await sleep(500); } return await health(); }
 
@@ -62,11 +64,13 @@ const o1 = ownerNow(); const chromePid = o1?.chromePid ?? h1.chromePid; const ch
 const serve1JsonPid = readJson(SERVE_JSON)?.pid;
 const serve1JsonMatches = serve1JsonPid === s1Pid;
 rec("serve1-ready", { s1SpawnedPid: s1Pid, serve1JsonPid, jsonMatchesSpawned: serve1JsonMatches, s1Ticks, ready: h1.ready, owner: o1, chromePid, chromeTicks, chromeAlive: alive(chromePid) });
-if (h1.ready !== true || !Number.isSafeInteger(chromePid)) { rec("ABORT", { reason: "serve1 not ready" }); try { s1.kill("SIGKILL"); } catch {} try { control.kill("SIGKILL"); } catch {}
+if (h1.ready !== true || !Number.isSafeInteger(chromePid)) { rec("ABORT", { reason: "serve1 not ready" });
+  safeKill(s1Pid, s1Ticks, "SIGKILL"); safeKill(controlPid, controlTicks);   // pidfd-bound; no raw-PID fallback
   fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(trace, null, 2)); process.exit(2); }
 
-// CRASH serve1 with no supervisor -> chrome is orphaned (survives). Kill the SPAWNED pid and REQUIRE it died.
-try { process.kill(s1Pid, "SIGKILL"); } catch {}
+// CRASH serve1 with no supervisor -> chrome is orphaned (survives). Instance-bound crash signal via the helper.
+const crashed1 = safeKill(s1Pid, s1Ticks, "SIGKILL");
+rec("serve1-crash-signal", { crashed1 });
 let sw = 0; while (alive(s1Pid) && sw < 8000) { await sleep(200); sw += 200; }
 await sleep(1500);
 const serve1Died = !alive(s1Pid);
@@ -81,8 +85,9 @@ rec("serve2-adopt", { s2SpawnedPid: s2Pid, serve2JsonPid, jsonMatchesSpawned: se
   adoptedSameChrome: o2?.chromePid === chromePid, sameStartTicks: o2?.startTicks === chromeTicks,
   ownerIsSpawnedServe2: o2?.servePid === s2Pid, chromeAlive: alive(chromePid) });
 
-// normal stop serve2 -> in-process reaper reaps the adopted chrome
-try { process.kill(s2Pid, "SIGTERM"); } catch {}
+// normal stop serve2 -> in-process reaper reaps the adopted chrome. Instance-bound SIGTERM via the helper.
+const stopped2 = safeKill(s2Pid, s2Ticks, "SIGTERM");
+rec("serve2-stop-signal", { stopped2 });
 let waited = 0; while (alive(s2Pid) && waited < 20000) { await sleep(250); waited += 250; }
 await sleep(1500);
 rec("after-serve2-stop", { s2SpawnedPid: s2Pid, serve2Alive: alive(s2Pid), chromeAlive: alive(chromePid), chromeReaped: !alive(chromePid), controlAlive: alive(controlPid), controlUntouched: alive(controlPid) && startTicks(controlPid) === controlTicks });

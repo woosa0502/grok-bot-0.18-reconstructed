@@ -28,10 +28,13 @@ function alive(pid) { if (!Number.isSafeInteger(pid) || pid <= 1) return false; 
 // raw pid and never a group-number signal. Identity is REQUIRED — with no valid startTicks we REFUSE to signal
 // (no raw-PID fallback), closing the check->signal reuse race GPT flagged. This is the same kernel primitive the
 // product supervisor uses.
+// ALL signals in this driver — crash/stop injections, ABORT cleanup, and final cleanup — go through this helper
+// (GPT round-3: unify every termination path; no raw-PID fallback). Identity REQUIRED: no valid startTicks =>
+// REFUSE (never a numeric-PID substitute signal).
 const SAFE_KILL = path.join(REPO, "belmont-browse/tools/safe-pidfd-kill.py");
-function safeKill(pid, expectedTicks) {
-  if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(expectedTicks) || expectedTicks <= 0) return; // identity required
-  try { spawnSync("python3", [SAFE_KILL, String(pid), String(expectedTicks), "SIGKILL"], { stdio: "ignore" }); } catch {}
+function safeKill(pid, expectedTicks, sig = "SIGKILL") {
+  if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(expectedTicks) || expectedTicks <= 0) return false; // identity required
+  try { const r = spawnSync("python3", [SAFE_KILL, String(pid), String(expectedTicks), sig], { stdio: "ignore" }); return r.status === 0; } catch { return false; }
 }
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
 async function health() {
@@ -76,20 +79,24 @@ const h0 = await health();
 const o0 = ownerNow();
 const chromePid = o0?.chromePid ?? h0.chromePid;
 const chromeTicks = o0?.startTicks ?? (chromePid ? startTicks(chromePid) : null);
-rec("serve-ready", { ready, health: h0, owner: o0, chromeAlive: alive(chromePid), chromeTicksLive: chromePid ? startTicks(chromePid) : null });
+const servePid0 = readJson(SERVE_JSON)?.pid;
+const serveTicks = Number.isSafeInteger(servePid0) ? startTicks(servePid0) : null;   // identity for the crash signal
+rec("serve-ready", { ready, servePid: servePid0, serveTicks, health: h0, owner: o0, chromeAlive: alive(chromePid), chromeTicksLive: chromePid ? startTicks(chromePid) : null });
 
 if (!ready || !Number.isSafeInteger(chromePid)) {
   rec("ABORT", { reason: "serve did not become ready / no owned chrome", supTail: supOut.slice(-1500) });
-  try { const s = readJson(SERVE_JSON); if (s?.pid) process.kill(s.pid, "SIGTERM"); } catch {}
-  try { control.kill("SIGKILL"); } catch {}
+  safeKill(servePid0, serveTicks, "SIGTERM");   // pidfd-bound; refuses if identity absent (no raw-PID fallback)
+  safeKill(controlPid, controlTicks);
   fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(trace, null, 2));
   process.exit(2);
 }
 
-// STAGE: crash the serve (SIGKILL — no in-process chrome cleanup runs; this is the orphan window the supervisor closes)
-const servePid = readJson(SERVE_JSON)?.pid;
-rec("pre-crash", { servePid, chromePid, chromeTicks, chromeAlive: alive(chromePid), chromeTicksMatch: startTicks(chromePid) === chromeTicks });
-try { process.kill(servePid, "SIGKILL"); } catch (e) { rec("serve-kill-error", { error: String(e) }); }
+// STAGE: crash the serve (SIGKILL — no in-process chrome cleanup runs; this is the orphan window the supervisor
+// closes). The crash signal is instance-bound via the pidfd helper, same as cleanup.
+const servePid = servePid0;
+rec("pre-crash", { servePid, serveTicks, chromePid, chromeTicks, chromeAlive: alive(chromePid), chromeTicksMatch: startTicks(chromePid) === chromeTicks });
+const crashed = safeKill(servePid, serveTicks, "SIGKILL");
+rec("serve-crash-signal", { crashed });
 
 // the supervisor (serve's parent) must regain control and reap the owned chrome, then exit
 let waited = 0; while (supExit === null && waited < 30000) { await sleep(250); waited += 250; }

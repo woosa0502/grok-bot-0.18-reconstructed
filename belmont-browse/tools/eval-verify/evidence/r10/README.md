@@ -108,11 +108,15 @@ Telegram/autopost) is dispositioned as VERIFIED (test PASS), explicit SCOPE-OUT 
 ## Round-2 harness hardening (from GPT's live-phase review)
 The new live drivers' verdicts and cleanups were hardened after GPT found gaps (the SUBMITTED successes still
 stand; these fix the drivers so they can't PASS on a failure path):
-- **recovery cleanup safety (round-3, pidfd)**: both drivers' cleanup now signals ONLY through
-  `belmont-browse/tools/safe-pidfd-kill.py` — an `os.pidfd_open` + `signal.pidfd_send_signal` helper that
-  re-verifies /proc startTicks across the open and REFUSES to signal when identity is absent or mismatched (no
-  raw-PID and no group-number fallback). This closes the check→signal reuse race (the same kernel primitive the
-  product supervisor uses), replacing the earlier startTicks-then-`process.kill` path GPT flagged.
+- **recovery signal safety (round-3+4, pidfd, ALL paths)**: EVERY signal in both recovery drivers — the serve
+  crash injection, the serve2 stop injection, the ABORT/early-exit cleanup, and the final cleanup — now routes
+  through `belmont-browse/tools/safe-pidfd-kill.py` (`os.pidfd_open` + `signal.pidfd_send_signal`, re-verifying
+  /proc startTicks across the open, REFUSING on absent/mismatched identity — no raw-PID or group fallback). This
+  closes the check→signal reuse race AND the round-3 "ABORT bypass" GPT found (the early-exit paths still used
+  raw `process.kill`/`child.kill`). Same kernel primitive as the product supervisor. Re-ran PASS with the
+  pidfd-bound crash (crashed:true) and stop (stopped2:true).
+- **L13 approve gate**: `approveGrantsEffect` now also requires `allReadsOk === true`, so EVERY scenario
+  uniformly gates observation-read success (GPT round-3).
 - **orphan-adopt verdict**: now requires serve1 actually died, the owner names the SPAWNED serve2 pid
   (jsonMatchesSpawned + ownerIsSpawnedServe2), and gates every stage in the final result.
 - **bot cleanup**: idSetRestored now requires GENUINELY-READABLE baseline AND final rosters (an HTTP error can no

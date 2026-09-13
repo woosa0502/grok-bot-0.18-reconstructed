@@ -1,10 +1,10 @@
 {
   "case": "l13-approval-flow",
-  "at": "2026-09-13T07:57:57.379Z",
+  "at": "2026-09-13T08:46:43.411Z",
   "secretMarker": "WSL-CODEX",
   "scenarios": {
     "approve": {
-      "id": "4248ddd4e86d4eb0a454b",
+      "id": "412069bacdff4036911f6",
       "kind": "approve",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -18,10 +18,10 @@
       "beforePresent": false,
       "everPresent": true,
       "allReadsOk": true,
-      "finalStatus": "running"
+      "finalStatus": "done"
     },
     "deny": {
-      "id": "019e4f9aa1f344b69749d",
+      "id": "cbdca40a4e084d2aa7638",
       "kind": "deny",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -38,7 +38,7 @@
       "finalStatus": "done"
     },
     "invalid": {
-      "id": "b5affee5b90a4784972f3",
+      "id": "1418e317f4054f1a845e6",
       "kind": "invalid",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -55,7 +55,7 @@
       "finalStatus": "suspended"
     },
     "cancel": {
-      "id": "48568719d13844f2a8c9c",
+      "id": "0054d780827e48c385df0",
       "kind": "cancel",
       "suspendedOnApproval": true,
       "suspensionScope": {
