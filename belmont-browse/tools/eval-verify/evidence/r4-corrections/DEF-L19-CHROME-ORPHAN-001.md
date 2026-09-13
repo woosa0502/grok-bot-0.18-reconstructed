@@ -234,3 +234,13 @@ Genuinely open (acknowledged, not disputes):
 2. **whole-tree stragglers + the supervisor's own SIGKILL**: need a **live external manager** (a cgroup —
    delegated=unprivileged, else root — plus a survivor that reaps the scope). Not closable by the in-process
    reaper or a self-terminating supervisor alone.
+
+## Round-12 (GPT-6 Pro) — pin-once → continuous tracking (closes the restart-then-delete class)
+
+GPT reproduced a single-serve leak the pin-once design could not cover: `pin A → serve restarts A→B (owner
+updated) → owner DELETED → serve SIGKILL` left B alive (poll-fd was A/dead; owner gone so B undiscoverable).
+Fix: the supervisor now **continuously tracks every owned Chrome instance for the serve's whole life** — each
+poll pins the current owner (adding a pidfd for any NEW instance) and prunes tracked instances that have died;
+at serve-exit it reaps every still-live tracked instance. This is robust to arbitrary restart chains and owner
+deletion, since a pidfd for B is held from the moment the owner named it, independent of the owner file's later
+state. Regression `test_repin_then_owner_deleted_reaps_current` (the exact round-12 sequence). Supervisor 7/7.

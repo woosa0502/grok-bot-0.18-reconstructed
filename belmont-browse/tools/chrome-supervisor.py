@@ -96,23 +96,25 @@ def main():
             os.close(f); return (None, None, None)
         return (f, cp, ct)
 
-    # Parent: learn the owned Chrome instance and pin a pidfd to it.
-    chrome_pid, chrome_ticks, fd = None, None, None
-    deadline = time.time() + 60
-    while time.time() < deadline:
-        fd, chrome_pid, chrome_ticks = pin_owned_chrome()
-        if fd is not None:
-            print(f"[supervisor] pinned chrome pid={chrome_pid} startTicks={chrome_ticks} via pidfd", flush=True); break
+    # Parent: continuously TRACK every owned Chrome instance for the serve's whole life (round-12 fix: a
+    # pin-once loop could not follow a chrome A->B restart whose owner was then deleted). Each poll we pin the
+    # current owner (adding a pidfd for any new instance) and prune tracked instances that have died, so at
+    # serve-exit we hold a pidfd for every still-live owned instance regardless of restarts or owner deletion.
+    tracked = {}   # chromePid -> (fd, startTicks)
+    while True:
+        f, cp, ct = pin_owned_chrome()
+        if f is not None:
+            if cp in tracked: os.close(f)                       # already tracked
+            else: tracked[cp] = (f, ct); print(f"[supervisor] pinned chrome pid={cp} startTicks={ct} via pidfd", flush=True)
+        for pid in [p for p, (tf, _) in tracked.items() if not pidfd_alive(tf)]:  # prune dead instances
+            try: os.close(tracked[pid][0])
+            except OSError: pass
+            del tracked[pid]
         wpid, _ = os.waitpid(child_pid, os.WNOHANG)
         if wpid == child_pid:
-            serve_exited = True; break  # serve exited; fall through to the final sweep (child_pid stays valid)
+            serve_exited = True; break
         time.sleep(0.5)
-
-    # Wait for serve to exit (if it hasn't already).
-    if not serve_exited:
-        try: os.waitpid(child_pid, 0)
-        except ChildProcessError: pass
-    print("[supervisor] serve exited; checking owned chrome", flush=True)
+    print("[supervisor] serve exited; reaping tracked owned chrome instances", flush=True)
 
     def reap_via_fd(fd, chrome_pid):
         if not pidfd_alive(fd): print("[supervisor] owned chrome already gone", flush=True); return True
@@ -131,25 +133,16 @@ def main():
             time.sleep(0.1)
         return False
 
-    # Reap EVERY owned live instance we know of at serve-exit. Round-10 caught the A->B re-pin miss; round-11
-    # caught that discarding the poll-fd leaks A if the owner file was deleted between pin and serve-exit. So:
-    # (1) reap the poll-pinned instance FIRST (we verified it was ours; owner deletion must not orphan it),
-    # then (2) reap the CURRENT owner's instance and any restart chain (B, C, ...). A pin whose chrome is
-    # already dead returns None (start-ticks mismatch), so the chain drains and terminates.
+    # One last pin in case a chrome was recorded right at serve-exit, then reap EVERY tracked live instance.
+    f, cp, ct = pin_owned_chrome()
+    if f is not None and cp not in tracked: tracked[cp] = (f, ct)
+    elif f is not None: os.close(f)
     reaped, ok = 0, True
-    if fd is not None:
-        ok = reap_via_fd(fd, chrome_pid) and ok
-        try: os.close(fd)
+    for cp, (tf, _) in list(tracked.items()):
+        ok = reap_via_fd(tf, cp) and ok
+        try: os.close(tf)
         except OSError: pass
         reaped += 1
-    for _ in range(8):
-        f, cp, ct = pin_owned_chrome()
-        if f is None: break
-        ok = reap_via_fd(f, cp) and ok
-        try: os.close(f)
-        except OSError: pass
-        reaped += 1
-        if not ok: break
     if reaped == 0:
         print("[supervisor] no owned chrome to reap", flush=True); return 0
     if not ok:
