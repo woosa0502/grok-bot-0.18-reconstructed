@@ -12,8 +12,14 @@ const REPO = process.env.BELMONT_REPO || "/home/hoon/_roots/labs/work/Belmont";
 const serve = JSON.parse(fs.readFileSync(path.join(REPO, "belmont-browse/.state/serve.json"), "utf8"));
 const PORT = serve.port, TOKEN = serve.token;
 const OUT = process.argv[2] || path.join(REPO, "belmont-browse/tools/eval-verify/evidence/r11/ev-l02-browser-matrix.json");
-const n = Math.random().toString(16).slice(2, 8);
-const HEAD = `L02HEAD${n}`, FILL = `L02FILL${n}`;
+// GPT round-8 finding: HEAD and FILL must NOT share a nonce suffix (else HEAD is derivable from FILL), and a bare
+// HTTP GET to /submit?field=<FILL> records the value with ZERO browser launches — so server-receipt of FILL alone
+// does NOT prove the browser fill/click tools executed. Use INDEPENDENT nonces; and a rigorous re-run must ALSO
+// assert the session's tool-call record shows the browser fill+click tools ran with FILL (tool↔DOM↔server linkage),
+// plus the full plan-258 matrix (two tabs, long page, select/drag/keyboard/coordinate-click, wrong-tab, stale ref).
+// This driver currently proves local-form navigate/read/fill/click end-to-end only (disposition: PARTIAL).
+const n = Math.random().toString(16).slice(2, 8), n2 = Math.random().toString(16).slice(2, 8);
+const HEAD = `L02HEAD${n}`, FILL = `L02FILL${n2}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function api(method, p, body) {
   try {

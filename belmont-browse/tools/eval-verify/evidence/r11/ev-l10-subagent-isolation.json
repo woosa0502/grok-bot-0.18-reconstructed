@@ -1,49 +1,37 @@
 {
   "case": "l10-subagent-isolation",
-  "at": "2026-09-13T22:40:19.712877",
-  "plan_ref": "belmont-gptpro-feature-test-plan L10·P1 T8/H2 — parent delegates DIFFERENT tasks to two workers, collects results, one worker fails; pass = per-worker output matches recipient, no failure-as-success laundering, no cross-worker mixing",
-  "gateway": {
-    "port": 42611
-  },
-  "parentId": "ee90c05c-d71c-460d-a0a7-f5bd6102d428",
+  "at": "2026-09-14T00:06:21.636440",
+  "plan_ref": "L10.P1 T8/H2 — parent delegates different tasks to two workers, collects results, one fails; pass = per-worker output matches recipient, no cross-worker mixing, parent does NOT report a failed worker as success",
+  "parentId": "98a4cc3a-374d-4d9b-9bd2-10b86e9f51f8",
   "nonces": {
-    "workerA_success": "L10OKA78bceb",
-    "workerB_failure": "L10FAILB78bceb"
+    "workerA_success": "L10OKA6cf52b",
+    "workerB_failure": "L10FAILB6cf52b"
   },
   "subagents": [
     {
-      "id": "subagent-d783e3d0-1aac-45d4-85d4-1bebd278fb9e",
+      "id": "subagent-3dded993-bfd3-4cff-ab6d-4c22d5a1f619",
       "status": "done",
-      "title": "Reply with exactly this token and nothing else: L10OKA78bceb"
+      "title": "Reply with exactly this token and nothing else: L10OKA6cf52b"
     },
     {
-      "id": "subagent-4bb8e630-2b35-4ee2-bc05-ec2b9430756f",
+      "id": "subagent-1a6461ee-17be-44a9-9194-6d510b75c65c",
       "status": "done",
-      "title": "Attempt to read the file /nonexistent/L10FAILB78bceb.txt using your file tools …"
+      "title": "Attempt to read the file /nonexistent/L10FAILB6cf52b.txt using your file tools …"
     }
   ],
-  "architecture_note": "Subagents are ephemeral runtime sessions (distinct subagentId + SubagentSession + lineage); no per-subagent on-disk store — results are COLLECTED into the parent's durable transcript. getAgentTranscript(subId)=does-not-exist confirms they are not top-level agents. Verification is therefore done on the parent's durable transcript segmented by its two Task tool-calls.",
-  "dispatch": {
-    "createStatus": 200,
-    "sendStatus": 200,
-    "mode": "sequential (peak = 1 worker turn; ordering does not affect isolation)"
-  },
-  "taskToolCallCount": 2,
-  "segments": {
-    "workerA_len": 8,
-    "workerB_len": 4
-  },
-  "workerB_readGuard": "Path escapes configured workspace root",
-  "finalParentMessage": "Error: Path escapes configured workspace root: /nonexistent/L10FAILB78bceb.txt",
+  "architecture_note": "Subagents are ephemeral runtime sessions; SubagentRunResult = {text, aborted}; completed/error is assigned at settle (normal->completed, throw->error; subagent-runtime.ts:33-36,262-273). There is NO structural guarantee against the PARENT misreporting a result, so the parent's final report is verified directly.",
+  "verifier_regression": "compute_verdict ships GPT's counterexample as --selftest: a parent final report of 'Worker B succeeded / both completed successfully' (while B errored) MUST FAIL; a faithful 'Worker B failed' report MUST PASS.",
+  "selftest_ok": true,
   "checks": {
-    "twoDistinctTerminalWorkers": true,
     "twoTaskToolCalls": true,
     "workerA_output_hasOwnNonce": true,
     "workerA_output_noSiblingNonce": true,
     "workerB_output_hasOwnNonce": true,
     "workerB_output_noSiblingNonce": true,
-    "workerB_isFailure_notLaundered": true,
-    "workerA_isSuccess": true
+    "parentFinalReportPresent": true,
+    "parentReportsA_success": true,
+    "parentReportsB_failure": true,
+    "parentDoesNotClaimB_success": true
   },
   "verdict": {
     "twoDistinctWorkers": true,
@@ -51,8 +39,8 @@
     "noCrossWorkerMixing": true,
     "noFailureLaundering": true
   },
-  "structuralGuarantee": "SubagentRunResult = completed{text}|aborted|error{error}; BackgroundSubagentCompletion.status ∈ {completed,error} keyed by subagentAgentId (source/host/runner/subagent-runtime.ts) — a failure is structurally distinct from success and un-launderable",
-  "result": "PASS",
-  "rawSegmentA_excerpt": "{\"kind\": \"send-message\", \"id\": \"3e99a95e-8551-4f12-bcac-15e5026872fd\", \"message\": {\"type\": \"text\", \"content\": \"launched\"}, \"timestampMs\": 1789306582246} {\"kind\": \"thinking\", \"id\": \"9b750a10-2a35-40db-95c0-31409cb0138f\", \"text\": \"**Confirming exact token response**\\n\\n\"} {\"kind\": \"assistant-text\", \"id\": \"2634cda7-34f7-4490-a2e0-346cdfab2071\", \"text\": \"L10OKA78bceb\"} {\"kind\": \"thinking\", \"id\": \"75a25d2a-a743-4c45-968f-1211796e5452\", \"text\": \"**Confirming silent launch response**\\n\\n\"} {\"kind\": \"assistant-text\", \"id\": \"77fb9430-fb43-448e-9074-d4b63dc7fee8\", \"text\": \"**Need reply first then task**",
-  "rawSegmentB_excerpt": "{\"kind\": \"send-message\", \"id\": \"fa659004-0ddb-4c54-a07f-b7766bf41cc1\", \"message\": {\"type\": \"text\", \"content\": \"launched\"}, \"timestampMs\": 1789306615344} {\"kind\": \"thinking\", \"id\": \"9d9f0087-6d08-438c-b03e-6a2bdc2acc8a\", \"text\": \"**Attempting file read on nonexistent path**\\n\\n\"} {\"kind\": \"tool-call\", \"id\": \"call_Qc1ulUrWByTnZ6gpPlbtDLD8|fc_0f4bdee589364b65016aa6a6f92c5087d098c99a3f30f6bab0\", \"name\": \"readToolCall\", \"status\": \"done\"} {\"kind\": \"assistant-text\", \"id\": \"b9a7c0c5-a02e-4ba2-b85d-85e1d2d9b885\", \"text\": \"Error: Path escapes configured workspace root: /nonexistent/L10FAILB78bceb.txt\"}"
+  "parentFinalReport": "**Confirming SendMessage priority**\n\n Worker A exact result: `L10OKA6cf52b`. A succeeded.\n\nWorker B exact result: `Error: Path escapes configured workspace root: /nonexistent/L10FAILB6cf52b.txt`. B failed.",
+  "segA_excerpt": "**Sending launched confirmation** launched **Clarifying final response handling**\n\n L10OKA6cf52b **Confirming launch response policy**\n\n**Deciding not to report background results**\n\n**Evaluating subagent result reporting necessity**\n\n",
+  "segB_excerpt": "**Confirming launch** launched **Deciding to invoke Read tool**\n\n  **Ensuring exact error reporting**\n\n Error: Path escapes configured workspace root: /nonexistent/L10FAILB6cf52b.txt **Planning reporting hidden execution results**\n\n The executor finished with this exact error:\n\n`Error: Path escapes configured workspace root: /nonexistent/L10FAILB6cf52b.txt`",
+  "result": "PASS"
 }

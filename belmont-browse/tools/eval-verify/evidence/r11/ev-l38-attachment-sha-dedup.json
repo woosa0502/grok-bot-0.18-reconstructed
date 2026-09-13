@@ -3,8 +3,9 @@
   "at_note": "verified on real conversation-blobs.db data + product source",
   "method": "read-only scan of every agent's conversation-blobs.db; recompute sha256(data) and compare to the row id; check whether any single content maps to more than one id (a dedup violation)",
   "sourceProof": {
-    "idIsContentSha": "conversation-blob-store.ts:17 verifies createHash('sha256').update(data).digest('hex') === id",
-    "upsertDedup": "conversation-blob-store.ts:11 INSERT INTO blobs(id,data) ... ON CONFLICT(id) DO UPDATE",
+    "CORRECTION_perGPT": "Earlier this file claimed line 17 ENFORCES id==sha256(data) at write time. That is wrong. setBlob(id,data) (line 14) stores the CALLER-SUPPLIED id + bytes; it does not compute the id. The createHash('sha256')...!==id comparison on line 17 lives INSIDE clearStaleCheckpointRoots() and is used to SELECT stale checkpoint-root candidates (skip rows whose id is not its content sha), NOT to validate writes.",
+    "whatSchemaGuarantees": "conversation-blob-store.ts:11 INSERT INTO blobs(id,data) ... ON CONFLICT(id) DO UPDATE + PRIMARY KEY(id) guarantees ID UNIQUENESS (same id upserts to one row). It does NOT by itself guarantee content-addressing: the same bytes under two different ids would be two rows.",
+    "contentAddressingIsProducerContract": "id == sha256(content) is a PRODUCER contract (the writer computes the content sha as the id), not a store-enforced invariant. The real-data scan below is EMPIRICAL evidence the producer does this in practice, not a proof the schema enforces it.",
     "schema": "blobs(id TEXT PRIMARY KEY, data BLOB NOT NULL) STRICT"
   },
   "liveData": {
@@ -17,10 +18,11 @@
     "contentsMappedToMoreThanOneId": 0
   },
   "verdict": {
-    "blobIdIsContentSha256": true,
-    "dedupByContent_noViolations": true,
-    "upsertByPrimaryKeyId": true
+    "idUniquenessEnforcedBySchema": true,
+    "producerContentAddresses_empirical": true,
+    "dedupByContent_noViolations_empirical": true
   },
-  "result": "PASS",
-  "notes": "Content-addressed storage: blob id = sha256(content), id is PRIMARY KEY with upsert, so identical content deduplicates to a single row. Confirmed structurally in product source AND on 20439 real blobs (0 dedup violations). The 12 'sand-live-*' entries are named root pointers, not content blobs, and do not affect content dedup."
+  "result": "PARTIAL (empirical dedup on stored data; full attachment HTTP path not run)",
+  "scope_perGPT": "This is real-DATA evidence that the STORED conversation blobs are content-addressed and dedup'd in practice (the producer computes id=sha256(content)). It is NOT: (a) a proof the schema enforces content-addressing (it does not — see sourceProof CORRECTION), nor (b) the full L38 attachment acceptance path. Plan L38 (line 315) additionally requires: same name + DIFFERENT bytes attached to different agents, upload response-loss + retry, chunked fetch, wrong path rejection, and source-vs-fetch SHA match over the real attachment API with per-agent target isolation. Those remain OPEN; this scan is supporting evidence only.",
+  "notes": "20,427/20,439 stored ids == sha256(data) (12 exceptions are symbolic sand-live-* root pointers); 20,407 distinct contents -> 0 mapped to >1 id. Schema (PRIMARY KEY + upsert) guarantees id uniqueness; content-addressing is a producer contract that the data shows is honored in practice."
 }

@@ -30,15 +30,10 @@ if (phase === "create") {
     origin: "belmont-selftest", clientNonce: `l10-${n}`, isIntroductionSuppressed: true });
   const pid = mk.body?.agent?.id ?? mk.body?.id;
   if (!pid) { console.log("NO PARENT", mk.status, mk.text?.slice(0, 200)); process.exit(1); }
-  // Sequential dispatch to keep peak memory to ONE worker turn at a time (isolation is unaffected by ordering).
-  const prompt =
-    `Use your Task tool to launch two background subagents (subagent_type "general-purpose"), ONE AT A TIME:\n` +
-    `First launch Worker A with task (verbatim): "Reply with exactly this token and nothing else: ${OKA}". Wait for A to finish.\n` +
-    `Then launch Worker B with task (verbatim): "Attempt to read the file /nonexistent/${FAILB}.txt and report the EXACT error. That path does not exist — do NOT fabricate contents; report only the failure.". Wait for B to finish.\n` +
-    `Finally, in ONE message, report Worker A's result and Worker B's result separately and faithfully. Do NOT claim Worker B succeeded and do NOT mix the two outputs.`;
-  const sent = await api("sendPrompt", { agentId: pid, prompt });
-  saveState({ n, OKA, FAILB, pid, createStatus: mk.status, sendStatus: sent.status, at: new Date().toISOString() });
-  console.log("CREATED parent", pid, "send", sent.status, "nonces", OKA, FAILB);
+  // Create only — dispatch is driven per-worker via curl (the all-in-one sequential prompt made the model loop on
+  // todos without calling Task). Ordering does not affect isolation; results collected + reported at the parent.
+  saveState({ n, OKA, FAILB, pid, createStatus: mk.status, at: new Date().toISOString() });
+  console.log("CREATED parent", pid, "nonces", OKA, FAILB);
 }
 
 else if (phase === "poll") {

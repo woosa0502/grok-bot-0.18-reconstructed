@@ -43,39 +43,53 @@ logged "reconciled 1 persisted executions"; and GET /sessions/:id after restart 
 preserved, status resolved to done). Closes the L16 durable-accept OPEN row. (The idempotency half was already
 verified in r8 via createAgent clientNonce.)
 
-## `ev-l38-attachment-sha-dedup.json` — L38 attachment SHA / content-dedup = PASS
-Attachment blobs in the agent-isolation store are content-addressed: the row id IS `sha256(content)`, id is the
-PRIMARY KEY, and inserts upsert `ON CONFLICT(id)`, so identical content collapses to one row.
-- **Source proof**: `source/host/agent-isolation/conversation-blob-store.ts:17` verifies
-  `createHash("sha256").update(data).digest("hex") === id`; `:11` is `INSERT INTO blobs(id,data) … ON CONFLICT(id)
-  DO UPDATE`; schema is `blobs(id TEXT PRIMARY KEY, data BLOB NOT NULL) STRICT`.
-- **Real-data proof**: a read-only scan of every agent's `conversation-blobs.db` — **20,439 real blobs** across 12
-  DBs — recomputed `sha256(data)` per row. **20,427 / 20,439** ids equal `sha256(data)`. The 12 exceptions all
-  begin `73616e642d6c6976652d` = `"sand-live-"` — symbolic root/pointer entries (one per DB), not content blobs.
-- **Dedup**: 20,407 distinct contents → **0** contents mapped to more than one id (0 violations).
-- Closes the L38 OPEN row with real-data verification (not just a synthetic unit test).
+## `ev-l38-attachment-sha-dedup.json` — L38 attachment SHA / content-dedup = PARTIAL (corrected per GPT)
+- **Real-data evidence**: a read-only scan of every agent's `conversation-blobs.db` — **20,439 real blobs** across
+  12 DBs — recomputed `sha256(data)` per row. **20,427 / 20,439** stored ids equal `sha256(data)` (the 12
+  exceptions begin `73616e642d6c6976652d` = `"sand-live-"`, symbolic root pointers). 20,407 distinct contents →
+  **0** mapped to more than one id.
+- **SOURCE INTERPRETATION CORRECTED (GPT round-8)**: the earlier claim that `conversation-blob-store.ts:17`
+  enforces `id == sha256(data)` at write time was WRONG. `setBlob(id,data)` (line 14) stores the CALLER-SUPPLIED
+  id + bytes; it does not compute the id. Line 17's `createHash("sha256")…!==id` lives inside
+  `clearStaleCheckpointRoots()` and is used to pick stale checkpoint-root GC candidates, not to validate writes.
+  The schema (line 11 upsert + `id TEXT PRIMARY KEY`) guarantees **id uniqueness**, not content-addressing — the
+  same bytes under two ids would be two rows. Content-addressing (`id = sha256(content)`) is a **producer
+  contract**; the 20k-blob scan is EMPIRICAL evidence the producer honors it, not proof the schema enforces it.
+- **Still OPEN (full L38, plan line 315)**: the real attachment HTTP path — same name + DIFFERENT bytes across
+  agents, upload response-loss + retry, chunked fetch, wrong-path rejection, source-vs-fetch SHA match, per-agent
+  target isolation. The stored-data scan is supporting evidence, not a substitute for that acceptance test.
 
-## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS
+## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v2 verifier)
 Plan L10·P1 T8/H2: a PARENT delegates DIFFERENT tasks to TWO workers, collects results, one worker must fail;
 pass = each worker's output matches its recipient, no failure-as-success laundering, no cross-worker mixing.
-Drivers `../l10-phase.mjs` (create/poll/cleanup, run in SHORT phases so the harness never memory-reaps the poller
-while the gateway runs the worker turns) + `../l10-verify-transcript.py` (verdict), Host gateway (42611, auth-ON).
-- **Two distinct workers**: the parent invoked its `Task` tool twice → two distinct subagentIds
-  (subagent-d783e3d0… "reply the OKA token"; subagent-4bb8e630… "read /nonexistent/<FAILB>.txt"), both terminal.
+Drivers `../l10-phase.mjs` (create; workers dispatched per-worker via curl to dodge the model's todo-loop; each
+phase SHORT so the harness never memory-reaps the poller while the gateway runs the worker turns) +
+`../l10-verify-transcript.py` v2 (verdict + built-in regression), Host gateway (42611, auth-ON).
+- **Two distinct workers**: the parent invoked `Task` twice → two distinct terminal subagentIds
+  (subagent-3dded993… "reply the OKA token"; subagent-1a6461ee… "read /nonexistent/<FAILB>.txt").
 - **Output matches recipient**: worker A produced exactly `L10OKA<nonce>`; worker B produced
-  `Error: Path escapes configured workspace root: /nonexistent/L10FAILB<nonce>.txt` — each result is its own task's.
-- **No cross-worker mixing**: worker A's produced output carries ONLY its nonce (no FAILB); worker B's carries ONLY
-  its nonce (no OKA). (Judged on each worker's *produced* items — the harness's own dispatch prompts, which quote
-  both nonces, are `user` items and are excluded.)
-- **No laundering**: worker B's outcome is a genuine failure (a read error), never relabelled as the success token;
-  the parent's collected result for B is the error, not a success.
+  `Error: Path escapes configured workspace root: /nonexistent/L10FAILB<nonce>.txt`.
+- **No cross-worker mixing**: worker A's produced output carries ONLY its nonce; worker B's ONLY its nonce.
+  (Judged on each worker's *produced* items — the harness's own dispatch prompts, which quote both nonces, are
+  `user` items and are excluded.)
+- **No laundering — verified on the PARENT'S ACTUAL FINAL REPORT** (this is the GPT-round-8 fix): after both
+  workers finished, the parent was asked to report results and produced: *"Worker A exact result: `L10OKA…`. A
+  succeeded. Worker B exact result: `Error: Path escapes configured workspace root: /nonexistent/L10FAILB….txt`. B
+  failed."* The verifier now gates on `parentReportsB_failure=true` AND `parentDoesNotClaimB_success=true` (read
+  from `send-message.message.content`, not just `text`) — not merely "an error word appears in B's segment".
+- **Verifier regression (`--selftest`)**: GPT's counterexample is shipped as a permanent regression — a parent
+  final report of *"Worker B succeeded. Both workers completed successfully."* (while B errored) now correctly
+  yields `noFailureLaundering=false` → FAIL; a faithful "Worker B failed" report → PASS. `selftest_ok=true`.
 - **Architecture (honest)**: subagents are EPHEMERAL runtime sessions (distinct subagentId + SubagentSession +
-  lineage), NOT top-level agents (`getAgentTranscript(subId)` = "does not exist") and with no per-subagent on-disk
-  store — their results are COLLECTED into the parent's durable transcript, which is where verification is done.
-- **Structural backing**: `SubagentRunResult = completed{text}|aborted|error{error}` and
-  `BackgroundSubagentCompletion.status ∈ {completed,error}` keyed by subagentAgentId (subagent-runtime.ts) — a
-  failure is structurally distinct from a success and un-launderable. Closes the L10 OPEN row.
-- **Bonus**: worker B's file read was blocked by the box workspace-root guard ("Path escapes configured workspace
+  lineage), NOT top-level agents (`getAgentTranscript(subId)` = "does not exist"), no per-subagent on-disk store —
+  results are COLLECTED into the parent's durable transcript, where verification is done.
+- **Structural note (CORRECTED per GPT)**: `SubagentRunResult = { text: string; aborted: boolean }`
+  (subagent-runtime.ts:33-36); completed/error is assigned at settle time — normal return → `completed`, a thrown
+  error → `error` (262-273). So a worker that honestly reports a file-read failure and finishes its turn can be
+  `done`; that is NOT a defect. Crucially there is NO structural guarantee that the PARENT won't misreport a
+  result — which is exactly why the parent's final report is checked directly (the earlier "un-launderable union"
+  claim was wrong and is withdrawn). Closes the L10 OPEN row.
+- **Bonus**: worker B's read was blocked by the box workspace-root guard ("Path escapes configured workspace
   root") — a subagent is confined to the box workspace and cannot read arbitrary host paths.
 
 ## Bot self-service creation summary
