@@ -1,0 +1,18 @@
+{
+  "case": "l02-browser-matrix",
+  "at": "2026-09-13T12:33:14.258Z",
+  "pageUrl": "http://127.0.0.1:42385/",
+  "headNonce": "L02HEAD4bd1bc",
+  "fillNonce": "L02FILL4bd1bc",
+  "sessionId": "d20623c5cfa2465da4627",
+  "finalStatus": "running",
+  "serverCapturedField": "L02FILL4bd1bc",
+  "fillClickNavigate_ok": true,
+  "headingReadInSession": true,
+  "navigateRead_ok": true,
+  "verdict": {
+    "navigateRead": true,
+    "fillClickNavigate": true
+  },
+  "result": "PASS"
+}

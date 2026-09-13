@@ -26,6 +26,16 @@ Settled from the protocol contract, not run as a test:
   protocol contract in this repo (not from upstream Grok product docs). The R8 "bot group discussion" used the
   gateway createGroup API driven by the harness — never a bot's own tool (as R8's caveat already noted).
 
+## `ev-l02-browser-matrix.json` — L02 browser tool matrix (navigate/read/fill/click) = PASS
+Driver `../design-l02-browser-matrix.mjs`, against the eval serve (under the supervisor). A local HTTP server
+serves a form page whose <h1> carries a nonce and whose /submit endpoint captures the field value. A guard-mode
+browse session (autoApprove:true) is told to navigate, read the heading, fill the input, click Submit.
+- **navigate+fill+click**: the local server RECEIVED the exact fill nonce (L02FILL<nonce>) — an EXTERNAL
+  observable only reachable by actually submitting the form in the real browser (not the agent's self-report).
+- **navigate+read**: the heading nonce (L02HEAD<nonce>) appeared in the session (the agent read the <h1>).
+- Both proofs obtained -> PASS. Confirms the live browser tool matrix beyond the offline lifecycle/numeric-fill
+  tests. (This closes the L02 OPEN row from MAP-DISPOSITION with a live end-to-end run.)
+
 ## Bot self-service creation summary
 | Capability | Bot-autonomous tool? | Evidence |
 |---|---|---|
