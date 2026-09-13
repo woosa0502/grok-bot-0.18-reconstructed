@@ -55,6 +55,29 @@ PRIMARY KEY, and inserts upsert `ON CONFLICT(id)`, so identical content collapse
 - **Dedup**: 20,407 distinct contents → **0** contents mapped to more than one id (0 violations).
 - Closes the L38 OPEN row with real-data verification (not just a synthetic unit test).
 
+## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS
+Plan L10·P1 T8/H2: a PARENT delegates DIFFERENT tasks to TWO workers, collects results, one worker must fail;
+pass = each worker's output matches its recipient, no failure-as-success laundering, no cross-worker mixing.
+Drivers `../l10-phase.mjs` (create/poll/cleanup, run in SHORT phases so the harness never memory-reaps the poller
+while the gateway runs the worker turns) + `../l10-verify-transcript.py` (verdict), Host gateway (42611, auth-ON).
+- **Two distinct workers**: the parent invoked its `Task` tool twice → two distinct subagentIds
+  (subagent-d783e3d0… "reply the OKA token"; subagent-4bb8e630… "read /nonexistent/<FAILB>.txt"), both terminal.
+- **Output matches recipient**: worker A produced exactly `L10OKA<nonce>`; worker B produced
+  `Error: Path escapes configured workspace root: /nonexistent/L10FAILB<nonce>.txt` — each result is its own task's.
+- **No cross-worker mixing**: worker A's produced output carries ONLY its nonce (no FAILB); worker B's carries ONLY
+  its nonce (no OKA). (Judged on each worker's *produced* items — the harness's own dispatch prompts, which quote
+  both nonces, are `user` items and are excluded.)
+- **No laundering**: worker B's outcome is a genuine failure (a read error), never relabelled as the success token;
+  the parent's collected result for B is the error, not a success.
+- **Architecture (honest)**: subagents are EPHEMERAL runtime sessions (distinct subagentId + SubagentSession +
+  lineage), NOT top-level agents (`getAgentTranscript(subId)` = "does not exist") and with no per-subagent on-disk
+  store — their results are COLLECTED into the parent's durable transcript, which is where verification is done.
+- **Structural backing**: `SubagentRunResult = completed{text}|aborted|error{error}` and
+  `BackgroundSubagentCompletion.status ∈ {completed,error}` keyed by subagentAgentId (subagent-runtime.ts) — a
+  failure is structurally distinct from a success and un-launderable. Closes the L10 OPEN row.
+- **Bonus**: worker B's file read was blocked by the box workspace-root guard ("Path escapes configured workspace
+  root") — a subagent is confined to the box workspace and cannot read arbitrary host paths.
+
 ## Bot self-service creation summary
 | Capability | Bot-autonomous tool? | Evidence |
 |---|---|---|

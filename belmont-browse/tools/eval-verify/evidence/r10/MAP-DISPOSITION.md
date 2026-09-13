@@ -31,6 +31,7 @@ distinguished from LIVE evidence.
 | L16 durable-accept | LIVE (r11) | ev-l16-durable-accept.json — an accepted session survived a serve restart (disk record retained, restarted serve reconciled 1 persisted execution, GET /sessions/:id returns it). Now VERIFIED (was OPEN). |
 | bot CreateRoutine | LIVE (r11) | ev-bot-autonomous-routine.json — a bot autonomously creates a routine via its updateState tool. |
 | L38 | REAL-DATA (r11) | ev-l38-attachment-sha-dedup.json — attachment blob sha/dedup verified on 20,439 REAL blobs across 12 conversation-blobs.db: 20,427 ids == sha256(data); the 12 exceptions are symbolic `sand-live-*` root pointers, not content blobs; 0 dedup violations (20,407 distinct contents → 0 mapped to >1 id). Source: conversation-blob-store.ts:11 (upsert ON CONFLICT(id)) + :17 (id === sha256(data)) + schema PRIMARY KEY. Now VERIFIED (was OPEN partial). |
+| L10 | LIVE (r11) | ev-l10-subagent-isolation.json — a PARENT dispatched TWO workers (Task tool ×2) with different nonce tasks, one made to fail; verified on the parent's durable transcript: two distinct terminal subagentIds, worker A output = its success token, worker B output = its own failure (workspace-root read guard), no cross-worker nonce mixing, failure NOT laundered to success. Subagents are ephemeral sessions (results collected into the parent transcript); structural anti-laundering = SubagentRunResult union (subagent-runtime.ts). Now VERIFIED (was OPEN). |
 
 ## Bucket B additions (r11)
 | Row | Decision | Reason |
@@ -40,13 +41,13 @@ distinguished from LIVE evidence.
 ## Bucket C — OPEN (named, NOT counted complete, next step given)
 | Row | State | Next step |
 |-----|-------|-----------|
-| L10 | OPEN (partial) | bwrap isolation SUBSTRATE tested OFFLINE (bwrap-eval-isolation/eval-isolation). A dedicated LIVE subagent-isolation assertion needs the GATEWAY's box-dispatch subagent tool (agent-adapters/dispatcher + remote box) — the lightweight eval serve does not expose a subagent/Task tool, so this needs the full product harness. |
+| L10 | VERIFIED (r11) | Moved to Bucket A — LIVE parent→two-worker dispatch, failure-attribution + no-mixing + no-laundering confirmed on the gateway (ev-l10-subagent-isolation.json). The offline bwrap substrate (bwrap-eval-isolation) remains a separate corroborating fs-isolation test. |
 | L38 | VERIFIED (r11) | Moved to Bucket A — attachment sha/dedup confirmed on 20,439 real blobs (ev-l38-attachment-sha-dedup.json). |
-| L46–L50 | BLOCKED-UNDEFINED | No topic definition in the repo map; needs the source plan's L-code table. Do NOT count as complete. |
+| L46–L50 | OPEN (maintenance-window / ops O1–O5) | CORRECTION: these ARE defined in the source plan (belmont-gptpro-feature-test-plan lines 333–337) as the operations/maintenance-window rows — not "undefined". L46 build/provenance + duplicate-ownership rejection (candidate: build-provenance-contracts / aside-native-build-identity / upgrade-resume-ownership tests; overlaps recovery/supervisor flock work); L47 box-exec-daemon owner lifecycle (candidate: box-exec-daemon-owner-lifecycle.test.mjs — spawns REAL daemon+owner); L48 installation identity / key-file handling (candidate: linux-installation.test.mjs); L49 daemon patch/re-patch/anchor (candidate: reconstructed-updater-guard.test.mjs — BLOCKED if daemon bundle not secured); L50 quiesce→drain→update/reset→resume (candidate: aside-process-signal-drain.test.mjs + notify-drain-gate). Next: run these as the maintenance-window batch (user asked for 유지보수 창 포함). |
 
 ## Summary (buckets kept separate)
 - VERIFIED: L15, L26, L12/L27 (offline), L16(idempotency), L13, recovery, bot delegated-creation.
 - EXCLUDED/BLOCKED (not product-complete): Telegram, autopost, L41, L42(+open gap), L37.
-- OPEN: L10 (dedicated subagent isolation), L46-50 (undefined). (L02, L16 durable-accept, L38 all closed VERIFIED in r11.)
+- OPEN: L46-50 (maintenance-window/ops O1–O5 — defined, candidate tests identified, next batch). (L02, L16 durable-accept, L38, L10 all closed VERIFIED in r11.)
 The three buckets are NOT summed into a single "complete" figure. The live-verification backlog is Bucket C plus
 the L42 filesystem deny-list gap and the paired-device acceptance tests for L41/L42/L37.
