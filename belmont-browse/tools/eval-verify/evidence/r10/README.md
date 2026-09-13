@@ -74,8 +74,30 @@ Aside daemon (21420).
   FORBIDDEN ("Browser-side session changes are accepted only from the Aside extension or the browser itself");
   the no-Origin request reached the daemon (404 for the bogus path, not guard-blocked); bothReached=true. PASS.
 
+## `ev-l13-approval-flow.json` — L13 full approval flow = PASS
+Driver `../../design-l13-approval-flow.mjs`, guard mode / autoApprove:false. The gated action is a file READ
+outside the allowed roots (/etc/hostname), which suspends with kind:"approval", scope {type:"file",...,mode:"read"}
+(session.mjs:382-388); the observable external result is the file CONTENTS (the host hostname) appearing in the
+session — only possible if the read actually ran. Three scenarios, all invariants hold (result PASS):
+- **suspends before effect**: all three suspend on approval before any read.
+- **no side-effect before the decision**: the contents are ABSENT while suspended in every scenario.
+- **approve** (`{verdict:"allow"}` via /answer with expectedToolCallId): the read result APPEARS only AFTER the
+  approval; session → done.
+- **deny**: the read result NEVER appears (the gated read does not run). Honest note: `{verdict:"deny"}` returned
+  HTTP 400 (that exact string isn't the daemon's decision enum), and the session stayed suspended — i.e.
+  fail-safe default-deny: an unrecognized/deny decision does NOT grant the action. The confirmed GRANT path is
+  `{verdict:"allow"}`.
+- **cancel** (/stop while suspended): the read result never appears; session → stopped.
+
+## Map-row disposition
+See `MAP-DISPOSITION.md` — each untested map row (L02, L10, L12/L27, L16, L37, L38, L41, L42, L46-50, plus
+Telegram/autopost) is dispositioned as VERIFIED (test PASS), explicit SCOPE-OUT (with reason), or named OPEN
+(not counted complete, with a next step) per GPT's rule.
+
 ## What this closes vs. leaves open
-Closes GPT's P1-1 (recovery re-verified on the supported path with per-stage identity + termination traces,
-supervised vs orphan-adopt separated, each with a mis-kill control), the autonomous bot-creates-bot causal
-proof with ID-set-exact cleanup, the L26 canonical POSITIVE paths, and the L15 auth/Origin matrix (hardened).
-Still open in the live phase: L13 full approval flow, and map-row disposition.
+Closes GPT's live-phase P1 items that are exercisable against the dev stack: P1-1 recovery re-verify (supervised
++ orphan-adopt, per-stage traces), a bot AUTONOMOUSLY creating a bot (causal + ID-set-exact cleanup), L26
+canonical POSITIVE paths, the L15 auth/Origin matrix (hardened), and the L13 full approval flow. Remaining
+(named in MAP-DISPOSITION.md, not counted complete): L02 full browser tool matrix, L10 dedicated subagent
+isolation, L16 durable-accept, L38 attachment dedup, and L46-50 (undefined topics — needs the source plan);
+Telegram/autopost/L37/L41/L42 are explicit scope-outs.

@@ -1,0 +1,57 @@
+{
+  "case": "l13-approval-flow",
+  "at": "2026-09-13T06:44:51.743Z",
+  "secretMarker": "WSL-CODEX",
+  "scenarios": {
+    "approve": {
+      "id": "9f71a7ee792c457cb11cb",
+      "kind": "approve",
+      "suspendedOnApproval": true,
+      "suspensionScope": {
+        "type": "file",
+        "path": "/etc/hostname",
+        "mode": "read"
+      },
+      "decisionStatus": 200,
+      "contentsBeforeDecision": false,
+      "contentsAfter": true,
+      "finalStatus": "done"
+    },
+    "deny": {
+      "id": "8797e444a58545b8a77a5",
+      "kind": "deny",
+      "suspendedOnApproval": true,
+      "suspensionScope": {
+        "type": "file",
+        "path": "/etc/hostname",
+        "mode": "read"
+      },
+      "decisionStatus": 400,
+      "contentsBeforeDecision": false,
+      "contentsAfter": false,
+      "finalStatus": "suspended"
+    },
+    "cancel": {
+      "id": "145fb420139a485390dda",
+      "kind": "cancel",
+      "suspendedOnApproval": true,
+      "suspensionScope": {
+        "type": "file",
+        "path": "/etc/hostname",
+        "mode": "read"
+      },
+      "decisionStatus": 200,
+      "contentsBeforeDecision": false,
+      "contentsAfter": false,
+      "finalStatus": "stopped"
+    }
+  },
+  "verdict": {
+    "suspendsBeforeEffect": true,
+    "noEffectBeforeDecision": true,
+    "approveYieldsEffect": true,
+    "denyNoEffect": true,
+    "cancelNoEffect": true
+  },
+  "result": "PASS"
+}
