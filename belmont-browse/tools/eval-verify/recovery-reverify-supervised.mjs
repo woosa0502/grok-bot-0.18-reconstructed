@@ -9,7 +9,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 
+const RUN_ID = crypto.randomUUID();   // per-run id: the supervisor stamps its diagnostic records with this so we
+                                      // only ever consume THIS run's identity/exit records (round-6: reject stale)
 const REPO = "/home/hoon/_roots/labs/work/Belmont";
 const OUT = process.argv[2] || path.join(REPO, "belmont-browse/tools/eval-verify/evidence/r10/ev-recovery-supervised.json");
 const NODE = process.env.BELMONT_TEST_NODE || `${os.homedir()}/.nvm/versions/node/v26.8.1/bin/node`;
@@ -69,7 +72,7 @@ const env = { ...process.env,
   BELMONT_BROWSE_CHROME: process.env.BELMONT_BROWSE_CHROME || "/home/hoon/chromium/src/out/aside/chrome",
   BELMONT_BROWSE_CHROME_ARGS: "--ignore-gpu-blocklist", BELMONT_BROWSE_DISPLAY: ":0", DISPLAY: ":0",
   BELMONT_BROWSE_STATE_DIR: STATE, BELMONT_KNOWLEDGE_DIR: path.join(REPO, ".cache/eval-verify-909/knowledge"),
-  BELMONT_BROWSE_SITES_OVERLAY: "1" };
+  BELMONT_BROWSE_SITES_OVERLAY: "1", BELMONT_SUPERVISOR_RUNID: RUN_ID };
 const serveArgs = ["--port", "9360", "--engine", "909", "--transport", "port", "--cdp-port", "9333", "--relay-port", "9361"];
 
 const sup = spawn("python3", [SUP, PROFILE, "--", NODE, SERVE, ...serveArgs], { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -81,10 +84,19 @@ let supExit = null; sup.on("exit", (code, sig) => { supExit = { code, sig }; });
 // .belmont-serve-identity.json. We use THAT as the expected identity (round-5: reading /proc ourselves at first
 // sighting could bind to a PID reused before our first observation, since the parent may have already reaped the
 // original). No fallback to a self-observed /proc tick.
-const SERVE_ID = path.join(PROFILE, ".belmont-serve-identity.json");
-const SERVE_EXIT = path.join(PROFILE, ".belmont-serve-exit.json");
+// PER-RUN record paths (include RUN_ID): a stale previous-run file has a different name AND runId, so it can
+// never be mis-adopted. We also verify the record belongs to THIS run: runId matches AND supervisorPid is the
+// supervisor WE spawned (sup.pid). If the current-run identity file never appears (e.g., the supervisor's write
+// failed), we do NOT fall back to any other file — servePid0 stays null and the run fails (round-6).
+const SERVE_ID = path.join(PROFILE, `.belmont-serve-identity.${RUN_ID}.json`);
+const SERVE_EXIT = path.join(PROFILE, `.belmont-serve-exit.${RUN_ID}.json`);
 let serveIdent = null;
-for (let i = 0; i < 600 && !serveIdent; i++) { const j = readJson(SERVE_ID); if (Number.isSafeInteger(j?.pid) && Number.isSafeInteger(j?.startTicks)) { serveIdent = j; break; } await sleep(100); }
+for (let i = 0; i < 600 && !serveIdent; i++) {
+  const j = readJson(SERVE_ID);
+  if (j?.runId === RUN_ID && j?.supervisorPid === sup.pid && Number.isSafeInteger(j?.pid) && Number.isSafeInteger(j?.startTicks)) { serveIdent = j; break; }
+  await sleep(100);
+}
+const identityValidForThisRun = !!serveIdent;
 const servePid0 = serveIdent?.pid ?? null;
 const serveTicks = serveIdent?.startTicks ?? null;
 // then wait for /health ready:true
@@ -129,12 +141,13 @@ rec("post-crash", {
 // delivered signal can no longer PASS (round-5 zombie counterexample).
 const crashSig = trace.stages.find((s) => s.stage === "serve-crash-signal");
 const serveExit = readJson(SERVE_EXIT);
-const serveCrashBySigkill = serveExit?.signalled === true && serveExit?.termsig === 9;
+// the exit record must be THIS run's (runId) AND about the serve WE crashed (pid), a real SIGKILL death (termsig 9)
+const serveCrashBySigkill = serveExit?.runId === RUN_ID && serveExit?.pid === servePid0 && serveExit?.signalled === true && serveExit?.termsig === 9;
 rec("serve-exit-status", { serveExit, serveCrashBySigkill });
 const chromeReaped = !alive(chromePid);
 const controlUntouched = alive(controlPid) && startTicks(controlPid) === controlTicks;
 const supClean = supExit && supExit.code === 0;
-trace.verdict = { serveCrashSignalled: crashSig?.signalled === true, serveCrashBySigkill, chromeReaped, controlUntouched, supExitClean: supClean };
+trace.verdict = { identityValidForThisRun, serveCrashSignalled: crashSig?.signalled === true, serveCrashBySigkill, chromeReaped, controlUntouched, supExitClean: supClean };
 trace.result = Object.values(trace.verdict).every(Boolean) ? "PASS" : "FAIL";
 trace.supervisorLog = supOut.slice(-2500);
 

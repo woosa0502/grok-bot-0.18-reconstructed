@@ -57,6 +57,11 @@ def main():
     profile = sys.argv[1]
     serve_argv = sys.argv[sep + 1:]
     grace_ms = int(os.environ.get("BELMONT_SUPERVISOR_GRACE_MS", "4000"))
+    # Optional per-run id (whole-project review round-6): a test harness sets this so the diagnostic identity/exit
+    # records it consumes are provably from THIS run — written to a per-run file path and stamped with the runId
+    # (a stale previous-run file has a different name AND runId, so it can never be mis-adopted).
+    run_id = os.environ.get("BELMONT_SUPERVISOR_RUNID")
+    id_sfx = f".{run_id}" if run_id else ""
 
     # Append-only registration log the serve writes at each chrome spawn; we TAIL it so discovery does not
     # depend on polling a deletable owner file (closes the round-12/13 poll-gap: a chrome registered at spawn
@@ -116,10 +121,10 @@ def main():
     # /proc later could bind to a reused PID). A test can read this to bind to the ORIGINAL serve instance, and
     # read the exit record below to verify HOW the serve actually died. Purely observational; does not affect
     # chrome reaping.
-    serve_id_path = os.path.join(profile, ".belmont-serve-identity.json")
+    serve_id_path = os.path.join(profile, f".belmont-serve-identity{id_sfx}.json")
     try:
         with open(serve_id_path, "w") as f:
-            json.dump({"pid": child_pid, "startTicks": start_ticks(child_pid), "supervisorPid": os.getpid(), "ts": time.time()}, f)
+            json.dump({"runId": run_id, "pid": child_pid, "startTicks": start_ticks(child_pid), "supervisorPid": os.getpid(), "ts": time.time()}, f)
             f.flush(); os.fsync(f.fileno())
     except OSError:
         pass
@@ -204,8 +209,8 @@ def main():
                 rec = ({"signalled": True, "termsig": os.WTERMSIG(wstatus)} if os.WIFSIGNALED(wstatus)
                        else {"signalled": False, "exitcode": os.WEXITSTATUS(wstatus)} if os.WIFEXITED(wstatus)
                        else {"signalled": None})
-                with open(os.path.join(profile, ".belmont-serve-exit.json"), "w") as f:
-                    json.dump({**rec, "pid": child_pid, "ts": time.time()}, f); f.flush(); os.fsync(f.fileno())
+                with open(os.path.join(profile, f".belmont-serve-exit{id_sfx}.json"), "w") as f:
+                    json.dump({**rec, "runId": run_id, "pid": child_pid, "ts": time.time()}, f); f.flush(); os.fsync(f.fileno())
             except OSError: pass
             break
         time.sleep(0.5)

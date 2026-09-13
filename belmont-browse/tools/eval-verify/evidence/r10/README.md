@@ -133,6 +133,14 @@ stand; these fix the drivers so they can't PASS on a failure path):
     exit signal (==='SIGKILL' -> serve1KilledBySigkill). Both re-ran PASS (supervised 5 conditions; orphan-adopt
     15 conditions). The supervisor's identity/exit records are observational only and do not affect chrome reaping
     (supervisor suite still 14/14).
+  - **round-7: per-run diagnostic records**: the supervisor stamps its identity/exit records with a per-run
+    `runId` (from `BELMONT_SUPERVISOR_RUNID`) and writes them to per-run file paths; the supervised driver
+    generates the runId, and accepts a record ONLY when its runId matches, its `supervisorPid` is the supervisor
+    the driver spawned, and (for the exit record) its `pid` is the serve the driver crashed. A stale record from
+    a previous run (different name AND runId) can never be mis-adopted, and a missing current-run record fails
+    the run rather than falling back (GPT round-6: silently-failed delete+rewrite could otherwise let an old
+    record be adopted). Verdict gains `identityValidForThisRun`; re-ran PASS (supervised 6 conditions). Reaping
+    logic unchanged (records are observational).
 - **L13 approve gate**: `approveGrantsEffect` now also requires `allReadsOk === true`, so EVERY scenario
   uniformly gates observation-read success (GPT round-3).
 - **orphan-adopt verdict**: now requires serve1 actually died, the owner names the SPAWNED serve2 pid
