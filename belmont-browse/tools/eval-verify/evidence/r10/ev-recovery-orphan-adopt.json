@@ -1,0 +1,68 @@
+{
+  "case": "recovery-orphan-adopt",
+  "at": "2026-09-13T06:18:26.558Z",
+  "stages": [
+    {
+      "stage": "control-started",
+      "t": "2026-09-13T06:18:26.710Z",
+      "controlPid": 2006520,
+      "controlTicks": 27247053
+    },
+    {
+      "stage": "serve1-ready",
+      "t": "2026-09-13T06:18:31.147Z",
+      "serve1Pid": 2006523,
+      "ready": true,
+      "owner": {
+        "servePid": 2006523,
+        "chromePid": 2006576,
+        "startTicks": 27247226,
+        "generation": "58327bdd-fd6e-481f-8ba5-7cfc1f3c7a7d"
+      },
+      "chromePid": 2006576,
+      "chromeTicks": 27247226,
+      "chromeAlive": true
+    },
+    {
+      "stage": "after-serve1-crash",
+      "t": "2026-09-13T06:18:33.150Z",
+      "serve1Alive": false,
+      "chromeAlive": true,
+      "chromeTicksMatch": true,
+      "ownerStillNamesDeadServe1": true,
+      "orphanSurvived": true
+    },
+    {
+      "stage": "serve2-adopt",
+      "t": "2026-09-13T06:18:35.666Z",
+      "serve2Pid": 2006898,
+      "ready": true,
+      "owner": {
+        "servePid": 2006898,
+        "chromePid": 2006576,
+        "startTicks": 27247226,
+        "generation": "360a9498-abba-4302-8a6c-200abcc2f6d4"
+      },
+      "adoptedSameChrome": true,
+      "sameStartTicks": true,
+      "ownerNowServe2": true,
+      "chromeAlive": true
+    },
+    {
+      "stage": "after-serve2-stop",
+      "t": "2026-09-13T06:18:43.175Z",
+      "serve2Alive": false,
+      "chromeAlive": false,
+      "chromeReaped": true,
+      "controlAlive": true,
+      "controlUntouched": true
+    }
+  ],
+  "verdict": {
+    "orphanSurvived": true,
+    "adoptedSameInstance": true,
+    "reapedOnStop": true,
+    "controlUntouched": true
+  },
+  "result": "PASS"
+}
