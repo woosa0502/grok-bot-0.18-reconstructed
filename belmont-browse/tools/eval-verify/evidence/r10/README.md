@@ -46,8 +46,24 @@ exact roster ID-set restoration + no leftover group.
   display view (message/send-message) that does NOT include it, so autonomy is proven causally rather than by
   the raw frame. Capturing the raw frame would require subscribing to the live turn activity SSE stream.
 
+## `ev-l26-canonical-*.json` — L26 canonical-authority POSITIVE paths = PASS
+Driver `../../design-memory-canonical-authority.mjs`, run against a serve started with
+`BELMONT_MEMORY_AUTHORITY=belmont` UNDER the supervisor (the canonical daemon bundle daemon.memory-2.1.mjs is
+already patched with the canonical guard; session.mjs:131 asserts it at boot). /health reported
+`memoryAuthority: belmont, memoryProtocolVersion: 1`. GPT required the belmont-mode POSITIVE paths, not just the
+legacy MEMORY_AUTHORITY_MISMATCH refusal.
+- **context-authority** (`ev-l26-canonical-context-authority.json`): in belmont mode `/memory/context` returns a
+  host-owned bounded context (single-URL 200, multi-URL 200) — PASS.
+- **reject-control-field** (`ev-l26-canonical-reject-control-field.json`): a session-create carrying an injected
+  `authorityOverride` control field is refused with `UNTRUSTED_MEMORY_CONTROL_FIELD` (memory-belmont-runtime.mjs:31)
+  — PASS.
+- **reject-malformed** (`ev-l26-canonical-reject-malformed.json`): a memory context missing required fields is
+  refused with `INVALID_BELMONT_MEMORY_CONTEXT` (memory-belmont-runtime.mjs:30) — PASS.
+These are the belmont-authority-specific codes (not the legacy mismatch), so they prove the canonical mode is
+active and enforcing, closing the R8 caveat that legacy-mode MISMATCH did not stand in for these paths.
+
 ## What this closes vs. leaves open
-Closes GPT's P1-1 evidence-hardening (recovery re-verified on the supported path with per-stage identity and
-termination traces, supervised vs orphan-adopt separated, each with a mis-kill control) and the autonomous
-bot-creates-bot causal proof with ID-set-exact cleanup. Still open in the live phase: L26 canonical POSITIVE
-paths, L13 full approval flow, the L15 auth/Origin matrix, and map-row disposition.
+Closes GPT's P1-1 (recovery re-verified on the supported path with per-stage identity + termination traces,
+supervised vs orphan-adopt separated, each with a mis-kill control), the autonomous bot-creates-bot causal
+proof with ID-set-exact cleanup, and the L26 canonical POSITIVE paths. Still open in the live phase: L13 full
+approval flow, the L15 auth/Origin matrix, and map-row disposition.
