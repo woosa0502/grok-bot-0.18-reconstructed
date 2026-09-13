@@ -1,5 +1,20 @@
 # R10 — live/product verification (post code-phase-complete): P1-1 recovery re-verify with per-stage traces
 
+## FINAL: GPT-6 Pro APPROVED the live harness as closed at cf98ec0 (after 7 review rounds)
+GPT's verdict (full text: GPT-VERDICT-live-harness-approved-cf98ec0.txt): "cf98ec0에서 감독자 진단 기록의 현재
+실행 검증 잔여는 닫혔습니다. 기존에 인정한 검증 범위를 유지한 상태로 **라이브 하네스 종결을 승인하며**, 다음
+단계는 위 제품 백로그입니다." It verified the round-7 runId fix with 20 conditions + mutation tests + 5 real
+supervisor runs (write-failure injected via real OS errors), and re-confirmed the chrome-reaping logic is
+unchanged. Over rounds 1-7 GPT accepted every live PRODUCT success (recovery both paths, bot delegated-creation,
+L26 canonical positive, L15 matrix, L13 approval flow) and drove the test HARNESS to a high rigor bar
+(pidfd-bound signalling, parent-captured identity, actual-death-by-signal verification, per-run record binding).
+REMAINING = product backlog only (NOT counted verified): L02, L10, L16 durable-accept, L38, L46-50; the L42
+filesystem deny-list gap; L41/L42/L37 pairing/credential acceptance tests; Telegram/autopost (unimplemented).
+See MAP-DISPOSITION.md; the three buckets are not summed.
+
+---
+
+
 After GPT-6 Pro judged the code/regression phase COMPLETE at dbb96fb, this batch begins the remaining
 live/product verification against the real dev stack. GPT flagged the r8 HEALTH.DEAD/DOUBLE_CRASH JSONs as
 summary-only (no per-stage identity/termination trace). R10 re-runs recovery on the SUPPORTED path and captures
