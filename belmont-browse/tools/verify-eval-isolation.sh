@@ -22,6 +22,13 @@ echo "== OFFLINE: unit + integration tests (real bwrap, real temp fs) =="
   belmont-browse/test/memory-search-sites-overlay.test.mjs \
   belmont-browse/test/learn-measure-adoption.test.mjs
 
+echo "== OFFLINE: chrome-orphan supervisor closure (DEF-L19-CHROME-ORPHAN-001; real fork+pidfd, no live stack) =="
+python3 belmont-browse/tools/test-chrome-supervisor.py
+
+echo "== OFFLINE: eval-harness fail-closed self-tests (L19.PENDING + L15 graders; shared modules) =="
+"$NODE" belmont-browse/tools/eval-verify/evidence/r9-audit/test-pending-formula.mjs
+"$NODE" belmont-browse/tools/eval-verify/test-gateway-origin-auth.mjs
+
 echo "== OFFLINE: patch applies clean + idempotent + parses (on a COPY, never the live bundle) =="
 TMP="$(mktemp -d)"; cp "$DAEMON" "$TMP/daemon.copy.mjs"
 python3 belmont-browse/tools/patch-daemon-eval-isolation.py "$TMP/daemon.copy.mjs"
@@ -40,17 +47,26 @@ cat <<'LIVE'
 # 2. Apply the patch to the derived bundle(s):
 #    python3 belmont-browse/tools/patch-daemon-eval-isolation.py "$DAEMON"
 #    python3 belmont-browse/tools/patch-daemon-eval-isolation.py <...>/daemon.memory-2.1.mjs   # if canonical
-# 3. Serve eval-verify (dedicated profile + eval knowledge so the live profile is untouched):
+# 3. Serve eval-verify (dedicated profile + eval knowledge so the live profile is untouched).
+#    SUPPORTED LAUNCH PATH: run serve UNDER the chrome supervisor so the DEF-L19-CHROME-ORPHAN-001 closure
+#    (C-1 fail-closed registration, C-2 spawn+adopt registration, A-1 per-profile flock, pidfd reaping on any
+#    serve exit incl. SIGKILL) is actually in force. Launching `node serve.mjs` DIRECTLY leaves the supervisor
+#    backstop out of the loop and is NOT the supported path. The supervisor's <profileDir> MUST be serve's chrome
+#    profile dir, which is "$EVAL_STATE_DIR/chrome-profile" (core.mjs: path.join(stateDir,"chrome-profile")).
+#    Non-zero supervisor exits are fail-closed by design: 3 = registration channel could not be established;
+#    4 = another supervised serve already holds this profile's lock.
 #    BELMONT_BROWSE_ENGINE=909 BELMONT_BROWSE_TRANSPORT=port BELMONT_BROWSE_NATIVE_COMPONENTS=1 \
 #    BELMONT_BROWSE_CHROME="$BELMONT_BROWSE_CHROME" BELMONT_BROWSE_CHROME_ARGS=--ignore-gpu-blocklist \
 #    BELMONT_BROWSE_DISPLAY=:0 DISPLAY=:0 \
 #    BELMONT_BROWSE_STATE_DIR="$EVAL_STATE_DIR" \
 #    BELMONT_KNOWLEDGE_DIR="$EVAL_KNOWLEDGE_DIR" \
 #    BELMONT_BROWSE_SITES_OVERLAY=1 \
-#    "$NODE" belmont-browse/src/serve.mjs --port 9360 --engine 909 --transport port --cdp-port 9333 --relay-port 9361
+#    python3 belmont-browse/tools/chrome-supervisor.py "$EVAL_STATE_DIR/chrome-profile" -- \
+#      "$NODE" belmont-browse/src/serve.mjs --port 9360 --engine 909 --transport port --cdp-port 9333 --relay-port 9361
 #    -> startup log must show: [eval-probe] ... readIsolation=true ... read{overlayBash:true,overlayRead:true,
 #       opBashTried:true,opReadTried:true,opLeak:false}   (G2-document-read)
 #    -> GET /health (Bearer token from $EVAL_STATE_DIR/serve.json) must show sitesOverlay:true
+#    -> on serve exit the supervisor logs "[supervisor] reaping ..." and exits 0 with no owned chrome left.
 # 4. Harness execution path (learn-measure vs the live engine). See scope-honesty note at the top.
 #    "$NODE" belmont-browse/src/learn-measure.mjs --domain <d> --task "<t>" --model gpt-5.5 --thinking high \
 #      --runs 1 --verify <observer.mjs> [--publish] --state-dir "$EVAL_STATE_DIR"
