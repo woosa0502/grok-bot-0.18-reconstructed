@@ -190,3 +190,21 @@ Chrome (no real Chrome/CDP needed), and asserts:
    process group (process is gone afterward).
 2. owner file with a **live** servePid → decision `shared`; stop is a noop (process survives).
 3. no owner file → decision `foreign`; stop is a noop (process survives).
+
+## Round-10 (GPT-6 Pro) — re-pin miss fixed; flock claim corrected
+
+GPT confirmed round-9's two supervisor defects are closed, and reproduced one more + a factual correction:
+- **Chrome re-pin miss (fixed)**: the supervisor pinned Chrome A, then the SAME serve killed A and restarted
+  as B (owner updated atomically to B); the supervisor kept the stale A-fd, saw A dead, and exited 0 leaving
+  B alive. Fix: at serve-exit the AUTHORITATIVE reap target is the CURRENT owner file — discard the poll-time
+  fd and re-pin from the current owner, looping to drain a chain of owned live chromes. Regression:
+  `test_repin_reaps_current_chrome` (A→B same-serve restart → B reaped). Supervisor tests 5/5.
+- **flock ≠ root (correction)**: my earlier notes said A-1 "needs root/cgroup". That is WRONG for the lock:
+  `flock(2)` is **unprivileged**. Correcting the residual split:
+  - **A-1 (owner lock)**: closable with **unprivileged `flock`** on a fixed shared lock file — no root. The
+    current link-based lock is a valid unprivileged userspace lock whose only residual is a microsecond
+    two-stealer window reachable solely by two serves starting concurrently on the SAME profile (not the
+    eval workflow, which runs one serve at a time). `flock` is the clean strict upgrade; Node has no native
+    flock binding, so it needs a small helper (flock CLI holder / addon) — still unprivileged.
+  - **Only** the whole-tree-straggler reaping and the supervisor's own SIGKILL benefit from a **cgroup/
+    systemd scope** (which does need root/user-bus here); those remain the genuine root-requiring items.

@@ -108,6 +108,43 @@ def test_null_servepid_no_miskill():
     except ProcessLookupError: pass
     print("PASS null-servePid: an owner record with no servePid is never pinned/killed")
 
+
+REPIN_SERVE = r'''
+import os, sys, json, time, subprocess, signal
+profile = sys.argv[1]; owner = os.path.join(profile, ".belmont-chrome-owner.json")
+def ticks(pid):
+    with open(f"/proc/{pid}/stat") as f: raw = f.read()
+    return int(raw[raw.rfind(")") + 2:].split()[19])
+def rec(pid):
+    tmp = owner + ".tmp"
+    json.dump({"servePid": os.getpid(), "chromePid": pid, "pgid": pid, "startTicks": ticks(pid), "generation": "r"}, open(tmp, "w"))
+    os.replace(tmp, owner)  # atomic
+def spawn(): return subprocess.Popen(["sleep", "600"], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+A = spawn(); rec(A.pid); open(os.path.join(profile, "serve-ready"), "w").write(str(A.pid))
+time.sleep(2.5)                     # let the supervisor pin A
+A.kill(); A.wait()                  # same serve kills A ...
+B = spawn(); rec(B.pid)             # ... and restarts as B, updating the owner atomically
+open(os.path.join(profile, "serve-ready-b"), "w").write(str(B.pid))
+time.sleep(1.0)
+os.kill(os.getpid(), signal.SIGKILL)
+'''
+
+def test_repin_reaps_current_chrome():
+    """GPT round-10 counterexample: the supervisor pins A, then the same serve kills A and restarts as B
+    (owner updated to B). On serve exit the supervisor must reap the CURRENT owner (B), not just the stale A."""
+    profile = tempfile.mkdtemp(prefix="sup-repin-")
+    fs = os.path.join(profile, "repin-serve.py"); open(fs, "w").write(REPIN_SERVE)
+    sup = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs, profile],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    rb = os.path.join(profile, "serve-ready-b"); b_pid = None
+    for _ in range(200):
+        if os.path.exists(rb): b_pid = int(open(rb).read().strip()); break
+        time.sleep(0.05)
+    assert b_pid, "serve never restarted chrome B"
+    out, _ = sup.communicate(timeout=40); time.sleep(0.5)
+    assert not alive(b_pid), "supervisor left the CURRENT chrome (B) alive after a same-serve restart\n" + out
+    print("PASS re-pin: reaps the current owner (B) after a same-serve A->B chrome restart")
+
 def test_pidfd_reuse_safety():
     p = subprocess.Popen(["sleep", "0.2"]); fd = os.pidfd_open(p.pid); p.wait(); time.sleep(0.2)
     try:
@@ -118,4 +155,4 @@ def test_pidfd_reuse_safety():
         os.close(fd)
 
 if __name__ == "__main__":
-    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_pidfd_reuse_safety(); print("ALL SUPERVISOR TESTS PASS")
+    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_pidfd_reuse_safety(); print("ALL SUPERVISOR TESTS PASS")

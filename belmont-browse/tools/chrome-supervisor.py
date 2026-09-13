@@ -114,33 +114,45 @@ def main():
         except ChildProcessError: pass
     print("[supervisor] serve exited; checking owned chrome", flush=True)
 
-    # Final sweep: even if we never pinned during the poll (chrome recorded then serve died before the next
-    # poll, or created after the 60s window), try once more now that serve is gone (closes the early-death
-    # "orphan alive but exit 0" counterexample).
-    if fd is None:
-        fd, chrome_pid, chrome_ticks = pin_owned_chrome()
-    if fd is None:
-        print("[supervisor] no owned chrome to reap", flush=True); return 0
-    if not pidfd_alive(fd):
-        print("[supervisor] owned chrome already gone (reaped by serve or exited)", flush=True); os.close(fd); return 0
+    def reap_via_fd(fd, chrome_pid):
+        if not pidfd_alive(fd): print("[supervisor] owned chrome already gone", flush=True); return True
+        print(f"[supervisor] reaping owned chrome instance pid={chrome_pid} via pidfd", flush=True)
+        try: signal.pidfd_send_signal(fd, signal.SIGTERM)
+        except (ProcessLookupError, OSError): return True
+        end = time.time() + grace_ms / 1000.0
+        while time.time() < end:
+            if not pidfd_alive(fd): print("[supervisor] chrome exited on SIGTERM", flush=True); return True
+            time.sleep(0.1)
+        try: signal.pidfd_send_signal(fd, signal.SIGKILL)
+        except (ProcessLookupError, OSError): return True
+        end = time.time() + 2
+        while time.time() < end:
+            if not pidfd_alive(fd): print("[supervisor] chrome exited on SIGKILL", flush=True); return True
+            time.sleep(0.1)
+        return False
 
-    # The instance is still alive: reap through the pidfd (never by raw pid -> immune to reuse).
-    print(f"[supervisor] reaping orphaned chrome instance pid={chrome_pid} via pidfd", flush=True)
-    try: signal.pidfd_send_signal(fd, signal.SIGTERM)
-    except (ProcessLookupError, OSError): os.close(fd); return 0
-    end = time.time() + grace_ms / 1000.0
-    while time.time() < end:
-        if not pidfd_alive(fd): print("[supervisor] chrome exited on SIGTERM", flush=True); os.close(fd); return 0
-        time.sleep(0.1)
-    try: signal.pidfd_send_signal(fd, signal.SIGKILL)
-    except (ProcessLookupError, OSError): os.close(fd); return 0
-    end = time.time() + 2
-    while time.time() < end:
-        if not pidfd_alive(fd): print("[supervisor] chrome exited on SIGKILL", flush=True); os.close(fd); return 0
-        time.sleep(0.1)
-    os.close(fd)
-    print("[supervisor] WARNING: chrome instance still present after SIGKILL", file=sys.stderr, flush=True)
-    return 1
+    # Round-10 fix (GPT re-pin miss): the AUTHORITATIVE reap target is whatever the CURRENT owner file names
+    # at serve-exit — the serve may have restarted chrome A->B and updated the owner, so a poll-time fd for A
+    # is stale. Discard it and re-pin from the current owner, then reap. Loop to drain a chain of owned live
+    # chromes (each reap kills the current instance; pin_owned_chrome then returns None once it is dead).
+    if fd is not None:
+        try: os.close(fd)
+        except OSError: pass
+        fd = None
+    reaped, ok = 0, True
+    for _ in range(8):
+        f, cp, ct = pin_owned_chrome()
+        if f is None: break
+        ok = reap_via_fd(f, cp)
+        try: os.close(f)
+        except OSError: pass
+        reaped += 1
+        if not ok: break
+    if reaped == 0:
+        print("[supervisor] no owned chrome to reap", flush=True); return 0
+    if not ok:
+        print("[supervisor] WARNING: an owned chrome instance survived SIGKILL", file=sys.stderr, flush=True); return 1
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
