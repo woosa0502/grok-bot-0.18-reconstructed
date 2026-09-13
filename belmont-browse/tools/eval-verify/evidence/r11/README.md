@@ -36,6 +36,13 @@ browse session (autoApprove:true) is told to navigate, read the heading, fill th
 - Both proofs obtained -> PASS. Confirms the live browser tool matrix beyond the offline lifecycle/numeric-fill
   tests. (This closes the L02 OPEN row from MAP-DISPOSITION with a live end-to-end run.)
 
+## `ev-l16-durable-accept.json` — L16 durable-accept = PASS
+An accepted session created on the eval serve was made to survive a serve restart on the same state dir. Proof
+(three ways): the on-disk aside session record was retained across the stop; the restarted serve's lifecycle
+logged "reconciled 1 persisted executions"; and GET /sessions/:id after restart returns the record (task
+preserved, status resolved to done). Closes the L16 durable-accept OPEN row. (The idempotency half was already
+verified in r8 via createAgent clientNonce.)
+
 ## Bot self-service creation summary
 | Capability | Bot-autonomous tool? | Evidence |
 |---|---|---|
