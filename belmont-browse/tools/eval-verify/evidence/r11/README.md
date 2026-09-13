@@ -26,22 +26,30 @@ Settled from the protocol contract, not run as a test:
   protocol contract in this repo (not from upstream Grok product docs). The R8 "bot group discussion" used the
   gateway createGroup API driven by the harness — never a bot's own tool (as R8's caveat already noted).
 
-## `ev-l02-browser-matrix.json` — L02 browser tool matrix (navigate/read/fill/click) = PASS
-Driver `../design-l02-browser-matrix.mjs`, against the eval serve (under the supervisor). A local HTTP server
-serves a form page whose <h1> carries a nonce and whose /submit endpoint captures the field value. A guard-mode
-browse session (autoApprove:true) is told to navigate, read the heading, fill the input, click Submit.
-- **navigate+fill+click**: the local server RECEIVED the exact fill nonce (L02FILL<nonce>) — an EXTERNAL
-  observable only reachable by actually submitting the form in the real browser (not the agent's self-report).
-- **navigate+read**: the heading nonce (L02HEAD<nonce>) appeared in the session (the agent read the <h1>).
-- Both proofs obtained -> PASS. Confirms the live browser tool matrix beyond the offline lifecycle/numeric-fill
-  tests. (This closes the L02 OPEN row from MAP-DISPOSITION with a live end-to-end run.)
+## `ev-l02-browser-matrix.json` — L02 local-form navigate/read/fill/click = PARTIAL (corrected per GPT)
+Driver `../design-l02-browser-matrix.mjs`, against the eval serve. A local HTTP server serves a form page whose
+<h1> carries a nonce and whose /submit endpoint captures the field value; a guard-mode browse session navigates,
+reads the heading, fills the input, clicks Submit.
+- **What the run showed**: the local server received the fill nonce and the heading nonce appeared in the session —
+  a successful local-form navigate/read/fill/click.
+- **CORRECTION (GPT round-8/9)**: this does NOT by itself prove the browser tools executed. HEAD/FILL originally
+  shared a nonce suffix, and a bare `GET /submit?field=<FILL>` records the value with ZERO browser launches (GPT
+  reproduced a driver PASS with no browser). The driver is now fixed to use INDEPENDENT HEAD/FILL nonces
+  (`design-l02-browser-matrix.mjs:21-22`), but the STORED `ev-l02-browser-matrix.json` is the PRE-FIX run (shared
+  suffix `4bd1bc`) — i.e. code fixed, no post-fix live rerun evidence yet.
+- **Still OPEN (full L02, plan 258)**: link tool execution to tab/DOM/server result (assert the session's fill/click
+  tool-calls ran with FILL), independent heading vs input nonces, and the rest of the matrix (two tabs, long page,
+  select/drag/keyboard/coordinate-click, wrong-tab change, stale reference). Disposition: **PARTIAL**.
 
-## `ev-l16-durable-accept.json` — L16 durable-accept = PASS
-An accepted session created on the eval serve was made to survive a serve restart on the same state dir. Proof
-(three ways): the on-disk aside session record was retained across the stop; the restarted serve's lifecycle
-logged "reconciled 1 persisted executions"; and GET /sessions/:id after restart returns the record (task
-preserved, status resolved to done). Closes the L16 durable-accept OPEN row. (The idempotency half was already
-verified in r8 via createAgent clientNonce.)
+## `ev-l16-durable-accept.json` — L16 durable-accept = PARTIAL (corrected per GPT)
+An accepted session created on the eval serve survived a serve restart on the same state dir: the on-disk aside
+session record was retained across the stop; the restarted serve logged "reconciled 1 persisted executions"; and
+GET /sessions/:id after restart returns the record (task preserved, status done).
+- **Scope**: this is the session-record RESTART-PRESERVATION sub-test only.
+- **Still OPEN (full L16, plan 277)**: same-nonce concurrent submit, response loss, other-nonce queueing, a durable
+  accept-ledger with work-count + external-side-effect-count consistency, and restart dedup. The JSON has no
+  request identifiers / accept ledger / execution counts / external receipts. (createAgent idempotency half was
+  verified in r8.) Disposition: **PARTIAL**.
 
 ## `ev-l38-attachment-sha-dedup.json` — L38 attachment SHA / content-dedup = PARTIAL (corrected per GPT)
 - **Real-data evidence**: a read-only scan of every agent's `conversation-blobs.db` — **20,439 real blobs** across
@@ -59,7 +67,18 @@ verified in r8 via createAgent clientNonce.)
   agents, upload response-loss + retry, chunked fetch, wrong-path rejection, source-vs-fetch SHA match, per-agent
   target isolation. The stored-data scan is supporting evidence, not a substitute for that acceptance test.
 
-## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v2 verifier)
+## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v3 verifier)
+> **v3 (GPT round-9)**: closed four verifier holes GPT found by running `main()` with counterexamples and shipped
+> all of them as permanent `--selftest` regressions (`selftest_ok=true`):
+> (A) a `thinking`-only "report" with no real message no longer counts — the parent report is read ONLY from
+> `send-message`/`assistant-text` items; (B) `status: SUCCESS` for B and "FAIL" inside the `L10FAILB…` nonce no
+> longer fool detection — nonces are masked and each worker's claim is scoped to its OWN clause (no fixed window
+> bleed, period-proof); (C) `parentReportsA_success` is now enforced (a report that misreports the succeeding
+> worker A as "failed" now FAILs); (D) worker-id↔result linkage — the subagent whose TASK (title) carries the OKA
+> nonce must be a distinct terminal worker and that nonce must appear in a worker-result unit (`resultAttributedToWorkerId`).
+> The verifier is also representation-robust: this run's results arrived as "[A background task just completed]"
+> items (`taskItemsInlined=0`), and the verdict handled it. Self-test: 4 adversarial→FAIL, 1 faithful→PASS.
+
 Plan L10·P1 T8/H2: a PARENT delegates DIFFERENT tasks to TWO workers, collects results, one worker must fail;
 pass = each worker's output matches its recipient, no failure-as-success laundering, no cross-worker mixing.
 Drivers `../l10-phase.mjs` (create; workers dispatched per-worker via curl to dodge the model's todo-loop; each

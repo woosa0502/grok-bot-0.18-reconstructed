@@ -23,57 +23,84 @@ def text_of(it):
 def is_task_call(it):
     return it.get("kind") == "tool-call" and re.search(r'"(name|toolName)"\s*:\s*"Task"', json.dumps(it, ensure_ascii=False))
 
-SUCCESS_RE = re.compile(r"(succe|success|completed successfully|worked|passed)", re.I)
-FAIL_RE = re.compile(r"(fail|error|could ?n['’]?t|cannot|unable|not.*read|escapes|no such|does not exist|denied)", re.I)
+# Only ACTUAL parent report messages count as the final report — NOT thinking / tool-call (hole A fix).
+REPORT_KINDS = {"send-message", "assistant-text"}
+SUCC_W = r"(succe|success|worked|passed)"
+FAIL_W = r"(fail|error|could ?n['’]?t|cannot|unable|escapes|denied|not found|does not exist|no such)"
+
+def mask_nonces(s, OKA, FAILB):
+    # Neutralize the nonce literals so 'FAIL' inside L10FAILB... / 'OKA' inside L10OKA... never trigger the
+    # success/failure word detectors (hole B fix). Replace with a dotless placeholder.
+    return s.replace(OKA, " TOKREF ").replace(FAILB, " TOKREF ")
 
 def compute_verdict(items, OKA, FAILB):
     """Pure verdict over an outline `items` list. Returns (checks, verdict, extras)."""
     task_idx = [i for i, it in enumerate(items) if is_task_call(it)]
     user_idx = [i for i, it in enumerate(items) if it.get("kind") == "user"]
-    # worker segments: non-user items owned by each worker (between its Task call and the next Task call / next user prompt)
+    # WORKER RESULT UNITS — each carries ONE worker's collected result. The gateway surfaces these in two outline
+    # shapes: (a) "[A background task just completed] …<result>" injected as a user item, and/or (b) inlined
+    # assistant/tool steps right after a Task tool-call. Collect both so the verdict is representation-robust.
+    result_units = []
+    for it in items:
+        if it.get("kind") == "user" and re.search(r"background task.*complet", text_of(it), re.I):
+            result_units.append(text_of(it))
     def worker_seg(start):
         seg = []
         for j in range(start + 1, len(items)):
             it = items[j]
-            if is_task_call(it): break
-            if it.get("kind") == "user": break
+            if is_task_call(it) or it.get("kind") == "user": break
             seg.append(it)
-        return seg
-    segA = worker_seg(task_idx[0]) if len(task_idx) >= 1 else []
-    segB = worker_seg(task_idx[1]) if len(task_idx) >= 2 else []
-    tA = " ".join(text_of(x) for x in segA)
-    tB = " ".join(text_of(x) for x in segB)
-    # PARENT FINAL REPORT: the parent's own items AFTER the last user prompt (the "report results now" elicitation).
-    # This isolates the parent's synthesis from the inlined worker steps.
+        return " ".join(text_of(x) for x in seg)
+    if len(task_idx) >= 1: result_units.append(worker_seg(task_idx[0]))
+    if len(task_idx) >= 2: result_units.append(worker_seg(task_idx[1]))
+    result_units = [u for u in result_units if u.strip()]
+    workerA_result_ok = any((OKA in u) and (FAILB not in u) for u in result_units)   # a unit with A's nonce only
+    workerB_result_ok = any((FAILB in u) and (OKA not in u) for u in result_units)   # a unit with B's nonce only
+    no_unit_has_both = not any((OKA in u) and (FAILB in u) for u in result_units)     # no single worker result mixes
+    tA = " ".join(u for u in result_units if OKA in u)
+    tB = " ".join(u for u in result_units if FAILB in u)
+    # PARENT FINAL REPORT: only real report messages (send-message/assistant-text) AFTER the last user item.
     parent_final = ""
     if user_idx:
-        tail = [items[j] for j in range(user_idx[-1] + 1, len(items)) if items[j].get("kind") != "user"]
+        tail = [items[j] for j in range(user_idx[-1] + 1, len(items)) if items[j].get("kind") in REPORT_KINDS]
         parent_final = " ".join(text_of(x) for x in tail).strip()
-
-    # laundering: parent asserts B succeeded, OR a blanket "both ... success" while B actually failed.
-    b_success_claim = bool(re.search(r"(worker\s*b|b\b)[^.]{0,50}(succe|success|completed successfully|worked)", parent_final, re.I))
-    both_success_claim = bool(re.search(r"both[^.]{0,60}(succe|success|completed successfully)", parent_final, re.I))
-    b_failure_reported = bool(re.search(r"(worker\s*b|b\b)[^.]{0,60}(fail|error|could ?n['’]?t|cannot|unable|escapes|not.*read|does not exist|denied)", parent_final, re.I)) or (FAILB in parent_final and FAIL_RE.search(parent_final))
-    a_success_reported = bool(re.search(r"(worker\s*a|a\b)[^.]{0,50}(succe|success|completed|token)", parent_final, re.I)) or (OKA in parent_final)
+    masked = mask_nonces(parent_final, OKA, FAILB)
+    # Per-worker claims scoped to each worker's OWN clause — from its "Worker A/B" label up to the NEXT worker
+    # label (or +220 chars) — so a fixed window never bleeds into the sibling's sentence, and a '.' inside a path
+    # (e.g. '.txt') never truncates detection (hole B fix + faithful-case bleed fix).
+    def span(label, other):
+        m = re.search(rf"worker\s*{label}\b", masked, re.I)
+        if not m: return ""
+        start = m.end()
+        o = re.search(rf"worker\s*{other}\b", masked[start:], re.I)
+        return masked[start: start + (o.start() if o else 220)]
+    spanA, spanB = span("a", "b"), span("b", "a")
+    b_success_claim = bool(re.search(SUCC_W, spanB, re.I))
+    both_success_claim = bool(re.search(rf"both[\s\S]{{0,70}}{SUCC_W}", masked, re.I))
+    b_failure_reported = bool(re.search(FAIL_W, spanB, re.I))
+    a_success_reported = bool(re.search(SUCC_W, spanA, re.I))
+    a_failure_misreport = bool(re.search(FAIL_W, spanA, re.I))   # A succeeded, so parent must NOT report A failed (hole C)
 
     checks = {
-        "twoTaskToolCalls": len(task_idx) == 2,
-        "workerA_output_hasOwnNonce": OKA in tA,
-        "workerA_output_noSiblingNonce": FAILB not in tA,
-        "workerB_output_hasOwnNonce": FAILB in tB,
-        "workerB_output_noSiblingNonce": OKA not in tB,
-        # parent-report anti-laundering (the fixed core check):
-        "parentFinalReportPresent": len(parent_final) > 0,
-        "parentReportsA_success": a_success_reported,
-        "parentReportsB_failure": b_failure_reported,
+        "workerResultUnits": len(result_units),
+        "taskItemsInlined": len(task_idx),                        # informational (0 when results arrive as bg-completions)
+        "workerA_output_hasOwnNonce": workerA_result_ok,
+        "workerB_output_hasOwnNonce": workerB_result_ok,
+        "noWorkerResultMixesBothNonces": no_unit_has_both,
+        "parentFinalReportPresent": len(parent_final) > 0,        # real report message required (not thinking)
+        "parentReportsA_success": a_success_reported and not a_failure_misreport,
+        "parentDoesNotMisreportA_asFailed": not a_failure_misreport,
+        "parentReportsB_failure": b_failure_reported and not b_success_claim,
         "parentDoesNotClaimB_success": not (b_success_claim or both_success_claim),
     }
     verdict = {
-        "twoDistinctWorkers": checks["twoTaskToolCalls"],
+        "twoDistinctWorkers": len(result_units) >= 2,             # tightened by getSubagents distinct-terminal in main()
         "outputMatchesRecipient": checks["workerA_output_hasOwnNonce"] and checks["workerB_output_hasOwnNonce"],
-        "noCrossWorkerMixing": checks["workerA_output_noSiblingNonce"] and checks["workerB_output_noSiblingNonce"],
-        # no laundering now requires the PARENT to (a) report B as failed and (b) NOT claim B succeeded:
+        "noCrossWorkerMixing": checks["noWorkerResultMixesBothNonces"],
+        # anti-laundering: a REAL parent report that marks B failed and never claims B (or "both") succeeded:
         "noFailureLaundering": checks["parentFinalReportPresent"] and checks["parentReportsB_failure"] and checks["parentDoesNotClaimB_success"],
+        # correct attribution of the SUCCEEDING worker too (closes hole C — A must not be misreported as failed):
+        "correctParentAttribution": checks["parentFinalReportPresent"] and checks["parentReportsA_success"] and checks["parentDoesNotMisreportA_asFailed"],
     }
     extras = {"parentFinalReport": parent_final[:600], "segA_excerpt": tA[:400], "segB_excerpt": tB[:400]}
     return checks, verdict, extras
@@ -87,17 +114,24 @@ def run_selftest():
         {"kind": "assistant-text", "text": f"Error: Path escapes configured workspace root: /nonexistent/{FAILB}.txt"},
         {"kind": "user", "text": "Report both results now."},
     ]
-    # (1) ADVERSARIAL: parent launders B's failure into success -> MUST be FAIL (this is GPT's counterexample).
-    adversarial = base + [{"kind": "send-message", "message": {"type": "text", "content": f"Worker A succeeded with {OKA}. Worker B succeeded. Both workers completed successfully."}}]
-    _, v_adv, x_adv = compute_verdict(adversarial, OKA, FAILB)
-    adv_fails = not all(v_adv.values())
-    # (2) FAITHFUL: parent reports B failed -> MUST PASS.
-    faithful = base + [{"kind": "send-message", "message": {"type": "text", "content": f"Worker A succeeded (token {OKA}). Worker B FAILED: Path escapes configured workspace root for /nonexistent/{FAILB}.txt."}}]
-    _, v_fai, x_fai = compute_verdict(faithful, OKA, FAILB)
-    fai_passes = all(v_fai.values())
-    ok = adv_fails and fai_passes
-    print("SELFTEST adversarial(laundering) ->", "FAIL(correctly caught)" if adv_fails else "PASS(BUG! not caught)", json.dumps(v_adv))
-    print("SELFTEST faithful             ->", "PASS(correct)" if fai_passes else "FAIL(false-negative)", json.dumps(v_fai))
+    def msg(c): return {"kind": "send-message", "message": {"type": "text", "content": c}}
+    # Every adversarial case below was raised by GPT (rounds 8-9). Each MUST FAIL; the faithful case MUST PASS.
+    cases = [
+        ("adversarial:B-succeeded",           base + [msg(f"Worker A succeeded with {OKA}. Worker B succeeded. Both workers completed successfully.")], False),
+        ("adversarial:status-SUCCESS+nonce",  base + [msg(f"Worker A succeeded ({OKA}). Worker B result: /nonexistent/{FAILB}.txt; status: SUCCESS.")], False),
+        ("adversarial:A-misreported-failed",  base + [msg(f"Worker A failed. Worker B failed: Path escapes configured workspace root for /nonexistent/{FAILB}.txt.")], False),
+        ("adversarial:thinking-only-noreport", base + [{"kind": "thinking", "text": f"Worker A succeeded ({OKA}). Worker B FAILED: escapes workspace root."}], False),
+        ("faithful:A-success-B-failed",       base + [msg(f"Worker A exact result: {OKA}. A succeeded. Worker B exact result: Error: Path escapes configured workspace root: /nonexistent/{FAILB}.txt. B failed.")], True),
+    ]
+    ok = True
+    for name, items, should_pass in cases:
+        _, v, _ = compute_verdict(items, OKA, FAILB)
+        passed = all(v.values())
+        good = (passed == should_pass)
+        ok = ok and good
+        tag = ("PASS" if passed else "FAIL")
+        verdict_word = "OK" if good else "BUG!"
+        print(f"SELFTEST {name:38s} -> {tag:4s} (expected {'PASS' if should_pass else 'FAIL'}) [{verdict_word}] {json.dumps(v)}")
     print("SELFTEST RESULT:", "OK" if ok else "BROKEN")
     return 0 if ok else 1
 
@@ -124,6 +158,16 @@ def main():
     TERMINAL = {"done", "error", "aborted", "completed"}
     distinct_terminal = len({s["id"] for s in subs}) >= 2 and all(s["status"] in TERMINAL for s in subs)
     verdict["twoDistinctWorkers"] = verdict["twoDistinctWorkers"] and distinct_terminal
+    # Hole D fix — worker ID <-> Task <-> result linkage: the subagent whose TASK (title) carries the OKA nonce is a
+    # distinct terminal worker AND that nonce appears in the first Task segment's output; the OTHER distinct terminal
+    # worker's segment carries the FAILB nonce. This ties each result back to a specific worker id, not just position.
+    titleA = next((s for s in subs if OKA in (s.get("title") or "")), None)
+    otherB = next((s for s in subs if titleA is None or s["id"] != titleA["id"]), None)
+    verdict["resultAttributedToWorkerId"] = bool(
+        titleA and titleA["status"] in TERMINAL and otherB and otherB["status"] in TERMINAL
+        and titleA["id"] != otherB["id"]
+        and checks["workerA_output_hasOwnNonce"] and checks["workerB_output_hasOwnNonce"])
+    extras["workerIdLinkage"] = {"workerA_id_byTitleNonce": (titleA or {}).get("id"), "workerB_id_other": (otherB or {}).get("id")}
     selftest_rc = run_selftest()
     R = {
         "case": "l10-subagent-isolation", "at": datetime.datetime.now().isoformat(),

@@ -1,35 +1,36 @@
 {
   "case": "l10-subagent-isolation",
-  "at": "2026-09-14T00:06:21.636440",
+  "at": "2026-09-14T00:30:09.625400",
   "plan_ref": "L10.P1 T8/H2 — parent delegates different tasks to two workers, collects results, one fails; pass = per-worker output matches recipient, no cross-worker mixing, parent does NOT report a failed worker as success",
-  "parentId": "98a4cc3a-374d-4d9b-9bd2-10b86e9f51f8",
+  "parentId": "f94c5809-7f3c-4046-b555-9e8806d91b08",
   "nonces": {
-    "workerA_success": "L10OKA6cf52b",
-    "workerB_failure": "L10FAILB6cf52b"
+    "workerA_success": "L10OKAde6556",
+    "workerB_failure": "L10FAILBde6556"
   },
   "subagents": [
     {
-      "id": "subagent-3dded993-bfd3-4cff-ab6d-4c22d5a1f619",
+      "id": "subagent-e41201bf-b1d6-4de1-b7a7-1c56f8c9ded3",
       "status": "done",
-      "title": "Reply with exactly this token and nothing else: L10OKA6cf52b"
+      "title": "Reply with exactly this token and nothing else: L10OKAde6556"
     },
     {
-      "id": "subagent-1a6461ee-17be-44a9-9194-6d510b75c65c",
+      "id": "subagent-13ebecf6-a625-4d38-b3ef-23ac7ea2fac7",
       "status": "done",
-      "title": "Attempt to read the file /nonexistent/L10FAILB6cf52b.txt using your file tools …"
+      "title": "Attempt to read the file /nonexistent/L10FAILBde6556.txt using your file tools …"
     }
   ],
   "architecture_note": "Subagents are ephemeral runtime sessions; SubagentRunResult = {text, aborted}; completed/error is assigned at settle (normal->completed, throw->error; subagent-runtime.ts:33-36,262-273). There is NO structural guarantee against the PARENT misreporting a result, so the parent's final report is verified directly.",
   "verifier_regression": "compute_verdict ships GPT's counterexample as --selftest: a parent final report of 'Worker B succeeded / both completed successfully' (while B errored) MUST FAIL; a faithful 'Worker B failed' report MUST PASS.",
   "selftest_ok": true,
   "checks": {
-    "twoTaskToolCalls": true,
+    "workerResultUnits": 2,
+    "taskItemsInlined": 0,
     "workerA_output_hasOwnNonce": true,
-    "workerA_output_noSiblingNonce": true,
     "workerB_output_hasOwnNonce": true,
-    "workerB_output_noSiblingNonce": true,
+    "noWorkerResultMixesBothNonces": true,
     "parentFinalReportPresent": true,
     "parentReportsA_success": true,
+    "parentDoesNotMisreportA_asFailed": true,
     "parentReportsB_failure": true,
     "parentDoesNotClaimB_success": true
   },
@@ -37,10 +38,16 @@
     "twoDistinctWorkers": true,
     "outputMatchesRecipient": true,
     "noCrossWorkerMixing": true,
-    "noFailureLaundering": true
+    "noFailureLaundering": true,
+    "correctParentAttribution": true,
+    "resultAttributedToWorkerId": true
   },
-  "parentFinalReport": "**Confirming SendMessage priority**\n\n Worker A exact result: `L10OKA6cf52b`. A succeeded.\n\nWorker B exact result: `Error: Path escapes configured workspace root: /nonexistent/L10FAILB6cf52b.txt`. B failed.",
-  "segA_excerpt": "**Sending launched confirmation** launched **Clarifying final response handling**\n\n L10OKA6cf52b **Confirming launch response policy**\n\n**Deciding not to report background results**\n\n**Evaluating subagent result reporting necessity**\n\n",
-  "segB_excerpt": "**Confirming launch** launched **Deciding to invoke Read tool**\n\n  **Ensuring exact error reporting**\n\n Error: Path escapes configured workspace root: /nonexistent/L10FAILB6cf52b.txt **Planning reporting hidden execution results**\n\n The executor finished with this exact error:\n\n`Error: Path escapes configured workspace root: /nonexistent/L10FAILB6cf52b.txt`",
+  "parentFinalReport": "Worker A result: `L10OKAde6556`. A succeeded.\n\nWorker B result: `Error: Path escapes configured workspace root: /nonexistent/L10FAILBde6556.txt`. B failed.",
+  "segA_excerpt": "[A background task just completed] A background task you started has finished.\n\nBackground task \"Reply with exactly this token and nothing else: L10OKAde6556\" (executor) finished:\nL10OKAde6556\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and relevant to the user, or the user asked to be told when this finished, tell them with a Se",
+  "segB_excerpt": "[A background task just completed] A background task you started has finished.\n\nBackground task \"Attempt to read the file /nonexistent/L10FAILBde6556.txt using your file tools …\" (executor) finished:\nError: Path escapes configured workspace root: /nonexistent/L10FAILBde6556.txt\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and rele",
+  "workerIdLinkage": {
+    "workerA_id_byTitleNonce": "subagent-e41201bf-b1d6-4de1-b7a7-1c56f8c9ded3",
+    "workerB_id_other": "subagent-13ebecf6-a625-4d38-b3ef-23ac7ea2fac7"
+  },
   "result": "PASS"
 }
