@@ -20,7 +20,7 @@ pid/pgid, so it cannot mis-kill an unrelated process that inherited the number.
 Usage: chrome-supervisor.py <profileDir> -- <serve argv...>
 Env: BELMONT_SUPERVISOR_GRACE_MS (default 4000) reap grace before SIGKILL.
 """
-import os, sys, json, time, signal
+import os, sys, json, time, signal, fcntl
 
 def owner_path(profile): return os.path.join(profile, ".belmont-chrome-owner.json")
 
@@ -61,10 +61,35 @@ def main():
     # Append-only registration log the serve writes at each chrome spawn; we TAIL it so discovery does not
     # depend on polling a deletable owner file (closes the round-12/13 poll-gap: a chrome registered at spawn
     # is seen even if the owner file is replaced/deleted before the next poll).
+    #
+    # C-1 (whole-project review): FAIL-CLOSED. Push-registration is the PRIMARY discovery channel; owner-file
+    # polling is only a compat fallback with a known poll-gap. So the registration channel must exist BEFORE
+    # we exec serve, and if it cannot be established the supervised start FAILS with a non-zero exit — we do
+    # NOT silently fall back to polling-only (the old `reg_path=None` swallowed a missing profile dir and left
+    # a leak window). Create the profile dir first (the serve's own mkdir happens only on the spawn path, too
+    # late for us), then create+prove the log is writable.
     reg_path = os.path.join(profile, ".belmont-chrome-reg.jsonl")
-    try: open(reg_path, "w").close()
-    except OSError: reg_path = None
-    if reg_path: os.environ["BELMONT_CHROME_REG"] = reg_path
+    try:
+        os.makedirs(profile, exist_ok=True)
+        with open(reg_path, "w") as f:
+            f.write("")  # truncate/create
+            f.flush(); os.fsync(f.fileno())
+    except OSError as e:
+        print(f"[supervisor] FATAL: cannot establish chrome registration log at {reg_path}: {e}", file=sys.stderr, flush=True)
+        return 3
+    os.environ["BELMONT_CHROME_REG"] = reg_path
+
+    # A-1 (whole-project review): exclusive PER-PROFILE lock. Two supervised serves on the SAME profile would
+    # race to own/adopt the same Chrome (the A-1 TOCTOU). fcntl.flock is unprivileged and the kernel releases it
+    # automatically when this process dies — so it closes A-1 without cgroup/root. LOCK_NB: reject (don't block)
+    # the second run. The fd is kept open for the supervisor's whole life (held in this local, closed at exit).
+    lock_path = os.path.join(profile, ".belmont-chrome-supervisor.lock")
+    try:
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o644)  # CLOEXEC: serve does NOT inherit the lock
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as e:
+        print(f"[supervisor] FATAL: another supervised serve holds the profile lock {lock_path}: {e}", file=sys.stderr, flush=True)
+        return 4
 
     child_pid = os.fork()
     if child_pid == 0:

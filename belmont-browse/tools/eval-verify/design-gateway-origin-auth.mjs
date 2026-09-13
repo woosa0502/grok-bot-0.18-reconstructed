@@ -15,6 +15,7 @@
 // false PASS. Env overrides: GATEWAY_JSON, GATEWAY_PORT, GATEWAY_TOKEN, BELMONT_DAEMON_PORT.
 import fs from "node:fs";
 import path from "node:path";
+import { gradeOriginGuard, gradeBadBearer, gradeDaemonForChrome } from "./gateway-origin-auth-lib.mjs";
 
 const CASE = process.argv[2];
 const OUT = process.argv[3] || `/tmp/design-gw-origin-${CASE}.json`;
@@ -41,12 +42,15 @@ async function gwFetch({ origin, bearer, method = "POST", pathname = "/api/getHo
 }
 async function agentCount() {
   // read-only roster count (works with the advertised token, or with no auth when the stack is auth-off).
+  // `parsed` is true ONLY when we actually decoded an array roster: a 200 with a malformed/unexpected body
+  // yields count:null,parsed:false so the caller can tell "roster unreadable" from "roster genuinely unchanged"
+  // (GPT false-PASS #2: two malformed rosters both gave count:null and null===null read as "unchanged").
   const res = await fetch(`http://127.0.0.1:${GW_PORT}/api/listAgents`, {
     method: "POST", headers: { "content-type": "application/json", ...(GW_TOKEN ? { authorization: `Bearer ${GW_TOKEN}` } : {}) }, body: "{}" });
-  if (!res.ok) return { ok: false, status: res.status, count: null };
+  if (!res.ok) return { ok: false, status: res.status, count: null, parsed: false };
   let body = null; try { body = JSON.parse(await res.text()); } catch {}
   const list = Array.isArray(body) ? body : Array.isArray(body?.agents) ? body.agents : null;
-  return { ok: true, status: res.status, count: list ? list.length : null };
+  return { ok: true, status: res.status, count: list ? list.length : null, parsed: list !== null };
 }
 
 async function originGuard() {
@@ -62,9 +66,9 @@ async function originGuard() {
   for (const c of cases) { const r = await gwFetch({ origin: c.origin }); results.push({ ...c, status: r.status, body: r.body, rejected403: r.status === 403 }); }
   const after = await agentCount();
   const allRejected = results.every((r) => r.rejected403);
-  const countUnchanged = before.ok && after.ok && before.count === after.count;
+  const { result, rosterReadable, countUnchanged } = gradeOriginGuard({ allRejected, before, after });
   record({ expected: "every browser Origin -> 403 (Host gateway trusts NO browser origin, extension included); roster count unchanged",
-    results, rosterBefore: before, rosterAfter: after, verdict_pass: allRejected && countUnchanged });
+    results, rosterBefore: before, rosterAfter: after, rosterReadable, countUnchanged, result, verdict_pass: result === "PASS" });
 }
 
 async function badBearer() {
@@ -78,9 +82,13 @@ async function badBearer() {
   }
   const wrong = await gwFetch({ bearer: "wrong-token-000" });
   const right = GW_TOKEN ? await gwFetch({ bearer: GW_TOKEN }) : { status: null };
-  const pass = wrong.status === 401 && (GW_TOKEN ? right.status === 200 : true);
-  record({ authMode: "on", wrongBearerStatus: wrong.status, rightBearerStatus: right.status, verdict_pass: pass,
-    note: "bad Bearer -> 401; correct Bearer -> 200" });
+  // Auth-ON proof needs BOTH bad->401 AND good->200. Without a token to prove the positive path -> UNKNOWN, not
+  // PASS (a wrong->401 alone can't tell a real guard from one that rejects everything) (GPT false-PASS #3).
+  const { result } = gradeBadBearer({ hasToken: !!GW_TOKEN, wrongStatus: wrong.status, rightStatus: right.status });
+  record({ authMode: "on", wrongBearerStatus: wrong.status, rightBearerStatus: right.status, result, verdict_pass: result === "PASS",
+    note: result === "UNKNOWN"
+      ? "auth-ON but no gateway token advertised/provided; cannot prove correct-Bearer->200, so bad-bearer->401 alone is inconclusive"
+      : "bad Bearer -> 401 AND correct Bearer -> 200 (both required)" });
 }
 
 async function daemonForChrome() {
@@ -96,10 +104,12 @@ async function daemonForChrome() {
   };
   const evil = await call({ origin: "https://evil.test" });
   const noOrigin = await call({});
-  const evilBlocked = evil.status === 403 && /FORBIDDEN/.test(evil.body);
-  const noOriginNot403 = noOrigin.status !== 403;
+  // BOTH requests must actually reach the daemon (a real numeric HTTP status). `call` returns a string status
+  // ("fetch-failed:...") on a communication failure; that must NOT count as "not 403" (GPT false-PASS #1: a
+  // no-Origin comm-failure passed because a failure string !== 403). Either side unreached -> UNKNOWN, not PASS.
+  const { result, bothReached } = gradeDaemonForChrome({ evil, noOrigin });
   record({ expected: "web-origin mutation on /session/for-chrome/* -> 403 FORBIDDEN; no-Origin request not blocked by the guard (bogus subpath => no mutation either way)",
-    evilOrigin: evil, noOrigin, verdict_pass: evilBlocked && noOriginNot403,
+    evilOrigin: evil, noOrigin, bothReached, result, verdict_pass: result === "PASS",
     note: "touches singleton daemon 21420 but sends only a rejected / bogus-path request; nothing is mutated" });
 }
 

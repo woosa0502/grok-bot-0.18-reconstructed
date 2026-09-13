@@ -244,3 +244,48 @@ poll pins the current owner (adding a pidfd for any NEW instance) and prunes tra
 at serve-exit it reaps every still-live tracked instance. This is robust to arbitrary restart chains and owner
 deletion, since a pidfd for B is held from the moment the owner named it, independent of the owner file's later
 state. Regression `test_repin_then_owner_deleted_reaps_current` (the exact round-12 sequence). Supervisor 7/7.
+
+## Whole-project review (GPT-6 Pro, continuous GitHub thread) — poll-gap, then C-1/C-2/A-1 closed
+
+GPT reviewed the ENTIRE project from GitHub (not snippets) and judged NOT-COMPLETE with a precise roadmap. The
+concrete code items and their closures:
+
+- **Poll-gap (fixed earlier this thread)**: owner-file *polling* cannot do first-discovery — a chrome
+  spawned+owned+owner-deleted inside one 0.5s poll window was never seen. Fix: **push-registration at spawn** —
+  the serve appends `{pid,pgid,startTicks,servePid}` to an append-only log the supervisor TAILS, so every owned
+  chrome is discovered the instant it exists. Regression `test_poll_gap_registered_chrome_reaped`.
+- **C-1 — supervisor disabled registration silently (fixed)**: the supervisor opened the reg log WITHOUT first
+  creating the profile dir; on a missing dir it set `reg_path=None` and fell back to polling-only (re-opening
+  the very poll-gap above) with no signal. Fix: **fail-closed** — `os.makedirs(profile)` then create+fsync the
+  reg log BEFORE `exec`; if the reg channel can't be established the supervised start **exits non-zero (3) and
+  never runs serve**. Regressions `test_profile_missing_created_and_registers` (dir created, reg channel live,
+  chrome reaped with NO owner file) + `test_reg_channel_unavailable_fails_closed` (profile path is a file →
+  makedirs raises → exit 3, serve never exec'd).
+- **C-2 — adopt path did not register (fixed)**: only the fresh-SPAWN branch appended a registration; the
+  orphan-**ADOPT** branch (`chrome.mjs`) did not, so an adopted chrome leaked if its owner file was deleted
+  before the next poll. Fix: a single `registerChromeInstance(pid,pgid,startTicks)` helper called in **BOTH**
+  the spawn and adopt branches. Regression `test_adopt_path_registration_reaped` (adopted-then-owner-deleted
+  chrome still reaped via the registration tail).
+- **A-1 — owner lock now unprivileged flock (closed)**: the residual same-profile two-stealer race is closed
+  by an **exclusive `fcntl.flock`** the supervisor takes on a per-profile lock file (CLOEXEC, so the lock's
+  lifetime is exactly the supervisor's) BEFORE fork; a second supervised serve on the same profile is rejected
+  (exit 4) and never runs. Unprivileged, kernel-auto-released on death — no root/cgroup. Regression
+  `test_profile_lock_rejects_second_run`. **Supervisor tests now 12/12.**
+
+Harness fail-closed (same review, non-chrome):
+- **L19.PENDING self-test (fixed)**: the self-test RE-DECLARED the verdict inline, proving nothing about the
+  shipped code. Extracted the observation formula + verdict + a **precondition gate** into a shared module
+  (`l19-pending-lib.mjs`) imported by BOTH the live verifier and the self-test. The grade is now **INVALID
+  (UNKNOWN)** when the pending/cancel path wasn't actually exercised (A not running+marked, or B never queued)
+  — never a vacuous PASS. `test-pending-formula.mjs` PASSES against the real module.
+- **L15 gateway/daemon harness (3 false-PASSes fixed)**: (1) a no-Origin **comm-failure** counted as
+  "not 403" → now both requests must reach the daemon (numeric status) or the case is UNKNOWN; (2) two
+  **malformed rosters** both `count:null` read as "unchanged" (null===null) → roster must be a real integer on
+  both sides (`parsed`) or UNKNOWN; (3) auth-ON with only a **wrong-token→401** check (no correct-token→200) →
+  UNKNOWN unless BOTH bad→401 AND good→200 are proven. Graders extracted to `gateway-origin-auth-lib.mjs`;
+  `test-gateway-origin-auth.mjs` proves each defect grades UNKNOWN/FAIL and only genuine guards PASS.
+
+Explicitly-agreed NON-guarantees (GPT concurred these are honest boundaries, not "closed"): the
+spawn→register crash microgap; whole-tree stragglers beyond the owned group root; and the supervisor's own
+SIGKILL (a self-terminating supervisor cannot reap after it is itself killed — that needs a delegated cgroup +
+a survivor, which needs root/user-bus unavailable here).

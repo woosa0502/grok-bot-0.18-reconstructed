@@ -34,6 +34,15 @@ export async function isCdpUp(baseUrl) {
   }
 }
 
+/** Push-register an owned chrome instance to an external supervisor's append-only log (if $BELMONT_CHROME_REG
+ * is set), synchronously. BOTH the fresh-spawn and the orphan-ADOPT paths call this so the supervisor
+ * discovers EVERY owned instance without depending on owner-file polling (closes C-1/C-2). Best-effort. */
+function registerChromeInstance({ pid, pgid, startTicks }) {
+  const reg = process.env.BELMONT_CHROME_REG;
+  if (!reg || !Number.isSafeInteger(pid)) return;
+  try { appendFileSync(reg, JSON.stringify({ pid, pgid, startTicks, servePid: process.pid, ts: Date.now() }) + "\n"); } catch {}
+}
+
 export async function ensureChrome({ port = 9333, display = ":99", profileDir, windowSize = "1280,800", startUrl = "about:blank", log = console.error, chromeBinary, nativeComponentVersion, asideHome, startupTimeoutMs = 20000, shutdownTimeoutMs = 10000, pollIntervalMs = 250 }) {
   const baseUrl = `http://127.0.0.1:${port}`;
   if (await isCdpUp(baseUrl)) {
@@ -59,6 +68,9 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
     if (adopted && adopted.plan?.mode === "adopt" && adopted.generation) {
       const { owner, pgid, startTicks, generation } = adopted;
       log(`[chrome] adopting orphaned CDP at ${baseUrl} (owner serve pid=${owner.servePid} dead; chrome pid=${owner.chromePid}, pgid=${pgid}); taking termination ownership`);
+      // C-2: register the ADOPTED instance too, under THIS serve's pid, so an external supervisor pins it and
+      // reaps it on our exit — the spawn path is not the only way an owned chrome comes under our ownership.
+      registerChromeInstance({ pid: owner.chromePid, pgid, startTicks });
       // Re-verify ownership right before we terminate: our generation still stands, the pid was not
       // reused, and the live CDP endpoint is actually our owned browser process (B3).
       const verifyIdentity = async () => {
@@ -116,12 +128,11 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
   const observed = observeChild(child);
   const startTicks = processStartTicks(child.pid);
   // PUSH registration for an external supervisor (closes the owner-file poll-gap: an append-only log the
-  // supervisor tails sees EVERY spawned chrome the instant it exists, even if the owner file is later
+  // supervisor tails sees EVERY owned chrome the instant it exists, even if the owner file is later
   // replaced/deleted). Written synchronously right after spawn, before any await — the residual spawn->append
-  // microgap is far tighter than owner-file polling. Best-effort: never blocks a launch.
-  if (process.env.BELMONT_CHROME_REG) {
-    try { appendFileSync(process.env.BELMONT_CHROME_REG, JSON.stringify({ pid: child.pid, pgid: child.pid, startTicks, servePid: process.pid, ts: Date.now() }) + "\n"); } catch {}
-  }
+  // microgap is far tighter than owner-file polling. Best-effort: never blocks a launch. The SAME helper runs
+  // on the adopt path (C-2), so the supervisor discovers cross-serve-adopted chrome too.
+  registerChromeInstance({ pid: child.pid, pgid: child.pid, startTicks });
   // Record ownership immediately after spawn — before CDP is up — so a crash during startup still leaves
   // an adoptable/reap-able record (closes the spawn->ready->write gap, B5). child.pid is the pgid
   // (spawned detached). The generation scopes deletion so a stale stop cannot delete a newer owner (B1/B5).

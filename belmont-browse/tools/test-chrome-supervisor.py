@@ -264,5 +264,133 @@ def test_pidfd_reuse_safety():
     finally:
         os.close(fd)
 
+
+REG_ONLY_SERVE = r'''
+import os, sys, json, time, subprocess, signal
+profile = sys.argv[1]; reg = os.environ.get("BELMONT_CHROME_REG")
+assert reg, "supervisor must set BELMONT_CHROME_REG before exec"
+def ticks(pid):
+    with open(f"/proc/{pid}/stat") as f: raw = f.read()
+    return int(raw[raw.rfind(")") + 2:].split()[19])
+# NO owner file is ever written: reaping must rely ENTIRELY on the registration channel (proves the channel is
+# live even though the profile dir did not exist until the supervisor created it — C-1).
+A = subprocess.Popen(["sleep", "600"], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+with open(reg, "a") as f:
+    f.write(json.dumps({"pid": A.pid, "pgid": A.pid, "startTicks": ticks(A.pid), "servePid": os.getpid(), "ts": time.time()}) + "\n")
+open(os.path.join(profile, "serve-ready"), "w").write(str(A.pid))
+time.sleep(1.5)
+os.kill(os.getpid(), signal.SIGKILL)
+'''
+
+def test_profile_missing_created_and_registers():
+    """C-1: the profile dir does NOT exist when the supervisor starts. It must create the dir AND stand up the
+    registration channel (not silently disable it), so a chrome registered via that channel — with no owner file
+    at all — is still reaped."""
+    base = tempfile.mkdtemp(prefix="sup-nomkdir-")
+    profile = os.path.join(base, "profile-does-not-exist-yet")   # missing on purpose
+    fs = os.path.join(base, "reg-only-serve.py"); open(fs, "w").write(REG_ONLY_SERVE)
+    assert not os.path.isdir(profile)
+    sup = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs, profile],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    ready = os.path.join(profile, "serve-ready"); a_pid = None
+    for _ in range(200):
+        if os.path.exists(ready): a_pid = int(open(ready).read().strip()); break
+        time.sleep(0.05)
+    assert a_pid, "serve never registered A (profile dir was not created / reg channel disabled)"
+    out, _ = sup.communicate(timeout=40); time.sleep(0.5)
+    assert not alive(a_pid), "registration-only chrome leaked (C-1: reg channel was silently disabled)\n" + out
+    print("PASS profile-missing: supervisor creates the profile dir and the registration channel reaps a chrome with no owner file")
+
+
+SENTINEL_SERVE = r'''
+import os, sys, time
+open(sys.argv[1], "w").write("serve ran")   # if this appears, serve was exec'd despite fail-closed
+time.sleep(2)
+'''
+
+def test_reg_channel_unavailable_fails_closed():
+    """C-1: if the registration channel cannot be established (here: the profile PATH is an existing regular
+    file, so makedirs raises), the supervised start must FAIL-CLOSED (non-zero exit) and NEVER exec serve —
+    it must not silently fall back to owner-file polling."""
+    base = tempfile.mkdtemp(prefix="sup-failclosed-")
+    profile = os.path.join(base, "not-a-dir")
+    open(profile, "w").write("i am a regular file, not a directory")  # makedirs(profile) -> FileExistsError
+    sentinel = os.path.join(base, "serve-ran")
+    fs = os.path.join(base, "sentinel-serve.py"); open(fs, "w").write(SENTINEL_SERVE)
+    sup = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs, sentinel],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    out, _ = sup.communicate(timeout=20)
+    assert sup.returncode == 3, f"expected fail-closed exit 3, got {sup.returncode}\n{out}"
+    assert not os.path.exists(sentinel), "serve was exec'd despite the registration channel being unavailable\n" + out
+    print("PASS fail-closed: an unavailable registration channel aborts the start (exit 3) without running serve")
+
+
+ADOPT_REG_SERVE = r'''
+import os, sys, json, time, subprocess, signal
+profile = sys.argv[1]; reg = os.environ.get("BELMONT_CHROME_REG"); owner = os.path.join(profile, ".belmont-chrome-owner.json")
+assert reg, "supervisor must set BELMONT_CHROME_REG before exec"
+def ticks(pid):
+    with open(f"/proc/{pid}/stat") as f: raw = f.read()
+    return int(raw[raw.rfind(")") + 2:].split()[19])
+# An orphan chrome from a "previous" serve already exists. THIS serve ADOPTS it: it registers the adopted
+# instance under ITS OWN servePid (exactly what chrome.mjs's adopt branch now does via registerChromeInstance),
+# then the owner file is deleted before crash. Only the adopt-path registration can reap it (C-2).
+A = subprocess.Popen(["sleep", "600"], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+json.dump({"servePid": 111111111, "chromePid": A.pid, "pgid": A.pid, "startTicks": ticks(A.pid), "generation": "prev"}, open(owner, "w"))
+time.sleep(0.2)
+# adopt: re-own + register under our pid (the C-2 code path), then delete the owner so ONLY registration remains.
+with open(reg, "a") as f:
+    f.write(json.dumps({"pid": A.pid, "pgid": A.pid, "startTicks": ticks(A.pid), "servePid": os.getpid(), "ts": time.time()}) + "\n")
+os.remove(owner)
+open(os.path.join(profile, "serve-ready"), "w").write(str(A.pid))
+time.sleep(1.0)
+os.kill(os.getpid(), signal.SIGKILL)
+'''
+
+def test_adopt_path_registration_reaped():
+    """C-2: a chrome that came under this serve's ownership via ADOPTION (not spawn) is registered under this
+    serve's pid; with the owner file deleted, the registration tail must still pin+reap it on crash."""
+    profile = tempfile.mkdtemp(prefix="sup-adoptreg-")
+    fs = os.path.join(profile, "adopt-reg-serve.py"); open(fs, "w").write(ADOPT_REG_SERVE)
+    sup = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs, profile],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    ready = os.path.join(profile, "serve-ready"); a_pid = None
+    for _ in range(200):
+        if os.path.exists(ready): a_pid = int(open(ready).read().strip()); break
+        time.sleep(0.05)
+    assert a_pid, "serve never adopted+registered A"
+    out, _ = sup.communicate(timeout=40); time.sleep(0.5)
+    assert not alive(a_pid), "adopted+registered chrome leaked after owner deletion (C-2 registration missing)\n" + out
+    print("PASS adopt-registration: an adopted chrome registered under this serve is reaped with no owner file")
+
+LOCK_HOLD_SERVE = r'''
+import os, sys, time
+open(os.path.join(sys.argv[1], "serve-ready"), "w").write("held")
+time.sleep(8)   # hold the profile (and thus the supervisor's flock) long enough for a 2nd run to be rejected
+'''
+
+def test_profile_lock_rejects_second_run():
+    """A-1: two supervised serves on the SAME profile must not both run — the second must be rejected by the
+    exclusive flock (exit 4) and must NOT exec its serve."""
+    profile = tempfile.mkdtemp(prefix="sup-lock-")
+    fs = os.path.join(profile, "hold-serve.py"); open(fs, "w").write(LOCK_HOLD_SERVE)
+    first = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs, profile],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    ready = os.path.join(profile, "serve-ready")
+    for _ in range(200):
+        if os.path.exists(ready): break
+        time.sleep(0.05)
+    assert os.path.exists(ready), "first supervised serve never started"
+    # second run on the same profile, while the first still holds the lock
+    second_sentinel = os.path.join(profile, "second-serve-ran")
+    fs2 = os.path.join(profile, "sentinel2.py"); open(fs2, "w").write(SENTINEL_SERVE)
+    second = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs2, second_sentinel],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    out2, _ = second.communicate(timeout=20)
+    assert second.returncode == 4, f"second run should be rejected with exit 4, got {second.returncode}\n{out2}"
+    assert not os.path.exists(second_sentinel), "second run exec'd serve despite the profile lock being held\n" + out2
+    first.communicate(timeout=20)
+    print("PASS profile-lock: a second supervised serve on the same profile is rejected (exit 4) and never runs serve")
+
 if __name__ == "__main__":
-    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_polled_chrome_reaped_after_owner_deleted(); test_repin_then_owner_deleted_reaps_current(); test_poll_gap_registered_chrome_reaped(); test_pidfd_reuse_safety(); print("ALL SUPERVISOR TESTS PASS")
+    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_polled_chrome_reaped_after_owner_deleted(); test_repin_then_owner_deleted_reaps_current(); test_poll_gap_registered_chrome_reaped(); test_pidfd_reuse_safety(); test_profile_missing_created_and_registers(); test_reg_channel_unavailable_fails_closed(); test_adopt_path_registration_reaped(); test_profile_lock_rejects_second_run(); print("ALL SUPERVISOR TESTS PASS")

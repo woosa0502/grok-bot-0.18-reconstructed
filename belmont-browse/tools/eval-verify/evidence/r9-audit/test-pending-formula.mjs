@@ -1,12 +1,29 @@
-// Proves the corrected L19.PENDING verdict catches what the r5 one missed: execCount is the EXECUTION count.
+// Self-test for the CORRECTED L19.PENDING logic. It imports the REAL observation formula, verdict, and
+// precondition gate from l19-pending-lib.mjs — the same module the live verifier uses — so a future change to
+// the real logic that broke these properties would fail HERE (the old self-test re-declared the verdict inline
+// and thus proved nothing about the shipped code; GPT whole-project finding).
 import assert from "node:assert/strict";
-const verdict = (bExecAfter, bView = { status: "done" }, bAfterStop = { status: "stopped" }, cOk = true) => {
-  const v = { b_not_lost: !!(bView && (bView.status || bView.id)), b_exec_read_ok: bExecAfter >= 0,
-    b_never_executed: bExecAfter === 0, b_cancelled_terminal: ["done","error","stopped","interrupted"].includes(bAfterStop.status), c_ran: cOk };
-  return Object.values(v).every(Boolean);
-};
-assert.equal(verdict(0), true, "0 executions (B never ran) -> PASS");
-assert.equal(verdict(2), false, "2 executions (GPT double-run reproduction) -> MUST FAIL");
-assert.equal(verdict(1), false, "1 execution (B ran once, uncontrolled) -> MUST FAIL");
-assert.equal(verdict(-1), false, "read failure -> MUST FAIL (UNKNOWN, not PASS)");
-console.log("PASS: corrected L19.PENDING verdict FAILS on 2-run/1-run/read-failure, PASSes only on 0 executions");
+import { countExecutions, computeVerdict, verdictPass, checkPreconditions, grade } from "./l19-pending-lib.mjs";
+
+// (1) the EXECUTION-count formula (the crux of the r5 false-PASS: files vs executions).
+assert.equal(countExecutions(""), 0, "empty file -> 0 executions");
+assert.equal(countExecutions("B-x\n"), 1, "one appended line -> 1 execution");
+assert.equal(countExecutions("B-x\nB-x\n"), 2, "TWO appended lines in ONE file -> 2 executions (r5 missed this)");
+assert.equal(countExecutions(null), -1, "read failure -> -1 (UNKNOWN)");
+
+// (2) the verdict, driven purely by the execution count (with the other observations held healthy).
+const good = { bView: { status: "done" }, bAfterStop: { status: "stopped" }, cRan: true };
+assert.equal(verdictPass(computeVerdict({ ...good, bExecAfter: 0 })), true, "0 executions -> verdict holds");
+assert.equal(verdictPass(computeVerdict({ ...good, bExecAfter: 2 })), false, "2 executions (double-run) -> verdict fails");
+assert.equal(verdictPass(computeVerdict({ ...good, bExecAfter: 1 })), false, "1 execution -> verdict fails");
+assert.equal(verdictPass(computeVerdict({ ...good, bExecAfter: -1 })), false, "read failure -> verdict fails (UNKNOWN)");
+
+// (3) the PRECONDITION gate: even a PERFECT verdict must NOT grade PASS if the pending/cancel path was not
+// actually exercised (A not ready, or B never queued). Such a run is INVALID/UNKNOWN.
+const perfect = computeVerdict({ ...good, bExecAfter: 0 });
+assert.equal(grade({ preconditions: checkPreconditions({ aReady: true, bQueued: true }), verdict: perfect }), "PASS", "exercised + clean -> PASS");
+assert.equal(grade({ preconditions: checkPreconditions({ aReady: true, bQueued: false }), verdict: perfect }), "INVALID", "B never queued -> INVALID, not PASS");
+assert.equal(grade({ preconditions: checkPreconditions({ aReady: false, bQueued: true }), verdict: perfect }), "INVALID", "A never ready -> INVALID, not PASS");
+assert.equal(grade({ preconditions: checkPreconditions({ aReady: true, bQueued: true }), verdict: computeVerdict({ ...good, bExecAfter: 2 }) }), "FAIL", "exercised but B double-ran -> FAIL");
+
+console.log("PASS: L19.PENDING shared logic — execution-count formula, verdict (FAILS on >=1/read-fail), and precondition gate (INVALID when unexercised) all hold, imported from the real module");
