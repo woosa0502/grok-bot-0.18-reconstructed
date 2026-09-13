@@ -1,0 +1,43 @@
+{
+  "case": "l49-daemon-patch-contract",
+  "at": "2026-09-13T22:50:26.835804",
+  "bundle": "/home/hoon/_roots/labs/work/Belmont/belmont-browse/vendor/aside-909/apps/daemon/build/daemon.mjs",
+  "bundleSecured": true,
+  "bundleSize": 10779916,
+  "version": "909",
+  "bundleState": "already-patched",
+  "origSha": "aaa13d1202591f03bf2046f8fad2d63f8e4b658e2fea931bcc49b6024a78e534",
+  "shippedBundleSyntax": {
+    "rc": 0,
+    "ok": true,
+    "err": ""
+  },
+  "wrongAnchor_brokeForm": "patched",
+  "wrongAnchor": {
+    "rc": 1,
+    "failedClosed": true,
+    "noPartialOutputWritten": true,
+    "errorSignature": "assert (src.count(old), src.count(new)) in [(1, 0), (0, 1)], \"globalCdpClient anchor\"",
+    "ok": true
+  },
+  "reapplyIdempotency": {
+    "attempted": true,
+    "rc": 1,
+    "reapplySucceeded": false,
+    "bytesUnchanged": false,
+    "finding": "in-tree patch-daemon.py cannot re-apply to shipped 909 bundle: assert src.count('globalThis.__belmontMemorySearch({accountId:Cn.accountId,accountRoot:getAccountRoot(Cn.accountId),...{queries:') == 1, '902/906/907 final memory tool hook mismatch'",
+    "cleanUpstreamAvailable": false,
+    "note": "No clean upstream daemon exists in the repo (all daemon.mjs are pre-patched vendor snapshots); canonical clean->patch->re-patch byte-stability is therefore untestable here."
+  },
+  "realStart_capabilityRuns": "demonstrated by the live harness (evidence/r10): the serve runs THIS vendor aside-909 bundle and its memory/eval/browser capabilities were verified live.",
+  "verified": {
+    "bundleSecured_notBlocked": true,
+    "shippedBundleValidSyntax": true,
+    "wrongAnchorFailsClosedPreservingOriginal": true,
+    "realStartCapabilityRuns_cited": true
+  },
+  "open": {
+    "reapplyBytesUnchanged": false
+  },
+  "result": "PARTIAL(finding)"
+}
