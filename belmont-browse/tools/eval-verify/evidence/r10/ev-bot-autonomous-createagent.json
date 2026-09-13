@@ -1,0 +1,49 @@
+{
+  "case": "bot-autonomous-createAgent",
+  "at": "2026-09-13T06:32:22.560Z",
+  "gateway": {
+    "port": 42611,
+    "auth": true
+  },
+  "baseline": {
+    "count": 14
+  },
+  "maker": {
+    "id": "90506ec8-ca40-4f9b-b2fd-90d5fffe7d79"
+  },
+  "sendPrompt": {
+    "status": 200,
+    "accepted": true,
+    "attempts": 1
+  },
+  "autonomous": {
+    "createAgentIsModelTool": "source/host/runner/tools/sand-agent-management-tools.ts:92,202 + turn-toolset.ts:1367",
+    "harnessNeverCalledCreateAgentForChild": true,
+    "childNameNonceKnownOnlyToMaker": true,
+    "childInRoster": true,
+    "childId": "a62e1546-d624-47a1-87d9-bc1937b0fba5",
+    "autonomousCreation": true,
+    "makerSaidDone": false,
+    "promptsNeeded": 1,
+    "transcriptShape": "array",
+    "entryKinds": [
+      "message",
+      "send-message"
+    ],
+    "childRow": "{\"id\":\"a62e1546-d624-47a1-87d9-bc1937b0fba5\",\"name\":\"belmont-selftest-child-19f373\",\"description\":\"belmont selftest child (autonomous)\",\"title\":\"\",\"avatarDataUrl\":null,\"avatarVersion\":null,\"avatarShape\":null,\"avatarColor\":null,\"createdAt\":1789281156982,\"updatedAt\":1789281156982,\"path\":\"/home/hoon/_roots/labs/work/Belmont/.cache/belmont-wsl-profile/sand-data/agents/a62e1546-d624-47a1-87d9-bc1937b0fba5/store.db\",\"isActive\":false,\"isRunning\":false,\"isComposingMessage\":false,\"lastEntry\":null,\"lastMessageId\":null,\"lastMessagePreview\":null,\"newestEntryId\":null,\"hasUnread\":false,\"unreadCount\":0,\"last",
+    "literalFrameNote": "The literal createAgentToolCall frame is a transient streamed activity (sand-activity.ts); the gateway transcript RPCs (getAgentTranscript/Thread/Tail/Window) return a redacted display view without it, so autonomy is proven causally rather than by the raw frame."
+  },
+  "cleanup": {
+    "requestedDelete": [
+      "90506ec8-ca40-4f9b-b2fd-90d5fffe7d79",
+      "a62e1546-d624-47a1-87d9-bc1937b0fba5"
+    ],
+    "baselineCount": 14,
+    "finalCount": 14,
+    "addedNotRemoved": [],
+    "removedFromBaseline": [],
+    "leftoverTestNamed": [],
+    "idSetRestored": true
+  },
+  "verdict_pass": true
+}

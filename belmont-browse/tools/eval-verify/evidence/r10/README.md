@@ -31,8 +31,23 @@ detached chrome was ORPHANED; serve2 (also direct) adopted it; a normal stop rea
 - after-serve2-stop: normal stop reaped the adopted chrome; CONTROL process untouched.
 - verdict: orphanSurvived ∧ adoptedSameInstance ∧ reapedOnStop ∧ controlUntouched → PASS.
 
+## `ev-bot-autonomous-createagent.json` — a BOT autonomously creates a BOT = PASS
+Driver `../../design-bot-autonomous-createagent.mjs`, against the Host gateway (42611, auth-ON). GPT's P1-2
+requirement: prove a bot AUTONOMOUSLY calls createAgent (not the harness calling the API) and verify cleanup by
+exact roster ID-set restoration + no leftover group.
+- **createAgent is a real model-facing tool** (source: sand-agent-management-tools.ts:92,202; turn-toolset.ts:1367).
+- **Autonomy (causal proof)**: the harness NEVER calls the createAgent API for the child; the child's name
+  carries a nonce known ONLY to the maker (via its prompt). A roster agent with that exact name appeared only
+  after the maker's turn -> the maker executed its createAgent tool. childId a62e1546 created from one prompt.
+- **Cleanup**: exact roster ID-SET restored (addedNotRemoved=[], removedFromBaseline=[], no leftover
+  test-named agent/group) — not merely a count.
+- **Honest limitation**: the literal `createAgentToolCall` frame is a transient streamed activity
+  (sand-activity.ts). The gateway's transcript RPCs (getAgentTranscript/Thread/Tail/Window) return a redacted
+  display view (message/send-message) that does NOT include it, so autonomy is proven causally rather than by
+  the raw frame. Capturing the raw frame would require subscribing to the live turn activity SSE stream.
+
 ## What this closes vs. leaves open
-Closes GPT's P1-1 evidence-hardening: recovery is now re-verified on the supported path with per-stage identity
-and termination traces (not summaries), separating the supervised and orphan-adopt guarantees, each with a
-mis-kill control. Still open in the live phase: bot autonomous createAgent tool-call trace, L26 canonical
-POSITIVE paths, L13 full approval flow, the L15 auth/Origin matrix, and map-row disposition.
+Closes GPT's P1-1 evidence-hardening (recovery re-verified on the supported path with per-stage identity and
+termination traces, supervised vs orphan-adopt separated, each with a mis-kill control) and the autonomous
+bot-creates-bot causal proof with ID-set-exact cleanup. Still open in the live phase: L26 canonical POSITIVE
+paths, L13 full approval flow, the L15 auth/Origin matrix, and map-row disposition.
