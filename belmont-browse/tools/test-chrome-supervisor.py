@@ -145,6 +145,38 @@ def test_repin_reaps_current_chrome():
     assert not alive(b_pid), "supervisor left the CURRENT chrome (B) alive after a same-serve restart\n" + out
     print("PASS re-pin: reaps the current owner (B) after a same-serve A->B chrome restart")
 
+
+DELETE_OWNER_SERVE = r'''
+import os, sys, json, time, subprocess, signal
+profile = sys.argv[1]; owner = os.path.join(profile, ".belmont-chrome-owner.json")
+def ticks(pid):
+    with open(f"/proc/{pid}/stat") as f: raw = f.read()
+    return int(raw[raw.rfind(")") + 2:].split()[19])
+A = subprocess.Popen(["sleep", "600"], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+json.dump({"servePid": os.getpid(), "chromePid": A.pid, "pgid": A.pid, "startTicks": ticks(A.pid), "generation": "d"}, open(owner, "w"))
+open(os.path.join(profile, "serve-ready"), "w").write(str(A.pid))
+time.sleep(2.5)                    # let the supervisor pin A
+os.remove(owner)                   # owner file deleted between pin and serve exit
+time.sleep(0.3)
+os.kill(os.getpid(), signal.SIGKILL)
+'''
+
+def test_polled_chrome_reaped_after_owner_deleted():
+    """GPT round-11 counterexample: the supervisor pins A, then the owner file is DELETED before serve exit.
+    The poll-fd must NOT be discarded — A must still be reaped (owner deletion must not orphan a pinned owned chrome)."""
+    profile = tempfile.mkdtemp(prefix="sup-delown-")
+    fs = os.path.join(profile, "delown-serve.py"); open(fs, "w").write(DELETE_OWNER_SERVE)
+    sup = subprocess.Popen(["python3", SUP, profile, "--", "python3", fs, profile],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    ready = os.path.join(profile, "serve-ready"); a_pid = None
+    for _ in range(200):
+        if os.path.exists(ready): a_pid = int(open(ready).read().strip()); break
+        time.sleep(0.05)
+    assert a_pid, "serve never started chrome A"
+    out, _ = sup.communicate(timeout=40); time.sleep(0.5)
+    assert not alive(a_pid), "supervisor orphaned the pinned chrome A after the owner file was deleted\n" + out
+    print("PASS owner-deleted: a polled+pinned chrome is still reaped when its owner file is deleted")
+
 def test_pidfd_reuse_safety():
     p = subprocess.Popen(["sleep", "0.2"]); fd = os.pidfd_open(p.pid); p.wait(); time.sleep(0.2)
     try:
@@ -155,4 +187,4 @@ def test_pidfd_reuse_safety():
         os.close(fd)
 
 if __name__ == "__main__":
-    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_pidfd_reuse_safety(); print("ALL SUPERVISOR TESTS PASS")
+    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_polled_chrome_reaped_after_owner_deleted(); test_pidfd_reuse_safety(); print("ALL SUPERVISOR TESTS PASS")

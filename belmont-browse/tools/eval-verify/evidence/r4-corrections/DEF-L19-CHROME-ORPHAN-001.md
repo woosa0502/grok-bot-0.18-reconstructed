@@ -208,3 +208,29 @@ GPT confirmed round-9's two supervisor defects are closed, and reproduced one mo
     flock binding, so it needs a small helper (flock CLI holder / addon) — still unprivileged.
   - **Only** the whole-tree-straggler reaping and the supervisor's own SIGKILL benefit from a **cgroup/
     systemd scope** (which does need root/user-bus here); those remain the genuine root-requiring items.
+
+## Round-11 (GPT-6 Pro) — poll-fd leak fixed; wording corrected (no overclaims)
+
+- **poll-fd leak (fixed)**: round-10's fix discarded the poll-time fd; GPT showed that if the owner file is
+  DELETED between pin and serve-exit, re-pin fails and the pinned chrome A is orphaned (exit 0, A alive). Fix:
+  reap the poll-pinned instance FIRST (it was verified ours; owner deletion must not orphan it), THEN reap the
+  current owner + restart chain. Regression `test_polled_chrome_reaped_after_owner_deleted`. Supervisor 6/6.
+- **wording corrected** (my overclaims, per GPT):
+  - The link-lock residual is a two-concurrent-stealer race whose window is **NOT time-bounded** ("microsecond
+    only" was wrong — scheduling can delay execution between stale-check and steal). Single-serve operation
+    **avoids** the race but is **not a proof** of the lock's exclusivity.
+  - **cgroup is not inherently root**: a *delegated* cgroup v2 subtree is usable unprivileged; only THIS
+    environment's undelegated root requires root. And a cgroup does not auto-clean on supervisor SIGKILL —
+    that still needs a **live external manager**.
+
+## Agreed remaining scope (accurate, non-overclaiming)
+
+Closed + regressed: the accumulation defect, and every supervisor misdirection/leak path found through
+round-11 (mis-kill on foreign/null servePid, verify→open reuse, early-death, A→B re-pin, owner-deleted poll-fd).
+Genuinely open (acknowledged, not disputes):
+1. **A-1 owner lock**: fully closed by **unprivileged `flock`** on one shared lock file (all participants).
+   Node has no native flock binding, so it needs a small helper; not yet implemented. The link-lock is the
+   current valid unprivileged interim (residual: concurrent same-profile stealers, outside the eval workflow).
+2. **whole-tree stragglers + the supervisor's own SIGKILL**: need a **live external manager** (a cgroup —
+   delegated=unprivileged, else root — plus a survivor that reaps the scope). Not closable by the in-process
+   reaper or a self-terminating supervisor alone.

@@ -131,19 +131,21 @@ def main():
             time.sleep(0.1)
         return False
 
-    # Round-10 fix (GPT re-pin miss): the AUTHORITATIVE reap target is whatever the CURRENT owner file names
-    # at serve-exit — the serve may have restarted chrome A->B and updated the owner, so a poll-time fd for A
-    # is stale. Discard it and re-pin from the current owner, then reap. Loop to drain a chain of owned live
-    # chromes (each reap kills the current instance; pin_owned_chrome then returns None once it is dead).
+    # Reap EVERY owned live instance we know of at serve-exit. Round-10 caught the A->B re-pin miss; round-11
+    # caught that discarding the poll-fd leaks A if the owner file was deleted between pin and serve-exit. So:
+    # (1) reap the poll-pinned instance FIRST (we verified it was ours; owner deletion must not orphan it),
+    # then (2) reap the CURRENT owner's instance and any restart chain (B, C, ...). A pin whose chrome is
+    # already dead returns None (start-ticks mismatch), so the chain drains and terminates.
+    reaped, ok = 0, True
     if fd is not None:
+        ok = reap_via_fd(fd, chrome_pid) and ok
         try: os.close(fd)
         except OSError: pass
-        fd = None
-    reaped, ok = 0, True
+        reaped += 1
     for _ in range(8):
         f, cp, ct = pin_owned_chrome()
         if f is None: break
-        ok = reap_via_fd(f, cp)
+        ok = reap_via_fd(f, cp) and ok
         try: os.close(f)
         except OSError: pass
         reaped += 1
