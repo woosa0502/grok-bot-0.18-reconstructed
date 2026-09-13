@@ -67,11 +67,14 @@ GET /sessions/:id after restart returns the record (task preserved, status done)
   agents, upload response-loss + retry, chunked fetch, wrong-path rejection, source-vs-fetch SHA match, per-agent
   target isolation. The stored-data scan is supporting evidence, not a substitute for that acceptance test.
 
-## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v6 verifier)
-> Built iteratively against GPT's adversarial review (rounds 8-12), which repeatedly ran the verifier's own
-> `main()` with new counterexamples. The verifier ships every counterexample as a permanent `--selftest` regression
-> run through the FULL subs path — **12 cases, `selftest_ok=true`** (10 adversarial → FAIL; faithful-inlined +
-> faithful-background → PASS). Two design points from the later rounds:
+## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing (verifier v7)
+> **GPT-6 Pro confirmed 합의 (mutual agreement) on the current scorecard with L10 marked PARTIAL** (round-13):
+> the D-1/D-2 attribution fixes and the normal-background live run are accepted; L10 is not full-VERIFIED because
+> of report-guard residuals GPT surfaced by running the verifier's own `main()`. The verifier ships every
+> counterexample GPT raised (rounds 8-13) as a permanent `--selftest` regression — **13 cases, `selftest_ok=true`**
+> (11 adversarial → FAIL; faithful-inlined + faithful-background → PASS). Most cases run through the full subs
+> (getSubagents) attribution path; `faithful:inlined` runs with `subs=None` to exercise the report-guard alone
+> (inlined attribution is intentionally treated as unverifiable — see below). Design points from the later rounds:
 > - **Anti-laundering is a NEGATIVE guard** (round-12): the parent-report gate FAILs only on an actual B/both
 >   success-claim or an A-failed misreport — it does NOT require a specific "Worker B failed" phrasing, so a
 >   faithful report like *"the second executor finished with the expected failure"* passes. Worker references are

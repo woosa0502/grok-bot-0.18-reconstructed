@@ -53,7 +53,10 @@
   "holesClosed_perGPT": {
     "A_thinking_only_report": "closed",
     "B_status_SUCCESS_and_nonce_FAIL": "closed",
-    "C_A_misreported_as_failed": "closed (negative guard: parent must not report A failed)",
-    "D_worker_result_attribution": "closed — body-not-title nonce check; registered-worker task-title must be a TRUE PREFIX of the completion task-title (no fuzzy 15-char match; beef-vs-feed FAILs); inlined shape without a task-title is UNVERIFIABLE (never auto-passed). GPT rounds 11-12 registered-mismatch + prefix-mismatch + inlined counterexamples are all selftest regressions."
-  }
+    "C_A_misreported_as_failed": "closed (negative guard); standalone 'A'/'B' references also canonicalized (round-13)",
+    "D_worker_result_attribution": "closed — body-not-title nonce check; registered-worker task-title must be a TRUE PREFIX of the completion task-title (no fuzzy 15-char match; beef-vs-feed FAILs); inlined shape without a task-title is UNVERIFIABLE (never auto-passed). GPT rounds 11-12 registered-mismatch + prefix-mismatch + inlined counterexamples are all selftest regressions.",
+    "report_guard_standalone_B": "closed — 'Worker A succeeded. B succeeded.' (standalone B for a failed B) now FAILs; all worker refs canonicalized before claim detection"
+  },
+  "selftest_cases": 13,
+  "consensus": "GPT-6 Pro round-13 CONFIRMED 합의 (mutual agreement) on the current scorecard with L10 marked PARTIAL. This run's verifier verdict is PASS, but the AGREED product-backlog classification for L10 is PARTIAL (residual: inlined-shape attribution unverifiable; report-guard is regex over free text)."
 }

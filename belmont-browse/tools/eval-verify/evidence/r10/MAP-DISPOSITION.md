@@ -31,7 +31,7 @@ distinguished from LIVE evidence.
 | L16 durable-accept | PARTIAL (r11) | ev-l16-durable-accept.json — session DISK RECORD survives a serve restart (retained, restarted serve reconciled 1 persisted execution, GET /sessions/:id returns it). This is the session-record-restart-preservation sub-scope only. OPEN (plan 277): same-nonce concurrent submit, response loss, other-nonce queueing, accept-ledger + work-count + external-side-effect-count consistency, restart dedup. (createAgent idempotency half already verified r8.) |
 | bot CreateRoutine | LIVE (r11) | ev-bot-autonomous-routine.json — a bot autonomously creates a routine via its updateState tool. |
 | L38 | PARTIAL (r11, corrected per GPT) | ev-l38-attachment-sha-dedup.json — REAL-DATA scan: 20,427/20,439 stored ids == sha256(data) (12 exceptions = symbolic sand-live-* pointers), 20,407 distinct contents → 0 mapped to >1 id. CORRECTION: line 17's sha check is GC candidate selection in clearStaleCheckpointRoots(), NOT a write-time id==sha256 enforcement; setBlob stores the caller-supplied id. Schema (PRIMARY KEY + upsert) guarantees id UNIQUENESS; content-addressing is a PRODUCER contract the data shows is honored in practice. OPEN (plan 315): full attachment HTTP path — same name/different bytes across agents, upload response-loss+retry, chunked fetch, wrong-path rejection, source-vs-fetch SHA, per-agent isolation. |
-| L10 | VERIFIED (r11, v2 verifier) | ev-l10-subagent-isolation.json — a PARENT dispatched TWO workers (Task ×2), one made to fail; verified on the parent's durable transcript AND its ACTUAL FINAL REPORT (v2 fix per GPT): two distinct terminal subagentIds, worker A output = its success token, worker B output = its own failure (workspace-root read guard), no cross-worker mixing, and the parent's final report says "A succeeded / B failed" — gated on parentReportsB_failure ∧ parentDoesNotClaimB_success (read from message.content). Ships GPT's laundering counterexample as a --selftest regression (adversarial→FAIL, faithful→PASS). Structural note CORRECTED: SubagentRunResult = {text,aborted}; completed/error assigned at settle — no structural anti-laundering guarantee, hence the parent-report check. |
+| L10 | PARTIAL (r11, per GPT round-13 합의) | ev-l10-subagent-isolation.json — a PARENT dispatched TWO workers (Task ×2), one made to fail. VERIFIED (robust, real-data): two distinct terminal subagentIds; each worker's produced BODY carries only its own nonce (no cross-worker mixing); result attributed to the registered worker by TRUE-PREFIX task-title match (background shape); parent report never claims the failed worker succeeded (negative-guard anti-laundering across phrasings). Verifier ships all 11 of GPT's counterexamples (rounds 8-13) as --selftest regressions (13/13). RESIDUAL (why PARTIAL, per GPT): inlined-shape attribution is treated as unverifiable (never auto-passed) so full attribution holds only for the background-completion shape; and the report-guard is regex-based over free-text parent reports. GPT confirmed 합의 on the scorecard with L10=PARTIAL. Structural note: SubagentRunResult = {text,aborted}; completed/error assigned at settle (no structural anti-laundering guarantee — hence the parent-report check). |
 
 ## Bucket B additions (r11)
 | Row | Decision | Reason |
@@ -51,8 +51,11 @@ distinguished from LIVE evidence.
 
 ## Summary (buckets kept separate; corrected per GPT round-8 review of cf6572b)
 - VERIFIED (full): L15, L26, L12/L27 (offline), L16(idempotency), L13, recovery, bot delegated-creation,
-  L10 (v2 verifier — parent-report anti-laundering + regression), L47 (real daemon spawn), L48 (offline integration).
+  L47 (real daemon spawn), L48 (offline integration).
 - PARTIAL (real progress, scope honestly bounded — NOT full completion):
+  - L10: real-data VERIFIED for two-distinct-workers, no-cross-mixing, output-matches-recipient, registered-worker
+    attribution (background shape), and negative-guard anti-laundering; RESIDUAL — inlined-shape attribution is
+    unverifiable (safe-FAIL) and the report-guard is regex over free text. GPT confirmed 합의 with L10=PARTIAL.
   - L02: local-form navigate/read/fill/click PASS; full tool matrix + independent nonces + tool↔DOM linkage OPEN.
   - L16 durable-accept: session-record restart preservation PASS; full accept-path (concurrent nonce, response
     loss, side-effect/work-count ledger, restart dedup) OPEN.
@@ -64,6 +67,8 @@ distinguished from LIVE evidence.
   - L50: drain/resume contract PASS; real signed-package binary swap BLOCKED.
 - EXCLUDED/BLOCKED (not product-complete): Telegram, autopost (unimplemented); L37 (paired fixture); L41/L42
   (pairing acceptance; L42 filesystem deny-list gap still open).
-- The buckets are NOT summed into one "complete" figure. GPT round-8 verdict: R10 live-harness approval stands;
-  R11 adds real partial verification but is NOT full product-backlog completion. Agreement is on the accurate
-  scope above, not on "complete".
+- The buckets are NOT summed into one "complete" figure. GPT round-13 verdict (합의 CONFIRMED): R10 live-harness
+  approval stands; R11 adds real partial verification. Mutual agreement is on the accurate scope above (L10 =
+  PARTIAL), NOT on "full product-backlog complete". Residual gaps (L02/L16-durable/L38/L46/L49/L50 partials,
+  L37/L41/L42 pairing, L42 deny-list, Telegram/autopost unimplemented, L10 report-guard/inlined-attribution) are
+  each named and NOT counted complete.
