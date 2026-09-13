@@ -1,0 +1,26 @@
+{
+  "case": "l38-attachment-sha-dedup",
+  "at_note": "verified on real conversation-blobs.db data + product source",
+  "method": "read-only scan of every agent's conversation-blobs.db; recompute sha256(data) and compare to the row id; check whether any single content maps to more than one id (a dedup violation)",
+  "sourceProof": {
+    "idIsContentSha": "conversation-blob-store.ts:17 verifies createHash('sha256').update(data).digest('hex') === id",
+    "upsertDedup": "conversation-blob-store.ts:11 INSERT INTO blobs(id,data) ... ON CONFLICT(id) DO UPDATE",
+    "schema": "blobs(id TEXT PRIMARY KEY, data BLOB NOT NULL) STRICT"
+  },
+  "liveData": {
+    "dbsWithBlobs": 12,
+    "totalBlobs": 20439,
+    "idEqualsSha256OfData": 20427,
+    "mismatches": 12,
+    "mismatchExplanation": "the 12 non-sha ids all begin with hex 73616e642d6c6976652d = 'sand-live-' — symbolic root/pointer entries (one per db), NOT content-addressed data blobs",
+    "distinctContents": 20407,
+    "contentsMappedToMoreThanOneId": 0
+  },
+  "verdict": {
+    "blobIdIsContentSha256": true,
+    "dedupByContent_noViolations": true,
+    "upsertByPrimaryKeyId": true
+  },
+  "result": "PASS",
+  "notes": "Content-addressed storage: blob id = sha256(content), id is PRIMARY KEY with upsert, so identical content deduplicates to a single row. Confirmed structurally in product source AND on 20439 real blobs (0 dedup violations). The 12 'sand-live-*' entries are named root pointers, not content blobs, and do not affect content dedup."
+}

@@ -43,6 +43,18 @@ logged "reconciled 1 persisted executions"; and GET /sessions/:id after restart 
 preserved, status resolved to done). Closes the L16 durable-accept OPEN row. (The idempotency half was already
 verified in r8 via createAgent clientNonce.)
 
+## `ev-l38-attachment-sha-dedup.json` — L38 attachment SHA / content-dedup = PASS
+Attachment blobs in the agent-isolation store are content-addressed: the row id IS `sha256(content)`, id is the
+PRIMARY KEY, and inserts upsert `ON CONFLICT(id)`, so identical content collapses to one row.
+- **Source proof**: `source/host/agent-isolation/conversation-blob-store.ts:17` verifies
+  `createHash("sha256").update(data).digest("hex") === id`; `:11` is `INSERT INTO blobs(id,data) … ON CONFLICT(id)
+  DO UPDATE`; schema is `blobs(id TEXT PRIMARY KEY, data BLOB NOT NULL) STRICT`.
+- **Real-data proof**: a read-only scan of every agent's `conversation-blobs.db` — **20,439 real blobs** across 12
+  DBs — recomputed `sha256(data)` per row. **20,427 / 20,439** ids equal `sha256(data)`. The 12 exceptions all
+  begin `73616e642d6c6976652d` = `"sand-live-"` — symbolic root/pointer entries (one per DB), not content blobs.
+- **Dedup**: 20,407 distinct contents → **0** contents mapped to more than one id (0 violations).
+- Closes the L38 OPEN row with real-data verification (not just a synthetic unit test).
+
 ## Bot self-service creation summary
 | Capability | Bot-autonomous tool? | Evidence |
 |---|---|---|

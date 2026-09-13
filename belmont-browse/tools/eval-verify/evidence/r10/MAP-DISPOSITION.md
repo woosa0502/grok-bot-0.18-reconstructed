@@ -30,6 +30,7 @@ distinguished from LIVE evidence.
 | L02 | LIVE (r11) | ev-l02-browser-matrix.json — navigate/read/fill/click end-to-end: a local server received the exact fill nonce (navigate+fill+click), the heading nonce appeared in the session (navigate+read). Now VERIFIED (was OPEN). |
 | L16 durable-accept | LIVE (r11) | ev-l16-durable-accept.json — an accepted session survived a serve restart (disk record retained, restarted serve reconciled 1 persisted execution, GET /sessions/:id returns it). Now VERIFIED (was OPEN). |
 | bot CreateRoutine | LIVE (r11) | ev-bot-autonomous-routine.json — a bot autonomously creates a routine via its updateState tool. |
+| L38 | REAL-DATA (r11) | ev-l38-attachment-sha-dedup.json — attachment blob sha/dedup verified on 20,439 REAL blobs across 12 conversation-blobs.db: 20,427 ids == sha256(data); the 12 exceptions are symbolic `sand-live-*` root pointers, not content blobs; 0 dedup violations (20,407 distinct contents → 0 mapped to >1 id). Source: conversation-blob-store.ts:11 (upsert ON CONFLICT(id)) + :17 (id === sha256(data)) + schema PRIMARY KEY. Now VERIFIED (was OPEN partial). |
 
 ## Bucket B additions (r11)
 | Row | Decision | Reason |
@@ -40,12 +41,12 @@ distinguished from LIVE evidence.
 | Row | State | Next step |
 |-----|-------|-----------|
 | L10 | OPEN (partial) | bwrap isolation SUBSTRATE tested OFFLINE (bwrap-eval-isolation/eval-isolation). A dedicated LIVE subagent-isolation assertion needs the GATEWAY's box-dispatch subagent tool (agent-adapters/dispatcher + remote box) — the lightweight eval serve does not expose a subagent/Task tool, so this needs the full product harness. |
-| L38 | OPEN (partial) | Bundle-SHA integrity verified (eval-isolation). ATTACHMENT sha/dedup lives in the agent-isolation blob store (conversation-blob-store.ts, upsert ON CONFLICT(id)); a live check needs the agent-isolation worker/store in action (not in the eval serve). Next: a unit test of ConversationBlobStoreDb dedup, or a gateway attachment round-trip. |
+| L38 | VERIFIED (r11) | Moved to Bucket A — attachment sha/dedup confirmed on 20,439 real blobs (ev-l38-attachment-sha-dedup.json). |
 | L46–L50 | BLOCKED-UNDEFINED | No topic definition in the repo map; needs the source plan's L-code table. Do NOT count as complete. |
 
 ## Summary (buckets kept separate)
 - VERIFIED: L15, L26, L12/L27 (offline), L16(idempotency), L13, recovery, bot delegated-creation.
 - EXCLUDED/BLOCKED (not product-complete): Telegram, autopost, L41, L42(+open gap), L37.
-- OPEN: L02 (full matrix), L10 (dedicated), L16 (durable-accept), L38 (attachment dedup), L46-50 (undefined).
+- OPEN: L10 (dedicated subagent isolation), L46-50 (undefined). (L02, L16 durable-accept, L38 all closed VERIFIED in r11.)
 The three buckets are NOT summed into a single "complete" figure. The live-verification backlog is Bucket C plus
 the L42 filesystem deny-list gap and the paired-device acceptance tests for L41/L42/L37.
