@@ -320,3 +320,33 @@ Producer-vs-consumer test coverage (GPT's note): the Python supervisor tests exe
 drives the actual ensureChrome() adopt branch (removing chrome.mjs's adopt registerChromeInstance call, or its
 fail-closed throw, fails that test). Supported-launch-path alignment (verify-eval-isolation.sh under the
 supervisor) landed in af4dd36 (after the df3414c GPT reviewed).
+
+## Whole-project review round 3 (GPT-6 Pro @ 20eff65) — R2 integration + L19 driver regression
+
+GPT confirmed R1, R3 (current behavior), the Chrome adopt-producer regression, and the eval-verify launcher are
+CLOSED. Two code-integration defects remained; both fixed:
+
+- **R2 (round-2) — adopt preservation defeated by the supervisor's owner-fallback (fixed)**: the producer wrote
+  its owner record (servePid=us) BEFORE attempting registration, so on failure it threw but left an owner naming
+  us → the supervisor's owner-fallback (`pin_owned_chrome`, servePid==child) pinned+reaped the very browser we
+  meant to preserve. Fix: in `chrome.mjs` REGISTER BEFORE claiming ownership — only writeChromeOwner on
+  registration success; on failure leave the orphan's ORIGINAL (dead-serve) owner untouched and throw. Now the
+  supervisor's owner-fallback can't match it (names a non-current serve), no reg line exists, and the next serve
+  re-adopts. This ordering also dodges the restore-after-pin race GPT flagged (we never write a kill-authorized
+  owner we'd have to undo). Regressions: test-chrome-adopt-registration.mjs asserts the owner is left as the
+  original dead serve on failure; and `test_adopt_registration_failure_preserves_browser_under_supervisor`
+  (test-chrome-supervisor.py) runs the REAL ensureChrome() adopt with a fault-injected reg UNDER the real
+  supervisor and asserts the pre-existing browser survives the supervisor's exit. Supervisor tests now 14/14
+  (the R2-integration test SKIPs if node is absent).
+- **L19 driver re-measure not locked by a regression (fixed)**: the pure-formula self-test could not catch a
+  driver that dropped the post-C re-measure (it never ran the driver). Fix: the flow moved to a shared,
+  injectable module `l19-pending-driver.mjs` (`runPendingVerification`) that both the CLI verifier and a new
+  driver regression call. `test-l19-driver-late-exec.mjs` runs the REAL flow against a fake session API where
+  the cancelled B executes LATE during C; the late run is visible only in the FINAL post-C read, so the run
+  grades FAIL — and a mutation that reuses the pre-C count instead yields PASS, breaking the test (verified).
+  Read-failure gating (pre/final → INVALID) is exercised through the same driver.
+
+All wired into verify-eval-isolation.sh (supervisor tests, real adopt-producer test, L19 formula + driver
+regressions, L15 grader test). Remaining is live/product verification (recovery (pid,startTicks)+termination
+traces, bot autonomous createAgent trace, L26 canonical positive path, L13 approval flow, L15 matrix, map-row
+disposition) — a maintenance-window scope, independent of the code phase.

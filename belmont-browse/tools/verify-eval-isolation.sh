@@ -30,6 +30,7 @@ echo "== OFFLINE: chrome adopt-path registration (REAL ensureChrome() producer, 
 
 echo "== OFFLINE: eval-harness fail-closed self-tests (L19.PENDING + L15 graders; shared modules) =="
 "$NODE" belmont-browse/tools/eval-verify/evidence/r9-audit/test-pending-formula.mjs
+"$NODE" belmont-browse/tools/eval-verify/evidence/r9-audit/test-l19-driver-late-exec.mjs
 "$NODE" belmont-browse/tools/eval-verify/test-gateway-origin-auth.mjs
 
 echo "== OFFLINE: patch applies clean + idempotent + parses (on a COPY, never the live bundle) =="

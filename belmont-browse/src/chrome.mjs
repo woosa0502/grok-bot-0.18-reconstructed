@@ -80,21 +80,26 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
       // claims. Prefer the live pgrp so a stale/wrong owner.pgid can never point group signals elsewhere.
       const pgid = procStat(owner.chromePid)?.pgrp ?? (Number.isSafeInteger(owner.pgid) && owner.pgid > 1 ? owner.pgid : null);
       const startTicks = Number.isSafeInteger(owner.startTicks) ? owner.startTicks : processStartTicks(owner.chromePid);
+      // R2 (whole-project review round-2): REGISTER BEFORE claiming kill-authorized ownership. The supervisor's
+      // owner-fallback pins (and reaps on exit) any owner record naming THIS serve — so if we wrote our owner
+      // record first and registration then failed, the supervisor would reap the very browser we meant to
+      // preserve. By registering first and only writing our owner record on success, a registration failure
+      // leaves the orphan's ORIGINAL owner untouched: the supervisor's owner-fallback won't pin it (it names a
+      // different, dead serve), no reg line exists, and the next serve can re-adopt+re-register. This makes the
+      // "browser preserved on registration failure" policy hold end-to-end (producer + supervisor), not just in
+      // the producer function.
+      if (!registerChromeInstance({ pid: owner.chromePid, pgid, startTicks })) {
+        return { plan, owner, registerFailed: true };
+      }
       const rec = writeChromeOwner(profileDir, { servePid: process.pid, chromePid: owner.chromePid, pgid, startTicks, startedAt: owner.startedAt, adoptedFrom: owner.servePid });
       return { plan, owner, pgid, startTicks, generation: rec?.generation };
     });
+    if (adopted?.registerFailed) {
+      throw new Error("failed to register adopted chrome with the supervisor; aborted adoption BEFORE claiming ownership (original owner left intact; browser preserved for re-adoption)");
+    }
     if (adopted && adopted.plan?.mode === "adopt" && adopted.generation) {
       const { owner, pgid, startTicks, generation } = adopted;
-      log(`[chrome] adopting orphaned CDP at ${baseUrl} (owner serve pid=${owner.servePid} dead; chrome pid=${owner.chromePid}, pgid=${pgid}); taking termination ownership`);
-      // C-2: register the ADOPTED instance too, under THIS serve's pid, so an external supervisor pins it and
-      // reaps it on our exit — the spawn path is not the only way an owned chrome comes under our ownership.
-      // R2: under supervision, registration is REQUIRED. If it fails, do NOT claim a successful (but untracked)
-      // adoption. We must not kill the pre-existing browser (a transient reg error should not destroy a live
-      // session), so we roll back by leaving our owner record in place — since this serve then aborts, its
-      // servePid becomes dead and the next serve re-adopts (and re-registers) the same orphan.
-      if (!registerChromeInstance({ pid: owner.chromePid, pgid, startTicks })) {
-        throw new Error("failed to register adopted chrome with the supervisor; aborted adoption to avoid an untracked browser (owner record left for re-adoption)");
-      }
+      log(`[chrome] adopting orphaned CDP at ${baseUrl} (owner serve pid=${owner.servePid} dead; chrome pid=${owner.chromePid}, pgid=${pgid}); registered + took termination ownership`);
       // Re-verify ownership right before we terminate: our generation still stands, the pid was not
       // reused, and the live CDP endpoint is actually our owned browser process (B3).
       const verifyIdentity = async () => {

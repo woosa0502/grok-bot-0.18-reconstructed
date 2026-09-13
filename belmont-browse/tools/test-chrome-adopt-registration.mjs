@@ -60,9 +60,11 @@ async function testAdoptRegistersControl() {
   } finally { delete process.env.BELMONT_CHROME_REG; await o.cleanup(); }
 }
 
-// R2: under supervision, an adopt registration WRITE failure must fail-closed — ensureChrome() throws instead
-// of returning a successful (untracked) adoption, it does NOT kill the pre-existing browser, and it leaves the
-// owner record under this serve so the next serve re-adopts.
+// R2 (round-2): under supervision, an adopt registration WRITE failure must fail-closed BEFORE claiming
+// kill-authorized ownership — ensureChrome() throws, does NOT kill the pre-existing browser, and CRUCIALLY does
+// NOT leave an owner record naming this serve. If it named this serve, a real supervisor's owner-fallback would
+// pin+reap the browser on exit (the round-2 integration defect). Leaving the ORIGINAL (dead-serve) owner intact
+// is what makes the supervisor spare it and lets the next serve re-adopt.
 async function testAdoptRegistrationFailClosed() {
   const o = await setupOrphan();
   // point registration at a path that cannot be appended to (parent dir does not exist; appendFileSync won't mkdir)
@@ -71,14 +73,17 @@ async function testAdoptRegistrationFailClosed() {
   try {
     await assert.rejects(
       () => ensureChrome({ port: o.port, profileDir: o.profileDir, log: () => {} }),
-      /failed to register adopted chrome/,
-      "adopt must FAIL-CLOSED when supervised registration cannot be written",
+      /aborted adoption BEFORE claiming ownership/,
+      "adopt must FAIL-CLOSED before claiming ownership when supervised registration cannot be written",
     );
     assert.ok(isProcessAlive(o.fakeChrome.pid), "R2: the pre-existing browser must NOT be killed on a registration fault");
     const owner = readChromeOwner(o.profileDir);
-    assert.ok(owner && owner.servePid === process.pid, "R2: the owner record is left under this serve for re-adoption");
+    // the owner must be UNCHANGED (still the original dead serve) — no kill-authorized ownership was claimed, so
+    // the supervisor's owner-fallback (which pins owners naming the CURRENT serve) will never pin+reap it.
+    assert.ok(owner && owner.servePid === DEAD_SERVE_PID, `R2: owner must be left as the ORIGINAL dead serve (got servePid=${owner?.servePid}), so the supervisor won't reap it`);
+    assert.notEqual(owner.servePid, process.pid, "R2: adopt must NOT stamp this serve as owner on a registration failure");
     assert.ok(!fs.existsSync(badReg), "no registration line was written");
-    console.log("PASS adopt-fail-closed (real producer, R2): a supervised adopt registration failure throws, spares the browser, and leaves it re-adoptable");
+    console.log("PASS adopt-fail-closed (real producer, R2): a supervised adopt registration failure throws before claiming ownership, spares the browser, and leaves the original owner intact for re-adoption");
   } finally { delete process.env.BELMONT_CHROME_REG; await o.cleanup(); }
 }
 

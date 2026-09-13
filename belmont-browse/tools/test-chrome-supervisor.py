@@ -3,9 +3,12 @@
 Simulates a hard serve crash (SIGKILL, no handler) that orphans a detached "chrome"; asserts the
 supervisor reaps that exact instance via a pidfd. Also asserts pidfd instance-binding safety: a
 dead instance's pidfd raises ProcessLookupError, so a reused PID can never be signaled."""
-import os, sys, json, time, subprocess, signal, tempfile
+import os, sys, json, time, subprocess, signal, tempfile, shutil
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SUP = os.path.join(ROOT, "belmont-browse/tools/chrome-supervisor.py")
+
+def find_node():
+    return os.environ.get("BELMONT_TEST_NODE") or shutil.which("node") or os.path.expanduser("~/.nvm/versions/node/v26.8.1/bin/node")
 
 FAKE_SERVE = r'''
 import os, sys, json, time, subprocess, signal
@@ -441,5 +444,33 @@ def test_rejected_second_run_preserves_registration():
     assert not alive(a_pid), "winner failed to reap its target after the rejected rival\n"
     print("PASS r1-preserve-registration: a rejected rival (exit 4) leaves the winner's reg log intact and the target is still reaped")
 
+def test_adopt_registration_failure_preserves_browser_under_supervisor():
+    """R2 integration (whole-project review round-2): run the REAL ensureChrome() adopt path with registration
+    forced to fail, UNDER the real supervisor. The fixed producer registers BEFORE claiming ownership, so an
+    aborted adopt leaves the orphan's ORIGINAL (dead-serve) owner untouched; the supervisor's owner-fallback
+    must therefore NOT pin+reap the pre-existing browser, and it survives the supervisor's exit. (Before the fix
+    the producer stamped its own servePid on the owner and the supervisor reaped the browser it meant to keep.)"""
+    node = find_node()
+    if not (node and os.path.exists(node)):
+        print("SKIP r2-integration: node not found (set BELMONT_TEST_NODE)"); return
+    fixture = os.path.join(ROOT, "belmont-browse/tools/test-fixtures/adopt-fail-under-supervisor.mjs")
+    profile = tempfile.mkdtemp(prefix="sup-r2int-")
+    sup = subprocess.Popen(["python3", SUP, profile, "--", node, fixture, profile],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    ready = os.path.join(profile, "serve-ready")
+    for _ in range(400):
+        if os.path.exists(ready): break
+        time.sleep(0.05)
+    assert os.path.exists(ready), "fixture serve never ran under the supervisor"
+    assert open(ready).read().strip() == "adopt-aborted", "the real adopt should have ABORTED on the injected registration failure"
+    orphan_pid = int(open(os.path.join(profile, "orphan-pid")).read().strip())
+    out, _ = sup.communicate(timeout=45); time.sleep(0.5)
+    try:
+        assert alive(orphan_pid), "R2 integration: the supervisor REAPED the browser after an aborted adopt (it must be preserved)\n" + out
+        print("PASS r2-integration: after a real adopt registration failure the real supervisor preserves the pre-existing browser (original owner left; not pinned)")
+    finally:
+        try: os.kill(orphan_pid, signal.SIGKILL)
+        except ProcessLookupError: pass
+
 if __name__ == "__main__":
-    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_polled_chrome_reaped_after_owner_deleted(); test_repin_then_owner_deleted_reaps_current(); test_poll_gap_registered_chrome_reaped(); test_pidfd_reuse_safety(); test_profile_missing_created_and_registers(); test_reg_channel_unavailable_fails_closed(); test_adopt_path_registration_reaped(); test_profile_lock_rejects_second_run(); test_rejected_second_run_preserves_registration(); print("ALL SUPERVISOR TESTS PASS")
+    test_reap(); test_ownership_no_miskill(); test_null_servepid_no_miskill(); test_repin_reaps_current_chrome(); test_polled_chrome_reaped_after_owner_deleted(); test_repin_then_owner_deleted_reaps_current(); test_poll_gap_registered_chrome_reaped(); test_pidfd_reuse_safety(); test_profile_missing_created_and_registers(); test_reg_channel_unavailable_fails_closed(); test_adopt_path_registration_reaped(); test_profile_lock_rejects_second_run(); test_rejected_second_run_preserves_registration(); test_adopt_registration_failure_preserves_browser_under_supervisor(); print("ALL SUPERVISOR TESTS PASS")

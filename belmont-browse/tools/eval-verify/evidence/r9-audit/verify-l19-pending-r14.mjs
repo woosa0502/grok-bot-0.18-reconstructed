@@ -1,17 +1,16 @@
-// L19.PENDING (R14, corrected) — fixes the false-PASS GPT-6 Pro's whole-project review found:
-// the r5 harness counted marker FILES (0/1), but B appends with >> so a DOUBLE execution left 2 lines in ONE
-// file -> "never duplicated" was true even on a double run. Here the external artifact is the EXECUTION COUNT
-// (non-empty lines in the BSTART file), read-failure is UNKNOWN(-1), and the verdict FAILS on >=2 executions.
-//
-// R14b (whole-project review): the observation formula + verdict + precondition gate now live in a SHARED
-// module (l19-pending-lib.mjs) imported by BOTH this verifier and its self-test, so the self-test exercises
-// the REAL code; and PRECONDITIONS (A running+marker, B actually queued) gate the grade — an unexercised
-// pending/cancel path grades INVALID (UNKNOWN), never PASS.
+// L19.PENDING (R14, corrected) — CLI wrapper around the shared, injectable driver (l19-pending-driver.mjs).
+// History: the r5 harness counted marker FILES (0/1), but B appends with >> so a DOUBLE execution left 2 lines
+// in ONE file -> "never duplicated" passed even on a double run. The external artifact is now the EXECUTION
+// COUNT (non-empty lines in BSTART), read-failure is UNKNOWN(-1), the verdict FAILS on >=1 executions, the
+// observation formula + verdict + gate live in l19-pending-lib.mjs (shared with the self-test), the flow lives
+// in l19-pending-driver.mjs (shared with the driver regression), B is RE-MEASURED after C completes, and
+// preconditions (A running+marker, B queued) + required reads gate the grade to INVALID when unmet.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { TERMINAL, execCountFromDir, computeVerdict, verdictPass, checkPreconditions, grade } from "./l19-pending-lib.mjs";
+import { execCountFromDir } from "./l19-pending-lib.mjs";
+import { runPendingVerification } from "./l19-pending-driver.mjs";
 const REPO = "/home/hoon/_roots/labs/work/Belmont";
 const { createEvaluationApi } = await import(pathToFileURL(path.join(REPO, "belmont-browse/src/procedure-evaluation.mjs")).href);
 const SP = process.argv[2] || "/tmp";
@@ -21,49 +20,17 @@ const api = createEvaluationApi(serve);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function sessionDir(id) { const base = path.join(STATE, "aside-home-909/u/0/sessions"); const hit = fs.existsSync(base) ? fs.readdirSync(base).find((d) => d.endsWith(`_${id}`)) : null; return hit ? path.join(base, hit) : null; }
 const execCount = (id, name) => execCountFromDir(sessionDir(id), name);
-const post = (task) => api("POST", "/sessions", { task, model: "gpt-5.5", thinking: "high", mode: "guard", autoApprove: false });
-const view = (id) => api("GET", `/sessions/${id}`);
-async function waitFor(id, pred, t, e = 1000) { const t0 = Date.now(); let v; do { try { v = await view(id); } catch {} if (pred(v)) return v; await sleep(e); } while (Date.now() - t0 < t); return v; }
 const marker = (id, name) => { const d = sessionDir(id); if (!d) return false; try { return fs.readdirSync(d).includes(name); } catch { return false; } };
 
 const nonce = crypto.randomUUID().slice(0, 8);
-const A = await post(`Run this one bash command and nothing else: echo A-${nonce} > ASTART-${nonce}; sleep 45`);
-const aView = await waitFor(A.id, (v) => v?.status === "running" && marker(A.id, `ASTART-${nonce}`), 30000);
-const aReady = aView?.status === "running" && marker(A.id, `ASTART-${nonce}`);   // PRECONDITION: A occupies the runner
-const B = await post(`Run this one bash command and nothing else: echo B-${nonce} >> BSTART-${nonce}; sleep 3`);
-const bBefore = await waitFor(B.id, (v) => !!v?.status, 8000, 500);
-const bQueued = bBefore?.status === "queued";                                    // PRECONDITION: B actually queued
-const bExecBefore = execCount(B.id, `BSTART-${nonce}`);
-await api("POST", `/sessions/${B.id}/stop`, {});
-const bAfterStop = await waitFor(B.id, (v) => TERMINAL.has(v?.status), 8000, 500);
-await api("POST", `/sessions/${A.id}/stop`, {});
-await sleep(6000);
-let bView; try { bView = await view(B.id); } catch (e) { bView = { error: e.message }; }
-const bExecAfterCancel = execCount(B.id, `BSTART-${nonce}`);   // post-cancel, PRE-C (diagnostic only)
-const C = await post(`Run this one bash command and nothing else: echo C-${nonce} > CSTART-${nonce}`);
-const cFinal = await waitFor(C.id, (v) => TERMINAL.has(v?.status), 90000, 1500);
-const cRan = marker(C.id, `CSTART-${nonce}`) && cFinal?.status === "done";
-// R3: re-measure B AFTER C completes plus a queue-stabilization window. A cancelled B that (wrongly) executes
-// LATE — while the harness was still waiting on C — is only visible in this FINAL read, so the verdict must use
-// THIS value, not the pre-C `bExecAfterCancel`. Removing this re-measure would let a late double-run pass.
-const STABILIZE_MS = Number(process.env.L19_STABILIZE_MS || 6000);
-await sleep(STABILIZE_MS);
-const bExecFinal = execCount(B.id, `BSTART-${nonce}`);
-
-const preconditions = checkPreconditions({
-  aReady, bQueued,
-  bPreReadOk: bExecBefore >= 0,        // required: the pre-cancel observation actually succeeded
-  bFinalReadOk: bExecFinal >= 0,       // required: the final post-C observation actually succeeded
-});
-const verdict = computeVerdict({ bView, bExecAfter: bExecFinal, bAfterStop, cRan });
-const result = grade({ preconditions, verdict });
+const out = await runPendingVerification({ api, execCount, marker, sleep, nonce, stabilizeMs: Number(process.env.L19_STABILIZE_MS || 6000) });
 const R = { case: "l19-pending-r14", at: new Date().toISOString(), nonce,
-  evidence: { aId: A.id, bId: B.id, cId: C.id, aReady, bQueued, bStatusAfterCancel: bAfterStop?.status,
-    bExecCountBefore: bExecBefore, bExecCountAfterCancel: bExecAfterCancel, bExecCountFinal: bExecFinal,
-    bQueryableAfter: !!(bView && (bView.status || bView.id)),
-    cStarted: marker(C.id, `CSTART-${nonce}`), cFinal: cFinal?.status },
-  preconditions, verdict, result };
-R.verdict_pass = result === "PASS";                    // back-compat field; PASS only when preconditions met AND verdict holds
+  evidence: { aId: out.ids.aId, bId: out.ids.bId, cId: out.ids.cId, aReady: out.aReady, bQueued: out.bQueued,
+    bStatusAfterCancel: out.bAfterStop?.status, bExecCountBefore: out.bExecBefore, bExecCountAfterCancel: out.bExecAfterCancel,
+    bExecCountFinal: out.bExecFinal, bQueryableAfter: !!(out.bView && (out.bView.status || out.bView.id)),
+    cStarted: out.cRan, cFinal: out.cFinal?.status },
+  preconditions: out.preconditions, verdict: out.verdict, result: out.result };
+R.verdict_pass = out.result === "PASS";                 // back-compat field; PASS only when preconditions met AND verdict holds
 fs.writeFileSync(path.join(SP, "ev-l19-pending-r14.json"), JSON.stringify(R, null, 2));
-console.log(JSON.stringify(R.verdict), "RESULT:", result, "(preconditions:", JSON.stringify(preconditions) + ")");
-process.exit(result === "PASS" ? 0 : 1);
+console.log(JSON.stringify(R.verdict), "RESULT:", out.result, "(preconditions:", JSON.stringify(out.preconditions) + ")");
+process.exit(out.result === "PASS" ? 0 : 1);
