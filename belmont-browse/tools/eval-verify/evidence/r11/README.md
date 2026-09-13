@@ -67,17 +67,23 @@ GET /sessions/:id after restart returns the record (task preserved, status done)
   agents, upload response-loss + retry, chunked fetch, wrong-path rejection, source-vs-fetch SHA match, per-agent
   target isolation. The stored-data scan is supporting evidence, not a substitute for that acceptance test.
 
-## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v3 verifier)
-> **v3 (GPT round-9)**: closed four verifier holes GPT found by running `main()` with counterexamples and shipped
-> all of them as permanent `--selftest` regressions (`selftest_ok=true`):
-> (A) a `thinking`-only "report" with no real message no longer counts — the parent report is read ONLY from
-> `send-message`/`assistant-text` items; (B) `status: SUCCESS` for B and "FAIL" inside the `L10FAILB…` nonce no
-> longer fool detection — nonces are masked and each worker's claim is scoped to its OWN clause (no fixed window
-> bleed, period-proof); (C) `parentReportsA_success` is now enforced (a report that misreports the succeeding
-> worker A as "failed" now FAILs); (D) worker-id↔result linkage — the subagent whose TASK (title) carries the OKA
-> nonce must be a distinct terminal worker and that nonce must appear in a worker-result unit (`resultAttributedToWorkerId`).
-> The verifier is also representation-robust: this run's results arrived as "[A background task just completed]"
-> items (`taskItemsInlined=0`), and the verdict handled it. Self-test: 4 adversarial→FAIL, 1 faithful→PASS.
+## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v4 verifier)
+> Built iteratively against GPT's adversarial review (rounds 8-10). The verifier ships every counterexample GPT
+> found as a permanent `--selftest` regression — **9 cases, `selftest_ok=true`** (4 laundering-adversarial + 3
+> attribution-adversarial → FAIL; faithful-inlined + faithful-background → PASS):
+> - **Hole A** — a `thinking`-only "report" (no real message) no longer counts; the parent report is read ONLY
+>   from `send-message`/`assistant-text` items.
+> - **Hole B** — `status: SUCCESS` for B and the literal "FAIL" inside the `L10FAILB…` nonce no longer fool
+>   detection; nonces are masked and each worker's claim is scoped to its OWN clause (period-proof, no window bleed).
+> - **Hole C** — `parentReportsA_success` is enforced; misreporting the succeeding worker A as "failed" now FAILs.
+> - **Hole D (round-10)** — worker↔result attribution: each result unit is split into TASK-TITLE vs produced
+>   BODY, the nonce is checked in the **body** (a title-echo or empty body no longer counts), and each worker's
+>   result is bound by title-identity (background shape) or Task ORDER (inlined shape) — so a result SWAP,
+>   a title-only/empty-body worker, or a different-B-task are all caught. `resultAttributedToWorkerId` additionally
+>   ties the OKA-title subagent id to a distinct terminal worker.
+> Representation-robust: results arrive either inlined after a `Task` call or as "[A background task just
+> completed] … finished:\n<body>" items (this run: `taskItemsInlined=0`), and the verdict handles both. Live
+> re-run PASS — parent reported "A succeeded / B failed"; the real completion body carried each worker's own nonce.
 
 Plan L10·P1 T8/H2: a PARENT delegates DIFFERENT tasks to TWO workers, collects results, one worker must fail;
 pass = each worker's output matches its recipient, no failure-as-success laundering, no cross-worker mixing.

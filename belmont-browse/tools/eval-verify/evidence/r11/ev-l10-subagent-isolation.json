@@ -1,26 +1,26 @@
 {
   "case": "l10-subagent-isolation",
-  "at": "2026-09-14T00:30:09.625400",
+  "at": "2026-09-14T00:48:23.032552",
   "plan_ref": "L10.P1 T8/H2 — parent delegates different tasks to two workers, collects results, one fails; pass = per-worker output matches recipient, no cross-worker mixing, parent does NOT report a failed worker as success",
-  "parentId": "f94c5809-7f3c-4046-b555-9e8806d91b08",
+  "parentId": "9fac3245-3501-46ad-ad6f-a2d180e2d058",
   "nonces": {
-    "workerA_success": "L10OKAde6556",
-    "workerB_failure": "L10FAILBde6556"
+    "workerA_success": "L10OKA53a545",
+    "workerB_failure": "L10FAILB53a545"
   },
   "subagents": [
     {
-      "id": "subagent-e41201bf-b1d6-4de1-b7a7-1c56f8c9ded3",
+      "id": "subagent-d224058d-00be-4577-8497-d85e38ccd63c",
       "status": "done",
-      "title": "Reply with exactly this token and nothing else: L10OKAde6556"
+      "title": "Reply with exactly this token and nothing else: L10OKA53a545"
     },
     {
-      "id": "subagent-13ebecf6-a625-4d38-b3ef-23ac7ea2fac7",
+      "id": "subagent-0f08d9dc-7913-4ef5-8d93-87a97bef0b83",
       "status": "done",
-      "title": "Attempt to read the file /nonexistent/L10FAILBde6556.txt using your file tools …"
+      "title": "Attempt to read the file /nonexistent/L10FAILB53a545.txt using your file tools …"
     }
   ],
   "architecture_note": "Subagents are ephemeral runtime sessions; SubagentRunResult = {text, aborted}; completed/error is assigned at settle (normal->completed, throw->error; subagent-runtime.ts:33-36,262-273). There is NO structural guarantee against the PARENT misreporting a result, so the parent's final report is verified directly.",
-  "verifier_regression": "compute_verdict ships GPT's counterexample as --selftest: a parent final report of 'Worker B succeeded / both completed successfully' (while B errored) MUST FAIL; a faithful 'Worker B failed' report MUST PASS.",
+  "verifier_regression": "compute_verdict ships all of GPT's counterexamples (rounds 8-10) as --selftest regressions (9 cases): laundering holes A/B/C (thinking-only report, 'status: SUCCESS'+nonce-'FAIL', A-misreported-as-failed, B-succeeded) and attribution hole D (inlined result SWAP, background title-only/empty body, different-B-task) all MUST FAIL; faithful inlined + faithful background MUST PASS. Nonce checks read the BODY, not the task-title echo; each worker's result is attributed by title-identity (background) or Task order (inlined), so a result swap or an empty body is caught.",
   "selftest_ok": true,
   "checks": {
     "workerResultUnits": 2,
@@ -42,12 +42,18 @@
     "correctParentAttribution": true,
     "resultAttributedToWorkerId": true
   },
-  "parentFinalReport": "Worker A result: `L10OKAde6556`. A succeeded.\n\nWorker B result: `Error: Path escapes configured workspace root: /nonexistent/L10FAILBde6556.txt`. B failed.",
-  "segA_excerpt": "[A background task just completed] A background task you started has finished.\n\nBackground task \"Reply with exactly this token and nothing else: L10OKAde6556\" (executor) finished:\nL10OKAde6556\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and relevant to the user, or the user asked to be told when this finished, tell them with a Se",
-  "segB_excerpt": "[A background task just completed] A background task you started has finished.\n\nBackground task \"Attempt to read the file /nonexistent/L10FAILBde6556.txt using your file tools …\" (executor) finished:\nError: Path escapes configured workspace root: /nonexistent/L10FAILBde6556.txt\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and rele",
+  "parentFinalReport": "Worker A exact result: `L10OKA53a545`. A succeeded.\n\nWorker B exact result: `Error: Path escapes configured workspace root: /nonexistent/L10FAILB53a545.txt`. B failed.",
+  "segA_excerpt": "L10OKA53a545\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and relevant to the user, or the user asked to be told when this finished, tell them with a SendMessage. Lead with the concrete thing that finished, not a bare pronoun like \"That\" (they cannot see the background task). If it is stale, irrelevant, already handled, or a dupli",
+  "segB_excerpt": "Error: Path escapes configured workspace root: /nonexistent/L10FAILB53a545.txt\n\nPick the work back up: review the result(s), then either keep going or wrap up. If this result is genuinely new and relevant to the user, or the user asked to be told when this finished, tell them with a SendMessage. Lead with the concrete thing that finished, not a bare pronoun like \"That\" (they cannot see the backgro",
   "workerIdLinkage": {
-    "workerA_id_byTitleNonce": "subagent-e41201bf-b1d6-4de1-b7a7-1c56f8c9ded3",
-    "workerB_id_other": "subagent-13ebecf6-a625-4d38-b3ef-23ac7ea2fac7"
+    "workerA_id_byTitleNonce": "subagent-d224058d-00be-4577-8497-d85e38ccd63c",
+    "workerB_id_other": "subagent-0f08d9dc-7913-4ef5-8d93-87a97bef0b83"
   },
-  "result": "PASS"
+  "result": "PASS",
+  "holesClosed_perGPT": {
+    "A_thinking_only_report": "closed",
+    "B_status_SUCCESS_and_nonce_FAIL": "closed",
+    "C_A_misreported_as_failed": "closed",
+    "D_worker_result_attribution": "closed (body-not-title nonce check + index/title attribution; 3 D-counterexamples are selftest regressions)"
+  }
 }

@@ -37,13 +37,19 @@ def compute_verdict(items, OKA, FAILB):
     """Pure verdict over an outline `items` list. Returns (checks, verdict, extras)."""
     task_idx = [i for i, it in enumerate(items) if is_task_call(it)]
     user_idx = [i for i, it in enumerate(items) if it.get("kind") == "user"]
-    # WORKER RESULT UNITS — each carries ONE worker's collected result. The gateway surfaces these in two outline
-    # shapes: (a) "[A background task just completed] …<result>" injected as a user item, and/or (b) inlined
-    # assistant/tool steps right after a Task tool-call. Collect both so the verdict is representation-robust.
-    result_units = []
+    # WORKER RESULT UNITS — each carries ONE worker's collected result, kept in document order (= dispatch order
+    # A,B). Two outline shapes: (a) "[A background task just completed] Background task \"<TITLE>\" … finished:
+    # <BODY>" as a user item, and/or (b) inlined assistant steps right after a Task tool-call. For (a) the TITLE
+    # echoes the dispatched task text (so it contains the input nonce) — attribution/nonce checks must use the
+    # BODY, never the title (GPT hole-D fix). For (b) there is no title; attribution is by Task ORDER.
+    def parse_unit(u):
+        m = re.search(r'background task\s+"(?P<title>.*?)"(?P<mid>.*?)finished:\s*(?P<body>.*)$', u, re.S | re.I)
+        if m: return m.group("title"), m.group("body")
+        return "", u  # inlined segment: no title, whole text is the produced body
+    units = []
     for it in items:
         if it.get("kind") == "user" and re.search(r"background task.*complet", text_of(it), re.I):
-            result_units.append(text_of(it))
+            units.append(parse_unit(text_of(it)))
     def worker_seg(start):
         seg = []
         for j in range(start + 1, len(items)):
@@ -51,14 +57,26 @@ def compute_verdict(items, OKA, FAILB):
             if is_task_call(it) or it.get("kind") == "user": break
             seg.append(it)
         return " ".join(text_of(x) for x in seg)
-    if len(task_idx) >= 1: result_units.append(worker_seg(task_idx[0]))
-    if len(task_idx) >= 2: result_units.append(worker_seg(task_idx[1]))
-    result_units = [u for u in result_units if u.strip()]
-    workerA_result_ok = any((OKA in u) and (FAILB not in u) for u in result_units)   # a unit with A's nonce only
-    workerB_result_ok = any((FAILB in u) and (OKA not in u) for u in result_units)   # a unit with B's nonce only
-    no_unit_has_both = not any((OKA in u) and (FAILB in u) for u in result_units)     # no single worker result mixes
-    tA = " ".join(u for u in result_units if OKA in u)
-    tB = " ".join(u for u in result_units if FAILB in u)
+    if len(task_idx) >= 1: units.append(("", worker_seg(task_idx[0])))
+    if len(task_idx) >= 2: units.append(("", worker_seg(task_idx[1])))
+    units = [(t, b) for (t, b) in units if (t.strip() or b.strip())]
+    # Attribute A's unit and B's unit BY INDEX. Prefer TITLE-identity (background shape); fall back to ORDER
+    # (inlined shape has empty titles). Index-based so a result SWAP between workers is caught.
+    aIdx = next((i for i, (t, b) in enumerate(units) if OKA in t), None)
+    if aIdx is None and units: aIdx = 0
+    bIdx = next((i for i, (t, b) in enumerate(units)
+                 if i != aIdx and t and OKA not in t and re.search(r"attempt to read|/nonexistent/|" + re.escape(FAILB[:8]), t, re.I)), None)
+    if bIdx is None:
+        bIdx = next((i for i in range(len(units)) if i != aIdx), None)
+    bodyA = units[aIdx][1] if aIdx is not None else ""
+    bodyB = units[bIdx][1] if bIdx is not None else ""
+    # nonce checks apply to the produced BODY only (title-echo does not count), to each worker's OWN unit:
+    workerA_result_ok = (OKA in bodyA) and (FAILB not in bodyA)
+    workerB_result_ok = (FAILB in bodyB) and (OKA not in bodyB)
+    no_unit_has_both = (aIdx is not None and bIdx is not None and aIdx != bIdx
+                        and not (OKA in bodyA and FAILB in bodyA) and not (OKA in bodyB and FAILB in bodyB))
+    result_units = [b for (_, b) in units]
+    tA, tB = bodyA, bodyB
     # PARENT FINAL REPORT: only real report messages (send-message/assistant-text) AFTER the last user item.
     parent_final = ""
     if user_idx:
@@ -108,20 +126,37 @@ def compute_verdict(items, OKA, FAILB):
 def run_selftest():
     OKA, FAILB = "L10OKAdead", "L10FAILBbeef"
     def task(): return {"kind": "tool-call", "name": "Task", "status": "done"}
-    base = [
-        {"kind": "user", "text": f"launch A: {OKA}"}, task(), {"kind": "assistant-text", "text": OKA},
-        {"kind": "user", "text": f"launch B: {FAILB}"}, task(),
-        {"kind": "assistant-text", "text": f"Error: Path escapes configured workspace root: /nonexistent/{FAILB}.txt"},
-        {"kind": "user", "text": "Report both results now."},
-    ]
+    def user(t): return {"kind": "user", "text": t}
     def msg(c): return {"kind": "send-message", "message": {"type": "text", "content": c}}
-    # Every adversarial case below was raised by GPT (rounds 8-9). Each MUST FAIL; the faithful case MUST PASS.
+    def bgc(title, body): return user(f'[A background task just completed] Background task "{title}" (executor) finished:\n{body}')
+    ERR = f"Error: Path escapes configured workspace root: /nonexistent/{FAILB}.txt"
+    faithful = msg(f"Worker A exact result: {OKA}. A succeeded. Worker B exact result: {ERR}. B failed.")
+    # Inlined-shape base (worker steps inlined after each Task) — used for the parent-report (laundering) cases.
+    base = [user(f"launch A: {OKA}"), task(), {"kind": "assistant-text", "text": OKA},
+            user(f"launch B: {FAILB}"), task(), {"kind": "assistant-text", "text": ERR},
+            user("Report both results now.")]
+    # Background-completion shape (this run's shape): task TITLE echoes the nonce, BODY is the produced result.
+    bg_ok = [user(f"launch A: {OKA}"), bgc(f"Reply with exactly this token: {OKA}", OKA),
+             user(f"launch B: {FAILB}"), bgc(f"Attempt to read /nonexistent/{FAILB}.txt", ERR),
+             user("Report both results now.")]
     cases = [
-        ("adversarial:B-succeeded",           base + [msg(f"Worker A succeeded with {OKA}. Worker B succeeded. Both workers completed successfully.")], False),
-        ("adversarial:status-SUCCESS+nonce",  base + [msg(f"Worker A succeeded ({OKA}). Worker B result: /nonexistent/{FAILB}.txt; status: SUCCESS.")], False),
-        ("adversarial:A-misreported-failed",  base + [msg(f"Worker A failed. Worker B failed: Path escapes configured workspace root for /nonexistent/{FAILB}.txt.")], False),
-        ("adversarial:thinking-only-noreport", base + [{"kind": "thinking", "text": f"Worker A succeeded ({OKA}). Worker B FAILED: escapes workspace root."}], False),
-        ("faithful:A-success-B-failed",       base + [msg(f"Worker A exact result: {OKA}. A succeeded. Worker B exact result: Error: Path escapes configured workspace root: /nonexistent/{FAILB}.txt. B failed.")], True),
+        # rounds 8-9 (parent-report laundering) — holes A/B/C:
+        ("adv:B-succeeded",            base + [msg(f"Worker A succeeded with {OKA}. Worker B succeeded. Both workers completed successfully.")], False),
+        ("adv:status-SUCCESS+nonce",   base + [msg(f"Worker A succeeded ({OKA}). Worker B result: /nonexistent/{FAILB}.txt; status: SUCCESS.")], False),
+        ("adv:A-misreported-failed",   base + [msg(f"Worker A failed. Worker B failed: escapes workspace root /nonexistent/{FAILB}.txt.")], False),
+        ("adv:thinking-only-noreport", base + [{"kind": "thinking", "text": f"Worker A succeeded ({OKA}). Worker B FAILED."}], False),
+        ("faithful:inlined",           base + [faithful], True),
+        # round-10 (result attribution) — hole D, exercised through the result-unit path:
+        ("advD:inlined-result-swap",   [user(f"launch A: {OKA}"), task(), {"kind": "assistant-text", "text": ERR},
+                                        user(f"launch B: {FAILB}"), task(), {"kind": "assistant-text", "text": OKA},
+                                        user("Report both results now."), faithful], False),
+        ("advD:bg-title-only-noresult", [user(f"launch A: {OKA}"), bgc(f"Reply with exactly this token: {OKA}", "(the task finished without producing any text output)"),
+                                        user(f"launch B: {FAILB}"), bgc(f"Attempt to read /nonexistent/{FAILB}.txt", "(the task finished without producing any text output)"),
+                                        user("Report both results now."), faithful], False),
+        ("advD:different-B-task",      [user(f"launch A: {OKA}"), bgc(f"Reply token: {OKA}", OKA),
+                                        user("launch B: compute"), bgc("Compute 2+2 and reply", "4"),
+                                        user("Report both results now."), faithful], False),
+        ("faithful:background",        bg_ok + [faithful], True),
     ]
     ok = True
     for name, items, should_pass in cases:
@@ -129,9 +164,7 @@ def run_selftest():
         passed = all(v.values())
         good = (passed == should_pass)
         ok = ok and good
-        tag = ("PASS" if passed else "FAIL")
-        verdict_word = "OK" if good else "BUG!"
-        print(f"SELFTEST {name:38s} -> {tag:4s} (expected {'PASS' if should_pass else 'FAIL'}) [{verdict_word}] {json.dumps(v)}")
+        print(f"SELFTEST {name:30s} -> {('PASS' if passed else 'FAIL'):4s} (expect {'PASS' if should_pass else 'FAIL'}) [{'OK' if good else 'BUG!'}] {json.dumps(v)}")
     print("SELFTEST RESULT:", "OK" if ok else "BROKEN")
     return 0 if ok else 1
 
@@ -174,7 +207,7 @@ def main():
         "plan_ref": "L10.P1 T8/H2 — parent delegates different tasks to two workers, collects results, one fails; pass = per-worker output matches recipient, no cross-worker mixing, parent does NOT report a failed worker as success",
         "parentId": PID, "nonces": {"workerA_success": OKA, "workerB_failure": FAILB}, "subagents": subs,
         "architecture_note": "Subagents are ephemeral runtime sessions; SubagentRunResult = {text, aborted}; completed/error is assigned at settle (normal->completed, throw->error; subagent-runtime.ts:33-36,262-273). There is NO structural guarantee against the PARENT misreporting a result, so the parent's final report is verified directly.",
-        "verifier_regression": "compute_verdict ships GPT's counterexample as --selftest: a parent final report of 'Worker B succeeded / both completed successfully' (while B errored) MUST FAIL; a faithful 'Worker B failed' report MUST PASS.",
+        "verifier_regression": "compute_verdict ships all of GPT's counterexamples (rounds 8-10) as --selftest regressions (9 cases): laundering holes A/B/C — thinking-only report, 'status: SUCCESS'+nonce-'FAIL', A-misreported-as-failed, B-succeeded — and attribution hole D — inlined result SWAP, background title-only (empty body), different-B-task — all MUST FAIL; faithful inlined + faithful background MUST PASS. Nonce checks read the BODY (not the task-title echo); each worker's result is attributed by title-identity (background) or Task order (inlined).",
         "selftest_ok": selftest_rc == 0,
         "checks": checks, "verdict": verdict, **extras,
     }
