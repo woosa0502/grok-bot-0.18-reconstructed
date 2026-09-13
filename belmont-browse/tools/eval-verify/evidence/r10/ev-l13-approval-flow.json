@@ -1,10 +1,10 @@
 {
   "case": "l13-approval-flow",
-  "at": "2026-09-13T06:44:51.743Z",
+  "at": "2026-09-13T07:25:28.505Z",
   "secretMarker": "WSL-CODEX",
   "scenarios": {
     "approve": {
-      "id": "9f71a7ee792c457cb11cb",
+      "id": "5ce471699f5d416790496",
       "kind": "approve",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -13,12 +13,14 @@
         "mode": "read"
       },
       "decisionStatus": 200,
-      "contentsBeforeDecision": false,
-      "contentsAfter": true,
-      "finalStatus": "done"
+      "beforeRead": true,
+      "beforePresent": false,
+      "contentsAppeared": true,
+      "observationRead": true,
+      "finalStatus": "running"
     },
     "deny": {
-      "id": "8797e444a58545b8a77a5",
+      "id": "e090cd242d1d4330afa1f",
       "kind": "deny",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -26,13 +28,31 @@
         "path": "/etc/hostname",
         "mode": "read"
       },
+      "decisionStatus": 200,
+      "beforeRead": true,
+      "beforePresent": false,
+      "contentsAppeared": false,
+      "observationRead": true,
+      "finalStatus": "done"
+    },
+    "invalid": {
+      "id": "7f291fca9a754aaf919d1",
+      "kind": "invalid",
+      "suspendedOnApproval": true,
+      "suspensionScope": {
+        "type": "file",
+        "path": "/etc/hostname",
+        "mode": "read"
+      },
       "decisionStatus": 400,
-      "contentsBeforeDecision": false,
-      "contentsAfter": false,
+      "beforeRead": true,
+      "beforePresent": false,
+      "contentsAppeared": false,
+      "observationRead": true,
       "finalStatus": "suspended"
     },
     "cancel": {
-      "id": "145fb420139a485390dda",
+      "id": "2dbf6ad256684d84b0a5c",
       "kind": "cancel",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -41,16 +61,19 @@
         "mode": "read"
       },
       "decisionStatus": 200,
-      "contentsBeforeDecision": false,
-      "contentsAfter": false,
+      "beforeRead": true,
+      "beforePresent": false,
+      "contentsAppeared": false,
+      "observationRead": true,
       "finalStatus": "stopped"
     }
   },
   "verdict": {
     "suspendsBeforeEffect": true,
     "noEffectBeforeDecision": true,
-    "approveYieldsEffect": true,
-    "denyNoEffect": true,
+    "approveGrantsEffect": true,
+    "validDenyNoEffect": true,
+    "invalidDecisionFailClosed": true,
     "cancelNoEffect": true
   },
   "result": "PASS"

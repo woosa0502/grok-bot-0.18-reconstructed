@@ -1,43 +1,47 @@
 {
   "case": "bot-autonomous-createAgent",
-  "at": "2026-09-13T06:32:22.560Z",
+  "at": "2026-09-13T07:25:37.567Z",
   "gateway": {
     "port": 42611,
     "auth": true
   },
   "baseline": {
-    "count": 14
+    "count": 14,
+    "readable": true
   },
   "maker": {
-    "id": "90506ec8-ca40-4f9b-b2fd-90d5fffe7d79"
+    "id": "590b7963-1f2f-430c-8508-42130623a9ee"
   },
   "sendPrompt": {
     "status": 200,
     "accepted": true,
     "attempts": 1
   },
-  "autonomous": {
+  "delegatedCreation": {
     "createAgentIsModelTool": "source/host/runner/tools/sand-agent-management-tools.ts:92,202 + turn-toolset.ts:1367",
     "harnessNeverCalledCreateAgentForChild": true,
     "childNameNonceKnownOnlyToMaker": true,
     "childInRoster": true,
-    "childId": "a62e1546-d624-47a1-87d9-bc1937b0fba5",
-    "autonomousCreation": true,
-    "makerSaidDone": false,
+    "childId": "7e676ec6-2882-47ff-a68a-9ea484ea7703",
+    "delegatedCreationSucceeded": true,
+    "causalStrength": "strong-indirect (controlled run, no other creating actor; the test does not, by itself, prove the exclusive tool-call path)",
+    "makerSaidDone": true,
     "promptsNeeded": 1,
     "transcriptShape": "array",
     "entryKinds": [
       "message",
+      "send-message",
       "send-message"
     ],
-    "childRow": "{\"id\":\"a62e1546-d624-47a1-87d9-bc1937b0fba5\",\"name\":\"belmont-selftest-child-19f373\",\"description\":\"belmont selftest child (autonomous)\",\"title\":\"\",\"avatarDataUrl\":null,\"avatarVersion\":null,\"avatarShape\":null,\"avatarColor\":null,\"createdAt\":1789281156982,\"updatedAt\":1789281156982,\"path\":\"/home/hoon/_roots/labs/work/Belmont/.cache/belmont-wsl-profile/sand-data/agents/a62e1546-d624-47a1-87d9-bc1937b0fba5/store.db\",\"isActive\":false,\"isRunning\":false,\"isComposingMessage\":false,\"lastEntry\":null,\"lastMessageId\":null,\"lastMessagePreview\":null,\"newestEntryId\":null,\"hasUnread\":false,\"unreadCount\":0,\"last",
-    "literalFrameNote": "The literal createAgentToolCall frame is a transient streamed activity (sand-activity.ts); the gateway transcript RPCs (getAgentTranscript/Thread/Tail/Window) return a redacted display view without it, so autonomy is proven causally rather than by the raw frame."
+    "childRow": "{\"id\":\"7e676ec6-2882-47ff-a68a-9ea484ea7703\",\"name\":\"belmont-selftest-child-7effea\",\"description\":\"belmont selftest child (autonomous)\",\"title\":\"\",\"avatarDataUrl\":null,\"avatarVersion\":null,\"avatarShape\":null,\"avatarColor\":null,\"createdAt\":1789284353156,\"updatedAt\":1789284353156,\"path\":\"/home/hoon/_roots/labs/work/Belmont/.cache/belmont-wsl-profile/sand-data/agents/7e676ec6-2882-47ff-a68a-9ea484ea7703/store.db\",\"isActive\":false,\"isRunning\":false,\"isComposingMessage\":false,\"lastEntry\":null,\"lastMessageId\":null,\"lastMessagePreview\":null,\"newestEntryId\":null,\"hasUnread\":false,\"unreadCount\":0,\"last",
+    "literalToolCallFrameCaptured": false
   },
   "cleanup": {
     "requestedDelete": [
-      "90506ec8-ca40-4f9b-b2fd-90d5fffe7d79",
-      "a62e1546-d624-47a1-87d9-bc1937b0fba5"
+      "590b7963-1f2f-430c-8508-42130623a9ee",
+      "7e676ec6-2882-47ff-a68a-9ea484ea7703"
     ],
+    "rostersReadable": true,
     "baselineCount": 14,
     "finalCount": 14,
     "addedNotRemoved": [],

@@ -1,46 +1,46 @@
 {
   "case": "recovery-supervised-crash",
-  "at": "2026-09-13T06:17:24.109Z",
+  "at": "2026-09-13T07:24:30.769Z",
   "node": "/home/hoon/.nvm/versions/node/v26.8.1/bin/node",
   "stages": [
     {
       "stage": "control-started",
-      "t": "2026-09-13T06:17:24.262Z",
-      "controlPid": 2005558,
-      "controlTicks": 27240808,
+      "t": "2026-09-13T07:24:30.926Z",
+      "controlPid": 2064049,
+      "controlTicks": 27643475,
       "alive": true
     },
     {
       "stage": "serve-ready",
-      "t": "2026-09-13T06:17:26.291Z",
+      "t": "2026-09-13T07:24:34.962Z",
       "ready": true,
       "health": {
         "status": 200,
         "ready": true,
         "alive": null,
-        "chromePid": 2005575
+        "chromePid": 2064118
       },
       "owner": {
-        "servePid": 2005562,
-        "chromePid": 2005575,
-        "startTicks": 27240833,
-        "generation": "b0e85595-0872-4c39-b310-c00228208a41"
+        "servePid": 2064055,
+        "chromePid": 2064118,
+        "startTicks": 27643650,
+        "generation": "04edd83d-8f59-437a-8325-518e6fb4d4c0"
       },
       "chromeAlive": true,
-      "chromeTicksLive": 27240833
+      "chromeTicksLive": 27643650
     },
     {
       "stage": "pre-crash",
-      "t": "2026-09-13T06:17:26.291Z",
-      "servePid": 2005562,
-      "chromePid": 2005575,
-      "chromeTicks": 27240833,
+      "t": "2026-09-13T07:24:34.962Z",
+      "servePid": 2064055,
+      "chromePid": 2064118,
+      "chromeTicks": 27643650,
       "chromeAlive": true,
       "chromeTicksMatch": true
     },
     {
       "stage": "post-crash",
-      "t": "2026-09-13T06:17:27.542Z",
+      "t": "2026-09-13T07:24:36.214Z",
       "supExit": {
         "code": 0,
         "sig": null
@@ -60,5 +60,5 @@
     "supExitClean": true
   },
   "result": "PASS",
-  "supervisorLog": "[supervisor] pinned chrome pid=2005575 startTicks=27240833 via pidfd (registration)\n06:17:24 [chrome] started chrome pid=2005575 display=:0 cdp=http://127.0.0.1:9333\n06:17:24 [creds] in sync\n06:17:25 [hooks] memory_search={\"mode\":\"native-pending\",\"accountId\":0,\"semantic\":{\"state\":\"configured\",\"engine\":\"aside-memory-manager\",\"model\":\"original-aside-moss-model\",\"lastSuccessfulSearchAt\":null},\"lexical\":{\"engine\":\"sqlite-fts5\",\"role\":\"degraded-fallback\",\"cjk\":true},\"scope\":{\"native\":\"Original regular Markdown traversal under account memory; symlinks are not indexed.\",\"lexical\":\"Account memory plus explicitly allowed roots reached through its links.\",\"allowedRoots\":[\"/home/hoon/_roots/labs/work/Belmont/.cache/eval-verify-909/knowledge\"]},\"nativeRanking\":\"Original searchMany results, unchanged\",\"nativeIdleRelease\":\"Original MemoryManager idle behavior is retained\"} sandbox=bubblewrap\n06:17:25 [lifecycle] reconciled 1 persisted executions; 0 handed to the original suspension recovery\n06:17:25 [daemon-server] Aside daemon API listening at http://127.0.0.1:21420\n06:17:25 [engine] real extension registered: connection da5c13f0-eb34-420d-a624-1d8a964516a6, profile belmont-ui, native profile fbf033f4-840e-4826-8120-7d67fa5e3586\n06:17:25 [engine] Aside 1.26.909.1820 ready; account 0; window 965823490; profile belmont-ui (real extension)\n06:17:25 [serve] listening on http://127.0.0.1:9360 (token in /home/hoon/_roots/labs/work/Belmont/belmont-browse/.state/serve.json)\n[prompt][timing] buildSystemPrompt { skillsList: \u001b[33m51\u001b[39m, accountFiles: \u001b[33m1\u001b[39m, total: \u001b[33m52\u001b[39m }\n[agent-session][timing] resolveExecution { resolveSessionModelMs: \u001b[33m8\u001b[39m, resolveMs: \u001b[33m2\u001b[39m }\n[agent-session][timing] create {\n  systemPrompt: \u001b[33m54\u001b[39m,\n  listMessages: \u001b[33m1\u001b[39m,\n  contextMessages: \u001b[33m0\u001b[39m,\n  resolveExecution: \u001b[33m10\u001b[39m,\n  agentInit: \u001b[33m4\u001b[39m,\n  total: \u001b[33m69\u001b[39m\n}\n[supervisor] serve exited; reaping tracked owned chrome instances\n[supervisor] reaping owned chrome instance pid=2005575 via pidfd\n[supervisor] chrome exited on SIGTERM\n"
+  "supervisorLog": "[supervisor] pinned chrome pid=2064118 startTicks=27643650 via pidfd (registration)\n07:24:33 [chrome] started chrome pid=2064118 display=:0 cdp=http://127.0.0.1:9333\n07:24:33 [creds] in sync\n07:24:34 [hooks] memory_search={\"mode\":\"native-pending\",\"accountId\":0,\"semantic\":{\"state\":\"configured\",\"engine\":\"aside-memory-manager\",\"model\":\"original-aside-moss-model\",\"lastSuccessfulSearchAt\":null},\"lexical\":{\"engine\":\"sqlite-fts5\",\"role\":\"degraded-fallback\",\"cjk\":true},\"scope\":{\"native\":\"Original regular Markdown traversal under account memory; symlinks are not indexed.\",\"lexical\":\"Account memory plus explicitly allowed roots reached through its links.\",\"allowedRoots\":[\"/home/hoon/_roots/labs/work/Belmont/.cache/eval-verify-909/knowledge\"]},\"nativeRanking\":\"Original searchMany results, unchanged\",\"nativeIdleRelease\":\"Original MemoryManager idle behavior is retained\"} sandbox=bubblewrap\n07:24:34 [lifecycle] reconciled 1 persisted executions; 0 handed to the original suspension recovery\n07:24:34 [daemon-server] Aside daemon API listening at http://127.0.0.1:21420\n07:24:34 [engine] real extension registered: connection 054cc2cc-40b8-4922-8a72-2543fe0a1ddb, profile belmont-ui, native profile fbf033f4-840e-4826-8120-7d67fa5e3586\n07:24:34 [engine] Aside 1.26.909.1820 ready; account 0; window 965824794; profile belmont-ui (real extension)\n07:24:34 [serve] listening on http://127.0.0.1:9360 (token in /home/hoon/_roots/labs/work/Belmont/belmont-browse/.state/serve.json)\n[prompt][timing] buildSystemPrompt { skillsList: \u001b[33m56\u001b[39m, accountFiles: \u001b[33m0\u001b[39m, total: \u001b[33m56\u001b[39m }\n[agent-session][timing] resolveExecution { resolveSessionModelMs: \u001b[33m9\u001b[39m, resolveMs: \u001b[33m1\u001b[39m }\n[agent-session][timing] create {\n  systemPrompt: \u001b[33m59\u001b[39m,\n  listMessages: \u001b[33m1\u001b[39m,\n  contextMessages: \u001b[33m0\u001b[39m,\n  resolveExecution: \u001b[33m10\u001b[39m,\n  agentInit: \u001b[33m5\u001b[39m,\n  total: \u001b[33m75\u001b[39m\n}\n[supervisor] serve exited; reaping tracked owned chrome instances\n[supervisor] reaping owned chrome instance pid=2064118 via pidfd\n[supervisor] chrome exited on SIGTERM\n"
 }

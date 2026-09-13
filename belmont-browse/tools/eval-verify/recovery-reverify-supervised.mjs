@@ -23,6 +23,16 @@ const OWNER = path.join(PROFILE, ".belmont-chrome-owner.json");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function startTicks(pid) { try { const raw = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); return Number(raw.slice(raw.lastIndexOf(")") + 2).trim().split(/\s+/)[19]); } catch { return null; } }
 function alive(pid) { if (!Number.isSafeInteger(pid) || pid <= 1) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } }
+// Safety (whole-project review): cleanup must NOT raw-signal a pid/pgid that may have been reused. Only signal a
+// pid whose /proc startTicks STILL match the captured identity (instance-bound), and NEVER send a group signal
+// by number. This narrows — does not fully close, on unprivileged userspace — the check→signal race; the PRODUCT
+// reaper uses pidfd for the real guarantee. Prefer a ChildProcess handle when we have one.
+function safeKill(pid, expectedTicks, child) {
+  if (child && Number.isSafeInteger(child.pid) && child.pid === pid) { try { child.kill("SIGKILL"); } catch {} return; }
+  if (!alive(pid)) return;
+  if (Number.isSafeInteger(expectedTicks) && startTicks(pid) !== expectedTicks) return; // reused pid -> refuse to signal
+  try { process.kill(pid, "SIGKILL"); } catch {}
+}
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
 async function health() {
   const s = readJson(SERVE_JSON); if (!s?.port) return { error: "no serve.json" };
@@ -102,9 +112,9 @@ trace.verdict = { chromeReaped, controlUntouched, supExitClean: supClean };
 trace.result = (chromeReaped && controlUntouched && supClean) ? "PASS" : "FAIL";
 trace.supervisorLog = supOut.slice(-2500);
 
-// cleanup: control, and any lingering serve/chrome (should already be gone)
-try { control.kill("SIGKILL"); } catch {}
-if (alive(chromePid)) { try { process.kill(-chromePid, "SIGKILL"); } catch {} try { process.kill(chromePid, "SIGKILL"); } catch {} }
+// cleanup: control (via its handle), and any lingering chrome (instance-bound; no group-number signal)
+safeKill(controlPid, controlTicks, control);
+safeKill(chromePid, chromeTicks);
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, JSON.stringify(trace, null, 2));

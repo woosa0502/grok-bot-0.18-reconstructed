@@ -24,34 +24,28 @@ async function api(method, args = {}) {
   let body = null, text = ""; try { text = await res.text(); body = JSON.parse(text); } catch {}
   return { status: res.status, ok: res.ok, body, text };
 }
-const roster = async () => { const r = await api("listAgents"); const list = Array.isArray(r.body) ? r.body : r.body?.agents ?? []; return list; };
-const rosterIds = async () => new Set((await roster()).map((a) => a.id));
-// Find the maker's AUTONOMOUS createAgent tool-call entry. Must EXCLUDE the user prompt (which itself mentions
-// "createAgent"): skip role:"user"/kind:"message" text entries, and require a tool-call shape that references
-// createAgent (kind/type/tool contains "tool" and "createAgent", or an explicit createAgentToolCall).
-function scanForCreateAgentCall(entry) {
-  if (!entry || typeof entry !== "object") return null;
-  const kind = String(entry.kind ?? entry.type ?? "");
-  const role = String(entry.role ?? "");
-  if (role === "user") return null;                       // never the prompt we sent
-  if (kind === "message" && !entry.tool && !entry.toolCall && !entry.toolName) return null; // plain chat text
-  let s; try { s = JSON.stringify(entry); } catch { return null; }
-  if (!/createAgent/i.test(s)) return null;
-  const looksToolish = /tool/i.test(kind) || /createAgentToolCall/i.test(s) || entry.tool || entry.toolCall || entry.toolName || /"args"|"parameters"|"input"|"result"/i.test(s);
-  if (!looksToolish) return null;
-  const nameMatch = s.match(/"name"\s*:\s*"([^"]*selftest-child[^"]*)"/i);
-  const idMatch = s.match(/"(agentId|createdAgentId|resultId|newAgentId)"\s*:\s*"([A-Za-z0-9_-]{6,})"/)
-    || s.match(/"id"\s*:\s*"([A-Za-z0-9-]{20,})"/);
-  return { found: true, kind, name: nameMatch?.[1] ?? null, resultId: (idMatch?.[2] ?? idMatch?.[1]) ?? null, raw: entry };
+// rosterRead distinguishes a REAL read from an HTTP error/unparseable body (which must NOT collapse to []),
+// so an unreadable baseline/final can never masquerade as "id-set restored" (whole-project review #3).
+async function rosterRead() {
+  const r = await api("listAgents");
+  if (!r.ok || !Number.isInteger(r.status) || r.status !== 200) return { readable: false, list: [] };
+  const list = Array.isArray(r.body) ? r.body : Array.isArray(r.body?.agents) ? r.body.agents : null;
+  if (list === null) return { readable: false, list: [] };
+  return { readable: true, list };
 }
+const roster = async () => (await rosterRead()).list;
+const rosterIds = async () => new Set((await roster()).map((a) => a.id));
+// (Note: a transcript scanner for the createAgent frame was removed — the gateway transcript RPCs return a
+// redacted display view (message/send-message) that omits the communicateUpdateToolCall wrapper frame, so it is
+// not recoverable here. The claim is limited to delegated-creation success; see R.delegatedCreation.)
 
 const created = [];
 const R = { case: "bot-autonomous-createAgent", at: new Date().toISOString(), gateway: { port: PORT, auth: !!TOKEN } };
-let baselineIds = new Set();
+let baselineIds = new Set(), baselineReadable = false;
 try {
-  baselineIds = await rosterIds();
-  R.baseline = { count: baselineIds.size };
-  log("baseline roster ids:", baselineIds.size);
+  const base = await rosterRead(); baselineReadable = base.readable; baselineIds = new Set(base.list.map((a) => a.id));
+  R.baseline = { count: baselineIds.size, readable: baselineReadable };
+  log("baseline roster ids:", baselineIds.size, "readable:", baselineReadable);
 
   // MAKER agent
   const childName = `belmont-selftest-child-${n}`;
@@ -64,12 +58,12 @@ try {
   R.maker = { id: makerId };
   log("maker:", makerId);
 
-  // AUTONOMY is proven causally: createAgent is a model-facing tool (source: sand-agent-management-tools.ts),
-  // this harness NEVER calls the createAgent API for `childName`, and `childName` carries a nonce known ONLY to
-  // the maker (via its prompt). So a roster agent with that exact name can only have been created by the maker
-  // EXECUTING its createAgent tool during its turn. (The literal createAgentToolCall frame is a transient
-  // streamed activity — the gateway's transcript RPCs return a redacted display view (message/send-message)
-  // that does not include it; see R.autonomous.literalFrameNote.)
+  // DELEGATED CREATION (strong INDIRECT causal evidence, not an exclusive tool-call proof): createAgent is a
+  // model-facing tool (source: sand-agent-management-tools.ts), this harness NEVER calls the createAgent API for
+  // `childName`, and `childName` carries a nonce known ONLY to the maker (via its prompt). So in this controlled
+  // run a roster agent with that exact name appearing after delegating to the maker is strong evidence the maker
+  // created it. The raw createAgent wrapper frame (a communicateUpdateToolCall; see R.delegatedCreation) is not
+  // exposed by the gateway transcript RPCs, so the claim is limited to delegated-creation success.
   let childId = null, childRow = null, makerSaidDone = false, transcriptShape = null, entryKinds = null, prompts = 0;
   const prompt = `Create a new agent named "${childName}" by calling your createAgent tool now. Give it the description "belmont selftest child (autonomous)". Call the tool exactly once, then say done.`;
   outer: for (let attempt = 0; attempt < 3 && !childId; attempt++) {
@@ -89,20 +83,30 @@ try {
       await sleep(3000);
     }
   }
-  R.autonomous = {
+  R.delegatedCreation = {
+    // CLAIM (narrowed per whole-project review): a bot given only a natural-language request performs a
+    // successful CREATION when delegated — strong INDIRECT causal evidence, not an exclusive tool-call proof.
     createAgentIsModelTool: "source/host/runner/tools/sand-agent-management-tools.ts:92,202 + turn-toolset.ts:1367",
     harnessNeverCalledCreateAgentForChild: true,           // by construction: we only sendPrompt; API createAgent is only for the maker
     childNameNonceKnownOnlyToMaker: true,
     childInRoster: !!childId,
     childId,
-    autonomousCreation: !!childId,                          // child with maker-only nonce name exists -> maker's tool created it
+    delegatedCreationSucceeded: !!childId,                  // child with maker-only nonce name exists after delegating to the maker
+    causalStrength: "strong-indirect (controlled run, no other creating actor; the test does not, by itself, prove the exclusive tool-call path)",
     makerSaidDone,
     promptsNeeded: prompts,
     transcriptShape, entryKinds,
     childRow: childRow ? JSON.stringify(childRow).slice(0, 600) : null,
-    literalFrameNote: "The literal createAgentToolCall frame is a transient streamed activity (sand-activity.ts); the gateway transcript RPCs (getAgentTranscript/Thread/Tail/Window) return a redacted display view without it, so autonomy is proven causally rather than by the raw frame.",
+    // CORRECTED frame mechanism: CreateAgent is wrapped by defineCommunicateTool, so its trace is a
+    // communicateUpdateToolCall whose args.currentStep is {"__sand_tool__":true,"phase":..,"tool":"CreateAgent",..}
+    // (source/host/runner/tools/communicate-tool.ts:19-31,124-165; agent-messaging.ts:7) — NOT a literal
+    // createAgentToolCall frame. The gateway transcript RPCs return a redacted display view (message/send-message)
+    // that omits it, so the raw wrapper frame was not captured here; the claim is limited to delegated-creation
+    // success. Capturing the wrapper's start/complete under one toolCallId matched to the returned child id is the
+    // remaining step to upgrade this to an exclusive tool-call proof.
+    literalToolCallFrameCaptured: false,
   };
-  log("autonomous:", JSON.stringify({ childId, autonomousCreation: !!childId, makerSaidDone, prompts }));
+  log("delegatedCreation:", JSON.stringify({ childId, succeeded: !!childId, makerSaidDone, prompts }));
 } catch (e) { R.error = e.message; log("ERROR:", e.message); }
 finally {
   // cleanup: delete everything we (or the maker) created; verify EXACT id-set restoration
@@ -114,21 +118,24 @@ finally {
   const leftover = now.filter((a) => (a.name ?? "").includes("selftest") && (a.name ?? "").includes(n));
   for (const a of leftover) { try { await api("deleteAgent", { id: a.id }); } catch {} }
   await sleep(1000);
-  const finalIds = await rosterIds();
-  const finalList = await roster();
+  const finalRead = await rosterRead();
+  const finalIds = new Set(finalRead.list.map((a) => a.id));
   const addedNotRemoved = [...finalIds].filter((id) => !baselineIds.has(id));
   const removedFromBaseline = [...baselineIds].filter((id) => !finalIds.has(id));
-  const leftoverTestNamed = finalList.filter((a) => (a.name ?? "").includes("selftest") && (a.name ?? "").includes(n)).map((a) => ({ id: a.id, name: a.name }));
+  const leftoverTestNamed = finalRead.list.filter((a) => (a.name ?? "").includes("selftest") && (a.name ?? "").includes(n)).map((a) => ({ id: a.id, name: a.name }));
+  R.cleanup.rostersReadable = baselineReadable && finalRead.readable;  // both baseline AND final were real reads
   R.cleanup.baselineCount = baselineIds.size;
   R.cleanup.finalCount = finalIds.size;
   R.cleanup.addedNotRemoved = addedNotRemoved;                 // must be empty
   R.cleanup.removedFromBaseline = removedFromBaseline;         // must be empty (we didn't touch real agents)
   R.cleanup.leftoverTestNamed = leftoverTestNamed;             // must be empty (incl. any group)
-  R.cleanup.idSetRestored = addedNotRemoved.length === 0 && removedFromBaseline.length === 0 && leftoverTestNamed.length === 0;
-  // Verdict: a bot AUTONOMOUSLY created another bot (causal proof) AND cleanup restored the exact roster ID-set.
-  R.verdict_pass = !!(R.autonomous?.autonomousCreation && R.cleanup.idSetRestored);
+  // id-set restored ONLY counts when both rosters were genuinely readable (an unreadable roster -> not restored)
+  R.cleanup.idSetRestored = R.cleanup.rostersReadable && addedNotRemoved.length === 0 && removedFromBaseline.length === 0 && leftoverTestNamed.length === 0;
+  // Verdict (narrowed): delegated bot-creation SUCCEEDED AND cleanup restored the exact roster ID-set from
+  // genuinely-readable rosters. NOT claimed: an exclusive createAgent tool-call trace (see delegatedCreation).
+  R.verdict_pass = !!(R.delegatedCreation?.delegatedCreationSucceeded && R.cleanup.idSetRestored);
   fs.writeFileSync(path.join(SP, "ev-bot-autonomous-createagent.json"), JSON.stringify(R, null, 2));
   log("EVIDENCE -> ev-bot-autonomous-createagent.json");
-  log("VERDICT:", JSON.stringify({ autonomousCreation: R.autonomous?.autonomousCreation, makerSaidDone: R.autonomous?.makerSaidDone, idSetRestored: R.cleanup?.idSetRestored, pass: R.verdict_pass }));
+  log("VERDICT:", JSON.stringify({ delegatedCreationSucceeded: R.delegatedCreation?.delegatedCreationSucceeded, idSetRestored: R.cleanup?.idSetRestored, rostersReadable: R.cleanup?.rostersReadable, pass: R.verdict_pass }));
   process.exit(R.verdict_pass ? 0 : 1);
 }

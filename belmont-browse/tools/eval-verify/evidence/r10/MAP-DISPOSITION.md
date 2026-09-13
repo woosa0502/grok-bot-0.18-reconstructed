@@ -1,41 +1,41 @@
-# Map-row disposition (GPT P1-3) — verify OR explicit scope-out; UNKNOWN/unrun NOT counted complete
+# Map-row disposition (GPT P1-3, round-2) — three SEPARATE buckets, never merged
 
-GPT's rule: each untested map row must be dispositioned as **VERIFIED** (implemented + a real test PASS) or an
-**explicit SCOPE-OUT** (with a reason); an UNKNOWN or unrun row must NOT be counted as complete. Below, rows are
-classified honestly. "OPEN" rows are named as still-open (a next step given), never quietly marked done.
+Per GPT's correction, VERIFIED, EXCLUDED-FROM-THIS-BATCH, and OPEN/BLOCKED are kept as **separate** buckets and
+NOT summed into one "complete" count. An UNKNOWN/unrun row is never counted complete. OFFLINE test coverage is
+distinguished from LIVE evidence.
 
-## VERIFIED (real test PASS)
-| Row | Topic | Evidence |
-|-----|-------|----------|
-| L15 | gateway/daemon auth + Origin guard | r10 hardened matrix PASS — ev-l15-{origin-guard,bad-bearer,daemon-for-chrome}.json (every browser Origin→403, roster 14→14; auth-ON wrong→401 AND right→200; for-chrome web-origin→403 FORBIDDEN, no-Origin reached) |
-| L26 | canonical memory authority (POSITIVE) | r10 PASS — ev-l26-canonical-{context-authority,reject-control-field,reject-malformed}.json (belmont mode: /memory/context 200; UNTRUSTED_MEMORY_CONTROL_FIELD; INVALID_BELMONT_MEMORY_CONTEXT) |
-| L12/L27 | eval-isolation + sites-overlay secret battery | OFFLINE bwrap/fs test battery (belmont-browse/test/{bwrap-eval-isolation,eval-isolation,sites-overlay-contract,memory-search-sites-overlay}.test.mjs), wired in verify-eval-isolation.sh; live G2-document-read probe in the LIVE recipe |
-| L16 (idempotency half) | createAgent idempotency | r8 ev-bot-group-discuss.json — same clientNonce returns the same agent, no duplicate |
-| L13 | full approval flow (approve/deny/cancel) | r10 ev-l13-approval-flow.json — see the L13 batch (no side-effect before any decision; approve→external read result appears; deny/cancel→never appears) |
+## Bucket A — VERIFIED (a real test PASS this program)
+| Row | Kind | Evidence |
+|-----|------|----------|
+| L15 | LIVE | r10 ev-l15-* — every browser Origin→403, roster 14→14 (readable both sides); auth-ON wrong→401 AND right→200; for-chrome web-origin→403 FORBIDDEN, no-Origin reached (404, a control observation — not a mutation-success claim) |
+| L26 | LIVE | r10 ev-l26-canonical-* — authorityMode=belmont; /memory/context 200; UNTRUSTED_MEMORY_CONTROL_FIELD; INVALID_BELMONT_MEMORY_CONTEXT. NOTE: the two rejections are HTTP **500** (validation-error refusal), not a 4xx contract; the canonical tally always also checks authorityMode. |
+| L12/L27 | **OFFLINE** | belmont-browse/test/{bwrap-eval-isolation,eval-isolation,sites-overlay-contract,memory-search-sites-overlay}.test.mjs (real bwrap/fs), wired in verify-eval-isolation.sh. LIVE G2-document-read remains a separate LIVE line in the recipe (not asserted here). |
+| L16 (idempotency only) | LIVE | r8 ev-bot-group-discuss — same clientNonce returns the same agent (durable-accept is a SEPARATE OPEN row below) |
+| L13 | LIVE | r10 ev-l13-approval-flow — allow→effect; VALID deny ({verdict:"deny",always:false})→no effect; invalid-decision ({verdict bogus})→400 fail-closed, suspension kept; cancel→stopped, no effect. Verdict gates decision-status + observation-read success. |
+| recovery (L19 supervised + orphan-adopt) | LIVE | r10 ev-recovery-* — per-stage (pid,startTicks)+termination; supervised reap via pidfd; orphan-adopt same-instance (owner names the SPAWNED serve2); mis-kill control preserved |
+| bot delegated-creation | LIVE | r10 ev-bot-autonomous-createagent — a bot given only NL performs a successful CREATION when delegated (strong INDIRECT causal evidence; NOT an exclusive tool-call proof — the createAgent wrapper frame is a communicateUpdateToolCall not exposed by the gateway transcript RPCs) + ID-set-exact cleanup from readable rosters |
 
-(Also closed outside this row list: L19 chrome-orphan closure + recovery re-verify (r10 supervised + orphan-adopt
-traces), and a bot AUTONOMOUSLY creating a bot (r10 ev-bot-autonomous-createagent.json).)
+## Bucket B — EXCLUDED FROM THIS BATCH (not counted as product-complete)
+| Row | Status | Reason |
+|-----|--------|--------|
+| Telegram | EXCLUDED — unimplemented | No product adapter in the reconstruction (channels manifest has Discord+Slack coming-soon, no Telegram). A backlog/implementation item, not a completed feature. |
+| Autopost | EXCLUDED — unimplemented | No publisher/job-store/receipt/dedup. Backlog item, not complete. |
+| L41 (PWA send-ledger) | EXCLUDED — not run this batch | The NEW PWA blocks unpaired requests (401 pairing required), but an ISOLATED test path EXISTS: grok-mobile-belmont-pwa/server.mjs:1048-1110 (GROK_MOBILE_SKIP_PAIRING skipPairing + preview identity), documented at design-pwa-send-ledger.mjs:12-16. Not run here to avoid changing the paired environment; a real paired-device acceptance test is separate. Correction of the earlier claim: it is testable in isolation, not "untestable without real pairing". |
+| L42 (PWA file-path policy) | EXCLUDED (batch) + OPEN gap | Same isolated preview path applies. AND R8's recorded finding stands: the NEW PWA /api/filesystem has no sensitive-file deny-list (in-root secrets servable behind pairing). Scope-out does NOT resolve it — it remains an OPEN fix-or-explicit-risk-acceptance item. |
+| L37 (vault/secrets) | BLOCKED — needs credentials/paired fixture | Installation-key/ECDH/secure-storage code is present, but the live vault path needs real credentials/a paired fixture. Not "verified"; BLOCKED, not complete. |
 
-## SCOPE-OUT (explicit, with reason)
-| Row | Decision | Reason |
-|-----|----------|--------|
-| Telegram adapter | SCOPE-OUT (not implemented) | CONFIRMED ABSENT in the reconstruction (source/shared/channels.ts has Discord+Slack only; no product send/receive/auth adapter). Cannot be live-tested; would require implementing the adapter. Not a PASS. |
-| Autopost pipeline | SCOPE-OUT (not implemented) | CONFIRMED ABSENT (no publisher adapter / job store / receipt / dedup). Cannot be live-tested; would require implementation. Not a PASS. |
-| L41 | SCOPE-OUT (pairing-gated) | The NEW PWA `/api` requires device pairing (returns "pairing required" unpaired); the send-ledger cannot be exercised without real device pairing. Driver design-pwa-send-ledger.mjs exists but is unrunnable here. |
-| L42 | SCOPE-OUT (pairing-gated) + recorded gap | PWA file-path policy is behind device pairing. R8 recorded a real finding: the NEW PWA `/api/filesystem` has no sensitive-file deny-list (in-root secrets servable) — a paired-user defense-in-depth gap (OLD PWA has a deny-list at belmont-adapter.mjs:40-45). Recommendation: add a deny-list. Not a fabricated PASS. |
-| L37 | SCOPE-OUT (pairing/crypto-gated) | Vault/secrets is device-pairing + installation crypto (linux-installation.mjs ecdh/signing; session.mjs vault restore). Not safely live-testable without real device credentials/pairing; code is present but the live path needs a paired device. |
-
-## OPEN — NOT counted complete (named, with next step)
+## Bucket C — OPEN (named, NOT counted complete, next step given)
 | Row | State | Next step |
 |-----|-------|-----------|
-| L02 | PARTIAL | Browser lifecycle (browser-lifecycle-chrome/mini-cdp, browser-alive) + numeric-fill-parity are tested OFFLINE; the full LIVE fill/click/read/scroll tool matrix has not been run end-to-end. Next: a live browser-tool-matrix driver, or explicitly scope to the tested subset. |
-| L10 | PARTIAL | The bwrap isolation SUBSTRATE is tested (bwrap-eval-isolation/eval-isolation); a dedicated subagent-isolation live assertion (a subagent cannot read the parent's isolated state/secrets) has not been run. Next: a live subagent-isolation driver. |
-| L16 (durable-accept half) | PARTIAL | Idempotency is verified; the durable-accept queue (an accepted request survives a serve restart) has not been separately tested. Next: a restart-survival driver. |
-| L38 | PARTIAL | Bundle-SHA integrity is verified (core.mjs bundleSha256 in eval-isolation); the ATTACHMENT sha/dedup path has not been separately live-tested. Next: an attachment upload/dedup driver. |
-| L46–L50 | BLOCKED-UNDEFINED | No topic definition for these codes exists in the available repo map (r8/r9 list the range without topics). Cannot disposition without the source GPT-6 Pro plan's L-code table. Flag for the plan owner to supply the topics; do NOT count as complete. |
+| L02 | OPEN (partial) | Lifecycle + numeric-fill tested OFFLINE; the full LIVE fill/click/read/scroll tool matrix is not run. Next: a live browser-tool-matrix driver, or explicitly scope to the tested subset. |
+| L10 | OPEN (partial) | bwrap isolation SUBSTRATE tested OFFLINE; a dedicated LIVE subagent-isolation assertion (a subagent cannot read the parent's isolated state/secrets) is not run. |
+| L16 (durable-accept) | OPEN (partial) | Idempotency verified; an accepted request surviving a serve restart is not tested. Next: a restart-survival driver. |
+| L38 | OPEN (partial) | Bundle-SHA integrity verified; the ATTACHMENT sha/dedup path is not separately tested. Next: an attachment upload/dedup driver. |
+| L46–L50 | BLOCKED-UNDEFINED | No topic definition in the repo map; needs the source plan's L-code table. Do NOT count as complete. |
 
-## Summary
-Complete (VERIFIED or explicit SCOPE-OUT): L15, L26, L12/L27, L16(idempotency), L13, Telegram, autopost, L41,
-L42, L37. Still OPEN (not counted complete): L02 (full matrix), L10 (dedicated), L16(durable-accept), L38
-(attachment dedup), and L46–50 (undefined topics — needs the source plan). This is the honest disposition; the
-OPEN rows are the remaining live-verification backlog, each with a defined next step, none marked done.
+## Summary (buckets kept separate)
+- VERIFIED: L15, L26, L12/L27 (offline), L16(idempotency), L13, recovery, bot delegated-creation.
+- EXCLUDED/BLOCKED (not product-complete): Telegram, autopost, L41, L42(+open gap), L37.
+- OPEN: L02 (full matrix), L10 (dedicated), L16 (durable-accept), L38 (attachment dedup), L46-50 (undefined).
+The three buckets are NOT summed into a single "complete" figure. The live-verification backlog is Bucket C plus
+the L42 filesystem deny-list gap and the paired-device acceptance tests for L41/L42/L37.

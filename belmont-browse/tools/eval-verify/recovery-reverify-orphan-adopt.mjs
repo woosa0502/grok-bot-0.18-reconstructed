@@ -39,6 +39,14 @@ const serveArgs = ["--port", "9360", "--engine", "909", "--transport", "port", "
 const trace = { case: "recovery-orphan-adopt", at: new Date().toISOString(), stages: [] };
 const rec = (name, data) => { trace.stages.push({ stage: name, t: new Date().toISOString(), ...data }); console.error(`[stage] ${name}`, JSON.stringify(data)); };
 const startServe = () => spawn(NODE, [SERVE, ...serveArgs], { env, stdio: ["ignore", "ignore", "ignore"], detached: false });
+// Safety: instance-bound cleanup only — never a group-number signal; only kill a pid whose startTicks still match
+// (prefer a ChildProcess handle). Narrows (does not fully close) the check->signal race; product uses pidfd.
+function safeKill(pid, expectedTicks, child) {
+  if (child && Number.isSafeInteger(child.pid) && child.pid === pid) { try { child.kill("SIGKILL"); } catch {} return; }
+  if (!alive(pid)) return;
+  if (Number.isSafeInteger(expectedTicks) && startTicks(pid) !== expectedTicks) return;
+  try { process.kill(pid, "SIGKILL"); } catch {}
+}
 async function waitReady(ms = 90000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { const h = await health(); if (h.ready === true) return h; await sleep(500); } return await health(); }
 
 const control = spawn("sleep", ["600"], { detached: true, stdio: "ignore" }); control.unref();
@@ -46,46 +54,52 @@ await sleep(150); const controlPid = control.pid, controlTicks = startTicks(cont
 rec("control-started", { controlPid, controlTicks });
 try { fs.rmSync(SERVE_JSON, { force: true }); } catch {} try { fs.rmSync(OWNER, { force: true }); } catch {}
 
-// serve1 (direct)
-const s1 = startServe();
+// serve1 (direct). The SPAWNED pid (s1.pid) is the authoritative serve identity; assert serve.json matches it.
+const s1 = startServe(); const s1Pid = s1.pid;
 const h1 = await waitReady();
 const o1 = ownerNow(); const chromePid = o1?.chromePid ?? h1.chromePid; const chromeTicks = o1?.startTicks ?? (chromePid ? startTicks(chromePid) : null);
-rec("serve1-ready", { serve1Pid: readJson(SERVE_JSON)?.pid, ready: h1.ready, owner: o1, chromePid, chromeTicks, chromeAlive: alive(chromePid) });
+const serve1JsonPid = readJson(SERVE_JSON)?.pid;
+rec("serve1-ready", { s1SpawnedPid: s1Pid, serve1JsonPid, jsonMatchesSpawned: serve1JsonPid === s1Pid, ready: h1.ready, owner: o1, chromePid, chromeTicks, chromeAlive: alive(chromePid) });
 if (h1.ready !== true || !Number.isSafeInteger(chromePid)) { rec("ABORT", { reason: "serve1 not ready" }); try { s1.kill("SIGKILL"); } catch {} try { control.kill("SIGKILL"); } catch {}
   fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(trace, null, 2)); process.exit(2); }
 
-// CRASH serve1 with no supervisor -> chrome is orphaned (survives)
-const serve1Pid = readJson(SERVE_JSON)?.pid;
-try { process.kill(serve1Pid, "SIGKILL"); } catch {}
-await sleep(2000);
-rec("after-serve1-crash", { serve1Alive: alive(serve1Pid), chromeAlive: alive(chromePid), chromeTicksMatch: startTicks(chromePid) === chromeTicks, ownerStillNamesDeadServe1: ownerNow()?.servePid === serve1Pid, orphanSurvived: alive(chromePid) });
+// CRASH serve1 with no supervisor -> chrome is orphaned (survives). Kill the SPAWNED pid and REQUIRE it died.
+try { process.kill(s1Pid, "SIGKILL"); } catch {}
+let sw = 0; while (alive(s1Pid) && sw < 8000) { await sleep(200); sw += 200; }
+await sleep(1500);
+const serve1Died = !alive(s1Pid);
+rec("after-serve1-crash", { s1SpawnedPid: s1Pid, serve1Died, chromeAlive: alive(chromePid), chromeTicksMatch: startTicks(chromePid) === chromeTicks, ownerStillNamesDeadServe1: ownerNow()?.servePid === s1Pid, orphanSurvived: serve1Died && alive(chromePid) });
 
-// serve2 (direct) -> must ADOPT the same chrome instance
-const s2 = startServe();
+// serve2 (direct) -> must ADOPT the same chrome instance; owner must name the SPAWNED serve2 pid.
+const s2 = startServe(); const s2Pid = s2.pid;
 const h2 = await waitReady();
-const o2 = ownerNow();
-rec("serve2-adopt", { serve2Pid: readJson(SERVE_JSON)?.pid, ready: h2.ready, owner: o2,
+const o2 = ownerNow(); const serve2JsonPid = readJson(SERVE_JSON)?.pid;
+rec("serve2-adopt", { s2SpawnedPid: s2Pid, serve2JsonPid, jsonMatchesSpawned: serve2JsonPid === s2Pid, ready: h2.ready, owner: o2,
   adoptedSameChrome: o2?.chromePid === chromePid, sameStartTicks: o2?.startTicks === chromeTicks,
-  ownerNowServe2: o2?.servePid === readJson(SERVE_JSON)?.pid, chromeAlive: alive(chromePid) });
+  ownerIsSpawnedServe2: o2?.servePid === s2Pid, chromeAlive: alive(chromePid) });
 
 // normal stop serve2 -> in-process reaper reaps the adopted chrome
-const serve2Pid = readJson(SERVE_JSON)?.pid;
-try { process.kill(serve2Pid, "SIGTERM"); } catch {}
-let waited = 0; while (alive(serve2Pid) && waited < 20000) { await sleep(250); waited += 250; }
+try { process.kill(s2Pid, "SIGTERM"); } catch {}
+let waited = 0; while (alive(s2Pid) && waited < 20000) { await sleep(250); waited += 250; }
 await sleep(1500);
-rec("after-serve2-stop", { serve2Alive: alive(serve2Pid), chromeAlive: alive(chromePid), chromeReaped: !alive(chromePid), controlAlive: alive(controlPid), controlUntouched: alive(controlPid) && startTicks(controlPid) === controlTicks });
+rec("after-serve2-stop", { s2SpawnedPid: s2Pid, serve2Alive: alive(s2Pid), chromeAlive: alive(chromePid), chromeReaped: !alive(chromePid), controlAlive: alive(controlPid), controlUntouched: alive(controlPid) && startTicks(controlPid) === controlTicks });
 
-const orphanSurvived = trace.stages.find((s) => s.stage === "after-serve1-crash")?.orphanSurvived === true;
+const crash = trace.stages.find((s) => s.stage === "after-serve1-crash");
 const adopted = trace.stages.find((s) => s.stage === "serve2-adopt");
+const crashKilledServe1 = crash?.serve1Died === true;               // the crash actually killed serve1
+const orphanSurvived = crash?.orphanSurvived === true;             // and chrome survived it
 const adoptedSame = adopted?.adoptedSameChrome === true && adopted?.sameStartTicks === true;
+const ownerIsSpawnedServe2 = adopted?.ownerIsSpawnedServe2 === true; // owner names the SPAWNED serve2, not a stale/parallel serve
 const reaped = !alive(chromePid);
 const controlUntouched = alive(controlPid) && startTicks(controlPid) === controlTicks;
-trace.verdict = { orphanSurvived, adoptedSameInstance: adoptedSame, reapedOnStop: reaped, controlUntouched };
-trace.result = (orphanSurvived && adoptedSame && reaped && controlUntouched) ? "PASS" : "FAIL";
+trace.verdict = { serve1Died: crashKilledServe1, orphanSurvived, adoptedSameInstance: adoptedSame, ownerIsSpawnedServe2, reapedOnStop: reaped, controlUntouched };
+trace.result = Object.values(trace.verdict).every(Boolean) ? "PASS" : "FAIL";
 
-// cleanup
-try { control.kill("SIGKILL"); } catch {}
-for (const p of [serve1Pid, serve2Pid, chromePid]) { if (alive(p)) { try { process.kill(-p, "SIGKILL"); } catch {} try { process.kill(p, "SIGKILL"); } catch {} } }
+// cleanup — instance-bound, no group-number signal
+safeKill(controlPid, controlTicks, control);
+safeKill(s1Pid, null, s1);
+safeKill(s2Pid, null, s2);
+safeKill(chromePid, chromeTicks);
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, JSON.stringify(trace, null, 2));
 console.log("RESULT:", trace.result, "-> traces:", OUT);
