@@ -25,6 +25,9 @@ echo "== OFFLINE: unit + integration tests (real bwrap, real temp fs) =="
 echo "== OFFLINE: chrome-orphan supervisor closure (DEF-L19-CHROME-ORPHAN-001; real fork+pidfd, no live stack) =="
 python3 belmont-browse/tools/test-chrome-supervisor.py
 
+echo "== OFFLINE: chrome adopt-path registration (REAL ensureChrome() producer, stub CDP; C-2) =="
+"$NODE" belmont-browse/tools/test-chrome-adopt-registration.mjs
+
 echo "== OFFLINE: eval-harness fail-closed self-tests (L19.PENDING + L15 graders; shared modules) =="
 "$NODE" belmont-browse/tools/eval-verify/evidence/r9-audit/test-pending-formula.mjs
 "$NODE" belmont-browse/tools/eval-verify/test-gateway-origin-auth.mjs
