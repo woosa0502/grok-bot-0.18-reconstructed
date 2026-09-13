@@ -23,15 +23,15 @@ const OWNER = path.join(PROFILE, ".belmont-chrome-owner.json");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function startTicks(pid) { try { const raw = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); return Number(raw.slice(raw.lastIndexOf(")") + 2).trim().split(/\s+/)[19]); } catch { return null; } }
 function alive(pid) { if (!Number.isSafeInteger(pid) || pid <= 1) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } }
-// Safety (whole-project review): cleanup must NOT raw-signal a pid/pgid that may have been reused. Only signal a
-// pid whose /proc startTicks STILL match the captured identity (instance-bound), and NEVER send a group signal
-// by number. This narrows — does not fully close, on unprivileged userspace — the check→signal race; the PRODUCT
-// reaper uses pidfd for the real guarantee. Prefer a ChildProcess handle when we have one.
-function safeKill(pid, expectedTicks, child) {
-  if (child && Number.isSafeInteger(child.pid) && child.pid === pid) { try { child.kill("SIGKILL"); } catch {} return; }
-  if (!alive(pid)) return;
-  if (Number.isSafeInteger(expectedTicks) && startTicks(pid) !== expectedTicks) return; // reused pid -> refuse to signal
-  try { process.kill(pid, "SIGKILL"); } catch {}
+// Safety (whole-project review round-2): cleanup signals ONLY through a pidfd bound to a verified instance
+// (safe-pidfd-kill.py: os.pidfd_open + signal.pidfd_send_signal, re-verifying startTicks across the open), never a
+// raw pid and never a group-number signal. Identity is REQUIRED — with no valid startTicks we REFUSE to signal
+// (no raw-PID fallback), closing the check->signal reuse race GPT flagged. This is the same kernel primitive the
+// product supervisor uses.
+const SAFE_KILL = path.join(REPO, "belmont-browse/tools/safe-pidfd-kill.py");
+function safeKill(pid, expectedTicks) {
+  if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(expectedTicks) || expectedTicks <= 0) return; // identity required
+  try { spawnSync("python3", [SAFE_KILL, String(pid), String(expectedTicks), "SIGKILL"], { stdio: "ignore" }); } catch {}
 }
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
 async function health() {
@@ -112,8 +112,8 @@ trace.verdict = { chromeReaped, controlUntouched, supExitClean: supClean };
 trace.result = (chromeReaped && controlUntouched && supClean) ? "PASS" : "FAIL";
 trace.supervisorLog = supOut.slice(-2500);
 
-// cleanup: control (via its handle), and any lingering chrome (instance-bound; no group-number signal)
-safeKill(controlPid, controlTicks, control);
+// cleanup: instance-bound pidfd kill only (identity required; refuses on absence/mismatch — no raw-PID fallback)
+safeKill(controlPid, controlTicks);
 safeKill(chromePid, chromeTicks);
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });

@@ -108,9 +108,11 @@ Telegram/autopost) is dispositioned as VERIFIED (test PASS), explicit SCOPE-OUT 
 ## Round-2 harness hardening (from GPT's live-phase review)
 The new live drivers' verdicts and cleanups were hardened after GPT found gaps (the SUBMITTED successes still
 stand; these fix the drivers so they can't PASS on a failure path):
-- **recovery cleanup safety**: both drivers replaced raw `kill(-pid)/kill(pid)` with an instance-bound `safeKill`
-  (startTicks-gated, prefers the ChildProcess handle, no group-number signal) — narrows the check→signal reuse
-  race (the PRODUCT reaper uses pidfd for the real guarantee).
+- **recovery cleanup safety (round-3, pidfd)**: both drivers' cleanup now signals ONLY through
+  `belmont-browse/tools/safe-pidfd-kill.py` — an `os.pidfd_open` + `signal.pidfd_send_signal` helper that
+  re-verifies /proc startTicks across the open and REFUSES to signal when identity is absent or mismatched (no
+  raw-PID and no group-number fallback). This closes the check→signal reuse race (the same kernel primitive the
+  product supervisor uses), replacing the earlier startTicks-then-`process.kill` path GPT flagged.
 - **orphan-adopt verdict**: now requires serve1 actually died, the owner names the SPAWNED serve2 pid
   (jsonMatchesSpawned + ownerIsSpawnedServe2), and gates every stage in the final result.
 - **bot cleanup**: idSetRestored now requires GENUINELY-READABLE baseline AND final rosters (an HTTP error can no

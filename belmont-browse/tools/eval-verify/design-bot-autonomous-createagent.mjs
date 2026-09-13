@@ -1,12 +1,15 @@
-// LIVE test — a BOT AUTONOMOUSLY calls the createAgent TOOL (not the harness calling the gateway API).
-// GPT's P1-2 requirement: link the bot's createAgent tool-call trace to the creation result, and verify cleanup
-// by exact roster ID-SET restoration + no leftover group (not just a count). The product exposes createAgent as
-// a model-facing turn tool (source/host/runner/tools/sand-agent-management-tools.ts:92,202; registered in
-// turn-toolset.ts:1367) and records it in the transcript as `createAgentToolCall` (agent_pb.ts field 76).
+// LIVE test — a BOT creates another bot when DELEGATED (the harness never calls the createAgent gateway API for
+// the child). GPT's P1-2, claim NARROWED (round-2): this proves delegated-creation SUCCESS as strong INDIRECT
+// causal evidence, NOT an exclusive tool-call proof. The product exposes createAgent as a model-facing turn tool
+// (source/host/runner/tools/sand-agent-management-tools.ts:92,202; registered in turn-toolset.ts:1367), wrapped
+// by defineCommunicateTool — so its trace is a `communicateUpdateToolCall` (args.currentStep
+// {"__sand_tool__":true,"tool":"CreateAgent",...}; communicate-tool.ts:19-31,124-165, agent-messaging.ts:7), NOT
+// a literal `createAgentToolCall`. That wrapper frame is not exposed by the gateway transcript RPCs, so it is not
+// captured here (see R.delegatedCreation.literalToolCallFrameCaptured=false).
 //
-// Flow: create a MAKER agent -> sendPrompt telling it to create a child agent via its createAgent tool ->
-// poll the MAKER's transcript for a createAgent tool-call -> confirm the child appears in the roster and its id
-// matches the tool-call result -> delete maker+child -> assert the roster ID-set equals the pre-test baseline.
+// Flow: create a MAKER agent -> sendPrompt telling it to create a child (name carries a maker-only nonce) via its
+// createAgent tool -> the child appears in the roster (only the maker could have made it) -> delete maker+child ->
+// assert the roster ID-set equals the pre-test baseline, from GENUINELY-READABLE rosters (not an HTTP-error []).
 import fs from "node:fs";
 import path from "node:path";
 const REPO = process.env.BELMONT_REPO || process.cwd();

@@ -1,10 +1,10 @@
 {
   "case": "l13-approval-flow",
-  "at": "2026-09-13T07:25:28.505Z",
+  "at": "2026-09-13T07:57:57.379Z",
   "secretMarker": "WSL-CODEX",
   "scenarios": {
     "approve": {
-      "id": "5ce471699f5d416790496",
+      "id": "4248ddd4e86d4eb0a454b",
       "kind": "approve",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -14,13 +14,14 @@
       },
       "decisionStatus": 200,
       "beforeRead": true,
+      "beforeSuspended": true,
       "beforePresent": false,
-      "contentsAppeared": true,
-      "observationRead": true,
+      "everPresent": true,
+      "allReadsOk": true,
       "finalStatus": "running"
     },
     "deny": {
-      "id": "e090cd242d1d4330afa1f",
+      "id": "019e4f9aa1f344b69749d",
       "kind": "deny",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -30,13 +31,14 @@
       },
       "decisionStatus": 200,
       "beforeRead": true,
+      "beforeSuspended": true,
       "beforePresent": false,
-      "contentsAppeared": false,
-      "observationRead": true,
+      "everPresent": false,
+      "allReadsOk": true,
       "finalStatus": "done"
     },
     "invalid": {
-      "id": "7f291fca9a754aaf919d1",
+      "id": "b5affee5b90a4784972f3",
       "kind": "invalid",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -46,13 +48,14 @@
       },
       "decisionStatus": 400,
       "beforeRead": true,
+      "beforeSuspended": true,
       "beforePresent": false,
-      "contentsAppeared": false,
-      "observationRead": true,
+      "everPresent": false,
+      "allReadsOk": true,
       "finalStatus": "suspended"
     },
     "cancel": {
-      "id": "2dbf6ad256684d84b0a5c",
+      "id": "48568719d13844f2a8c9c",
       "kind": "cancel",
       "suspendedOnApproval": true,
       "suspensionScope": {
@@ -62,9 +65,10 @@
       },
       "decisionStatus": 200,
       "beforeRead": true,
+      "beforeSuspended": true,
       "beforePresent": false,
-      "contentsAppeared": false,
-      "observationRead": true,
+      "everPresent": false,
+      "allReadsOk": true,
       "finalStatus": "stopped"
     }
   },

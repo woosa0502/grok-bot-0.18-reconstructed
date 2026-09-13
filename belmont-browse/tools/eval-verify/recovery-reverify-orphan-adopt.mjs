@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const REPO = "/home/hoon/_roots/labs/work/Belmont";
 const OUT = process.argv[2] || path.join(REPO, "belmont-browse/tools/eval-verify/evidence/r10/ev-recovery-orphan-adopt.json");
@@ -39,13 +39,13 @@ const serveArgs = ["--port", "9360", "--engine", "909", "--transport", "port", "
 const trace = { case: "recovery-orphan-adopt", at: new Date().toISOString(), stages: [] };
 const rec = (name, data) => { trace.stages.push({ stage: name, t: new Date().toISOString(), ...data }); console.error(`[stage] ${name}`, JSON.stringify(data)); };
 const startServe = () => spawn(NODE, [SERVE, ...serveArgs], { env, stdio: ["ignore", "ignore", "ignore"], detached: false });
-// Safety: instance-bound cleanup only — never a group-number signal; only kill a pid whose startTicks still match
-// (prefer a ChildProcess handle). Narrows (does not fully close) the check->signal race; product uses pidfd.
-function safeKill(pid, expectedTicks, child) {
-  if (child && Number.isSafeInteger(child.pid) && child.pid === pid) { try { child.kill("SIGKILL"); } catch {} return; }
-  if (!alive(pid)) return;
-  if (Number.isSafeInteger(expectedTicks) && startTicks(pid) !== expectedTicks) return;
-  try { process.kill(pid, "SIGKILL"); } catch {}
+// Safety (round-2): cleanup signals ONLY through a pidfd bound to a verified instance (safe-pidfd-kill.py),
+// never a raw pid, never a group-number signal. Identity REQUIRED — no valid startTicks => REFUSE (no raw-PID
+// fallback). Closes the check->signal reuse race; same kernel primitive as the product supervisor.
+const SAFE_KILL = path.join(REPO, "belmont-browse/tools/safe-pidfd-kill.py");
+function safeKill(pid, expectedTicks) {
+  if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(expectedTicks) || expectedTicks <= 0) return;
+  try { spawnSync("python3", [SAFE_KILL, String(pid), String(expectedTicks), "SIGKILL"], { stdio: "ignore" }); } catch {}
 }
 async function waitReady(ms = 90000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { const h = await health(); if (h.ready === true) return h; await sleep(500); } return await health(); }
 
@@ -57,9 +57,11 @@ try { fs.rmSync(SERVE_JSON, { force: true }); } catch {} try { fs.rmSync(OWNER, 
 // serve1 (direct). The SPAWNED pid (s1.pid) is the authoritative serve identity; assert serve.json matches it.
 const s1 = startServe(); const s1Pid = s1.pid;
 const h1 = await waitReady();
+const s1Ticks = startTicks(s1Pid);
 const o1 = ownerNow(); const chromePid = o1?.chromePid ?? h1.chromePid; const chromeTicks = o1?.startTicks ?? (chromePid ? startTicks(chromePid) : null);
 const serve1JsonPid = readJson(SERVE_JSON)?.pid;
-rec("serve1-ready", { s1SpawnedPid: s1Pid, serve1JsonPid, jsonMatchesSpawned: serve1JsonPid === s1Pid, ready: h1.ready, owner: o1, chromePid, chromeTicks, chromeAlive: alive(chromePid) });
+const serve1JsonMatches = serve1JsonPid === s1Pid;
+rec("serve1-ready", { s1SpawnedPid: s1Pid, serve1JsonPid, jsonMatchesSpawned: serve1JsonMatches, s1Ticks, ready: h1.ready, owner: o1, chromePid, chromeTicks, chromeAlive: alive(chromePid) });
 if (h1.ready !== true || !Number.isSafeInteger(chromePid)) { rec("ABORT", { reason: "serve1 not ready" }); try { s1.kill("SIGKILL"); } catch {} try { control.kill("SIGKILL"); } catch {}
   fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(trace, null, 2)); process.exit(2); }
 
@@ -73,8 +75,9 @@ rec("after-serve1-crash", { s1SpawnedPid: s1Pid, serve1Died, chromeAlive: alive(
 // serve2 (direct) -> must ADOPT the same chrome instance; owner must name the SPAWNED serve2 pid.
 const s2 = startServe(); const s2Pid = s2.pid;
 const h2 = await waitReady();
+const s2Ticks = startTicks(s2Pid);
 const o2 = ownerNow(); const serve2JsonPid = readJson(SERVE_JSON)?.pid;
-rec("serve2-adopt", { s2SpawnedPid: s2Pid, serve2JsonPid, jsonMatchesSpawned: serve2JsonPid === s2Pid, ready: h2.ready, owner: o2,
+rec("serve2-adopt", { s2SpawnedPid: s2Pid, serve2JsonPid, jsonMatchesSpawned: serve2JsonPid === s2Pid, serve2Ready: h2.ready === true, owner: o2,
   adoptedSameChrome: o2?.chromePid === chromePid, sameStartTicks: o2?.startTicks === chromeTicks,
   ownerIsSpawnedServe2: o2?.servePid === s2Pid, chromeAlive: alive(chromePid) });
 
@@ -84,21 +87,32 @@ let waited = 0; while (alive(s2Pid) && waited < 20000) { await sleep(250); waite
 await sleep(1500);
 rec("after-serve2-stop", { s2SpawnedPid: s2Pid, serve2Alive: alive(s2Pid), chromeAlive: alive(chromePid), chromeReaped: !alive(chromePid), controlAlive: alive(controlPid), controlUntouched: alive(controlPid) && startTicks(controlPid) === controlTicks });
 
+const ready1 = trace.stages.find((s) => s.stage === "serve1-ready");
 const crash = trace.stages.find((s) => s.stage === "after-serve1-crash");
 const adopted = trace.stages.find((s) => s.stage === "serve2-adopt");
-const crashKilledServe1 = crash?.serve1Died === true;               // the crash actually killed serve1
-const orphanSurvived = crash?.orphanSurvived === true;             // and chrome survived it
-const adoptedSame = adopted?.adoptedSameChrome === true && adopted?.sameStartTicks === true;
-const ownerIsSpawnedServe2 = adopted?.ownerIsSpawnedServe2 === true; // owner names the SPAWNED serve2, not a stale/parallel serve
-const reaped = !alive(chromePid);
-const controlUntouched = alive(controlPid) && startTicks(controlPid) === controlTicks;
-trace.verdict = { serve1Died: crashKilledServe1, orphanSurvived, adoptedSameInstance: adoptedSame, ownerIsSpawnedServe2, reapedOnStop: reaped, controlUntouched };
+const stop = trace.stages.find((s) => s.stage === "after-serve2-stop");
+// EVERY recorded stage condition is now gated in the final verdict (round-2: jsonMatchesSpawned, serve2 ready,
+// chromeTicksMatch after crash, ownerStillNamesDeadServe1, and serve2Alive===false after stop).
+trace.verdict = {
+  serve1JsonMatchesSpawned: ready1?.jsonMatchesSpawned === true,
+  serve1Died: crash?.serve1Died === true,
+  chromeTicksMatchAfterCrash: crash?.chromeTicksMatch === true,
+  ownerStillNamesDeadServe1: crash?.ownerStillNamesDeadServe1 === true,
+  orphanSurvived: crash?.orphanSurvived === true,
+  serve2JsonMatchesSpawned: adopted?.jsonMatchesSpawned === true,
+  serve2Ready: adopted?.serve2Ready === true,
+  adoptedSameInstance: adopted?.adoptedSameChrome === true && adopted?.sameStartTicks === true,
+  ownerIsSpawnedServe2: adopted?.ownerIsSpawnedServe2 === true,
+  serve2StoppedCleanly: stop?.serve2Alive === false,
+  reapedOnStop: !alive(chromePid),
+  controlUntouched: alive(controlPid) && startTicks(controlPid) === controlTicks,
+};
 trace.result = Object.values(trace.verdict).every(Boolean) ? "PASS" : "FAIL";
 
-// cleanup — instance-bound, no group-number signal
-safeKill(controlPid, controlTicks, control);
-safeKill(s1Pid, null, s1);
-safeKill(s2Pid, null, s2);
+// cleanup — instance-bound pidfd kill only (identity required; refuses on absence/mismatch, no raw-PID fallback)
+safeKill(controlPid, controlTicks);
+safeKill(s1Pid, s1Ticks);
+safeKill(s2Pid, s2Ticks);
 safeKill(chromePid, chromeTicks);
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, JSON.stringify(trace, null, 2));
