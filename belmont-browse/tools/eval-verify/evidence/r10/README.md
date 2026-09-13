@@ -62,8 +62,20 @@ legacy MEMORY_AUTHORITY_MISMATCH refusal.
 These are the belmont-authority-specific codes (not the legacy mismatch), so they prove the canonical mode is
 active and enforcing, closing the R8 caveat that legacy-mode MISMATCH did not stand in for these paths.
 
+## `ev-l15-*.json` — L15 auth/Origin matrix (hardened driver) = PASS
+Driver `../../design-gateway-origin-auth.mjs` (now backed by the fail-closed graders in
+gateway-origin-auth-lib.mjs — no false-PASS paths), against the Host gateway (42611, auth-ON) + the serve's
+Aside daemon (21420).
+- **origin-guard** (`ev-l15-origin-guard.json`): every browser Origin → 403 (generic 403, pinned-aside-extension
+  403, localhost 403); roster 14→14 (rosterReadable=true, a real integer both sides). PASS.
+- **bad-bearer** (`ev-l15-bad-bearer.json`): gateway auth is ON — wrong Bearer → 401 AND correct Bearer → 200
+  (both proven; the hardened grader refuses to PASS on the wrong→401 check alone). PASS.
+- **daemon-for-chrome** (`ev-l15-daemon-for-chrome.json`): a web-origin mutation on /session/for-chrome/* → 403
+  FORBIDDEN ("Browser-side session changes are accepted only from the Aside extension or the browser itself");
+  the no-Origin request reached the daemon (404 for the bogus path, not guard-blocked); bothReached=true. PASS.
+
 ## What this closes vs. leaves open
 Closes GPT's P1-1 (recovery re-verified on the supported path with per-stage identity + termination traces,
 supervised vs orphan-adopt separated, each with a mis-kill control), the autonomous bot-creates-bot causal
-proof with ID-set-exact cleanup, and the L26 canonical POSITIVE paths. Still open in the live phase: L13 full
-approval flow, the L15 auth/Origin matrix, and map-row disposition.
+proof with ID-set-exact cleanup, the L26 canonical POSITIVE paths, and the L15 auth/Origin matrix (hardened).
+Still open in the live phase: L13 full approval flow, and map-row disposition.
