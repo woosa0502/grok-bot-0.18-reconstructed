@@ -32,9 +32,11 @@ function alive(pid) { if (!Number.isSafeInteger(pid) || pid <= 1) return false; 
 // (GPT round-3: unify every termination path; no raw-PID fallback). Identity REQUIRED: no valid startTicks =>
 // REFUSE (never a numeric-PID substitute signal).
 const SAFE_KILL = path.join(REPO, "belmont-browse/tools/safe-pidfd-kill.py");
+const SIGNALLED = 0, REFUSED = 3, ERROR = 4;   // exit codes from safe-pidfd-kill.py (10 = ALREADY_GONE)
+// Returns the helper's result CODE so callers distinguish a delivered signal (SIGNALLED) from a no-op.
 function safeKill(pid, expectedTicks, sig = "SIGKILL") {
-  if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(expectedTicks) || expectedTicks <= 0) return false; // identity required
-  try { const r = spawnSync("python3", [SAFE_KILL, String(pid), String(expectedTicks), sig], { stdio: "ignore" }); return r.status === 0; } catch { return false; }
+  if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(expectedTicks) || expectedTicks <= 0) return REFUSED; // identity required
+  try { const r = spawnSync("python3", [SAFE_KILL, String(pid), String(expectedTicks), sig], { stdio: "ignore" }); return Number.isInteger(r.status) ? r.status : ERROR; } catch { return ERROR; }
 }
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
 async function health() {
@@ -72,16 +74,20 @@ const sup = spawn("python3", [SUP, PROFILE, "--", NODE, SERVE, ...serveArgs], { 
 let supOut = ""; sup.stdout.on("data", (d) => { supOut += d; }); sup.stderr.on("data", (d) => { supOut += d; });
 let supExit = null; sup.on("exit", (code, sig) => { supExit = { code, sig }; });
 
-// wait for serve ready (serve.json + /health ready:true), up to 90s
+// Capture the serve's identity at the FIRST serve.json sighting (earliest the harness can observe a non-child
+// process), BEFORE the ready-wait completes — so a die+reuse during a long wait can't make us adopt a reused
+// PID's ticks (GPT round-4). The residual (<= one 100ms poll between serve.json write and our read) is inherent
+// to observing a non-child process via serve.json; the serve is alive and just announced itself in that window.
+let servePid0 = null, serveTicks = null;
+for (let i = 0; i < 600 && servePid0 === null; i++) { const sp = readJson(SERVE_JSON)?.pid; if (Number.isSafeInteger(sp)) { servePid0 = sp; serveTicks = startTicks(sp); break; } await sleep(100); }
+// then wait for /health ready:true
 let ready = false;
-for (let i = 0; i < 180 && !ready; i++) { await sleep(500); const h = await health(); if (h.ready === true) { ready = true; break; } }
+for (let i = 0; i < 180 && !ready; i++) { const h = await health(); if (h.ready === true) { ready = true; break; } await sleep(500); }
 const h0 = await health();
 const o0 = ownerNow();
 const chromePid = o0?.chromePid ?? h0.chromePid;
 const chromeTicks = o0?.startTicks ?? (chromePid ? startTicks(chromePid) : null);
-const servePid0 = readJson(SERVE_JSON)?.pid;
-const serveTicks = Number.isSafeInteger(servePid0) ? startTicks(servePid0) : null;   // identity for the crash signal
-rec("serve-ready", { ready, servePid: servePid0, serveTicks, health: h0, owner: o0, chromeAlive: alive(chromePid), chromeTicksLive: chromePid ? startTicks(chromePid) : null });
+rec("serve-ready", { ready, servePid: servePid0, serveTicks, serveJsonPidNow: readJson(SERVE_JSON)?.pid, health: h0, owner: o0, chromeAlive: alive(chromePid), chromeTicksLive: chromePid ? startTicks(chromePid) : null });
 
 if (!ready || !Number.isSafeInteger(chromePid)) {
   rec("ABORT", { reason: "serve did not become ready / no owned chrome", supTail: supOut.slice(-1500) });
@@ -95,8 +101,8 @@ if (!ready || !Number.isSafeInteger(chromePid)) {
 // closes). The crash signal is instance-bound via the pidfd helper, same as cleanup.
 const servePid = servePid0;
 rec("pre-crash", { servePid, serveTicks, chromePid, chromeTicks, chromeAlive: alive(chromePid), chromeTicksMatch: startTicks(chromePid) === chromeTicks });
-const crashed = safeKill(servePid, serveTicks, "SIGKILL");
-rec("serve-crash-signal", { crashed });
+const crashCode = safeKill(servePid, serveTicks, "SIGKILL");   // require an actually-delivered SIGNALLED result
+rec("serve-crash-signal", { code: crashCode, signalled: crashCode === SIGNALLED });
 
 // the supervisor (serve's parent) must regain control and reap the owned chrome, then exit
 let waited = 0; while (supExit === null && waited < 30000) { await sleep(250); waited += 250; }
@@ -111,12 +117,13 @@ rec("post-crash", {
   supMentionsReap: /reaping owned chrome instance|chrome exited on SIG/.test(supOut),
 });
 
-// verdict
+// verdict — the crash signal must have been actually DELIVERED (SIGNALLED), not a no-op helper exit
+const crashSig = trace.stages.find((s) => s.stage === "serve-crash-signal");
 const chromeReaped = !alive(chromePid);
 const controlUntouched = alive(controlPid) && startTicks(controlPid) === controlTicks;
 const supClean = supExit && supExit.code === 0;
-trace.verdict = { chromeReaped, controlUntouched, supExitClean: supClean };
-trace.result = (chromeReaped && controlUntouched && supClean) ? "PASS" : "FAIL";
+trace.verdict = { serveCrashSignalled: crashSig?.signalled === true, chromeReaped, controlUntouched, supExitClean: supClean };
+trace.result = Object.values(trace.verdict).every(Boolean) ? "PASS" : "FAIL";
 trace.supervisorLog = supOut.slice(-2500);
 
 // cleanup: instance-bound pidfd kill only (identity required; refuses on absence/mismatch — no raw-PID fallback)

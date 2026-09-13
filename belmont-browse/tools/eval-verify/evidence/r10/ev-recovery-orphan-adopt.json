@@ -1,40 +1,41 @@
 {
   "case": "recovery-orphan-adopt",
-  "at": "2026-09-13T08:44:35.015Z",
+  "at": "2026-09-13T09:19:22.091Z",
   "stages": [
     {
       "stage": "control-started",
-      "t": "2026-09-13T08:44:35.167Z",
-      "controlPid": 2139972,
-      "controlTicks": 28123899
+      "t": "2026-09-13T09:19:22.244Z",
+      "controlPid": 2172555,
+      "controlTicks": 28332607
     },
     {
       "stage": "serve1-ready",
-      "t": "2026-09-13T08:44:40.206Z",
-      "s1SpawnedPid": 2139982,
-      "serve1JsonPid": 2139982,
+      "t": "2026-09-13T09:19:27.574Z",
+      "s1SpawnedPid": 2172556,
+      "serve1JsonPid": 2172556,
       "jsonMatchesSpawned": true,
-      "s1Ticks": 28123914,
+      "s1Ticks": 28332622,
       "ready": true,
       "owner": {
-        "servePid": 2139982,
-        "chromePid": 2140004,
-        "startTicks": 28124070,
-        "generation": "8e07996f-4474-4aee-a365-26a3ea08ecf6"
+        "servePid": 2172556,
+        "chromePid": 2172598,
+        "startTicks": 28332777,
+        "generation": "ed3ff581-9df4-4f09-aa9a-5a27113c3de3"
       },
-      "chromePid": 2140004,
-      "chromeTicks": 28124070,
+      "chromePid": 2172598,
+      "chromeTicks": 28332777,
       "chromeAlive": true
     },
     {
       "stage": "serve1-crash-signal",
-      "t": "2026-09-13T08:44:40.224Z",
-      "crashed1": true
+      "t": "2026-09-13T09:19:27.589Z",
+      "code": 0,
+      "signalled": true
     },
     {
       "stage": "after-serve1-crash",
-      "t": "2026-09-13T08:44:41.926Z",
-      "s1SpawnedPid": 2139982,
+      "t": "2026-09-13T09:19:29.291Z",
+      "s1SpawnedPid": 2172556,
       "serve1Died": true,
       "chromeAlive": true,
       "chromeTicksMatch": true,
@@ -43,16 +44,16 @@
     },
     {
       "stage": "serve2-adopt",
-      "t": "2026-09-13T08:44:44.245Z",
-      "s2SpawnedPid": 2140375,
-      "serve2JsonPid": 2140375,
+      "t": "2026-09-13T09:19:31.015Z",
+      "s2SpawnedPid": 2172989,
+      "serve2JsonPid": 2172989,
       "jsonMatchesSpawned": true,
       "serve2Ready": true,
       "owner": {
-        "servePid": 2140375,
-        "chromePid": 2140004,
-        "startTicks": 28124070,
-        "generation": "1352bfe8-f756-49ad-b53c-dba203809e01"
+        "servePid": 2172989,
+        "chromePid": 2172598,
+        "startTicks": 28332777,
+        "generation": "a548f608-9aa2-47b8-ad1f-ff5c76c8f308"
       },
       "adoptedSameChrome": true,
       "sameStartTicks": true,
@@ -61,13 +62,14 @@
     },
     {
       "stage": "serve2-stop-signal",
-      "t": "2026-09-13T08:44:44.270Z",
-      "stopped2": true
+      "t": "2026-09-13T09:19:31.030Z",
+      "code": 0,
+      "signalled": true
     },
     {
       "stage": "after-serve2-stop",
-      "t": "2026-09-13T08:44:54.536Z",
-      "s2SpawnedPid": 2140375,
+      "t": "2026-09-13T09:19:41.043Z",
+      "s2SpawnedPid": 2172989,
       "serve2Alive": false,
       "chromeAlive": false,
       "chromeReaped": true,
@@ -77,6 +79,7 @@
   ],
   "verdict": {
     "serve1JsonMatchesSpawned": true,
+    "serve1CrashSignalled": true,
     "serve1Died": true,
     "chromeTicksMatchAfterCrash": true,
     "ownerStillNamesDeadServe1": true,
@@ -85,6 +88,7 @@
     "serve2Ready": true,
     "adoptedSameInstance": true,
     "ownerIsSpawnedServe2": true,
+    "serve2StopSignalled": true,
     "serve2StoppedCleanly": true,
     "reapedOnStop": true,
     "controlUntouched": true

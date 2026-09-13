@@ -108,13 +108,21 @@ Telegram/autopost) is dispositioned as VERIFIED (test PASS), explicit SCOPE-OUT 
 ## Round-2 harness hardening (from GPT's live-phase review)
 The new live drivers' verdicts and cleanups were hardened after GPT found gaps (the SUBMITTED successes still
 stand; these fix the drivers so they can't PASS on a failure path):
-- **recovery signal safety (round-3+4, pidfd, ALL paths)**: EVERY signal in both recovery drivers — the serve
-  crash injection, the serve2 stop injection, the ABORT/early-exit cleanup, and the final cleanup — now routes
-  through `belmont-browse/tools/safe-pidfd-kill.py` (`os.pidfd_open` + `signal.pidfd_send_signal`, re-verifying
-  /proc startTicks across the open, REFUSING on absent/mismatched identity — no raw-PID or group fallback). This
-  closes the check→signal reuse race AND the round-3 "ABORT bypass" GPT found (the early-exit paths still used
-  raw `process.kill`/`child.kill`). Same kernel primitive as the product supervisor. Re-ran PASS with the
-  pidfd-bound crash (crashed:true) and stop (stopped2:true).
+- **recovery signal safety (rounds 3-5, pidfd, ALL paths + identity timing + delivery)**: EVERY signal in both
+  recovery drivers — the serve crash injection, the serve2 stop injection, the ABORT/early-exit cleanup, and the
+  final cleanup — routes through `belmont-browse/tools/safe-pidfd-kill.py` (`os.pidfd_open` +
+  `signal.pidfd_send_signal`, re-verifying /proc startTicks across the open, REFUSING on absent/mismatched
+  identity — no raw-PID or group fallback). Round-4/5 additions from GPT's review:
+  - **identity captured at spawn/first-sighting, not after the wait**: `earlyTicks()` reads a just-spawned
+    child's startTicks synchronously (no reuse window while it holds its PID); the supervised serve's identity is
+    captured at the FIRST serve.json sighting (earliest observable for a non-child). This closes the round-4
+    counterexample where the original could die + its PID be reused during `waitReady`, making a late tick-read
+    adopt the reused process's identity.
+  - **distinct helper results + SIGNALLED-gated injections**: the helper now returns SIGNALLED(0)/ALREADY_GONE(10)/
+    REFUSED(3)/ERROR(4), and the crash/stop injections REQUIRE an actually-delivered SIGNALLED result, gated in
+    the verdict (serveCrashSignalled / serve1CrashSignalled / serve2StopSignalled) — so a no-op helper exit with
+    the process dying for another reason can no longer PASS. Both re-ran PASS (supervised 4 conditions;
+    orphan-adopt 14 conditions).
 - **L13 approve gate**: `approveGrantsEffect` now also requires `allReadsOk === true`, so EVERY scenario
   uniformly gates observation-read success (GPT round-3).
 - **orphan-adopt verdict**: now requires serve1 actually died, the owner names the SPAWNED serve2 pid
