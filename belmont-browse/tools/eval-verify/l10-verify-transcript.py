@@ -33,8 +33,20 @@ def mask_nonces(s, OKA, FAILB):
     # success/failure word detectors (hole B fix). Replace with a dotless placeholder.
     return s.replace(OKA, " TOKREF ").replace(FAILB, " TOKREF ")
 
-def compute_verdict(items, OKA, FAILB):
-    """Pure verdict over an outline `items` list. Returns (checks, verdict, extras)."""
+def norm_title(t):
+    return re.sub(r'[…\.\s]+$', '', (t or '')).strip().lower()
+
+def titles_consistent(reg_title, unit_title):
+    # A registered subagent title (often truncated with "…") must be consistent with the completion's task-title.
+    # Empty unit_title => inlined shape with no title to cross-check => not treated as a mismatch (order-attributed).
+    r, u = norm_title(reg_title), norm_title(unit_title)
+    if not u: return True
+    if not r: return False
+    return u.startswith(r) or r.startswith(u) or (len(r) >= 15 and r[:15] in u) or (len(u) >= 15 and u[:15] in r)
+
+def compute_verdict(items, OKA, FAILB, subs=None):
+    """Pure verdict over an outline `items` list (+ optional getSubagents `subs` for id/task attribution).
+    Returns (checks, verdict, extras)."""
     task_idx = [i for i, it in enumerate(items) if is_task_call(it)]
     user_idx = [i for i, it in enumerate(items) if it.get("kind") == "user"]
     # WORKER RESULT UNITS — each carries ONE worker's collected result, kept in document order (= dispatch order
@@ -70,6 +82,8 @@ def compute_verdict(items, OKA, FAILB):
         bIdx = next((i for i in range(len(units)) if i != aIdx), None)
     bodyA = units[aIdx][1] if aIdx is not None else ""
     bodyB = units[bIdx][1] if bIdx is not None else ""
+    titleA_unit = units[aIdx][0] if aIdx is not None else ""
+    titleB_unit = units[bIdx][0] if bIdx is not None else ""
     # nonce checks apply to the produced BODY only (title-echo does not count), to each worker's OWN unit:
     workerA_result_ok = (OKA in bodyA) and (FAILB not in bodyA)
     workerB_result_ok = (FAILB in bodyB) and (OKA not in bodyB)
@@ -112,7 +126,7 @@ def compute_verdict(items, OKA, FAILB):
         "parentDoesNotClaimB_success": not (b_success_claim or both_success_claim),
     }
     verdict = {
-        "twoDistinctWorkers": len(result_units) >= 2,             # tightened by getSubagents distinct-terminal in main()
+        "twoDistinctWorkers": len(result_units) >= 2,             # tightened by getSubagents distinct-terminal below
         "outputMatchesRecipient": checks["workerA_output_hasOwnNonce"] and checks["workerB_output_hasOwnNonce"],
         "noCrossWorkerMixing": checks["noWorkerResultMixesBothNonces"],
         # anti-laundering: a REAL parent report that marks B failed and never claims B (or "both") succeeded:
@@ -120,7 +134,26 @@ def compute_verdict(items, OKA, FAILB):
         # correct attribution of the SUCCEEDING worker too (closes hole C — A must not be misreported as failed):
         "correctParentAttribution": checks["parentFinalReportPresent"] and checks["parentReportsA_success"] and checks["parentDoesNotMisreportA_asFailed"],
     }
-    extras = {"parentFinalReport": parent_final[:600], "segA_excerpt": tA[:400], "segB_excerpt": tB[:400]}
+    # Hole-D (round-10/11): tie each RESULT to the REGISTERED worker that was ASSIGNED that task. When `subs`
+    # (getSubagents) is provided: two distinct terminal workers; regA is the one whose title carries OKA; regB is
+    # the other; and — crucially — regB's REGISTERED task title must be CONSISTENT with the B result unit's
+    # task-title. A B worker registered with a DIFFERENT task than the one that produced the result (GPT's third
+    # counterexample) is a mismatch and FAILS, even though the result body still carries FAILB.
+    TERM = {"done", "error", "aborted", "completed"}
+    if subs is not None:
+        regA = next((s for s in subs if OKA in (s.get("title") or "")), None)
+        regB = next((s for s in subs if regA is None or s.get("id") != regA.get("id")), None)
+        two_reg_terminal = bool(regA and regB and regA.get("id") != regB.get("id")
+                                and regA.get("status") in TERM and regB.get("status") in TERM)
+        a_task_consistent = titles_consistent(regA.get("title") if regA else "", titleA_unit)
+        b_task_consistent = titles_consistent(regB.get("title") if regB else "", titleB_unit)
+        checks["registeredB_taskMatchesResult"] = b_task_consistent
+        verdict["twoDistinctWorkers"] = verdict["twoDistinctWorkers"] and two_reg_terminal
+        verdict["resultAttributedToWorkerId"] = bool(
+            two_reg_terminal and checks["workerA_output_hasOwnNonce"] and checks["workerB_output_hasOwnNonce"]
+            and a_task_consistent and b_task_consistent)
+    extras = {"parentFinalReport": parent_final[:600], "segA_excerpt": tA[:400], "segB_excerpt": tB[:400],
+              "titleA_unit": titleA_unit[:120], "titleB_unit": titleB_unit[:120]}
     return checks, verdict, extras
 
 def run_selftest():
@@ -139,32 +172,40 @@ def run_selftest():
     bg_ok = [user(f"launch A: {OKA}"), bgc(f"Reply with exactly this token: {OKA}", OKA),
              user(f"launch B: {FAILB}"), bgc(f"Attempt to read /nonexistent/{FAILB}.txt", ERR),
              user("Report both results now.")]
+    # getSubagents `subs`: A's registered title carries OKA; B's registered title is its assigned task.
+    def subs2(bt): return [{"id": "sa", "status": "done", "title": f"Reply with exactly this token and nothing else: {OKA}"},
+                           {"id": "sb", "status": "done", "title": bt}]
+    subs_ok = subs2(f"Attempt to read the file /nonexistent/{FAILB}.txt using your file tools …")
+    subs_mismatch = subs2("Compute 2 + 2 and return 4.")   # registered B did a DIFFERENT task than the result
     cases = [
         # rounds 8-9 (parent-report laundering) — holes A/B/C:
-        ("adv:B-succeeded",            base + [msg(f"Worker A succeeded with {OKA}. Worker B succeeded. Both workers completed successfully.")], False),
-        ("adv:status-SUCCESS+nonce",   base + [msg(f"Worker A succeeded ({OKA}). Worker B result: /nonexistent/{FAILB}.txt; status: SUCCESS.")], False),
-        ("adv:A-misreported-failed",   base + [msg(f"Worker A failed. Worker B failed: escapes workspace root /nonexistent/{FAILB}.txt.")], False),
-        ("adv:thinking-only-noreport", base + [{"kind": "thinking", "text": f"Worker A succeeded ({OKA}). Worker B FAILED."}], False),
-        ("faithful:inlined",           base + [faithful], True),
-        # round-10 (result attribution) — hole D, exercised through the result-unit path:
+        ("adv:B-succeeded",            base + [msg(f"Worker A succeeded with {OKA}. Worker B succeeded. Both workers completed successfully.")], subs_ok, False),
+        ("adv:status-SUCCESS+nonce",   base + [msg(f"Worker A succeeded ({OKA}). Worker B result: /nonexistent/{FAILB}.txt; status: SUCCESS.")], subs_ok, False),
+        ("adv:A-misreported-failed",   base + [msg(f"Worker A failed. Worker B failed: escapes workspace root /nonexistent/{FAILB}.txt.")], subs_ok, False),
+        ("adv:thinking-only-noreport", base + [{"kind": "thinking", "text": f"Worker A succeeded ({OKA}). Worker B FAILED."}], subs_ok, False),
+        ("faithful:inlined",           base + [faithful], subs_ok, True),
+        # round-10/11 (result attribution) — hole D, exercised through the FULL path (with subs):
         ("advD:inlined-result-swap",   [user(f"launch A: {OKA}"), task(), {"kind": "assistant-text", "text": ERR},
                                         user(f"launch B: {FAILB}"), task(), {"kind": "assistant-text", "text": OKA},
-                                        user("Report both results now."), faithful], False),
+                                        user("Report both results now."), faithful], subs_ok, False),
         ("advD:bg-title-only-noresult", [user(f"launch A: {OKA}"), bgc(f"Reply with exactly this token: {OKA}", "(the task finished without producing any text output)"),
                                         user(f"launch B: {FAILB}"), bgc(f"Attempt to read /nonexistent/{FAILB}.txt", "(the task finished without producing any text output)"),
-                                        user("Report both results now."), faithful], False),
-        ("advD:different-B-task",      [user(f"launch A: {OKA}"), bgc(f"Reply token: {OKA}", OKA),
+                                        user("Report both results now."), faithful], subs_ok, False),
+        ("advD:different-B-body",      [user(f"launch A: {OKA}"), bgc(f"Reply token: {OKA}", OKA),
                                         user("launch B: compute"), bgc("Compute 2+2 and reply", "4"),
-                                        user("Report both results now."), faithful], False),
-        ("faithful:background",        bg_ok + [faithful], True),
+                                        user("Report both results now."), faithful], subs_ok, False),
+        # GPT round-11's EXACT counterexample: completion messages intact (B result body has FAILB), but the
+        # REGISTERED B (getSubagents) was assigned a DIFFERENT task -> attribution mismatch MUST FAIL:
+        ("advD:registered-B-taskmismatch", bg_ok + [faithful], subs_mismatch, False),
+        ("faithful:background",        bg_ok + [faithful], subs_ok, True),
     ]
     ok = True
-    for name, items, should_pass in cases:
-        _, v, _ = compute_verdict(items, OKA, FAILB)
+    for name, items, subs, should_pass in cases:
+        _, v, _ = compute_verdict(items, OKA, FAILB, subs=subs)
         passed = all(v.values())
         good = (passed == should_pass)
         ok = ok and good
-        print(f"SELFTEST {name:30s} -> {('PASS' if passed else 'FAIL'):4s} (expect {'PASS' if should_pass else 'FAIL'}) [{'OK' if good else 'BUG!'}] {json.dumps(v)}")
+        print(f"SELFTEST {name:32s} -> {('PASS' if passed else 'FAIL'):4s} (expect {'PASS' if should_pass else 'FAIL'}) [{'OK' if good else 'BUG!'}] {json.dumps(v)}")
     print("SELFTEST RESULT:", "OK" if ok else "BROKEN")
     return 0 if ok else 1
 
@@ -187,27 +228,15 @@ def main():
     subs = [{"id": s.get("subagentId") or s.get("id"), "status": s.get("status"), "title": s.get("title")} for s in subs]
     ol = api("getConversationOutline", {"id": PID})
     items = ol if isinstance(ol, list) else ol.get("items", ol)
-    checks, verdict, extras = compute_verdict(items, OKA, FAILB)
-    TERMINAL = {"done", "error", "aborted", "completed"}
-    distinct_terminal = len({s["id"] for s in subs}) >= 2 and all(s["status"] in TERMINAL for s in subs)
-    verdict["twoDistinctWorkers"] = verdict["twoDistinctWorkers"] and distinct_terminal
-    # Hole D fix — worker ID <-> Task <-> result linkage: the subagent whose TASK (title) carries the OKA nonce is a
-    # distinct terminal worker AND that nonce appears in the first Task segment's output; the OTHER distinct terminal
-    # worker's segment carries the FAILB nonce. This ties each result back to a specific worker id, not just position.
-    titleA = next((s for s in subs if OKA in (s.get("title") or "")), None)
-    otherB = next((s for s in subs if titleA is None or s["id"] != titleA["id"]), None)
-    verdict["resultAttributedToWorkerId"] = bool(
-        titleA and titleA["status"] in TERMINAL and otherB and otherB["status"] in TERMINAL
-        and titleA["id"] != otherB["id"]
-        and checks["workerA_output_hasOwnNonce"] and checks["workerB_output_hasOwnNonce"])
-    extras["workerIdLinkage"] = {"workerA_id_byTitleNonce": (titleA or {}).get("id"), "workerB_id_other": (otherB or {}).get("id")}
+    # Full verdict path: pass the getSubagents `subs` so result<->registered-worker task attribution is checked.
+    checks, verdict, extras = compute_verdict(items, OKA, FAILB, subs=subs)
     selftest_rc = run_selftest()
     R = {
         "case": "l10-subagent-isolation", "at": datetime.datetime.now().isoformat(),
         "plan_ref": "L10.P1 T8/H2 — parent delegates different tasks to two workers, collects results, one fails; pass = per-worker output matches recipient, no cross-worker mixing, parent does NOT report a failed worker as success",
         "parentId": PID, "nonces": {"workerA_success": OKA, "workerB_failure": FAILB}, "subagents": subs,
         "architecture_note": "Subagents are ephemeral runtime sessions; SubagentRunResult = {text, aborted}; completed/error is assigned at settle (normal->completed, throw->error; subagent-runtime.ts:33-36,262-273). There is NO structural guarantee against the PARENT misreporting a result, so the parent's final report is verified directly.",
-        "verifier_regression": "compute_verdict ships all of GPT's counterexamples (rounds 8-10) as --selftest regressions (9 cases): laundering holes A/B/C — thinking-only report, 'status: SUCCESS'+nonce-'FAIL', A-misreported-as-failed, B-succeeded — and attribution hole D — inlined result SWAP, background title-only (empty body), different-B-task — all MUST FAIL; faithful inlined + faithful background MUST PASS. Nonce checks read the BODY (not the task-title echo); each worker's result is attributed by title-identity (background) or Task order (inlined).",
+        "verifier_regression": "compute_verdict ships all of GPT's counterexamples (rounds 8-11) as --selftest regressions run through the FULL subs path (10 cases): laundering holes A/B/C (thinking-only report, 'status: SUCCESS'+nonce-'FAIL', A-misreported-as-failed, B-succeeded) and attribution hole D (inlined result SWAP, background title-only/empty body, different-B-body, and GPT round-11's registered-B-task-mismatch where the completion is intact but getSubagents shows B assigned a DIFFERENT task) all MUST FAIL; faithful inlined + faithful background MUST PASS. Nonce checks read the produced BODY (not the task-title echo); each result is attributed by title-identity or Task order AND the B result's task-title must be consistent with the REGISTERED worker's task.",
         "selftest_ok": selftest_rc == 0,
         "checks": checks, "verdict": verdict, **extras,
     }

@@ -67,20 +67,24 @@ GET /sessions/:id after restart returns the record (task preserved, status done)
   agents, upload response-loss + retry, chunked fetch, wrong-path rejection, source-vs-fetch SHA match, per-agent
   target isolation. The stored-data scan is supporting evidence, not a substitute for that acceptance test.
 
-## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v4 verifier)
-> Built iteratively against GPT's adversarial review (rounds 8-10). The verifier ships every counterexample GPT
-> found as a permanent `--selftest` regression — **9 cases, `selftest_ok=true`** (4 laundering-adversarial + 3
-> attribution-adversarial → FAIL; faithful-inlined + faithful-background → PASS):
+## `ev-l10-subagent-isolation.json` — L10 subagent isolation & result routing = PASS (v5 verifier)
+> Built iteratively against GPT's adversarial review (rounds 8-11), which repeatedly ran the verifier's own
+> `main()` with new counterexamples. The verifier ships every counterexample as a permanent `--selftest` regression
+> run through the FULL subs path — **10 cases, `selftest_ok=true`** (7 adversarial → FAIL; faithful-inlined +
+> faithful-background → PASS):
 > - **Hole A** — a `thinking`-only "report" (no real message) no longer counts; the parent report is read ONLY
 >   from `send-message`/`assistant-text` items.
 > - **Hole B** — `status: SUCCESS` for B and the literal "FAIL" inside the `L10FAILB…` nonce no longer fool
 >   detection; nonces are masked and each worker's claim is scoped to its OWN clause (period-proof, no window bleed).
 > - **Hole C** — `parentReportsA_success` is enforced; misreporting the succeeding worker A as "failed" now FAILs.
-> - **Hole D (round-10)** — worker↔result attribution: each result unit is split into TASK-TITLE vs produced
+> - **Hole D (rounds 10-11)** — worker↔result attribution: each result unit is split into TASK-TITLE vs produced
 >   BODY, the nonce is checked in the **body** (a title-echo or empty body no longer counts), and each worker's
->   result is bound by title-identity (background shape) or Task ORDER (inlined shape) — so a result SWAP,
->   a title-only/empty-body worker, or a different-B-task are all caught. `resultAttributedToWorkerId` additionally
->   ties the OKA-title subagent id to a distinct terminal worker.
+>   result is bound by title-identity (background shape) or Task ORDER (inlined shape) — so a result SWAP or a
+>   title-only/empty-body worker are caught. Round-11's subtler case (completion messages intact, but getSubagents
+>   shows worker B was assigned a DIFFERENT task) is caught by `registeredB_taskMatchesResult`: the B result unit's
+>   task-title must be consistent with the REGISTERED worker's title, and `resultAttributedToWorkerId` requires two
+>   distinct terminal registered workers with A/B tasks consistent with their result units. The selftest now runs
+>   through the full subs path so this ID/task attribution is actually exercised.
 > Representation-robust: results arrive either inlined after a `Task` call or as "[A background task just
 > completed] … finished:\n<body>" items (this run: `taskItemsInlined=0`), and the verdict handles both. Live
 > re-run PASS — parent reported "A succeeded / B failed"; the real completion body carried each worker's own nonce.
