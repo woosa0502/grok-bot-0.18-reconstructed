@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { createMemorySearch } from "./memory-search.mjs";
 import { BubblewrapBackend } from "./bwrap-backend.mjs";
 import { createLocalWebSearch } from "./web-search.mjs";
+import { canonicalMemoryRequested, assertCanonicalMemoryGuard } from "./memory-belmont-runtime.mjs";
+import { evalIsolate, evalPermission } from "./eval-isolation.mjs";
 
 /** Belmont-owned knowledge store: site playbooks, browser-bot rules, lessons. Survives engine upgrades; readable by Belmont bots. */
 export const KNOWLEDGE_DIR = process.env.BELMONT_KNOWLEDGE_DIR || path.resolve(import.meta.dirname, "../../.cache/belmont-wsl-profile/sand-data/knowledge");
@@ -82,6 +84,7 @@ export const ENGINES = {
   "906": { bundle: "../vendor/aside-906/apps/daemon/build/daemon.mjs", home: "aside-home-906", version: "1.26.906.1714" },
   "907": { bundle: "../vendor/aside-907/apps/daemon/build/daemon.mjs", home: "aside-home-907", version: "1.26.907.1712" },
   "909": { bundle: "../vendor/aside-909/apps/daemon/build/daemon.mjs", home: "aside-home-909", version: "1.26.909.1820" },
+  "914": { bundle: "../vendor/aside-914/apps/daemon/build/daemon.mjs", home: "aside-home-914", version: "1.26.914.1644" },
 };
 
 export function prepareAsideHome({ asideHome, cdpUrl, model }) {
@@ -114,13 +117,19 @@ export function prepareAsideHome({ asideHome, cdpUrl, model }) {
 export async function loadDaemon(engine = "824") {
   const spec = ENGINES[engine];
   if (!spec) throw new Error(`unknown engine ${engine}; use ${Object.keys(ENGINES).join("|")}`);
-  const mod = await import(spec.bundle);
+  const bundle = canonicalMemoryRequested() ? spec.bundle.replace(/daemon\.mjs$/, "daemon.memory-2.1.mjs") : spec.bundle;
+  if (canonicalMemoryRequested() && !existsSync(new URL(bundle, import.meta.url))) throw new Error(`BELMONT_MEMORY_GUARD_REQUIRED: prepare the derived daemon with BELMONT_ASIDE_CANONICAL_MEMORY_ENGINE=${engine} npm run bootstrap:aside before enabling Belmont memory authority`);
+  const mod = await import(bundle);
   const A = mod.__belmont;
   // HTTP/WebSocket server pieces (tools/patch-daemon-linux.py) for src/daemon-server.mjs.
   A.__server = mod.__belmontServer ?? null;
   A.__linux = mod.__belmontLinuxInternals ?? null;
   A.__lifecycles = mod.__belmontLifecycles ?? null;
   A.__workloads = mod.__belmontWorkloads ?? null;
+  A.__canonicalMemoryGuard = mod.__belmontCanonicalMemoryGuard ?? null;
+  // A legacy daemon must never accept a canonical-authority session. The new
+  // generator is applied to recovered inputs by the separate build workflow.
+  assertCanonicalMemoryGuard(A);
   for (const name of ["init_directory", "init_accounts", "init_store$3", "init_store$1", "init_cdp", "init_extension_bridge", "init_browser", "init_tool_states", "init_session_notifications", "init_suspension", "init_skills$5", "init_agent_session", "init_agent_session_server", "init_lifecycles", "init_scheduler", "init_start_context_awareness", "init_start_comprehension"]) {
     A[name]?.();
   }
@@ -135,7 +144,7 @@ export async function ensureLocalAccount(A, log = () => {}) {
   const root = A.getAccountRoot(account.id);
   A.initAccountDirectory(root);
   try { await A.syncAccountBuiltinSkills?.([root]); } catch (e) { log(`[bootstrap] builtin skill sync failed: ${e.message}`); }
-  await A.MemoryManager?.init?.(account.id);
+  if (!canonicalMemoryRequested()) await A.MemoryManager?.init?.(account.id);
   const restorePasswordSession = A.loadPwmSessionFromKeychain ?? A.__linux?.loadPwmSessionFromKeychain;
   if (typeof restorePasswordSession === "function") {
     try { await restorePasswordSession(account.id); }
@@ -289,7 +298,8 @@ export async function initializeLocalLifecycle(A, { accountId, startBackground =
       // under whichever name the bundle exports.
       const backfillStart = ["startSessionTurnMemoryBackfill", "startSessionRunMemoryBackfill"].find((candidate) => typeof A[candidate] === "function");
       const backfillStop = backfillStart?.replace("start", "stop");
-      if (backfillStart) {
+      if (canonicalMemoryRequested()) state.background.startSessionRunMemoryBackfill = "disabled-belmont-authority";
+      else if (backfillStart) {
         const name = backfillStart;
         if (state.closed) state.background[name] = "stopped-before-start";
         else {
@@ -313,9 +323,9 @@ export async function initializeLocalLifecycle(A, { accountId, startBackground =
       const contextNames = ["startContextAwareness", "startContextAwarenessComprehension"];
       let enabled = false;
       try {
-        enabled = A.__lifecycles?.contextSettingsManaged === true ||
+        enabled = !canonicalMemoryRequested() && (A.__lifecycles?.contextSettingsManaged === true ||
           (contextNames.some((name) => typeof resolve(name) === "function") &&
-            A.settings?.(accountId)?.get("contextAwareness")?.enabled === true);
+            A.settings?.(accountId)?.get("contextAwareness")?.enabled === true));
       } catch (error) {
         for (const name of contextNames) { state.background[name] = "failed"; state.errors[name] = error.message; }
         throw error;
@@ -342,7 +352,7 @@ export async function initializeLocalLifecycle(A, { accountId, startBackground =
   return lifecycle;
 }
 
-export function createBrowseSession(A, { accountId, cwd, title, permissionMode, model, profileId, windowId, anchorTargetId }) {
+export function createBrowseSession(A, { accountId, cwd, title, permissionMode, model, profileId, windowId, anchorTargetId, sitesDir }) {
   const id = randomUUID().replace(/-/g, "").slice(0, 21);
   const createdAt = new Date();
   mkdirSync(cwd, { recursive: true });
@@ -359,7 +369,7 @@ export function createBrowseSession(A, { accountId, cwd, title, permissionMode, 
     model,
     browserBinding: { profileId, windowId, ...(anchorTargetId ? { anchorTargetId } : {}) },
     incognito: false,
-    runtimeConfig: { workingDirs: [cwd] },
+    runtimeConfig: { workingDirs: [cwd], ...((canonicalMemoryRequested() || sitesDir) ? { memoryExtractionDisabled: true } : {}), ...(sitesDir ? { sitesDir } : {}) },
   });
   return session;
 }
@@ -438,6 +448,10 @@ export function installDaemonHooks({ log = () => {}, memorySemanticAdapter = nul
     },
     __belmontMemoryCapabilities: () => memory.capabilities(),
     __belmontMemoryDescription: description,
+    // Per-session document-read isolation for eval sessions (bash + read_file). Ordinary sessions get null /
+    // the unchanged permission, so normal browsing is untouched. KNOWLEDGE_DIR pins the operational sites.
+    __belmontEvalIsolate: (args) => evalIsolate({ ...args, knowledgeDir: KNOWLEDGE_DIR }),
+    __belmontEvalPermission: (permission, session, accountRoot) => evalPermission(permission, session, accountRoot, KNOWLEDGE_DIR),
     ...(sandbox ? { __belmontSandboxBackend: sandbox } : {}),
   };
   Object.assign(globalThis, installed);

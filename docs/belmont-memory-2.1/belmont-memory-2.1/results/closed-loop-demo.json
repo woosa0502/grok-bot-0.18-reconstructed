@@ -1,0 +1,53 @@
+{
+  "kind": "local-reference-loop-not-live-flight-search",
+  "learned": 2,
+  "nextSession": {
+    "tool": "flight_search",
+    "arguments": {
+      "destination": "NYC",
+      "seatPreference": "aisle",
+      "pricePriority": "seat_over_price"
+    },
+    "memoryBindings": [
+      {
+        "id": "a060b61d-4bc6-4a0d-b088-cbec00f358d0",
+        "version": 1,
+        "evidenceIds": [
+          "ee76bb91-d47c-4d88-978f-1795b0cd0362"
+        ],
+        "argument": "seatPreference"
+      },
+      {
+        "id": "df8baf1d-5729-4f7b-940d-ef34bbee9201",
+        "version": 1,
+        "evidenceIds": [
+          "ee76bb91-d47c-4d88-978f-1795b0cd0362"
+        ],
+        "argument": "pricePriority"
+      }
+    ],
+    "blocked": false,
+    "reasons": []
+  },
+  "explicitCorrection": 1,
+  "afterCorrection": {
+    "tool": "flight_search",
+    "arguments": {
+      "destination": "NYC",
+      "seatPreference": "window"
+    },
+    "memoryBindings": [
+      {
+        "id": "932232b6-e111-4d2b-b1b0-c7bbd007b4eb",
+        "version": 1,
+        "evidenceIds": [
+          "7e49ee5b-a4eb-4b54-95fe-c5a7527a14ab"
+        ],
+        "argument": "seatPreference"
+      }
+    ],
+    "blocked": false,
+    "reasons": []
+  },
+  "dense": "unused"
+}

@@ -5,7 +5,7 @@ import { Icon } from "../../components/Icon";
 import { MessageContent } from "../../components/MessageContent";
 import { EmptyState, ScreenError, ScreenSkeleton } from "../../components/ScreenState";
 import { ChoiceChips, InlineNotice, NavRow, PrimaryButton, Section, SurfacePage, TextField, Toggle } from "../../components/SurfacePrimitives";
-import type { AttachmentPreview, CodexUsage, MobileSettings } from "../../types";
+import type { AttachmentPreview, CodexUsage, MobileSettings, UsageLedger, UsageStat } from "../../types";
 import type { SurfaceScreenProps } from "./types";
 
 type Theme = "시스템" | "라이트" | "다크";
@@ -366,32 +366,77 @@ function planLabel(planType: string | null): string {
   return `Codex ${planType.charAt(0).toUpperCase()}${planType.slice(1)}`;
 }
 
+function usdLabel(cost: number, costKnown: boolean): string {
+  const value = cost >= 1 ? `$${cost.toFixed(2)}` : `$${cost.toFixed(4)}`;
+  return costKnown ? value : `${value}+?`;
+}
+
+/** The weekly window is what the user watches; put it first, then any shorter windows. */
+function orderedWindows(windows: CodexUsage["windows"]): CodexUsage["windows"] {
+  return [...windows].sort((a, b) => b.windowDurationMins - a.windowDurationMins);
+}
+
+function statLine(stat: UsageStat): string {
+  const input = tokenLabel(stat.uncachedInput + stat.cacheRead + stat.cacheWrite);
+  const reasoning = stat.reasoningKnown ? ` · 추론 ${tokenLabel(stat.reasoning)}` : "";
+  return `${stat.calls}회 · 입력 ${input} · 출력 ${tokenLabel(stat.output)}${reasoning}`;
+}
+
+function TokenBars({ rows, title, detail }: { rows: UsageStat[]; title: string; detail?: string }) {
+  if (rows.length === 0) return null;
+  const max = Math.max(1e-9, ...rows.map((row) => row.cost));
+  return (
+    <Section detail={detail} title={title}>
+      {rows.map((row) => (
+        <div className="token-row" key={row.label}>
+          <div className="token-row-head"><strong>{row.label}</strong><span>{usdLabel(row.cost, row.costKnown)}</span></div>
+          <span className="token-bar" role="presentation"><i style={{ width: `${Math.min(100, Math.round((row.cost / max) * 100))}%` }} /></span>
+          <small>{statLine(row)}</small>
+        </div>
+      ))}
+    </Section>
+  );
+}
+
 export function UsageScreen({ back }: SurfaceScreenProps) {
   const [usage, setUsage] = useState<CodexUsage | null>(null);
+  const [ledger, setLedger] = useState<UsageLedger | null>(null);
   const [error, setError] = useState("");
   async function load() {
     setError("");
     try { setUsage(await api.codexUsage()); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Codex 사용량을 불러오지 못했습니다."); }
+    try { setLedger(await api.usageLedger()); }
+    catch { /* token activity is best-effort; the limit card still shows */ }
   }
   useEffect(() => { void load(); }, []);
+  const jobRows = (ledger?.byJob ?? []).filter((row) => !row.label.startsWith("(") || row.label.startsWith("(공유"));
   return (
-    <SurfacePage back={back} subtitle={usage ? `${planLabel(usage.planType)} · 실제 계정` : undefined} title="Codex 사용량">
+    <SurfacePage back={back} subtitle={usage ? `${planLabel(usage.planType)} · 실제 계정` : undefined} title="사용량">
       {error ? <ScreenError message={error} retry={() => void load()} /> : usage == null ? <ScreenSkeleton rows={4} /> : <>
-        <Section detail="현재 Codex 계정에서 직접 읽은 한도입니다." title="사용 한도">
-          <div className="usage-cards">{usage.windows.map((window) => <div className="usage-hero" key={window.id}>
+        <Section detail="현재 Codex 계정에서 직접 읽은 한도입니다. 남은 양은 100%에서 사용한 만큼을 뺀 값입니다." title="사용 한도">
+          <div className="usage-cards">{orderedWindows(usage.windows).map((window) => <div className="usage-hero" key={window.id}>
             <small>{window.limitName} · {usageWindowLabel(window.windowDurationMins)}</small>
-            <strong>{Math.round(window.usedPercent)}% 사용</strong>
+            <strong>{Math.max(0, Math.round(100 - window.usedPercent))}% 남음</strong>
             <span aria-label={`${window.limitName} ${Math.round(window.usedPercent)}% 사용`} aria-valuemax={100} aria-valuemin={0} aria-valuenow={window.usedPercent} role="progressbar"><i style={{ width: `${window.usedPercent}%` }} /></span>
-            <small>{usageResetLabel(window.resetsAt)}</small>
+            <small>{Math.round(window.usedPercent)}% 사용 · {usageResetLabel(window.resetsAt)}</small>
           </div>)}</div>
         </Section>
         {usage.resetCredits != null && usage.resetCredits > 0 ? <InlineNotice detail={`${usage.resetCredits}회 사용할 수 있습니다.`} icon="check" title="한도 초기화 이용권" /> : null}
-        <Section title="토큰 활동">
-          <NavRow detail={usage.activity.lifetimeTokens == null ? "제공되지 않음" : tokenLabel(usage.activity.lifetimeTokens)} icon="usage" title="누적 토큰" />
-          <NavRow detail={usage.activity.peakDailyTokens == null ? "제공되지 않음" : tokenLabel(usage.activity.peakDailyTokens)} icon="sparkle" title="하루 최고 사용량" />
-          <NavRow detail={usage.activity.currentStreakDays == null ? "제공되지 않음" : `${usage.activity.currentStreakDays}일`} icon="clock" title="연속 사용" />
-        </Section>
+        {ledger == null || ledger.total.calls === 0 ? (
+          <InlineNotice detail="우리 시스템이 직접 잰 값입니다. 오늘 기록이 아직 없습니다." title="토큰 활동" />
+        ) : <>
+          <Section detail="우리 시스템이 직접 잰 오늘 사용량입니다. API 단가 환산이며 Codex 구독 차감액과는 별개입니다." title="토큰 활동">
+            <div className="usage-cards"><div className="usage-hero">
+              <small>오늘 · API 환산 비용</small>
+              <strong>{usdLabel(ledger.total.cost, ledger.total.costKnown)}</strong>
+              <small>{statLine(ledger.total)}</small>
+            </div></div>
+          </Section>
+          <TokenBars detail="봇마다 오늘 쓴 비용" rows={ledger.byBot} title="봇별" />
+          <TokenBars detail="모델마다 오늘 쓴 비용" rows={ledger.byModel} title="모델별" />
+          {jobRows.length > 0 ? <TokenBars detail="[job:이름] 태그로 묶인 작업" rows={jobRows} title="작업별" /> : null}
+        </>}
       </>}
     </SurfacePage>
   );

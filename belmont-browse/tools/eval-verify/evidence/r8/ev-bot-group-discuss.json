@@ -1,0 +1,72 @@
+{
+  "case": "bot-makes-bot + group-discuss",
+  "at": "2026-09-12T21:32:24.621Z",
+  "gateway": {
+    "port": 42611,
+    "auth": true
+  },
+  "idempotency": {
+    "sameNonceReturnsSameAgent": true
+  },
+  "botMakesBot": {
+    "rosterBaseline": 14,
+    "rosterAfterCreate": 16,
+    "createdTwo": true,
+    "aliceId": "9fb00a65-35a1-4d18-87e0-5160502c098b",
+    "bobId": "c9e573fa-d12d-4327-a0ef-aa37d353370e"
+  },
+  "botGroups": {
+    "groupId": "b101af65-3fc7-40af-971b-8e321a83e748",
+    "isGroup": true,
+    "memberCount": 2,
+    "groupRow": {
+      "id": "b101af65-3fc7-40af-971b-8e321a83e748",
+      "name": "belmont-selftest-room-24c4ad",
+      "isGroup": true
+    }
+  },
+  "discussion": {
+    "sendStatus": 200,
+    "sendAccepted": true,
+    "transcriptShape": "array",
+    "messageCount": 3,
+    "roomAuthors": [
+      "user",
+      "9fb00a65-35a1-4d18-87e0-5160502c098b",
+      "c9e573fa-d12d-4327-a0ef-aa37d353370e"
+    ],
+    "bothBotsPosted": true,
+    "sampleMessages": [
+      {
+        "by": "user",
+        "text": "한 문장씩 사과 vs 바나나로 짧게 토론하세요. 각자 SendMessage로 한 번만 말하세요."
+      },
+      {
+        "by": "alice",
+        "text": "{\"type\":\"text\",\"content\":\"사과는 아삭한 식감과 상큼한 단맛이 완벽해서 최고의 과일이에요.\"}"
+      },
+      {
+        "by": "bob",
+        "text": "{\"type\":\"text\",\"content\":\"바나나는 간편하게 먹기 좋고 달콤하며 에너지까지 든든해서 최고의 과일이에요.\"}"
+      }
+    ],
+    "rawLastEntryKeys": [
+      "kind",
+      "id",
+      "message",
+      "timestampMs",
+      "author"
+    ]
+  },
+  "cleanup": {
+    "requested": [
+      "b101af65-3fc7-40af-971b-8e321a83e748",
+      "9fb00a65-35a1-4d18-87e0-5160502c098b",
+      "c9e573fa-d12d-4327-a0ef-aa37d353370e"
+    ],
+    "rosterFinal": 14,
+    "leftoverTestAgents": [],
+    "clean": true
+  },
+  "verdict_pass": true
+}

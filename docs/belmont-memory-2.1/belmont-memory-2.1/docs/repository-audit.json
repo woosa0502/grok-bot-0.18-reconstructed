@@ -1,0 +1,63 @@
+{
+  "repository": "woosa0502/Belmont",
+  "ref": "main",
+  "reviewDate": "2026-09-11",
+  "access": "GitHub connector read-only",
+  "checkoutAndFullCI": false,
+  "asideAccess": "Not found in connected repositories; implementation unverified",
+  "files": [
+    {
+      "reference": "C1",
+      "path": "source/host/extensions/memory/memory-service.ts",
+      "blobShaAsReturned": "0ee1d704a5769b42d4cb7837f63d8d6490dbe17f",
+      "reviewedFocus": "FileMemoryStore, synthesis commit, user/project shards",
+      "reReadInStage21": false
+    },
+    {
+      "reference": "C2",
+      "path": "source/host/extensions/memory/agent-state.ts",
+      "blobShaAsReturned": "a77977763c7da46877a0b0ce3b7efdf10f6401ef",
+      "reviewedFocus": "remember always passes explicit; shard routing",
+      "reReadInStage21": true
+    },
+    {
+      "reference": "C3",
+      "path": "source/host/extensions/memory/memory-synthesis-service.ts",
+      "blobShaAsReturned": "77ff9409f4eef1a06b895aa70ff158b9f37e5bf1",
+      "reviewedFocus": "evidence IDs, propose/verify, commit and cancellation",
+      "reReadInStage21": false
+    },
+    {
+      "reference": "C4",
+      "path": "source/host/extensions/memory/production.ts",
+      "blobShaAsReturned": "73f9e3c48f1f6c24d5a4c852db0ff225a8847cb1",
+      "reviewedFocus": "provider-aware production synthesis wiring",
+      "reReadInStage21": false
+    },
+    {
+      "reference": "C5",
+      "path": "source/host/runner/knowledge-store.ts",
+      "blobShaAsReturned": "7deb45178afd60a2a66c6f456111691978ee95a9",
+      "reviewedFocus": "FTS5/CJK, weighted BM25, recursive paths vs confined read",
+      "reReadInStage21": true
+    },
+    {
+      "reference": "C6",
+      "path": "AGENTS.md",
+      "blobShaAsReturned": "c6ebff93e84657459bba8f16bbf078278235f267",
+      "reviewedFocus": "Node26.5.x and check/frontend build requirements",
+      "reReadInStage21": true
+    },
+    {
+      "reference": "C7",
+      "path": "source/host/runner/sand-memory.ts",
+      "blobShaAsReturned": "89c42cd03f7c8929586643aea4661e12ab6bfbf8",
+      "reviewedFocus": "compaction-only frozen cache, normalization500/lowercase",
+      "reReadInStage21": true
+    }
+  ],
+  "stage": "2.1 incremental",
+  "sourceBasis": "2.0 audit retained; four files re-read in 2.1",
+  "fullHostIntegrationExecuted": false,
+  "asideInstalledRepoSearch": "Both result pages empty"
+}

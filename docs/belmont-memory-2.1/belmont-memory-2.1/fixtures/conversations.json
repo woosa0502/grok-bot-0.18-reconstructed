@@ -1,0 +1,322 @@
+{
+  "provenance": "Authored multi-session engineering scenarios. Not this user's actual conversation history or production telemetry.",
+  "turns": [
+    {
+      "id": "t1",
+      "sessionId": "april-trip",
+      "at": "2026-04-01T09:00:00Z",
+      "text": "장거리 비행은 가격이 조금 높아도 통로석을 선호한다"
+    },
+    {
+      "id": "t2",
+      "sessionId": "april-trip",
+      "at": "2026-04-01T09:01:00Z",
+      "text": "단거리 비행은 창가를 선호한다"
+    },
+    {
+      "id": "t3",
+      "sessionId": "april-hotels",
+      "at": "2026-04-02T09:00:00Z",
+      "text": "출장 호텔은 위치를 우선한다"
+    },
+    {
+      "id": "t4",
+      "sessionId": "april-hotels",
+      "at": "2026-04-02T09:01:00Z",
+      "text": "휴가 호텔은 조용함을 우선한다"
+    },
+    {
+      "id": "t5",
+      "sessionId": "daily-constraints",
+      "at": "2026-04-03T09:00:00Z",
+      "text": "오후 2시 이후에는 카페인을 피해요"
+    },
+    {
+      "id": "t6",
+      "sessionId": "work",
+      "at": "2026-04-04T09:00:00Z",
+      "text": "나는 개발자입니다"
+    },
+    {
+      "id": "t7",
+      "sessionId": "people",
+      "at": "2026-04-05T09:00:00Z",
+      "text": "민수는 내 동료야"
+    },
+    {
+      "id": "t8",
+      "sessionId": "work-roles",
+      "at": "2026-04-06T09:00:00Z",
+      "text": "민수는 Belmont 프로젝트 담당자야"
+    },
+    {
+      "id": "t9",
+      "sessionId": "people2",
+      "at": "2026-04-07T09:00:00Z",
+      "text": "지혜는 내 친구야"
+    },
+    {
+      "id": "t10",
+      "sessionId": "work-roles2",
+      "at": "2026-04-08T09:00:00Z",
+      "text": "지혜는 Aside 프로젝트 디자이너야"
+    },
+    {
+      "id": "t11",
+      "sessionId": "development",
+      "at": "2026-04-09T09:00:00Z",
+      "text": "프로젝트 규칙: Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+    },
+    {
+      "id": "t12",
+      "sessionId": "development",
+      "at": "2026-04-09T09:01:00Z",
+      "text": "메모리 삭제 버그를 해결했다"
+    },
+    {
+      "id": "t13",
+      "sessionId": "june-correction",
+      "at": "2026-06-01T09:00:00Z",
+      "text": "이제부터 장거리 비행은 창가를 선호한다",
+      "explicitMemory": true
+    },
+    {
+      "id": "t14",
+      "sessionId": "july-unconfirmed",
+      "at": "2026-07-01T09:00:00Z",
+      "text": "장거리 비행은 통로석을 선호한다"
+    },
+    {
+      "id": "t15",
+      "sessionId": "trivial",
+      "at": "2026-07-02T09:00:00Z",
+      "text": "오늘 커피 마셨어"
+    },
+    {
+      "id": "t16",
+      "sessionId": "trivial",
+      "at": "2026-07-02T09:01:00Z",
+      "text": "고마워"
+    }
+  ],
+  "queries": [
+    {
+      "id": "c1",
+      "category": "exact fact",
+      "query": "Node 26.5.x",
+      "target": [
+        {
+          "predicate": "knowledge.rule",
+          "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "category": "Korean lexical",
+      "query": "카페인",
+      "target": [
+        {
+          "predicate": "food.caffeine_cutoff"
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "category": "semantic paraphrase",
+      "query": "Which side lets me get up without asking my neighbor?",
+      "truthAt": "2026-05-01T00:00:00Z",
+      "target": [
+        {
+          "predicate": "flight.seat",
+          "value": "aisle"
+        }
+      ]
+    },
+    {
+      "id": "c4",
+      "category": "Korean paraphrase",
+      "query": "오랫동안 하늘에서 이동할 때 앉을 자리 취향",
+      "target": [
+        {
+          "predicate": "flight.seat",
+          "value": "window",
+          "context": {
+            "distance": "long-haul"
+          }
+        }
+      ]
+    },
+    {
+      "id": "c5",
+      "category": "Korean morphology",
+      "query": "카페인은 언제부터 피하나요",
+      "target": [
+        {
+          "predicate": "food.caffeine_cutoff"
+        }
+      ]
+    },
+    {
+      "id": "c6",
+      "category": "temporal query",
+      "query": "2026-04-30 당시 비행 좌석 선호",
+      "truthAt": "2026-04-30T23:59:59.999Z",
+      "target": [
+        {
+          "predicate": "flight.seat",
+          "value": "aisle"
+        }
+      ]
+    },
+    {
+      "id": "c7",
+      "category": "temporal query",
+      "query": "현재 장거리 비행 좌석 선호",
+      "context": {
+        "distance": "long-haul"
+      },
+      "target": [
+        {
+          "predicate": "flight.seat",
+          "value": "window",
+          "context": {
+            "distance": "long-haul"
+          }
+        }
+      ]
+    },
+    {
+      "id": "c8",
+      "category": "relationship query",
+      "query": "내 동료와 연결된 일의 관계",
+      "target": [
+        {
+          "predicate": "relation.colleague",
+          "value": "민수"
+        },
+        {
+          "predicate": "project.owner",
+          "value": "민수"
+        }
+      ]
+    },
+    {
+      "id": "c9",
+      "category": "relationship query",
+      "query": "Belmont 담당자",
+      "target": [
+        {
+          "predicate": "project.owner",
+          "value": "민수"
+        }
+      ]
+    },
+    {
+      "id": "c10",
+      "category": "procedure query",
+      "query": "booking.example hotel_search",
+      "procedure": true
+    },
+    {
+      "id": "c11",
+      "category": "procedure query",
+      "query": "Which verified workflow searches a hotel?",
+      "procedure": true
+    },
+    {
+      "id": "c12",
+      "category": "semantic paraphrase",
+      "query": "I need a room away from noisy crowds during vacation",
+      "context": {
+        "purpose": "leisure"
+      },
+      "target": [
+        {
+          "predicate": "hotel.priority",
+          "value": "quiet"
+        }
+      ]
+    },
+    {
+      "id": "c13",
+      "category": "Korean morphology",
+      "query": "출장에서 묵을 숙소",
+      "context": {
+        "purpose": "business"
+      },
+      "target": [
+        {
+          "predicate": "hotel.priority",
+          "value": "location"
+        }
+      ]
+    },
+    {
+      "id": "c14",
+      "category": "action cue",
+      "query": "뉴욕 항공편 찾아줘",
+      "task": "flight_search",
+      "context": {
+        "distance": "long-haul"
+      },
+      "target": [
+        {
+          "predicate": "flight.seat",
+          "value": "window",
+          "context": {
+            "distance": "long-haul"
+          }
+        },
+        {
+          "predicate": "flight.tradeoff"
+        }
+      ]
+    },
+    {
+      "id": "c15",
+      "category": "Korean lexical",
+      "query": "메모리 삭제 버그",
+      "target": [
+        {
+          "predicate": "event.outcome"
+        }
+      ]
+    },
+    {
+      "id": "c16",
+      "category": "semantic paraphrase",
+      "query": "What should we never skip before delivering a code change?",
+      "target": [
+        {
+          "predicate": "knowledge.rule",
+          "value": "Node 26.5.x를 사용하고 회귀 테스트를 생략하지 않는다"
+        }
+      ]
+    },
+    {
+      "id": "c17",
+      "category": "absent/unanswerable",
+      "query": "내 여권번호가 뭐야",
+      "absent": true
+    },
+    {
+      "id": "c18",
+      "category": "absent/unanswerable",
+      "query": "What is my airline loyalty account number?",
+      "absent": true
+    },
+    {
+      "id": "c19",
+      "category": "absent/unanswerable",
+      "query": "저녁 식사의 칼로리는 몇이었지",
+      "absent": true
+    },
+    {
+      "id": "c20",
+      "category": "absent/unanswerable",
+      "query": "What is my coworker's private email address?",
+      "absent": true
+    }
+  ]
+}

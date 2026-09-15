@@ -1,0 +1,13 @@
+[32m✔ host SIGKILL releases its real daemon port and permits a fresh owned startup [90m(722.739743ms)[39m[39m
+[32m✔ owner disconnect before daemon readiness does not leave a listener [90m(192.297317ms)[39m[39m
+[32m✔ standalone daemon without IPC stays available until explicitly stopped [90m(309.116411ms)[39m[39m
+[32m✔ owner death terminates its TERM-ignoring descendant and closes an unfinished HTTP request [90m(3069.291746ms)[39m[39m
+[34mℹ {"before":{"pid":2427506,"state":"S","starttime":"29916531"},"after":{"pid":2427506,"state":"gone"},"shellPid":2427153,"daemonPid":2427141,"elapsedMs":1026,"sentinelPid":2427508,"sentinelAlive":true}[39m
+[34mℹ tests 4[39m
+[34mℹ suites 0[39m
+[34mℹ pass 4[39m
+[34mℹ fail 0[39m
+[34mℹ cancelled 0[39m
+[34mℹ skipped 0[39m
+[34mℹ todo 0[39m
+[34mℹ duration_ms 4344.494601[39m

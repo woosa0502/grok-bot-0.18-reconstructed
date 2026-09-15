@@ -424,9 +424,18 @@ export class SessionRuntime {
   openSessionOnce(agentId: string): Promise<LiveTranscriptSession> {
     const pending = this.pendingSessionOpens.get(agentId);
     if (pending != null) return pending;
-    const opened = this.tm.sessionStore.openSession(
+    const opened = (this.tm.sessionStore.openSession(
       agentId,
-    ) as Promise<LiveTranscriptSession>;
+    ) as Promise<LiveTranscriptSession>).then((session) => {
+      try {
+        this.tm.memory.onConversationLifecycle?.({
+          agentId: session.id,
+          conversationId: session.id,
+          reason: "open",
+        });
+      } catch {}
+      return session;
+    });
     this.pendingSessionOpens.set(agentId, opened);
     void opened.catch(() => {
       if (this.pendingSessionOpens.get(agentId) === opened)
@@ -536,6 +545,15 @@ export class SessionRuntime {
 
   async replaceSession(session: LiveTranscriptSession): Promise<void> {
     const previous = this.activeSession;
+    if (previous != null && previous.id !== session.id) {
+      try {
+        this.tm.memory.onConversationLifecycle?.({
+          agentId: previous.id,
+          conversationId: previous.id,
+          reason: "switch",
+        });
+      } catch {}
+    }
     this.setActiveSession(session);
     this.tm.runLifecycle.watchActiveSession(session);
     await this.tm.runLifecycle.retireSession(previous);

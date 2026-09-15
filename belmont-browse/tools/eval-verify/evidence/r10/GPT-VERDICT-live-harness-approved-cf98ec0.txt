@@ -1,0 +1,126 @@
+최종 판정
+
+cf98ec0에서 직전 잔여 1건—이전 실행의 감독자 identity/exit 기록을 현재 실행의 것으로 채택하는 문제—은 해소됐습니다. 지금까지 합의한 검증 범위에서 라이브 하네스의 알려진 false-PASS·신호 안전성 잔여는 종결로 판정합니다. 이번 변경에서 추가로 종결을 막는 반례는 확인하지 못했습니다.
+
+따라서 남는 것은 명시한 제품 백로그입니다. 하네스 종결을 Belmont/Aside 제품 전체 완료로 합산해서는 안 됩니다.
+
+검토 기준은 GitHub에서 직접 확인한 **cf98ec037ccd94a3ae5de4f08412d176e3d27594**입니다. 감독자와 드라이버의 시험용 사본도 GitHub가 반환한 Git blob SHA와 일치시켰습니다.
+
+확인 요청	판정
+감독자가 identity/exit에 runId를 기록하고 실행별 경로에 저장	해소
+identity의 runId·스폰한 감독자 PID 검증	해소
+exit의 runId·크래시 대상 serve PID·SIGKILL 사망 검증	해소
+현재 실행 기록이 없을 때 이전 파일 fallback 없이 실패	해소
+Chrome 등록·추적·회수 로직 불변	확인
+1. 기록 생성: 실행별 경로와 runId가 모두 적용됐습니다
+
+belmont-browse/tools/chrome-supervisor.py에서 다음을 확인했습니다.
+
+60–64행은 BELMONT_SUPERVISOR_RUNID를 받아 파일명 접미사를 구성합니다. 124–128행은 identity를 다음 경로에 쓰면서 runId, 원래 자식의 pid/startTicks, supervisorPid를 기록합니다.
+
+.belmont-serve-identity.<runId>.json
+
+203–214행은 실제 waitpid() 결과를 다음 경로에 쓰면서 동일한 runId와 자식 PID, 종료 원인을 기록합니다.
+
+.belmont-serve-exit.<runId>.json
+
+따라서 파일명만 분리한 것이 아니라 본문에도 실행 식별자가 들어갑니다. fork 직후 원래 자식의 신원을 확보하고 실제 종료 원인을 기록하는 기존 흐름도 유지됩니다.
+
+감독자를 일반적으로 실행하면서 환경 변수를 주지 않으면 기존 접미사 없는 경로가 남지만, 검토 대상 드라이버는 14행에서 새 UUID를 생성하고 75행에서 감독자에게 명시적으로 전달합니다. 이 하네스가 환경 변수 부재 때문에 이전 경로로 내려가는 것은 아닙니다.
+
+2. 기록 소비: 현재 실행의 감독자와 serve에 연결됩니다
+
+공통 경로는 belmont-browse/tools/eval-verify/입니다.
+
+Identity 검증
+
+recovery-reverify-supervised.mjs:91–101은 현재 RUN_ID가 들어간 경로만 읽고, 96행에서 다음 조건을 모두 요구합니다.
+
+JavaScript
+j?.runId === RUN_ID &&
+j?.supervisorPid === sup.pid &&
+Number.isSafeInteger(j?.pid) &&
+Number.isSafeInteger(j?.startTicks)
+
+여기서 sup.pid는 78행에서 실제 spawn한 감독자입니다. 단순히 파일에 정수 PID가 있다는 이유로 수용하지 않습니다.
+
+조건을 충족하는 기록이 없으면 serveIdent는 null, identityValidForThisRun은 false로 남습니다. 기대 serve PID·ticks도 null이므로 40–42행의 신호 wrapper가 REFUSED를 반환하며, 현재 /proc에서 대체 신원을 읽거나 이전 identity 파일을 사용하는 fallback이 없습니다. 최종 150–151행에도 identityValidForThisRun이 필수 조건으로 들어갑니다.
+
+Exit 검증
+
+같은 파일 141–151행, 특히 144행은 다음을 요구합니다.
+
+JavaScript
+serveExit?.runId === RUN_ID &&
+serveExit?.pid === servePid0 &&
+serveExit?.signalled === true &&
+serveExit?.termsig === 9
+
+따라서 다른 실행의 SIGKILL 기록이나 같은 실행 식별자를 달고 있어도 다른 serve PID의 종료 기록은 통과하지 못합니다.
+
+정확히 구분하면, exit 본문에 supervisorPid가 별도로 들어가는 구현은 아닙니다. identity에서 runId + supervisorPid를 검증하고, exit를 **같은 runId + 검증된 serve PID**에 연결합니다. 이 연결은 이번에 지적한 이전 기록 혼입을 차단하기에 충분합니다.
+
+이전의 삭제·갱신 실패 반례는 차단됐습니다
+
+기존 파일 삭제 실패를 무시하는 코드 자체는 남아 있습니다. 그러나 이제 그 파일을 신원·종료 판정에 읽지 않기 때문에, 다음과 같이 동작합니다.
+
+이전 파일 삭제 실패
++ 현재 실행의 기록 생성 실패
+→ 현재 RUN_ID 경로의 유효한 기록 없음
+→ identity 검증 또는 exit 검증 실패
+→ 이전 파일로 대체하지 않고 하네스 실패
+
+즉, 이전 반례의 핵심이었던 “새 기록을 쓰지 못했는데 읽을 수 있는 옛 기록으로 성공 처리”가 더 이상 성립하지 않습니다.
+
+3. 독립 검증 결과
+원문 드라이버 분리시험
+
+원문 드라이버 본문 전체를 실행하되 파일·프로세스·네트워크·시간만 시험 환경으로 대체해 20개 검증 조건을 확인했습니다.
+
+시험 조건	결과
+이전 접미사 없는 기록과 이전 runId 기록만 존재	FAIL, 이전 기록 미채택
+현재 경로에 다른 runId의 identity를 배치	FAIL, serve 신호 요청 없음
+runId는 맞지만 supervisorPid가 다름	FAIL, serve 신호 요청 없음
+현재 identity 누락·파싱 실패·ticks 누락	FAIL, 대체 신원 채택 없음
+현재 exit 누락, 다른 runId 또는 다른 serve PID	FAIL
+실제 종료 기록이 exit(17) 또는 SIGTERM	FAIL
+현재 실행의 정상 identity와 SIGKILL exit	PASS
+해당 검증식을 제거한 변이	대응하는 잘못된 기록이 다시 PASS
+
+마지막 변이시험은 시험이 단순히 항상 실패하는 것이 아니라, 이번에 추가한 각 검증식의 누락을 실제로 잡는지 확인한 것입니다.
+
+실제 감독자 실행과 회수 로직 비교
+
+임시 fake-serve와 일회용 sleep 프로세스를 사용해 감독자를 실제로 5회 실행했습니다. 같은 프로필에서 서로 다른 runId로 연속 실행하는 두 경우와, 현재 identity·exit·양쪽 기록 쓰기를 각각 실패시키는 세 경우입니다.
+
+실행별 기록은 분리됐고, 이전 기록은 새 기록으로 덮어쓰거나 대체 채택되지 않았습니다. 진단 기록 쓰기를 실패시켜도 등록된 Chrome 대역 프로세스의 회수는 유지됐습니다. 쓰기 실패는 mock이 아니라 해당 파일 경로에 디렉토리를 만들어 실제 OS 오류를 발생시키는 방식으로 주입했습니다.
+
+또한 bb5e324와 cf98ec0를 AST로 비교했습니다. 진단 기록 관련 문장만 제외하면 감독자 프로그램이 동일하며, drain_registrations(), pin_owned_chrome(), reap_via_fd()를 포함한 비진단 함수도 동일했습니다. 따라서 “진단 기록 변경이 Chrome 회수 정책을 바꾸지 않는다”는 설명은 맞습니다.
+
+기존 감독자 스위트 14/14는 사용자 실행 보고값으로 구분합니다. 그 스위트 전체를 이번에 다시 실행한 것은 아닙니다. 테스트 파일의 blob은 이전과 동일하며, 이번 독립 검증은 위의 기록 혼입·실패 경로와 실제 감독자 실행에 집중했습니다.
+
+4. 제출된 라이브 증거와 완료 범위
+
+GitHub의 재실행 증거에는 다음이 기록돼 있습니다.
+
+serve 2299187, startTicks 29155472.
+
+Chrome 2299233, startTicks 29155629.
+
+exit의 runId 28d1f446-5cd9-49d7-a7cd-eca75c864349, PID 2299187, termsig:9.
+
+identityValidForThisRun, 신호 전달, SIGKILL 사망, Chrome 회수, CONTROL 보존, 감독자 정상 종료의 6개 조건 모두 PASS.
+
+이 기록과 현재 코드·분리검증은 서로 일치합니다. 사용자 dev 스택을 독립 재실행했다는 의미는 아니지만, 제출된 라이브 성공을 인정하고 직전 잔여를 닫을 근거는 충분합니다. orphan-adopt는 이번 진단 파일 소비 경로를 사용하지 않고, 이번 변경 대상에도 포함되지 않습니다.
+
+남은 것은 제품 백로그입니다
+구분	남은 항목
+OPEN 검증	L02 전체 브라우저 도구 행렬, L10 전용 subagent 격리, L16 durable-accept, L38 attachment dedup, L46–50 주제 정의
+정책 갭·인수시험	L42 민감파일 정책 갭의 수정 또는 명시적 위험 수용, L41/L42/L37의 필요한 기능·페어링·자격 기반 인수시험
+미구현	Telegram adapter, autopost pipeline
+
+이 목록은 현재 MAP의 처분과 일치합니다. L12/L27의 OFFLINE 검증을 LIVE 완료로 바꾸어 세거나, EXCLUDED/BLOCKED를 검증 완료에 합산하지 않는 원칙도 그대로 유지합니다.
+
+결론: cf98ec0에서 감독자 진단 기록의 현재 실행 검증 잔여는 닫혔습니다. 기존에 인정한 검증 범위를 유지한 상태로 라이브 하네스 종결을 승인하며, 다음 단계는 위 제품 백로그입니다.
+
+cf98ec0 원문 해시·기록 검증 및 변이시험·실제 감독자 실행 결과

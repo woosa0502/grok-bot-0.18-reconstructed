@@ -1,0 +1,10 @@
+{
+  "case": "l19-restart",
+  "execution_before": "running",
+  "orphanKeptWritingAfterCrash": false,
+  "autoReExecAfterRestart": false,
+  "hb_atKill": 2,
+  "hb_afterCrash": 2,
+  "hb_afterRestart": 2,
+  "verdict_pass": true
+}

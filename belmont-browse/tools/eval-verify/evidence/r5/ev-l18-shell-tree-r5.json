@@ -1,0 +1,16 @@
+{
+  "case": "l18-shell-tree-bwrap-r5",
+  "at": "2026-09-12T14:40:59.107Z",
+  "gate": "bash runs in a bwrap --unshare-pid namespace (internals host-invisible by design); on cancel the sandbox namespace is torn down, reaping the whole tree atomically",
+  "evidence": {
+    "sessionId": "3f6f135a4da3418d8769c",
+    "bwrapBaseline": 0,
+    "bwrapDuringRun": 2,
+    "sandboxSpawned": true,
+    "runningStatus": "running",
+    "finalStatus": "stopped",
+    "bwrapAfterStop": 0,
+    "sandboxReaped": true
+  },
+  "verdict_pass": true
+}

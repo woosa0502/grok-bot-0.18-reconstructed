@@ -260,6 +260,14 @@ export class TranscriptManager {
   setMemory(memory: any): void {
     this.memory = memory;
     this.sessionStore.setMemory(memory);
+    memory.setTranscriptReader?.((agentId: string): readonly unknown[] => {
+      const live = this.sessions.liveSessions.get(agentId)
+        ?? (this.sessions.activeSession?.id === agentId ? this.sessions.activeSession : undefined);
+      // The transcript DB remains the only replay source. Cold reads use the
+      // existing DB reader without materializing another runner/session.
+      return live?.db.getTranscriptEntries()
+        ?? this.sessionStore.readAgentTranscriptEntries(agentId);
+    });
   }
   setContentSearch(contentSearch: any): void {
     this.contentSearch = contentSearch;
@@ -360,6 +368,13 @@ export class TranscriptManager {
     }
     this.sessions.pendingSessionOpens.clear();
     for (const session of sessions) {
+      try {
+        this.memory.onConversationLifecycle?.({
+          agentId: session.id,
+          conversationId: session.id,
+          reason: "shutdown",
+        });
+      } catch {}
       await session.agentStore?.dispose();
       session.db.close?.({ checkpoint: true });
     }

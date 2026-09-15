@@ -22,8 +22,9 @@ test("system-prompt context receives the real memory stores and the shared roste
   assert.equal((source.match(/agentDirectory: agentDirectoryProvider/g) ?? []).length, 2, "both prompt-context and runnerOptions use the shared provider");
   assert.match(source, /createRosterToolInputs: \(\) => \(\{\s*dependencies: \{ listAgents: agentDirectoryProvider, listGroups: agentGroupsProvider \}/);
   const memoryExtension = read("source/host/extensions/memory/extension.ts");
-  assert.match(memoryExtension, /createUserMemory:\(options:PromptUserMemoryOptions\)=>createPromptUserMemory/);
-  assert.match(memoryExtension, /createProjectMemory:\(options:PromptProjectMemoryOptions\)=>createPromptProjectMemory/);
+  // Whitespace-insensitive: the factory wiring (options -> createPrompt*Memory), not the exact formatting, is the contract.
+  assert.match(memoryExtension, /createUserMemory:\s*\(options:\s*PromptUserMemoryOptions\)\s*=>\s*createPromptUserMemory/);
+  assert.match(memoryExtension, /createProjectMemory:\s*\(options:\s*PromptProjectMemoryOptions\)\s*=>\s*createPromptProjectMemory/);
 });
 
 test("roster summaries carry group membership from group.json", () => {

@@ -1,0 +1,25 @@
+{
+  "case": "context-authority",
+  "at": "2026-09-13T06:35:21.741Z",
+  "serve": {
+    "port": 9360,
+    "engine": "1.26.909.1820",
+    "instanceId": "560864d9-b1b5-4d97-92e4-607746ceef65"
+  },
+  "authorityMode": "belmont",
+  "singleDomainStatus": 200,
+  "singleDomain": {
+    "domain": "united.example",
+    "environment": "aside:1.26.909.1820:profile:belmont-ui",
+    "context": {},
+    "conditions": []
+  },
+  "multiDomainStatus": 200,
+  "multiDomain": {
+    "environment": "aside:1.26.909.1820:profile:belmont-ui",
+    "context": {},
+    "conditions": []
+  },
+  "verdict_pass": true,
+  "note": "belmont authority: /memory/context returns a host-owned bounded context; single-URL task -> domain extracted, multi-URL task -> no invented domain (core.mjs:684-688)"
+}

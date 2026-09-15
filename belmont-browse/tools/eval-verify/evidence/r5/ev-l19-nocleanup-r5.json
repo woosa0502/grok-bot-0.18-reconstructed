@@ -1,0 +1,63 @@
+{
+  "case": "l19-nocleanup-r5",
+  "at": "2026-09-12T14:18:10.136Z",
+  "nonce": "adfccd28",
+  "preCrash": {
+    "sessionDir": "/home/hoon/_roots/labs/work/Belmont/belmont-browse/.state/aside-home-909/u/0/sessions/2026-09-12_20c207aba9884b72a6f47",
+    "bootBefore": 1,
+    "hbBefore": 3,
+    "chromePid1Alive": true,
+    "ownerBefore": {
+      "servePid": 1544428,
+      "chromePid": 1540795,
+      "pgid": 1540795,
+      "startedAt": "2026-09-12T14:11:01.086Z",
+      "adoptedFrom": 1543172
+    }
+  },
+  "crash": {
+    "servePid1Alive": false,
+    "chromeOrphanAlive": true,
+    "ownerStillDeadServe": true,
+    "hbImmediatelyAfterCrash": 3,
+    "hbAfter3s": 3
+  },
+  "restart": {
+    "servePid2": 1544833,
+    "serve2Pid": 1544833,
+    "serve2ChromePid": 1540795,
+    "adoptLogged": true,
+    "reuseLogged": false,
+    "freshChromeStarted": false,
+    "ownerAfter": {
+      "servePid": 1544833,
+      "chromePid": 1540795,
+      "pgid": 1540795,
+      "startedAt": "2026-09-12T14:11:01.086Z",
+      "adoptedFrom": 1544428
+    },
+    "adoptedFromDeadServe": true,
+    "chromeReused": true,
+    "serveJsonRecordsAdoptedPid": true
+  },
+  "recovered": {
+    "statusRightAfterRestart": "interrupted",
+    "statusAfterWindow": "interrupted",
+    "bootBefore": 1,
+    "bootAfter": 1,
+    "reExecuted": false,
+    "snapshot": {
+      "id": "20c207aba9884b72a6f47",
+      "status": "interrupted",
+      "resumed": null,
+      "error": null
+    }
+  },
+  "verdict": {
+    "recovery_no_reexec": true,
+    "recovered_terminal_interrupted": true,
+    "chrome_adopted_not_leaked": true,
+    "orphan_bounded": true
+  },
+  "verdict_pass": true
+}

@@ -1,0 +1,3 @@
+PASS: git apply --check and git apply on reconstructed source excerpt matching inspected hunk context.
+NOT RUN: applying to a complete Belmont checkout or full Belmont CI.
+Base file blob: 7deb45178afd60a2a66c6f456111691978ee95a9

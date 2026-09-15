@@ -30,16 +30,19 @@ export interface AgentStateDeps {
   automations: AutomationPort; workflows: WorkflowPort; now?: () => number;
   readProfile(): Record<string, string> | null; writeProfile(profile: Record<string, string>): void; writeSettings(settings: Record<string, boolean>): void;
   readBoxFile?(path: string): Promise<Uint8Array>; onAvatarChanged?(): void;
+  /** Host-supplied single-writer router. Tool arguments never provide a store or principal. */
+  createMemoryShard?(memoryDir: string): MemoryPort;
 }
 function shardFor(deps: AgentStateDeps, scope: "agent" | "user" | "project", project?: string): { store: MemoryPort; label: string } | StateWriteResult {
   if (scope === "agent") return { store: deps.memory, label: "your memory" };
-  if (scope === "user") return { store: new FileMemoryStore(getUserMemoryShardDir(deps.sandRoot, deps.agentId), immediateDebounce), label: "shared user memory" };
+  if (scope === "user") { const path = getUserMemoryShardDir(deps.sandRoot, deps.agentId); return { store: deps.createMemoryShard?.(path) ?? new FileMemoryStore(path, immediateDebounce), label: "shared user memory" }; }
   if (blank(project)) return fail("'project' (the slug) is required when scope is project.");
   const slug = project?.trim() ?? "";
   if (!isSafeFolderId(slug)) return fail(`"${slug}" is not a valid project slug — use a short kebab-case id.`);
   if (!projectDirExists(deps.sandRoot, slug)) return fail(`no project "${slug}" exists yet. Create or join it first (target "project").`);
   if (!deps.membership.read().has(slug)) return fail(`you haven't joined project "${slug}" yet. Join it first (target "project", action "join").`);
-  return { store: new FileMemoryStore(getProjectMemoryShardDir(deps.sandRoot, slug, deps.agentId), immediateDebounce), label: `project "${slug}" memory` };
+  const path = getProjectMemoryShardDir(deps.sandRoot, slug, deps.agentId);
+  return { store: deps.createMemoryShard?.(path) ?? new FileMemoryStore(path, immediateDebounce), label: `project "${slug}" memory` };
 }
 function remember(store: MemoryPort, content: string, tier: "profile" | "note" | "log", at: number, label: string): StateWriteResult { const record = store.addMemory(tier === "note" ? `${MEMORY_NOTE_PREFIX}${content.trim()}` : content, at, tier === "profile" ? "profile" : "log", "explicit"); return record == null ? fail(`nothing was saved to ${label} — the fact was empty or already recorded. Grep the memory folder to see what is already there.`) : ok(`Remembered in ${label} (${tier}): ${record.content}`); }
 function describeAutomation(value: ReturnType<AutomationPort["upsert"]>, verb: string): StateWriteResult { return value == null ? fail("the routine could not be saved — check that the name and instruction are non-empty and the trigger is valid.") : ok(`${verb} routine "${value.name}" (folder ${value.id}) — ${describeTrigger(value.trigger)}${value.isEnabled ? "" : ", paused"}.`); }

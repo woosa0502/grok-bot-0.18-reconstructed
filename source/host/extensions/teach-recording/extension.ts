@@ -33,7 +33,7 @@ export const teachRecordingExtension = {
       box: context.deps["forever-box"].box,
       isEnabled: () => context.deps.experiments.checkFeatureGate("sand_teach_by_demonstration"),
       capPolicy: createDebouncePolicy(realClock, { name: "teach-recording-cap", delayMs: SAND_TEACH_MAX_DURATION_MS + CAP_SLACK_MS }),
-      sendLearningPrompt: (agentId, prompt) => context.deps.transcript.sendPrompt(prompt.content, { agentId, clientNonce: prompt.clientNonce, directAddressedAcceptance: true, awaitTurn: false, richText: prompt.richText }),
+      sendLearningPrompt: (agentId, prompt) => context.deps.transcript.sendPrompt(prompt.content, { agentId, clientNonce: prompt.clientNonce, directAddressedAcceptance: true, awaitTurn: false, richText: prompt.richText, memoryLearningSource: "system" }),
       listAgentIds: () => context.deps.transcript.listAgentIds(),
       queueSignatureKey: () => loadTeachQueueKey(),
       ensureLearningWorkflow: () => context.deps["managed-setup"].ensureManagedSkill(LEARN_SKILL_NAME),

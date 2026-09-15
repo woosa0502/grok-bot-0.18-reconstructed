@@ -13,14 +13,17 @@ import {
   type MemoryStore,
   type TextExecutor,
 } from "./sand-memory.js";
+import type { MemoryRuntimeStore } from "./memory-runtime-hooks.js";
 
-export interface TurnMemoryStore extends MemoryStore {
+export interface TurnMemoryStore extends MemoryStore, MemoryRuntimeStore {
   recall(limit: number): MemoryRecall;
   listMemories(limit: number): readonly MemoryRecord[];
   recordMemoryEvidence?(evidence: {
     readonly occurredAt: number;
     readonly user: string;
     readonly assistant: string;
+    readonly conversationId?: string;
+    readonly requestId?: string;
   }): void;
 }
 
@@ -46,6 +49,7 @@ export async function runTurnMemory(
   context: unknown,
   turnTimestamp: number,
   exchange: TurnExchange,
+  identity?: { readonly conversationId: string; readonly requestId?: string },
 ): Promise<void> {
   if (memoryStore.recordMemoryEvidence != null) {
     try {
@@ -54,6 +58,7 @@ export async function runTurnMemory(
         occurredAt: turnTimestamp,
         user: exchange.user,
         assistant: exchange.agent,
+        ...identity,
       });
     } catch {
       // Memory maintenance must never fail the user-visible turn.

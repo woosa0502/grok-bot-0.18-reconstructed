@@ -1,0 +1,18 @@
+{
+  "case": "reject-malformed",
+  "at": "2026-09-13T06:35:21.882Z",
+  "serve": {
+    "port": 9360,
+    "engine": "1.26.909.1820",
+    "instanceId": "560864d9-b1b5-4d97-92e4-607746ceef65"
+  },
+  "authorityMode": "belmont",
+  "tag": "malformed:missing-required-fields",
+  "requestStatus": 500,
+  "error": "INVALID_BELMONT_MEMORY_CONTEXT",
+  "expectedCode": "INVALID_BELMONT_MEMORY_CONTEXT",
+  "sessionCountBefore": 2,
+  "sessionCountAfter": 2,
+  "verdict_pass": true,
+  "note": "belmont authority: the specific validateBelmontMemoryContext guard was exercised and no session was created"
+}

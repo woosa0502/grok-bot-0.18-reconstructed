@@ -1,0 +1,25 @@
+{
+  "case": "l19-pending-r14",
+  "at": "2026-09-13T02:09:07.781Z",
+  "nonce": "7990d361",
+  "evidence": {
+    "aId": "bab1d1b543e44707a7040",
+    "bId": "a694bdc106be4965b10b8",
+    "cId": "b069f2413b9444f8aa595",
+    "bQueued": true,
+    "bStatusAfterCancel": "stopped",
+    "bExecCountBefore": 0,
+    "bExecCountAfter": 0,
+    "bQueryableAfter": true,
+    "cStarted": true,
+    "cFinal": "done"
+  },
+  "verdict": {
+    "b_not_lost": true,
+    "b_exec_read_ok": true,
+    "b_never_executed": true,
+    "b_cancelled_terminal": true,
+    "c_ran": true
+  },
+  "verdict_pass": true
+}

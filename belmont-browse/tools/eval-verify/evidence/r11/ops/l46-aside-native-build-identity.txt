@@ -1,0 +1,13 @@
+[32m✔ a recorded build verifies through the exact-file fast path and through a forced hash [90m(12.10479ms)[39m[39m
+[32m✔ negative control: a source snapshot changed after the build refuses the stale binary [90m(6.356743ms)[39m[39m
+[32m✔ negative control: a binary that is not the recorded build is refused even when its size matches [90m(6.637507ms)[39m[39m
+[32m✔ a same-size, same-mtime file is accepted without hashing, and a touched file falls back to the hash [90m(6.605435ms)[39m[39m
+[32m✔ a daemon bundle that differs from the pinned archive is refused; a missing record is refused with the fix [90m(6.447616ms)[39m[39m
+[34mℹ tests 5[39m
+[34mℹ suites 0[39m
+[34mℹ pass 5[39m
+[34mℹ fail 0[39m
+[34mℹ cancelled 0[39m
+[34mℹ skipped 0[39m
+[34mℹ todo 0[39m
+[34mℹ duration_ms 79.590619[39m

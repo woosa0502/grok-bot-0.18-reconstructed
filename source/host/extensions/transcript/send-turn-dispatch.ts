@@ -23,6 +23,7 @@ export interface DispatchUserTurnArgs {
   readonly tm: TranscriptManagerLike;
   readonly session: LiveTranscriptSession;
   readonly trimmedPrompt: string;
+  readonly memoryLearningSource?: "user" | "system";
   readonly richText?: unknown;
   readonly composedAtMs?: number;
   readonly enterEpochMs?: number;
@@ -54,6 +55,7 @@ export async function dispatchUserTurn(
     tm,
     session,
     trimmedPrompt,
+    memoryLearningSource,
     richText,
     composedAtMs,
     enterEpochMs,
@@ -164,6 +166,7 @@ export async function dispatchUserTurn(
           attachedFileSizes,
           ...(attachedFileNames == null ? {} : { attachedFileNames }),
           messageId: userMessageId,
+          ...(memoryLearningSource == null ? {} : { memoryLearningSource }),
           recentUserMessages,
           replyContext,
           isFork,

@@ -15,6 +15,9 @@ import {
 import { shellExecutorResource } from "../../packages/agent-exec/shell.js";
 import { shellStreamExecutorResource } from "../../packages/agent-exec/shell-stream.js";
 import { smartModeClassifierExecutorResource } from "../../packages/agent-exec/smart-mode-classifier.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { getSandRootDir } from "../host-paths.js";
 import type {
   Executor,
   RemoteExecManager,
@@ -105,10 +108,23 @@ export interface RemoteBoxResourceHost {
   >;
 }
 
+// Belmont full-access: the manager agent (single orchestrator) bypasses the box Read
+// guard so it can inspect worker transcripts/logs/host-only stores. Read once from
+// manager.json; a manager change takes effect on the next host restart.
+let cachedManagerAgentId: string | null | undefined;
+function managerAgentId(): string | null {
+  if (cachedManagerAgentId === undefined) {
+    try { cachedManagerAgentId = JSON.parse(readFileSync(join(getSandRootDir(), "manager.json"), "utf8")).managerAgentId ?? null; }
+    catch { cachedManagerAgentId = null; }
+  }
+  return cachedManagerAgentId ?? null;
+}
+
 export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
   const box = host.remoteBox;
   const boxId = host.resolveBoxId();
   const agentId = host.getConversationId();
+  const isManagerAgent = managerAgentId() != null && agentId === managerAgentId();
   let connectionPromise: Promise<RemoteConnection | undefined> | undefined;
   const preparedConnection = host.preparedRemoteBoxConnection;
 
@@ -228,7 +244,7 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
       return await connection.remoteAccessor.get(readExecutorResource).execute(
         context,
         args,
-        options,
+        isManagerAgent ? { ...(options ?? {}), bypassReadGuard: true } : options,
       );
     },
   } satisfies Executor<ReadArgs, ReadResult>);

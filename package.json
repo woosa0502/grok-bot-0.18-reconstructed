@@ -37,7 +37,8 @@
     "mobile:check": "node scripts/check-mobile-source.mjs",
     "mobile:build": "npm --prefix grok-mobile-belmont-pwa run build",
     "frontend:build:audited": "node scripts/build-editable-renderer.mjs",
-    "wsl:setup:editable": "node scripts/setup-editable-wsl.mjs"
+    "wsl:setup:editable": "node scripts/setup-editable-wsl.mjs",
+    "codex:astra": "node scripts/ensure-astra-model.mjs"
   },
   "devDependencies": {
     "@electron/asar": "4.2.1",

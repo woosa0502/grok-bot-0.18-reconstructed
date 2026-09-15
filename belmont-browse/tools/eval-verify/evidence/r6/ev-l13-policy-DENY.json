@@ -1,0 +1,10 @@
+{
+  "case": "l13-policy-DENY",
+  "at": "2026-09-12T15:20:35.904Z",
+  "token": "tok-73f8d4c8f6",
+  "sessionId": "519318033adf4464a8658",
+  "suspended": true,
+  "finalStatus": "suspended",
+  "formSubmits": 0,
+  "submittedDestSeat": null
+}

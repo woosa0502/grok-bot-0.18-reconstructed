@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
-import { getKnowledgeIndex, readKnowledgePage } from "./runner/knowledge-store.js";
+import { getKnowledgeIndex, readKnowledgePage, type CanonicalKnowledgeQuery, type KnowledgeIndexLike } from "./runner/knowledge-store.js";
 import { ASIDE_BROWSE_ENABLED, createAsideBrowseSubagentConfig, isAsideBrowseSubagentType } from "./extensions/browse-runtime/subagent-config.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
@@ -198,6 +198,7 @@ import type {
 } from "./runner/tools/turn-toolset.js";
 import type { TurnCheckpoint, TurnSettleHost } from "./runner/turn-settle.js";
 import type { TextExecutor } from "./runner/sand-memory.js";
+import type { MemoryToolHooks } from "./runner/memory-runtime-hooks.js";
 import type { RunnerPromptGlueOwner } from "./runner/runner-prompt-glue.js";
 import type { TransferBox } from "./box/box-transfer.js";
 import type { CapableBox } from "./box/box-capabilities.js";
@@ -2386,8 +2387,20 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         dependencies: { listAgents: agentDirectoryProvider, listGroups: agentGroupsProvider },
       }),
       createKnowledgeSearchToolInputs: () => {
-        const index = getKnowledgeIndex();
-        return index === undefined ? undefined : { index, readPage: (path: string) => readKnowledgePage(index.dir, path) };
+        const queryKnowledge = method(memory, "queryKnowledge");
+        if (queryKnowledge == null && getKnowledgeIndex() == null) return undefined;
+        return {
+          // Legacy materialization is lazy: only canonicalQuery's explicit
+          // null result reaches either of these compatibility readers.
+          index: { search: (input: Parameters<KnowledgeIndexLike["search"]>[0]) => getKnowledgeIndex()?.search(input) ?? [] },
+          readPage: (path: string) => {
+            const index = getKnowledgeIndex();
+            return index == null ? null : readKnowledgePage(index.dir, path);
+          },
+          ...(queryKnowledge == null ? {} : {
+            canonicalQuery: async (input: Parameters<CanonicalKnowledgeQuery>[0]): Promise<string | null> => queryKnowledge({ agentId: session.id, ...input }),
+          }),
+        };
       },
       createBoxAwaitToolInputs: (turn, _props): TurnAwaitToolFactoryInput => ({
         resourceAccessor: (() => {
@@ -3023,8 +3036,21 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                       }),
                 }
               : undefined;
+          const beforeMemoryAction = method(memory, "beforeToolAction");
+          const afterMemoryAction = method(memory, "afterToolAction");
+          const memoryIdentity = {
+            agentId: session.id,
+            conversationId: turnConversationId,
+            requestId,
+          };
+          const memoryToolHooks: MemoryToolHooks | undefined =
+            isSharedRoomTurn || beforeMemoryAction == null ? undefined : {
+              beforeToolAction: async (input) => beforeMemoryAction({ ...memoryIdentity, ...input }),
+              afterToolAction: (input) => { afterMemoryAction?.({ ...memoryIdentity, ...input }); },
+            };
           const turn: TurnToolsetTurnInput = {
             ...baseTurn,
+            ...(memoryToolHooks == null ? {} : { memoryToolHooks }),
             emitUpdate,
             cancelThisRun,
             ...(runOptions.ackToken === undefined
@@ -3112,7 +3138,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   // belmont-browse: this child's brain is an Aside session behind the local browse service.
                   const createBrowseSession = method(extensions.api("browse-runtime"), "createSubagentSession");
                   if (createBrowseSession === undefined) throw new TypeError("browse-runtime extension is not bound");
-                  const browseSession = createBrowseSession(agentId) as SubagentSession;
+                  const browseSession = createBrowseSession(agentId, {
+                    memoryAgentId: session.id,
+                    conversationId: agentId,
+                  }) as SubagentSession;
                   subagentTypeByConversationId.set(agentId, args.subagentType);
                   let disposal: Promise<void> | undefined;
                   // Delegate method by method: the session is a class instance, so a spread would
@@ -3329,7 +3358,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               isSubagentRunner: isSubagentTurn,
               isSharedRoomRunner: isSharedRoomTurn,
               sandSendMessageDeliveryOwed: method(experiments, "isSendMessageDeliveryOwedEnabled")?.() ?? false,
-              systemPromptGenerator: () => productionSystemPromptAssembly?.getSystemPrompt() ?? DEFAULT_SAND_SYSTEM_PROMPT,
+              systemPromptGenerator: () => productionSystemPromptAssembly?.getSystemPrompt(undefined, {
+                conversationId: turnConversationId,
+                requestId,
+              }) ?? DEFAULT_SAND_SYSTEM_PROMPT,
             },
             emitUpdate,
             interactionObservers: {},

@@ -1,0 +1,17 @@
+[32m✔ distinct persistent KEM preserves browser identity and native DER signatures [90m(19.979913ms)[39m[39m
+[32m✔ secure items survive process restart, reject tamper/wrong identity, preserve corruption [90m(42.16821ms)[39m[39m
+[32m✔ whole transaction rolls back, serializes adapters, reenters and preserves every update [90m(134.129484ms)[39m[39m
+[32m✔ legacy storage remains readable and a clear cannot resurrect it [90m(10.08866ms)[39m[39m
+[32m✔ patched original DK wraps and restores across restart, and concurrent init/status never resets it [90m(688.767703ms)[39m[39m
+[32m✔ patch upgrade is idempotent, preserves unrelated edits and removes false Linux shortcuts [90m(819.84104ms)[39m[39m
+[32m✔ mismatched private/public JWKs fail before signing or ECDH [90m(19.151329ms)[39m[39m
+[32m✔ removed lock fails current transaction without hanging subsequent transactions [90m(20.797643ms)[39m[39m
+[32m✔ kernel transaction lock releases on SIGKILL and preserves last committed state [90m(63.891371ms)[39m[39m
+[34mℹ tests 9[39m
+[34mℹ suites 0[39m
+[34mℹ pass 9[39m
+[34mℹ fail 0[39m
+[34mℹ cancelled 0[39m
+[34mℹ skipped 0[39m
+[34mℹ todo 0[39m
+[34mℹ duration_ms 1864.567955[39m

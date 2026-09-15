@@ -1,0 +1,17 @@
+[32m✔ serve: SIGTERM and repeated mixed signals await cleanup with original signal-exit [90m(340.656785ms)[39m[39m
+[32m✔ serve: SIGINT and repeated mixed signals await cleanup with original signal-exit [90m(333.108781ms)[39m[39m
+[32m✔ serve: startup signal remains owned until cleanup finishes [90m(342.979162ms)[39m[39m
+[32m✔ serve: original once listener is a failing control [90m(171.22857ms)[39m[39m
+[32m✔ run: SIGTERM and repeated mixed signals await cleanup with original signal-exit [90m(311.053689ms)[39m[39m
+[32m✔ run: SIGINT and repeated mixed signals await cleanup with original signal-exit [90m(310.74952ms)[39m[39m
+[32m✔ run: startup signal remains owned until cleanup finishes [90m(310.600352ms)[39m[39m
+[32m✔ run: original once listener is a failing control [90m(150.028483ms)[39m[39m
+[32m✔ serve: a handle that outlives the finished shutdown does not keep the process alive [90m(634.207655ms)[39m[39m
+[34mℹ tests 9[39m
+[34mℹ suites 0[39m
+[34mℹ pass 9[39m
+[34mℹ fail 0[39m
+[34mℹ cancelled 0[39m
+[34mℹ skipped 0[39m
+[34mℹ todo 0[39m
+[34mℹ duration_ms 7518.101646[39m

@@ -1,0 +1,36 @@
+[32m✔ startup session failure preserves the real disk marker and a later pass retries once [90m(7.664174ms)[39m[39m
+[32m✔ run failure retains the marker, balances lifecycle, and permits another attempt [90m(10.374831ms)[39m[39m
+[32m✔ getRunner failure retains the marker, balances lifecycle, and permits another attempt [90m(9.706941ms)[39m[39m
+[32m✔ enqueue failure retains the marker, balances lifecycle, and permits another attempt [90m(1.251749ms)[39m[39m
+[32m✔ aborted result keeps durable recovery without retrying inside the attempt [90m(1.095493ms)[39m[39m
+[32m✔ quiesced result keeps durable recovery without retrying inside the attempt [90m(0.915159ms)[39m[39m
+[32m✔ awaiting approval result keeps durable recovery without retrying inside the attempt [90m(0.741029ms)[39m[39m
+[32m✔ handed off result keeps durable recovery without retrying inside the attempt [90m(0.785113ms)[39m[39m
+[32m✔ unknown task state result keeps durable recovery without retrying inside the attempt [90m(0.970815ms)[39m[39m
+[32m✔ unfinished todos result keeps durable recovery without retrying inside the attempt [90m(0.804209ms)[39m[39m
+[32m✔ parked result keeps durable recovery without retrying inside the attempt [90m(0.744736ms)[39m[39m
+[32m✔ missing result result keeps durable recovery without retrying inside the attempt [90m(0.69975ms)[39m[39m
+[32m✔ null result result keeps durable recovery without retrying inside the attempt [90m(0.803397ms)[39m[39m
+[32m✔ unrecognized result result keeps durable recovery without retrying inside the attempt [90m(0.757139ms)[39m[39m
+[32m✔ successful recovery preserves quiet automation options and clears only its own bot [90m(3.989845ms)[39m[39m
+[32m✔ legacy successful runner results without optional todo metadata still settle [90m(0.836219ms)[39m[39m
+[32m✔ concurrent startup, direct, and recreate calls share one attempt per agent [90m(1.084391ms)[39m[39m
+[32m✔ an identically rearmed marker survives an older successful attempt and can resume later [90m(3.628592ms)[39m[39m
+[32m✔ actual scheduler escape keeps recovery ownership until late success settles [90m(2.350367ms)[39m[39m
+[32m✔ actual scheduler escape keeps recovery ownership until late failure settles [90m(3.239824ms)[39m[39m
+[32m✔ recreate persists carried IDs before async preparation and returns while it is pending [90m(1.20994ms)[39m[39m
+[32m✔ recreate retains durable intent without execution authority and does not run on failed persistence [90m(1.123044ms)[39m[39m
+[32m✔ gone targets deliberately clear without resolving or running [90m(1.34942ms)[39m[39m
+[32m✔ stopped targets deliberately clear without resolving or running [90m(1.068521ms)[39m[39m
+[32m✔ stop then new intent during session preparation cannot revive the old generation [90m(1.024978ms)[39m[39m
+[32m✔ deletion while queued prevents runner acquisition and balances accounting [90m(1.121963ms)[39m[39m
+[32m✔ quiescing while queued retains intent without acquiring a runner [90m(1.013556ms)[39m[39m
+[32m✔ legacy files still parse and their stale markers cannot clear a newly armed generation [90m(1.221216ms)[39m[39m
+[34mℹ tests 28[39m
+[34mℹ suites 0[39m
+[34mℹ pass 28[39m
+[34mℹ fail 0[39m
+[34mℹ cancelled 0[39m
+[34mℹ skipped 0[39m
+[34mℹ todo 0[39m
+[34mℹ duration_ms 633.519471[39m

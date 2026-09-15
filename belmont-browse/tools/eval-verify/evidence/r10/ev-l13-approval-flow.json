@@ -1,0 +1,84 @@
+{
+  "case": "l13-approval-flow",
+  "at": "2026-09-13T08:46:43.411Z",
+  "secretMarker": "WSL-CODEX",
+  "scenarios": {
+    "approve": {
+      "id": "412069bacdff4036911f6",
+      "kind": "approve",
+      "suspendedOnApproval": true,
+      "suspensionScope": {
+        "type": "file",
+        "path": "/etc/hostname",
+        "mode": "read"
+      },
+      "decisionStatus": 200,
+      "beforeRead": true,
+      "beforeSuspended": true,
+      "beforePresent": false,
+      "everPresent": true,
+      "allReadsOk": true,
+      "finalStatus": "done"
+    },
+    "deny": {
+      "id": "cbdca40a4e084d2aa7638",
+      "kind": "deny",
+      "suspendedOnApproval": true,
+      "suspensionScope": {
+        "type": "file",
+        "path": "/etc/hostname",
+        "mode": "read"
+      },
+      "decisionStatus": 200,
+      "beforeRead": true,
+      "beforeSuspended": true,
+      "beforePresent": false,
+      "everPresent": false,
+      "allReadsOk": true,
+      "finalStatus": "done"
+    },
+    "invalid": {
+      "id": "1418e317f4054f1a845e6",
+      "kind": "invalid",
+      "suspendedOnApproval": true,
+      "suspensionScope": {
+        "type": "file",
+        "path": "/etc/hostname",
+        "mode": "read"
+      },
+      "decisionStatus": 400,
+      "beforeRead": true,
+      "beforeSuspended": true,
+      "beforePresent": false,
+      "everPresent": false,
+      "allReadsOk": true,
+      "finalStatus": "suspended"
+    },
+    "cancel": {
+      "id": "0054d780827e48c385df0",
+      "kind": "cancel",
+      "suspendedOnApproval": true,
+      "suspensionScope": {
+        "type": "file",
+        "path": "/etc/hostname",
+        "mode": "read"
+      },
+      "decisionStatus": 200,
+      "beforeRead": true,
+      "beforeSuspended": true,
+      "beforePresent": false,
+      "everPresent": false,
+      "allReadsOk": true,
+      "finalStatus": "stopped"
+    }
+  },
+  "verdict": {
+    "suspendsBeforeEffect": true,
+    "noEffectBeforeDecision": true,
+    "approveGrantsEffect": true,
+    "validDenyNoEffect": true,
+    "invalidDecisionFailClosed": true,
+    "cancelNoEffect": true
+  },
+  "result": "PASS"
+}
