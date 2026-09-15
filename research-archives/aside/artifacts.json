@@ -154,16 +154,29 @@
       "kind": "patched-daemon-bundle",
       "version": "1.26.909.1820",
       "path": "patched/aside-909-daemon.mjs",
-      "bytes": 10779516,
-      "sha256": "8a5655c4d2cc5d5b2fa5b94a5df7686c415eeb2409fd925d407b409c551808ec",
+      "bytes": 10779916,
+      "sha256": "aaa13d1202591f03bf2046f8fad2d63f8e4b658e2fea931bcc49b6024a78e534",
       "target": "belmont-browse/vendor/aside-909/apps/daemon/build/daemon.mjs",
       "derivedFrom": "original/AsideDaemon-win-x64-1.26.909.1820.mjs",
-      "derivation": "Reproducible: patch-daemon.py <orig> <out> 1.26.909.1820; patch-password-session.py; patch-daemon-linux.py (in place); patch-daemon-lifecycle.py; patch-daemon-active-workloads.py. The same chain with 1.26.907.1712 reproduces patched/aside-907-daemon.mjs byte for byte (checked 2026-09-10); 2026-09-11: patch-daemon-site-knowledge.py appended (Korean-aware keyword auto-inject; memory walkers follow the memory/sites symlink); 2026-09-11: patch-daemon-dream-procedures.py appended (dreaming keeps ordered procedures on sites/ pages).",
+      "derivation": "Reproducible: patch-daemon.py <orig> <out> 1.26.909.1820; patch-password-session.py; patch-daemon-linux.py (in place); patch-daemon-lifecycle.py; patch-daemon-active-workloads.py. The same chain with 1.26.907.1712 reproduces patched/aside-907-daemon.mjs byte for byte (checked 2026-09-10); 2026-09-11: patch-daemon-site-knowledge.py appended (Korean-aware keyword auto-inject; memory walkers follow the memory/sites symlink); 2026-09-11: patch-daemon-dream-procedures.py appended (dreaming keeps ordered procedures on sites/ pages). | 2026-09-15 RE-PINNED to tree sha (aaa13d1202591f03): tree carries patch-daemon-dream-procedures.py versioned update beyond the earlier archived build (8a5655c4d2cc5d5b, preserved at patched/aside-909-daemon.mjs). Tree markers: active-workloads,lifecycle,linux,site-knowledge,dream-procedures-v.",
       "usedBy": [
         "belmont-browse/src/session.mjs ENGINES (909)",
         "belmont-browse/tools/native-build-identity.mjs pinnedDaemon(909)"
       ],
       "origin": "tools/patch-daemon.py 1.26.909.1820 -> patch-password-session.py -> patch-daemon-linux.py -> patch-daemon-lifecycle.py -> patch-daemon-active-workloads.py over original/AsideDaemon-win-x64-1.26.909.1820.mjs (2026-09-10) -> patch-daemon-site-knowledge.py (2026-09-11) -> patch-daemon-dream-procedures.py (2026-09-11)"
+    },
+    {
+      "kind": "patched-daemon-bundle",
+      "version": "1.26.914.1644",
+      "path": "patched/aside-914-daemon.mjs",
+      "bytes": 10904855,
+      "sha256": "aa972c21e669e97b8ba41acb61dc7d3d4fdc7316e5ec08c3902f77fd964fe299",
+      "target": "belmont-browse/vendor/aside-914/apps/daemon/build/daemon.mjs",
+      "derivedFrom": "original/AsideDaemon-win-x64-1.26.914.1644.mjs (SEA embedded asset, code_path sea\\index.mjs, size_t len 0xA5DFF0 = 10,870,768B)",
+      "derivation": "patch-daemon.py 1.26.914.1644 (CDP-shutdown version gate incl 914) -> patch-daemon-linux.py (keychain sub-patch SKIPPED: 914 win32 anchor absent, uses runSecureStorageCommand) -> patch-daemon-lifecycle.py -> patch-daemon-active-workloads.py -> patch-daemon-site-knowledge.py. NOT fully reproducible yet: readWasm non-SEA redirect (@jitl/quickjs-wasmfile-release-sync/wasm -> ./quickjs-emscripten-module.wasm) applied MANUALLY, not in a tool. QuickJS WASM extracted to build/quickjs-emscripten-module.wasm (503134B). Live-verified 2026-09-15 (port transport): full boot + real extension + browsing.",
+      "usedBy": [
+        "belmont-browse/src/session.mjs ENGINES (914)"
+      ]
     },
     {
       "kind": "archive",

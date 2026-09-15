@@ -26,6 +26,16 @@ ASSETS = {
         "edits": [('function t(){return/win/i.test(r())?"Ctrl+":"⌘"}function a(){return/win/i.test(r())?n:i}',
                    'function t(){return/mac/i.test(r())?"⌘":"Ctrl+"}function a(){return/mac/i.test(r())?i:n}')],
     },
+    # 1.26.914.1644: the module was refactored. Shortcut glyphs (c()/f()) now gate on isMac (a())
+    # directly, so Linux already falls to the Windows/Ctrl text form — no glyph edit needed. The one
+    # remaining Linux bug is the reveal LABEL set p(): /win/ only, so Linux gets Finder labels (s)
+    # instead of File Explorer (m). The fork opens folders in Windows Explorer under WSL, so non-macOS
+    # must show File Explorer. Single edit.
+    "platform-CX_yPATJ.js": {
+        "raw": "9e0e29e097d7701de5bb671e48d06c380fac4082bf1627eb352ace5ee22e4ef4",
+        "patched": "99484d0b218757d015bb0c29539c45f48702918ba92659749c9098366d0338a9",
+        "edits": [('function p(){return/win/i.test(t())?m:s}', 'function p(){return/mac/i.test(t())?s:m}')],
+    },
 }
 
 
@@ -42,8 +52,11 @@ def main() -> int:
     for name, spec in ASSETS.items():
         p = root / name
         if not p.exists():
-            print(f"{name}: missing under {root}", file=sys.stderr)
-            return 1
+            # ASSETS spans multiple engine versions (filenames carry per-build content hashes); a
+            # given assets dir only holds its own version's files. Skip the others explicitly so one
+            # tool serves 909 and 914, rather than hard-failing on a foreign-version filename.
+            report.append({"file": name, "status": "skipped (not in this version's assets)"})
+            continue
         before = sha(p)
         if before == spec["patched"]:
             report.append({"file": name, "status": "already patched", "sha256": before})
