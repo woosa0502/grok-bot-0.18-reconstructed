@@ -1800,6 +1800,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     );
     const productionResourceAccessor = async (
       context: unknown,
+      accessorOpts?: { readonly isSubagentTurn?: boolean },
     ): Promise<ProductionResourceAccessor> => {
       const owner = asRemoteBoxResourceOwner(remoteBox);
       const runner = builtRunner as {
@@ -1836,6 +1837,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         remoteBoxHasDesktop: true,
         resolveBoxId: () => session.id,
         getConversationId: () => session.id,
+        isSubagentTurn: () => accessorOpts?.isSubagentTurn === true,
         setRemoteBoxTerminalsFolder: folder => runner.setRemoteBoxTerminalsFolder?.(folder),
         autoReviewGate: remoteAutoReviewGate,
         auditShellCommand: (_agentId, kind, command, _target, attribution) =>
@@ -1896,7 +1898,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       return createProductionTurnAgentOwner({
         ...input,
         createResourceAccessor: localProductionResourceAccessor,
-        createRemoteBoxResourceAccessor: productionResourceAccessor,
+        createRemoteBoxResourceAccessor: (accessorContext: unknown) =>
+          productionResourceAccessor(accessorContext, {
+            isSubagentTurn: (input as { isSubagentRunner?: boolean }).isSubagentRunner === true,
+          }),
         blobStore: getAgentBlobStore(
           session.agentStore as Parameters<typeof getAgentBlobStore>[0],
         ),
@@ -3116,7 +3121,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               runner?.interrupt?.(reason.reason);
             },
             createResourceAccessor: localProductionResourceAccessor,
-            createRemoteBoxResourceAccessor: productionResourceAccessor,
+            createRemoteBoxResourceAccessor: (accessorContext: unknown) =>
+              productionResourceAccessor(accessorContext, { isSubagentTurn }),
             createTurnLocalResourceProjectionInput: (baseAccessor, remoteBoxAccessor) => {
               const runner = builtRunner;
               if (runner === undefined) {

@@ -134,7 +134,16 @@ export function parseLeadingJobHeader(text: string | null | undefined): JobAttri
     let i = 0;
     while (i < firstLine.length && firstLine[i] === "[") {
       const end = firstLine.indexOf("]", i);
-      if (end < 0) break;
+      if (end < 0) {
+        // Unterminated leading bracket. If it opens a job tag, the header is malformed —
+        // return invalid rather than silently keeping the already-parsed prefix (a partial
+        // "[job:ok][job:" must not attribute to "ok"). A non-job unterminated bracket just
+        // ends the leading-tag run, leaving any prior tags to be classified normally.
+        if (firstLine.slice(i + 1, i + 5).toLowerCase() === "job:") {
+          return { kind: "invalid", jobIds: [], reason: "unterminated-job-tag" };
+        }
+        break;
+      }
       tags.push(firstLine.slice(i + 1, end));
       i = end + 1;
     }

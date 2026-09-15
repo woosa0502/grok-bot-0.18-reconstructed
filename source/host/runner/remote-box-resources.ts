@@ -82,6 +82,10 @@ export interface RemoteBoxResourceHost {
   readonly preparedRemoteBoxConnection?: Promise<RemoteConnection | undefined>;
   resolveBoxId(): string;
   getConversationId(): string;
+  // True when this accessor serves a Task/subagent turn (turnConversationId !== session.id).
+  // The manager read-guard bypass must NOT extend to subagents the manager spawns, even
+  // though they run under the manager's session id. Defaults to parent (false) when absent.
+  isSubagentTurn?(): boolean;
   setRemoteBoxTerminalsFolder(folder: string): void;
   readonly autoReviewGate: {
     assertNoPendingApproval(): void;
@@ -124,7 +128,12 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
   const box = host.remoteBox;
   const boxId = host.resolveBoxId();
   const agentId = host.getConversationId();
-  const isManagerAgent = managerAgentId() != null && agentId === managerAgentId();
+  // Bypass the box Read guard ONLY for the manager's own direct turn. A subagent runs under
+  // the manager's session id, so agentId === managerId is true for it too — gate on the
+  // per-turn subagent flag so the manager's Task children stay guarded.
+  const isManagerAgent = managerAgentId() != null
+    && agentId === managerAgentId()
+    && host.isSubagentTurn?.() !== true;
   let connectionPromise: Promise<RemoteConnection | undefined> | undefined;
   const preparedConnection = host.preparedRemoteBoxConnection;
 
@@ -244,7 +253,12 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
       return await connection.remoteAccessor.get(readExecutorResource).execute(
         context,
         args,
-        isManagerAgent ? { ...(options ?? {}), bypassReadGuard: true } : options,
+        // Non-manager reads are always guarded: force bypassReadGuard:false so a value that
+        // arrived in options from elsewhere can never grant an unguarded read. Only the
+        // manager's own turn (isManagerAgent) sets it true, decided here host-side per call.
+        isManagerAgent
+          ? { ...(options ?? {}), bypassReadGuard: true }
+          : { ...(options ?? {}), bypassReadGuard: false },
       );
     },
   } satisfies Executor<ReadArgs, ReadResult>);
