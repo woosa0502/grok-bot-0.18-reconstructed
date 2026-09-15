@@ -15,6 +15,7 @@ import {
   TranscriptManager,
   type TurnExecutionPort,
 } from "./transcript-manager.js";
+import { startBelmontWatchdog } from "../belmont-watchdog/extension.js";
 
 interface TranscriptHost {
   readonly events: {
@@ -129,8 +130,19 @@ export const transcriptExtension = defineHostExtension<
         );
       },
     );
+    let stopWatchdog: (() => void) | undefined;
+    try {
+      stopWatchdog = startBelmontWatchdog({
+        sandRoot,
+        manager: manager as unknown as { sendToAgent(from: string, to: string, text: string): unknown },
+        log: (message) => { try { console.error(`[belmont-watchdog] ${message}`); } catch { /* ignore */ } },
+      });
+    } catch (error) {
+      try { console.error(`[belmont-watchdog] failed to start: ${String(error)}`); } catch { /* ignore */ }
+    }
     context.onStop(() => {
       unsubscribeMemoryMutations();
+      stopWatchdog?.();
       return manager.dispose();
     });
     return manager;

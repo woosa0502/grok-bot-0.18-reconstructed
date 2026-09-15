@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { NoopInteractionListener } from "../../packages/agent-core/interaction-listener.js";
 import { getBoxWorkspaceDir } from "../host-paths.js";
 import { getRootParentRequestId } from "../../packages/agent/utils/request-id.js";
-import { requestIdKey } from "../../packages/chat-inference-proto/client.js";
+import { conversationIdKey, requestIdKey } from "../../packages/chat-inference-proto/client.js";
 import type { Context } from "../../packages/context/core.js";
 import { SubagentBackgroundReason } from "../../packages/proto/generated/agent/v1/agent_pb.js";
 import type { AgentSkill } from "../../packages/proto/generated/agent/v1/agent_skills_pb.js";
@@ -27,7 +27,7 @@ import { computeSubagentRequestId, type SubagentLineage, type SubagentSession } 
 import { turnUsageFromTurnEnded, type TurnEndedUsage } from "./turn-usage.js";
 import { projectAgentToolCallToClientSideToolV2 } from "../extensions/transcript/client-side-tool-v2-projection.js";
 export class SandSubagentDispatchError extends Error { override readonly name = "SandSubagentDispatchError"; }
-export function deriveSandSubagentRequestLineage(ctx: Context, toolCallId: string): (SubagentLineage & { parentAgentToolCallId?: string }) | undefined { const parentRequestId = ctx.get(requestIdKey); if (parentRequestId == null || parentRequestId === "") return undefined; return { parentRequestId, rootParentRequestId: getRootParentRequestId(ctx) ?? parentRequestId, ...(toolCallId.length > 0 ? { parentAgentToolCallId: toolCallId } : {}) }; }
+export function deriveSandSubagentRequestLineage(ctx: Context, toolCallId: string): (SubagentLineage & { parentAgentToolCallId?: string }) | undefined { const parentRequestId = ctx.get(requestIdKey); if (parentRequestId == null || parentRequestId === "") return undefined; const parentAgentId = ctx.get(conversationIdKey); return { parentRequestId, rootParentRequestId: getRootParentRequestId(ctx) ?? parentRequestId, ...(parentAgentId != null && parentAgentId !== "" ? { parentAgentId } : {}), ...(toolCallId.length > 0 ? { parentAgentToolCallId: toolCallId } : {}) }; }
 export interface RequestContextProvider { resolve(): { osVersion?: string; shell?: string; timeZone?: string; transcriptsFolder?: string }; resolveRules(): Promise<CursorRule[] | undefined> }
 // The steps that currently have at least one hook in the box workspace's
 // .cursor/hooks.json. This populates RequestContext.hooksConfig.configuredSteps

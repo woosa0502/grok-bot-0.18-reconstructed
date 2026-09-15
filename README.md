@@ -5,6 +5,22 @@
 This repository is an unofficial, source-oriented reconstruction of the
 publicly shipped Grok Bot 0.18.0 macOS app.
 
+## Naming — 리니어 (Linear) / 브라우저 (Browser)
+
+We refer to the two parts of this system by our own names (in conversation,
+docs, and user-facing labels):
+
+- **리니어 (Linear)** = the grok-bot base (`grok-bot-0.18-reconstructed`, this repo).
+  The main runtime: **Belmont and the team bots**, gateway, memory, host, and the
+  mobile PWA all live here. Belmont is a 리니어 agent.
+- **브라우저 (Browser)** = Aside (`belmont-browse/` + the reconstructed Aside daemon).
+  A browser-automation layer bolted onto 리니어; a bot is *linked* to an Aside
+  browse session to do web/desktop work. "Computer Use / desktop control" refers to
+  this 브라우저 side (Aside's is macOS-only; real Windows control is ours to build).
+
+Internal code/directory names (grok-bot, aside, belmont-browse, `source/`, `vendor/aside-*`)
+stay as-is; only conversation/docs/UI use 리니어/브라우저. See `belmont-work/NAMING.md`.
+
 The project began as an attempt to understand how the desktop app was put
 together. It now contains readable TypeScript implementations of its Electron,
 host, coordinator, local-execution, protocol, and renderer boundaries, plus a

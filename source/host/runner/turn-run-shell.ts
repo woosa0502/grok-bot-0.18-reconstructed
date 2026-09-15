@@ -30,6 +30,7 @@ import type {
 } from "./system-prompt-assembly.js";
 import type { SummarizationPromptSession } from "../../packages/agent-summarization/summarization-handler.js";
 import { createProviderPromptSession, openAiCompatibleHostForModel, type CodexReasoningEffort, isCodexReasoningEffort } from "../extensions/inference/provider-session.js";
+import { parseLeadingJobHeader, type JobAttribution, type MeterIdentity } from "../extensions/inference/usage-ledger.js";
 import { getSandRootDir } from "../host-paths.js";
 import { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { AgentProfilePromptSnapshot } from "./sand-agent-profile-prompt.js";
@@ -136,6 +137,12 @@ export interface TurnAgentRunContextInput<ContextValue> {
 
 export interface TurnAgentRunContext<ContextValue> {
   readonly privacyMode: PrivacyMode;
+  /**
+   * The metering identity minted for this turn (Belmont v4 job-id): the same
+   * turnRunId the usage ledger stamps on every model call of this turn. The
+   * adapter uses it to write the turn->job binding after owner creation.
+   */
+  readonly meterIdentity: MeterIdentity;
   readonly sessions: TurnAgentSessions;
   readonly scope: TurnAgentScope;
   readonly toolSession: {
@@ -222,9 +229,31 @@ export async function createTurnAgentRunContext<ContextValue>(
   // or cheaper host while the rest stay on Codex.
   const routedHost = openAiCompatibleHostForModel(resolvedModelId);
   const turnProvider: typeof inferenceProvider = routedHost === undefined ? inferenceProvider : "openrouter";
+  // Best-effort per-call token metering attribution (Belmont v4). Fixed here in the upper layer so
+  // the lower model-request layer can tag each usage row with the acting bot / conversation / purpose.
+  // A turn can make several model calls (tool round-trips + a summary); turnRunId groups them.
+  const meterLineage = input.lineage != null && typeof input.lineage === "object"
+    ? input.lineage as Record<string, unknown>
+    : undefined;
+  const meterBase = {
+    actorId: input.conversationId,
+    ownerAgentId: input.isSubagentRunner ? null : input.conversationId,
+    conversationId: input.conversationId,
+    hostRequestId: input.requestId,
+    turnRunId: randomUUID(),
+    // Subagent parent linkage (Belmont v4): parentAgentId/parentRequestId come from the dispatch
+    // lineage (deriveSandSubagentRequestLineage) so a child subagent's usage links to the parent bot.
+    ...(input.isSubagentRunner
+      ? {
+          parentActorId: typeof meterLineage?.parentAgentId === "string" ? meterLineage.parentAgentId : null,
+          parentRequestId: typeof meterLineage?.parentRequestId === "string" ? meterLineage.parentRequestId : null,
+          childAgentId: input.conversationId,
+        }
+      : {}),
+  };
   const agent = turnProvider === "cursor"
     ? input.inference.createSession(input.onRequestId, sessionOptions)
-    : createProviderPromptSession(turnProvider, resolvedModelId, resolvedReasoning, input.conversationId) as unknown as TurnAgentPromptSession;
+    : createProviderPromptSession(turnProvider, resolvedModelId, resolvedReasoning, input.conversationId, { ...meterBase, purpose: "agent" }) as unknown as TurnAgentPromptSession;
   const summarizationSession = turnProvider === "cursor" ? input.inference.createSummarizationSession?.(
     input.onRequestId,
     {
@@ -237,6 +266,7 @@ export async function createTurnAgentRunContext<ContextValue>(
     turnProvider === "codex" ? LOCAL_SUMMARY_MODEL : resolvedModelId,
     LOCAL_SUMMARY_REASONING,
     `${input.conversationId}:summary`,
+    { ...meterBase, purpose: "summary" },
   ) as unknown as SummarizationPromptSession;
   const summarization = summarizationSession ?? input.inference.createSession(
     input.onRequestId,
@@ -335,6 +365,11 @@ export async function createTurnAgentRunContext<ContextValue>(
   let disposed = false;
   return {
     privacyMode,
+    meterIdentity: {
+      actorId: meterBase.actorId,
+      turnRunId: meterBase.turnRunId,
+      hostRequestId: meterBase.hostRequestId,
+    },
     sessions: {
       agent,
       summarization,
@@ -425,6 +460,12 @@ export interface TurnRunOptions {
     readonly rootParentRequestId: string;
     readonly parentAgentToolCallId?: string;
   };
+  /**
+   * Belmont v4 job-id: the [job:<id>] attribution parsed from the ORIGINAL message
+   * (before any wrapper). Set upstream for worker inbound (agent-to-agent-messaging)
+   * where args.text is intact; run() falls back to parsing a direct user prompt.
+   */
+  readonly jobAttribution?: JobAttribution;
 }
 
 export interface TurnCancellation {
@@ -878,9 +919,14 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         throw new SandTurnInterruptedBeforeDispatchError();
       }
 
+      // Belmont v4 job-id: prefer the attribution fixed upstream from the original
+      // message (worker inbound); otherwise parse a direct user prompt's leading
+      // [job:] header. trimmedPrompt for a worker turn is the [agent] wrapper, which
+      // has no leading job header, so this fallback never misattributes.
+      const jobAttribution = options.jobAttribution ?? parseLeadingJobHeader(trimmedPrompt);
       prepared = await host.prepareTurn(
         effectivePrompt,
-        options,
+        { ...options, jobAttribution },
         context,
       );
       settle.noteBaseState(

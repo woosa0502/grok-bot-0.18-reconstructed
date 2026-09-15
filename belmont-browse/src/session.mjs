@@ -84,6 +84,7 @@ export const ENGINES = {
   "906": { bundle: "../vendor/aside-906/apps/daemon/build/daemon.mjs", home: "aside-home-906", version: "1.26.906.1714" },
   "907": { bundle: "../vendor/aside-907/apps/daemon/build/daemon.mjs", home: "aside-home-907", version: "1.26.907.1712" },
   "909": { bundle: "../vendor/aside-909/apps/daemon/build/daemon.mjs", home: "aside-home-909", version: "1.26.909.1820" },
+  "914": { bundle: "../vendor/aside-914/apps/daemon/build/daemon.mjs", home: "aside-home-914", version: "1.26.914.1644" },
 };
 
 export function prepareAsideHome({ asideHome, cdpUrl, model }) {

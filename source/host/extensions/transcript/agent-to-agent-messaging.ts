@@ -5,6 +5,7 @@ import {
   clampAgentMessage,
 } from "../../agents/agent-messaging.js";
 import { sandErrorDetail } from "../../ports/telemetry.js";
+import { parseLeadingJobHeader } from "../inference/usage-ledger.js";
 import { entryRaisesUserActivitySignal } from "../../../shared/transcript.js";
 import { describeAgentRunError } from "./agent-run-error.js";
 import { loadAgentInboundImages } from "./send-message-shaping.js";
@@ -298,6 +299,9 @@ export class AgentToAgentMessaging {
               {
                 hidden: true,
                 isSilenceAllowed: true,
+                // Belmont v4 job-id: parse [job:] tags from the ORIGINAL sender text,
+                // before buildAgentInboundWakePrompt wraps it with the [agent] header.
+                jobAttribution: parseLeadingJobHeader(message.text),
                 ...(selectedImages.length === 0 ? {} : { selectedImages }),
               },
               () => wasStopped?.() !== true,

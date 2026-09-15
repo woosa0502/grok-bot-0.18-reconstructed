@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import type {
@@ -23,6 +24,7 @@ export function isRateLimitLikeMessage(message: string): boolean {
     || lower.includes("usage limit");
 }
 import { effectiveContextWindowTokens } from "./context-window.js";
+import { recordUsageLedgerEntry, type UsageMeteringContext } from "./usage-ledger.js";
 import { createMediaPreprocessor } from "./media-preprocessing.js";
 import {
   BelmontPiCredentialStore,
@@ -69,6 +71,11 @@ export interface PiCodexExecutorOptions {
    * auto-review classifier), which must not answer as the desktop assistant.
    */
   readonly systemPrompt?: string;
+  /**
+   * Optional best-effort token metering attribution fixed by the upper layer. When present, one
+   * usage-ledger entry is appended per completed model call. Absent for un-instrumented paths.
+   */
+  readonly metering?: UsageMeteringContext;
 }
 
 const CODEX_PROVIDER = "openai-codex";
@@ -188,6 +195,7 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
   const materializer = new PiStreamMaterializer();
 
   const fullStream = (async function* (): AsyncGenerator<PiCodexStreamEvent> {
+    const startedAt = Date.now();
     try {
       options.signal?.throwIfAborted();
       const resolved = await resolveModel(options.modelId, options.signal);
@@ -215,6 +223,40 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
       const authoritative = materializer.terminalMessage() ?? final;
       const recorded = usageRecord(authoritative.usage);
       options.onUsage?.(recorded);
+      // Best-effort per-call metering (never affects inference). reasoning is a SUBSET of output;
+      // it is undefined when the provider omits a breakdown — recorded as null, never coerced to 0.
+      if (options.metering != null) {
+        const callId = randomUUID();
+        recordUsageLedgerEntry({
+          ...options.metering,
+          schemaVersion: 1,
+          ts: Date.now(),
+          eventId: `${callId}:usage`,
+          callId,
+          invocationId: options.invocationId,
+          responseId: authoritative.responseId ?? null,
+          provider: "codex",
+          requestedModel: options.modelId ?? null,
+          resolvedModel: resolved.model.id,
+          responseModel: authoritative.model ?? null,
+          requestedEffort: options.reasoning ?? null,
+          inputTokens: recorded.inputTokens,
+          cacheReadTokens: recorded.cacheReadTokens,
+          cacheWriteTokens: recorded.cacheWriteTokens,
+          outputTokens: recorded.outputTokens,
+          reasoningTokens: authoritative.usage.reasoning ?? null,
+          totalTokens: Number.isFinite(authoritative.usage.totalTokens) ? authoritative.usage.totalTokens : null,
+          usageSource: "pi.normalized",
+          startedAt,
+          endedAt: Date.now(),
+          status: "ok",
+        });
+      }
+      // Error/abort rows are written in the catch block below; the auxiliary (runRoutedProviderText)
+      // path and subagent parent linkage are now threaded too. Remaining TODO(metering): job-id
+      // attribution — the [job:<id>] tag lives only in inbound message text (a system-prompt
+      // convention with no parser) and is not reachable from this layer without threading the raw
+      // inbound prompt through the receipt path; jobIds is carried on the context but stays empty.
       usage.resolve({
         promptTokens: recorded.inputTokens,
         completionTokens: recorded.outputTokens,
@@ -257,6 +299,40 @@ export function createPiCodexExecutor(options: PiCodexExecutorOptions) {
       usage.reject(finalError);
       extendedUsage.reject(finalError);
       metadata.reject(finalError);
+      // Best-effort metering for FAILED/ABORTED calls (never affects inference). Usage never
+      // arrived, so token fields are null (unknown), NOT 0. `resolved` may be out of scope if the
+      // failure happened before model resolution, so resolvedModel is omitted here.
+      if (options.metering != null) {
+        try {
+          const callId = randomUUID();
+          const aborted = options.signal?.aborted === true
+            || (error instanceof Error && error.name === "AbortError");
+          recordUsageLedgerEntry({
+            ...options.metering,
+            schemaVersion: 1,
+            ts: Date.now(),
+            eventId: `${callId}:usage`,
+            callId,
+            invocationId: options.invocationId,
+            responseId: null,
+            provider: "codex",
+            requestedModel: options.modelId ?? null,
+            resolvedModel: null,
+            responseModel: null,
+            requestedEffort: options.reasoning ?? null,
+            inputTokens: null,
+            cacheReadTokens: null,
+            cacheWriteTokens: null,
+            outputTokens: null,
+            reasoningTokens: null,
+            totalTokens: null,
+            usageSource: "unavailable",
+            startedAt,
+            endedAt: Date.now(),
+            status: aborted ? "aborted" : "error",
+          });
+        } catch { /* metering must never mask the real error */ }
+      }
       throw finalError;
     }
   })();

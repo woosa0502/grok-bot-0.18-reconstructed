@@ -62,15 +62,32 @@ def send_js():
       return 'SENT';
     })()"""
 
+def navigate(ws, nx, url):
+    ws.send(json.dumps({"id": nx(), "method": "Page.enable"}))
+    mid = nx()
+    ws.send(json.dumps({"id": mid, "method": "Page.navigate", "params": {"url": url}}))
+    while True:
+        m = json.loads(ws.recv())
+        if m.get("id") == mid: break
+    # wait for the ProseMirror input to be present (new-chat ready)
+    for _ in range(40):
+        r = ev(ws, "(()=>!!document.querySelector('#prompt-textarea'))()", nx())
+        if r is True: return True
+        time.sleep(0.5)
+    return False
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "state"
     t = tab()
-    ws = websocket.create_connection(t["webSocketDebuggerUrl"], max_size=None, timeout=15)
+    ws = websocket.create_connection(t["webSocketDebuggerUrl"], max_size=None, timeout=30)
     mid = [0]
     def nx(): mid[0]+=1; return mid[0]
     try:
         ev(ws, "1", nx())  # warm up
-        if cmd == "state":
+        if cmd == "newchat":
+            ok = navigate(ws, nx, "https://chatgpt.com/")
+            print("newchat ready:" , ok)
+        elif cmd == "state":
             print(ev(ws, STATE_JS, nx()))
         elif cmd == "read":
             print(ev(ws, READ_JS, nx()))

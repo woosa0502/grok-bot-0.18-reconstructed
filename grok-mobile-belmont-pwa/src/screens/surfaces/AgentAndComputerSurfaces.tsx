@@ -19,6 +19,21 @@ export function AgentProfileScreen({ back, bot, open, refreshBots }: SurfaceScre
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [hidden, setHidden] = useState(bot?.isHidden ?? false);
   const [hideError, setHideError] = useState("");
+  const [modelSummary, setModelSummary] = useState("");
+  useEffect(() => {
+    const id = bot?.id;
+    if (id == null) return;
+    let alive = true;
+    void api.botModel(id).then((loaded) => {
+      if (!alive) return;
+      const sel = loaded.selection ?? loaded.defaultSelection;
+      if (sel == null) { setModelSummary(""); return; }
+      const label = loaded.models.find((item) => item.id === sel.modelId)?.label ?? sel.modelId;
+      const eff = sel.parameters.find((parameter) => parameter.id === "effort")?.value ?? "";
+      setModelSummary(`${label}${eff ? ` · ${eff}` : ""}${loaded.selection == null ? " · 기본" : ""}`);
+    }).catch(() => { /* keep the static hint on failure */ });
+    return () => { alive = false; };
+  }, [bot?.id]);
   const state: BabyGrokState = bot?.isRunning ? "working" : bot?.awaitingUserResponse ? "listening" : "idle";
   async function saveProfile() {
     if (bot == null || status === "saving") return;
@@ -42,7 +57,7 @@ export function AgentProfileScreen({ back, bot, open, refreshBots }: SurfaceScre
         <NavRow detail="Bot이 정기적으로 수행할 작업" icon="routine" onClick={() => open("RoutineDetailScreen")} title="루틴" />
         <NavRow detail="사용 중인 도구와 지식" icon="tools" onClick={() => open("PluginsYoursScreen")} title="플러그인과 스킬" />
         <NavRow detail="다른 Bot과 함께 작업" icon="group" onClick={() => open("AddMemberScreen")} title="멤버" />
-        <NavRow detail="이 Bot이 쓰는 모델과 노력" icon="model" onClick={() => open("BotModelScreen", { botId: bot?.id })} title="모델" />
+        <NavRow detail={modelSummary || "이 Bot이 쓰는 모델과 노력"} icon="model" onClick={() => open("BotModelScreen", { botId: bot?.id })} title="모델" />
         <NavRow detail="템플릿으로 내보내기·가져오기" icon="template" onClick={() => open("BotTemplateDetailsScreen", { botId: bot?.id })} title="템플릿" />
       </Section>
       <Section title="활동"><NavRow icon="bell" meta={<Toggle checked={notifications} label="Bot 알림" onChange={setNotifications} />} title="알림" /><NavRow detail="현재 컴퓨터 상태와 복구" icon="display" onClick={() => open("BoxScreen", { botId: bot?.id })} title="컴퓨터" /></Section>

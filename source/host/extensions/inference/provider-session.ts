@@ -18,6 +18,7 @@ import {
 } from "./pi-codex-projection.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
 import type { PiCodexExecutorOptions } from "./pi-codex-runtime.js";
+import type { UsageMeteringContext } from "./usage-ledger.js";
 
 type Loose = Record<string, any>;
 interface ProviderMessage extends LabelMessage { role: string; content: string | readonly unknown[] }
@@ -295,6 +296,7 @@ function codexExecutor(
   onUsage?: (usage: UsageRecord) => void,
   context?: ProviderExecutorContext,
   cacheSessionId?: string,
+  metering?: UsageMeteringContext,
 ) {
   // Per-turn reasoning (resolved from the agent's model selection — e.g. a computer-use subagent's
   // effort=low) overrides the global default; the env fallback keeps the "high" the original name carried.
@@ -309,6 +311,7 @@ function codexExecutor(
     ...(context?.signal == null ? {} : { signal: context.signal }),
     ...(onUsage == null ? {} : { onUsage }),
     ...(context?.systemPrompt == null ? {} : { systemPrompt: context.systemPrompt }),
+    ...(metering == null ? {} : { metering }),
   });
 }
 
@@ -516,6 +519,7 @@ class ProviderPromptExecutor implements PromptExecutor {
     readonly modelId: string | undefined,
     readonly reasoning?: CodexReasoningEffort,
     cacheSessionId?: string,
+    readonly metering?: UsageMeteringContext,
   ) {
     this.#messages = initialMessages == null ? [] : [...initialMessages];
     this.#cacheSessionId = cacheSessionId != null && cacheSessionId.length > 0 ? cacheSessionId : crypto.randomUUID();
@@ -552,6 +556,7 @@ class ProviderPromptExecutor implements PromptExecutor {
         this.onUsage,
         providerContext(signalFromContext(ctx), modelFromContext(ctx) ?? this.modelId, reasoningFromContext(ctx) ?? this.reasoning),
         this.#cacheSessionId,
+        this.metering,
       );
     }
     if (this.provider === "claude-code") {
@@ -571,6 +576,7 @@ export function createProviderPromptSession(
   requestedModelId?: string,
   requestedReasoning?: CodexReasoningEffort,
   cacheSessionId?: string,
+  metering?: UsageMeteringContext,
 ): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
   const requested = requestedModelId?.trim();
   const modelId = provider === "codex"
@@ -589,6 +595,7 @@ export function createProviderPromptSession(
         parsed.modelId ?? modelId,
         requestedReasoning,
         cacheSessionId,
+        metering,
       );
     },
   };
@@ -605,11 +612,13 @@ export async function runRoutedProviderText(provider: RoutedProvider, messages: 
   readonly reasoning?: CodexReasoningEffort;
   /** Replaces the Grok Bot assistant persona for single-purpose requests. */
   readonly systemPrompt?: string;
+  /** Optional best-effort metering for auxiliary calls (e.g. auto-review classifier). */
+  readonly metering?: UsageMeteringContext;
 }): Promise<string> {
   const invocationId = crypto.randomUUID();
   const onUsage = (usage: UsageRecord) => recordRoutedUsage(provider, usage);
   const result = provider === "codex"
-    ? codexExecutor(messages, invocationId, options?.tools, onUsage, providerContext(options?.signal, options?.modelId, options?.reasoning, options?.systemPrompt))
+    ? codexExecutor(messages, invocationId, options?.tools, onUsage, providerContext(options?.signal, options?.modelId, options?.reasoning, options?.systemPrompt), undefined, options?.metering)
     : provider === "claude-code"
       ? claudeExecutor(messages, invocationId, onUsage, options?.mcpServerUrl, options?.systemPrompt, providerContext(options?.signal, options?.modelId))
       : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage, options?.systemPrompt, options?.modelId, options?.signal);

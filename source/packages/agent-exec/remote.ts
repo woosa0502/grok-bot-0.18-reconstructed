@@ -21,6 +21,12 @@ export interface ExecutorOptions {
   hookContextCollector?: HookAdditionalContext[];
   deliverAgentStoreConflictNotices?: boolean;
   enableAgentStoreConflictNotices?: boolean;
+  /**
+   * Belmont: when true, the box Read tool skips the protected host-only path guard
+   * for this call. Set only for the manager agent (full-access orchestrator), wired
+   * in remote-box-resources; other agents never set it, so their reads stay guarded.
+   */
+  bypassReadGuard?: boolean;
 }
 export interface Executor<Args, Result> { execute(ctx: Context, args: Args, options?: ExecutorOptions): Promise<Result> }
 export interface StreamExecutor<Args, Event> { execute(ctx: Context, args: Args, options?: ExecutorOptions): AsyncIterable<Event> }

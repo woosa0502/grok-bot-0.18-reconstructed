@@ -213,7 +213,8 @@ export function createProductionBoxGeneratedPorts<
       return new CombinedResourceAccessor(accessor, [
         resourceEntry(readExecutorResource, {
           async execute(ctx, args, options) {
-            await assertFileReadAllowed(args.path);
+            // Belmont full-access: the manager's reads set bypassReadGuard; everyone else is guarded.
+            if ((options as { bypassReadGuard?: boolean } | undefined)?.bypassReadGuard !== true) await assertFileReadAllowed(args.path);
             return await accessor.get(readExecutorResource).execute(ctx, args, options);
           }
         })
