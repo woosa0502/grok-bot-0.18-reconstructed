@@ -224,7 +224,7 @@ export async function initializeLocalLifecycle(A, { accountId, startBackground =
       // data to idle, and leaves unanswered questions in place. That is the original's own code path, so
       // it is called as-is when the bundle exports it; only sessions it does not cover (running ones, or
       // any suspended session on a bundle without the export) are marked for explicit continuation.
-      const originalRecovery = typeof A.recoverSuspensionsOnStartup === "function";
+      const originalRecovery = !process.env.BELMONT_BROWSER_BOT_ID && typeof A.recoverSuspensionsOnStartup === "function";
       let handedToOriginal = 0;
       for (const record of rows) {
         if (record.status !== "running" && record.status !== "suspended") continue;

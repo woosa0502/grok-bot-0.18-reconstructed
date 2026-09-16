@@ -1,3 +1,5 @@
+import { installBrowserBot } from './install-browser-bot.mjs';
+import { acquireBrowserServiceLease } from './browser-service-lease.mjs';
 // belmont-browse: local HTTP service exposing browse sessions to Belmont's browse-runtime extension (our code).
 import http from "node:http";
 import path from "node:path";
@@ -42,6 +44,7 @@ process.on("SIGINT", requestShutdown);
 process.on("SIGTERM", requestShutdown);
 const startupModel = modelOverrides({ model: opt.model, provider: opt.provider, thinking: opt.thinking, fastMode: opt["fast-mode"] });
 const stateDir = path.resolve(opt["state-dir"]);
+const releaseBrowserServiceLease = acquireBrowserServiceLease(stateDir);
 const engine = await createBrowseEngine({ engine: opt.engine, stateDir, transport: opt.transport, cdpPort: Number(opt["cdp-port"]), relayPort: Number(opt["relay-port"]), model: startupModel, onShutdown: requestShutdown, log });
 const model = engine.model;
 const token = randomBytes(24).toString("hex");
@@ -112,6 +115,8 @@ const server = http.createServer(async (req, res) => {
     return json(res, e.statusCode ?? 500, { error: e.message, code: e.code ?? "INTERNAL_ERROR" });
   }
 });
+const dedicatedBrowser = await installBrowserBot({ server, engine, stateDir, token, serviceIdentity, display: process.env.BELMONT_BROWSE_DISPLAY || ':99' });
+
 await new Promise((resolve, reject) => {
   server.once("error", reject);
   server.listen(Number(opt.port), "127.0.0.1", () => {
@@ -135,6 +140,7 @@ function shutdown() {
     server.closeIdleConnections?.();
     const drainTimer = setTimeout(() => server.closeAllConnections?.(), 2000);
     drainTimer.unref?.();
+    await dedicatedBrowser.close();
     const results = await Promise.allSettled([serverClosed, engine.stop()]);
     clearTimeout(drainTimer);
     try {

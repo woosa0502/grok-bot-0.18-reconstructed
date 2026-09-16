@@ -1,3 +1,4 @@
+import { browserBotApi } from './browser-bot-api.mjs';
 import crypto from "node:crypto";
 import { createReadStream, promises as fs, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import http from "node:http";
@@ -2032,7 +2033,29 @@ export function createMobileServer({
 
   server.on("listening", () => push.start());
   server.on("close", () => push.close());
-  return { server, pairingCode, sessions, computerTargets, push };
+  
+  const browserApi = browserBotApi({ profileDir, authorized, skipPairing, gateway,
+    readBody: async (req) => { const chunks=[]; let size=0; for await (const b of req) { size += b.length; if (size > 262144) throw Object.assign(new Error('Body too large'), {statusCode:413}); chunks.push(b); } return JSON.parse(Buffer.concat(chunks).toString('utf8')); },
+    json: (res,status,value) => { res.writeHead(status, {'content-type':'application/json; charset=utf-8','cache-control':'no-store'}); res.end(JSON.stringify(value)); },
+  });
+  const originalBrowserRequests = server.listeners('request');
+  server.removeAllListeners('request');
+  server.on('request', async (req,res) => {
+    const u = new URL(req.url, 'http://127.0.0.1');
+    if (/^\/api\/bots\/[^/]+\/browser(?:\/|$)/.test(u.pathname)) {
+      try { if (await browserApi.handle(req,res,u)) return; }
+      catch (e) { res.writeHead(e.statusCode ?? 500, {'content-type':'application/json','cache-control':'no-store'}); res.end(JSON.stringify({code:e.code ?? 'BROWSER_API_ERROR',error:e.message})); return; }
+    }
+    for (const fn of originalBrowserRequests) fn.call(server,req,res);
+  });
+  const originalBrowserUpgrades = server.listeners('upgrade');
+  server.removeAllListeners('upgrade');
+  server.on('upgrade', async (req,socket,head) => {
+    if (await browserApi.upgrade(req,socket,head)) return;
+    for (const fn of originalBrowserUpgrades) fn.call(server,req,socket,head);
+  });
+  server.on('close', () => browserApi.close());
+return { server, pairingCode, sessions, computerTargets, push };
 }
 
 async function main() {

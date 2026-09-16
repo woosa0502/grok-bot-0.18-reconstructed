@@ -1,3 +1,4 @@
+import { BrowserJobRuntime } from './browser-job-runtime.js';
 import { defineHostExtension } from "../../../internal/host-extensions.js";
 import { subscribeTranscriptMutations } from "../../transcript-mutation-events.js";
 import type { RunnerUpdate } from "../../runner/sand-agent-runner.js";
@@ -27,6 +28,9 @@ export const browseRuntimeExtension = defineHostExtension<BrowseRuntimeExtension
     const transcript = context.deps[HostExtensions.Transcript] as { sendToAgent?: (fromAgentId: string, toAgentId: string, text: string, images: unknown, priority: boolean) => unknown } | undefined;
     const links: BrowseLinkRegistry = new Map();
     const memory = context.deps[HostExtensions.Memory] as BrowseMemoryFacade | undefined;
+    const browserJobs = new BrowserJobRuntime(memory, transcript?.sendToAgent?.bind(transcript), log);
+    if (ASIDE_BROWSE_ENABLED) browserJobs.start();
+    context.onStop(() => browserJobs.close());
     const resolveClient = (identity?: { agentId: string; conversationId: () => string }, sharedHooks?: BrowseClientMemoryHooks): BrowseClient => {
       const hooks = sharedHooks ?? (memory && typeof memory.isCanonical === "function" && identity ? createBrowseMemoryHooks(memory, identity, log) : undefined);
       const client = BrowseClient.fromEnvironment(hooks);
@@ -44,7 +48,10 @@ export const browseRuntimeExtension = defineHostExtension<BrowseRuntimeExtension
       createSubagentSession: (agentId: string, options?: { memoryAgentId?: string; conversationId?: string }) => new BrowseSubagentSession(resolveClient({ agentId: options?.memoryAgentId ?? agentId, conversationId: () => options?.conversationId ?? agentId }), agentId, links, log),
       wrapRunner: (runner, options) => {
         const agentId = options.getAgentId?.() ?? options.getConversationId?.();
-        if (!ASIDE_BROWSE_ENABLED || agentId === undefined || !isAsideBotAgent(agentId)) return runner;
+        if (agentId === undefined) return runner;
+        const dedicatedBrowserBot = browserJobs.configured(agentId);
+        if (dedicatedBrowserBot && !ASIDE_BROWSE_ENABLED) throw new Error('Dedicated browser runtime is disabled; no ordinary runner fallback');
+        if (!ASIDE_BROWSE_ENABLED || (!dedicatedBrowserBot && !isAsideBotAgent(agentId))) return runner;
         log(`[browse-runtime] bot ${agentId}: turns served by the Aside browse service`);
         // The runner itself owns emitUpdate (it forwards to the transcript transport); the raw
         // options object handed to buildRunner does not carry it.
@@ -59,7 +66,7 @@ export const browseRuntimeExtension = defineHostExtension<BrowseRuntimeExtension
         const identity = { agentId, conversationId: () => options.getConversationId?.() ?? agentId };
         const hooks = memory && typeof memory.isCanonical === "function" ? createBrowseMemoryHooks(memory, identity, log) : undefined;
         const resolveScopedClient = () => resolveClient(identity, hooks);
-        return wrapRunnerForAsideBot(runner, agentId, { client: resolveScopedClient, emitUpdate, log, ...(sendToAgent === undefined ? {} : { sendToAgent }) });
+        return wrapRunnerForAsideBot(runner, agentId, { client: resolveScopedClient, emitUpdate, log, jobRuntime: browserJobs, ...(sendToAgent === undefined ? {} : { sendToAgent }) });
       },
     };
   },

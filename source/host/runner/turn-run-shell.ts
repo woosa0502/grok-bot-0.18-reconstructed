@@ -432,6 +432,7 @@ export const RESUME_TURN_ACTION = new ConversationAction({
 });
 
 export interface TurnRunOptions {
+  readonly browserInbound?: { readonly fromAgentId: string; readonly requestId?: string; readonly text: string; readonly receivedAt: number };
   readonly requestSource?: string;
   readonly memoryLearningSource?: "user" | "system";
   /** Distinguishes recovery work from optional hidden delivery nudges. */

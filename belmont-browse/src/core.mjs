@@ -130,7 +130,7 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
     : await new FakeExtension({ bridge: A.globalExtensionBridge, cdp, accountId: account.id, profileId: PROFILE_ID, log: () => {} }).attach();
   cleanup.add("extension binding", () => ext.detach?.());
   const profileId = ext.profileId ?? PROFILE_ID;
-  await initializeLocalLifecycle(A, { accountId: account.id, startBackground: true, log });
+  await initializeLocalLifecycle(A, { accountId: account.id, startBackground: !process.env.BELMONT_BROWSER_BOT_ID, log });
   // Aside's semantic memory (Moss) loads its model and builds the account index on first use. The runtime's own
   // warm() performs that first use now, in the background, so readiness is observed at startup and the bot's
   // first memory_search is not the slow one. A failed warm-up only logs; every later search retries the original.
@@ -305,6 +305,8 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
 
 /** Session scheduling separated from process/bootstrap I/O for isolated behavior tests. */
 export function createSessionController({ A, account, profileId, ext, model = DEFAULT_MODEL, maxConcurrent = 1, cwd, createRecord = createBrowseSession, onTurnEnd = () => {}, log = () => {}, suspensionIntervalMs = 300, memoryAuthority = "aside-legacy", memoryEnvironment } = {}) {
+  if (process.env.BELMONT_BROWSER_BOT_ID && maxConcurrent !== 1) throw new Error('Dedicated browser mode requires maxConcurrent=1');
+
   const server = A.GlobalAgentSessionServer;
   if (!server || ["getAgent", "startRun", "waitForIdle", "getLoadedAgent", "steer", "abort"].some((name) => typeof server[name] !== "function")) {
     throw sessionError("ENGINE_CONTRACT_MISSING", "Aside bundle must expose the shared GlobalAgentSessionServer", 503);

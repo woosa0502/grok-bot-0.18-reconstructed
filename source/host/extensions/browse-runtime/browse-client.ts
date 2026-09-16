@@ -138,6 +138,14 @@ export class BrowseClient {
     return result;
   }
 
+  jobHealth(): Promise<any> { return this.#request('GET', '/health'); }
+  jobMemoryMetadata(task: string): Promise<any> { return this.#request('POST', '/memory/context', { task }); }
+  submitJob(body: unknown): Promise<any> { return this.#request('POST', '/browser-jobs', body); }
+  jobReceipt(requester: string, key: string): Promise<any> { return this.#request('GET', '/browser-jobs/receipt?requester=' + encodeURIComponent(requester) + '&key=' + encodeURIComponent(key)); }
+  jobs(): Promise<any> { return this.#request('GET', '/browser-jobs'); }
+  jobEvents(after: number): Promise<any> { return this.#request('GET', '/browser-jobs/events?after=' + after); }
+  jobCommand(job: string, command: string, body: unknown): Promise<any> { return this.#request('POST', '/browser-jobs/' + encodeURIComponent(job) + '/' + command, body); }
+
   health(): Promise<{ ok: boolean; engine: string; memoryAuthority?: string; memoryProtocolVersion?: number }> { return this.#request("GET", "/health"); }
   async #prepareMemory(task: string): Promise<BrowseMemoryContext | undefined> {
     if (!this.memory?.isCanonical()) return undefined;
