@@ -11,16 +11,18 @@ Usage: patch-linux-platform-glyphs.py --assets <agent-manager>/1.26.909.1820/ass
 Idempotent. Refuses to touch a file whose hash is neither the pinned raw nor the pinned
 patched value.
 """
-import argparse, hashlib, json, sys
+import argparse, hashlib, json, re, sys
 from pathlib import Path
 
 ASSETS = {
     "appearance-BlPq6qs7.js": {
+        "version": "909",
         "raw": "5ec1cf571e9f0e20f6f72c0957ddd0fa9589b84f0d2402e1d28f3740abc9d5ae",
         "patched": "844716d502c33ed042c39efe88ee2c0eba06850984841a87a7ac9466bc94634a",
         "edits": [('o==="windows"?r.windowsShortcut:r.macShortcut', 'o!=="macos"?r.windowsShortcut:r.macShortcut')],
     },
     "platform-CH1yjH9T.js": {
+        "version": "909",
         "raw": "9db39c7e24ea6274c10c4768e92a8fbcb8b332d3fc0ca5b55e1bf0c33bd46338",
         "patched": "79f6f9b0961c02c29f592a8414d8d5c656d6e27224ac6f6174dfbf7ad0ba2bc2",
         "edits": [('function t(){return/win/i.test(r())?"Ctrl+":"⌘"}function a(){return/win/i.test(r())?n:i}',
@@ -32,6 +34,7 @@ ASSETS = {
     # instead of File Explorer (m). The fork opens folders in Windows Explorer under WSL, so non-macOS
     # must show File Explorer. Single edit.
     "platform-CX_yPATJ.js": {
+        "version": "914",
         "raw": "9e0e29e097d7701de5bb671e48d06c380fac4082bf1627eb352ace5ee22e4ef4",
         "patched": "99484d0b218757d015bb0c29539c45f48702918ba92659749c9098366d0338a9",
         "edits": [('function p(){return/win/i.test(t())?m:s}', 'function p(){return/mac/i.test(t())?s:m}')],
@@ -46,16 +49,34 @@ def sha(p: Path) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--assets", required=True)
+    ap.add_argument("--version", help="engine version (e.g. 1.26.914.1644); inferred from --assets path if omitted")
     args = ap.parse_args()
     root = Path(args.assets)
+    # Determine which engine version this assets dir belongs to, so we can REQUIRE that version's
+    # files exist (a wrong path, an empty dir, or a missing patch target must fail — not be skipped
+    # as if it were merely a foreign version's file). Foreign-version files are still skipped.
+    version_full = args.version or ""
+    m = re.search(r"1\.26\.(\d+)\.", version_full or str(root))
+    target_version = m.group(1) if m else None
+    if target_version is None:
+        print(f"could not determine engine version from --version/--assets ({root}); pass --version", file=sys.stderr)
+        return 1
+    known = {spec.get("version") for spec in ASSETS.values()}
+    if target_version not in known:
+        print(f"no glyph patch entries registered for version {target_version} (known: {sorted(known)})", file=sys.stderr)
+        return 1
     report = []
     for name, spec in ASSETS.items():
         p = root / name
+        is_target = spec.get("version") == target_version
         if not p.exists():
-            # ASSETS spans multiple engine versions (filenames carry per-build content hashes); a
-            # given assets dir only holds its own version's files. Skip the others explicitly so one
-            # tool serves 909 and 914, rather than hard-failing on a foreign-version filename.
-            report.append({"file": name, "status": "skipped (not in this version's assets)"})
+            if is_target:
+                # A file this version is supposed to carry is missing: wrong assets path, empty dir,
+                # or a drifted build. Fail loudly rather than silently skipping the patch.
+                print(f"{name}: REQUIRED for version {target_version} but missing under {root}", file=sys.stderr)
+                return 1
+            # Foreign-version file (its content hash names a different build): skip.
+            report.append({"file": name, "status": f"skipped (belongs to version {spec.get('version')})"})
             continue
         before = sha(p)
         if before == spec["patched"]:

@@ -22,7 +22,7 @@ export const REPO_ROOT = path.resolve(BROWSE_ROOT, "..");
 export const SNAPSHOT_DIR = path.join(BROWSE_ROOT, "aside-fork/snapshot");
 export const IDENTITY_FILE = path.join(SNAPSHOT_DIR, "build-identity.json");
 const SNAPSHOT_INPUTS = ["manifest.json", "chromium.patch", "args.gn", "dependencies.json"];
-const ENGINE_BUNDLES = { "824": "aside-824", "902": "aside-902", "906": "aside-906", "907": "aside-907", "909": "aside-909" };
+const ENGINE_BUNDLES = { "824": "aside-824", "902": "aside-902", "906": "aside-906", "907": "aside-907", "909": "aside-909", "914": "aside-914" };
 
 export async function sha256File(file) {
   return new Promise((resolve, reject) => {
@@ -93,9 +93,16 @@ export async function verifyIdentity({ chrome, engine = "907", snapshotDir = SNA
       if (sha !== identity.chrome?.sha256) problems.push(`chrome binary ${chrome} (sha256 ${sha.slice(0, 16)}…) is not the recorded build (${String(identity.chrome?.sha256).slice(0, 16)}…)`);
     }
   }
-  // 3. The daemon bundle the engine will load must be the pinned patched bundle.
+  // 3. The daemon bundle the engine will load must be the pinned patched bundle. An engine that
+  // is not registered here, or has no pinned sha, must FAIL rather than skip the check silently —
+  // otherwise a typo'd or unpinned engine (e.g. 914 before it was registered) runs an unverified
+  // daemon that this verifier claims is fine.
   const daemon = pinnedDaemon(engine, repoRoot);
-  if (daemon !== null && daemon.sha256 !== null) {
+  if (daemon === null) {
+    problems.push(`engine ${engine} is not registered in ENGINE_BUNDLES; its daemon bundle cannot be verified`);
+  } else if (daemon.sha256 === null) {
+    problems.push(`no pinned daemon sha for ${daemon.target}; add a patched-daemon-bundle pin before running engine ${engine}`);
+  } else {
     const file = path.join(repoRoot, daemon.target);
     if (!existsSync(file)) problems.push(`daemon bundle ${daemon.target} is missing (run npm run bootstrap:aside)`);
     else {
