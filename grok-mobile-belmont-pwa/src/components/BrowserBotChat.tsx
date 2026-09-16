@@ -90,7 +90,7 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
       <div className="bb-jobbar">
         <button className="bb-picker" type="button" aria-haspopup="listbox" aria-expanded={pickerOpen} onClick={()=>setPickerOpen(o=>!o)}>
           <span className={`bb-jobrow__dot ${current?(KIND_CLASS[current.status]??''):'new'}`} aria-hidden="true"/>
-          <span className="bb-picker__label">{current?taskOf(current.jobId):'새 작업 · 전체 대화'}</span>
+          <span className="bb-picker__label">{current?taskOf(current.jobId):'최근 항목'}</span>
           <span className="bb-picker__chev" aria-hidden="true"/>
         </button>
         {pickerOpen?<>
@@ -98,7 +98,7 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
           <div className="bb-picker__menu" role="listbox">
             <button className={`bb-jobrow ${selected==='new'?'sel':''}`} type="button" role="option" aria-selected={selected==='new'} onClick={()=>{setSelected('new');setPickerOpen(false);}}>
               <span className="bb-jobrow__dot new" aria-hidden="true"/>
-              <span className="bb-jobrow__body"><span className="bb-jobrow__name">새 작업</span><span className="bb-jobrow__sub">전체 대화 보기</span></span>
+              <span className="bb-jobrow__body"><span className="bb-jobrow__name">최근 항목</span><span className="bb-jobrow__sub">전체 대화 보기</span></span>
             </button>
             {state.jobs.map(j=><button key={j.key} className={`bb-jobrow ${selected===j.key?'sel':''}`} type="button" role="option" aria-selected={selected===j.key} onClick={()=>{setSelected(j.key);setPickerOpen(false);}}>
               <span className={`bb-jobrow__dot ${KIND_CLASS[j.status]??''}`} aria-hidden="true"/>
