@@ -123,9 +123,13 @@ export class BrowserJobBroker {
     if(!j.asideSessionId || (!TERMINAL.has(j.status) && j.status!=='waiting-approval')) return;
     const rows=await this.engine.asideMessages(j.asideSessionId,0);
     this.store.transaction(()=>{for(const m of rows){
-      if(typeof m.id!=='string'||!m.id) { this.log('[browser-jobs] native message without stable id: not mirrored'); continue; }
-      const mirrorId=digest([j.originInstanceId,j.asideSessionId,m.id]);
-      this.store.event(mirrorId,j.botId,{eventId:mirrorId,origin:'aside-mirror',kind:'message',jobKey:j.key,jobId:j.jobId,instanceId:j.originInstanceId,asideSessionId:j.asideSessionId,messageId:m.id,role:m.role,text:m.text,at:m.timestamp});
+      // 914 (and other engines) persist messages with role/content/timestamp but no native id, so
+      // requiring one dropped every mirrored message. Fall back to the same stable fingerprint the
+      // linked-bot mirror uses (role+timestamp+text hash): stable across re-fetches, so the mirror
+      // dedups idempotently and completed messages actually reach the bot's chat.
+      const messageId=(typeof m.id==='string'&&m.id)?m.id:`fp:${m.role}:${m.timestamp}:${digest([m.role,String(m.timestamp),m.text]).slice(0,16)}`;
+      const mirrorId=digest([j.originInstanceId,j.asideSessionId,messageId]);
+      this.store.event(mirrorId,j.botId,{eventId:mirrorId,origin:'aside-mirror',kind:'message',jobKey:j.key,jobId:j.jobId,instanceId:j.originInstanceId,asideSessionId:j.asideSessionId,messageId,role:m.role,text:m.text,at:m.timestamp});
     }});
   }
   async tick() {
