@@ -35,7 +35,10 @@ def main():
             'BELMONT_BROWSE_DISPLAY':args.display,'BELMONT_BROWSE_ENGINE':'914',
             'BELMONT_BROWSE_STATE_DIR':str((repo/args.state_dir).resolve()),
             'BELMONT_BROWSE_TRANSPORT':'port','BELMONT_BROWSER_BOT_ID':config['botId'],
-            'BELMONT_MEMORY_AUTHORITY':'belmont','BELMONT_BROWSE_SCREEN':'1'})
+            'BELMONT_MEMORY_AUTHORITY':'belmont','BELMONT_BROWSE_SCREEN':'1',
+            # Show only the browser viewport on the read-only screen (crop the Aside sidebar + Xvfb
+            # background). Overridable; measured for the 1280x800 fork window on a 1440x900 Xvfb.
+            'BELMONT_SCREEN_CLIP':os.environ.get('BELMONT_SCREEN_CLIP','1026x790+238+0')})
         if env.get('BELMONT_BROWSE_ALLOW_UNVERIFIED_NATIVE')=='1':
             raise SystemExit('Refusing the unverified-native override in the dedicated launcher')
         try:

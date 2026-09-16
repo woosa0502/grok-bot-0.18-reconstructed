@@ -39,7 +39,12 @@ export async function createBrowserScreen({enabled,display,instanceId,botId,toke
     // DISPLAY to the target) so the screen binds the private Xvfb.
     const screenEnv={...process.env,DISPLAY:display};delete screenEnv.WAYLAND_DISPLAY;delete screenEnv.WAYLAND_SOCKET;
     const start=(binary,args)=>{const p=spawn(binary,args,{stdio:['ignore','ignore','pipe'],env:screenEnv});p.on('error',e=>{ready=false;log(`[screen] ${e.message}`);closeSockets();});p.on('exit',()=>{ready=false;closeSockets();});p.stderr.on('data',b=>log(`[screen] ${String(b).slice(-1000).trim()}`));return p;};
-    vnc=start(process.env.BELMONT_X11VNC_BIN||'x11vnc',['-display',display,'-localhost','-rfbport',String(rfbPort),'-forever','-shared','-viewonly','-noclipboard','-nosetclipboard','-nopw']);
+    // Serve only the browser viewport, not the whole Aside window: its left sidebar (bookmarks/chats/tabs)
+    // is already the bot's own chat panel, and the Xvfb background is dead space. BELMONT_SCREEN_CLIP is a
+    // WxH+X+Y region (validated) passed to x11vnc -clip so the phone sees just the page + address bar.
+    const clip=process.env.BELMONT_SCREEN_CLIP;
+    const clipArgs=(typeof clip==='string'&&/^\d+x\d+\+\d+\+\d+$/.test(clip))?['-clip',clip]:[];
+    vnc=start(process.env.BELMONT_X11VNC_BIN||'x11vnc',['-display',display,'-localhost','-rfbport',String(rfbPort),'-forever','-shared','-viewonly','-noclipboard','-nosetclipboard','-nopw',...clipArgs]);
     for(let i=0;i<60;i++){if(vnc.exitCode!==null||vnc.signalCode!==null)throw new Error('x11vnc exited before readiness');if(await isListening(rfbPort))break;await sleep(100);}
     if(!(await isListening(rfbPort)))throw new Error('x11vnc readiness timeout');
     bridge=start(process.env.BELMONT_WEBSOCKIFY_BIN||'websockify',[`127.0.0.1:${wsPort}`,`127.0.0.1:${rfbPort}`]);

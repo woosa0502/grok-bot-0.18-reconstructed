@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MessageContent } from './MessageContent';
 import { BabyGrokAvatar } from './BabyGrokAvatar';
 import { Icon } from './Icon';
@@ -15,13 +15,16 @@ const KIND_LABEL:Record<string,string>={accepted:'접수 · 대기',running:'실
 const KIND_CLASS:Record<string,string>={done:'done',error:'error',expired:'error',unknown:'error',stopped:'error',running:'running','waiting-approval':'waiting'};
 const KIND_SHOW_TEXT=new Set(['error','expired','unknown','stopped']); // show the reason inline; results live in the mirror bubble
 const time=(ms:number)=>new Date(ms).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
-// Aside step trail line: "HH:MM:SS <tool> <args|-> result>". Turn it into a readable activity row.
-function parseStep(text:string){const s=String(text||'');const m=/^(\d{2}:\d{2}:\d{2})\s+([A-Za-z_]+)\s*([\s\S]*)$/.exec(s);const tool=m?.[2]||'';let rest=(m?.[3]||'').trim();const isResult=rest.startsWith('->');if(isResult)rest=rest.slice(2).trim();let label=tool,icon='•';
-  if(tool==='repl'){icon='🔧';if(!isResult){try{label=JSON.parse(rest).title||'브라우저 실행';}catch{label='브라우저 실행';}}else{label=rest.replace(/\s+/g,' ');}}
-  else if(tool==='memory_search'){icon='🔍';label='메모리 검색';}
-  else if(tool==='ERROR'){icon='⚠';label=rest||'오류';}
-  else{label=(rest||tool).replace(/\s+/g,' ');}
-  return {icon,label:label.slice(0,220),isResult};}
+// Aside step trail line: "HH:MM:SS <tool> <args|-> result>". Recovered transcript.tsx renders each as a
+// collapsible outline item (icon + tool label + preview + expandable detail); we reproduce that shape.
+function fmtTool(name:string){const n=String(name||'').replace(/_/g,' ').replace(/([a-z0-9])([A-Z])/g,'$1 $2').trim();return n?n.charAt(0).toUpperCase()+n.slice(1):'Tool';}
+function stepIcon(tool:string,failed:boolean){return failed?'warning':tool==='memory_search'?'search':tool==='repl'?'globe':'settings';}
+function parseStep(text:string){const s=String(text||'');const m=/^(\d{2}:\d{2}:\d{2})\s+([A-Za-z_]+)\s*([\s\S]*)$/.exec(s);const tool=m?.[2]||'';let rest=(m?.[3]||'').trim();const isResult=rest.startsWith('->');if(isResult)rest=rest.slice(2).trim();
+  const failed=tool==='ERROR'||/^BELMONT_[A-Z_]+/.test(rest);let label=fmtTool(tool),preview='',detail=rest;
+  if(tool==='repl'&&!isResult){try{const j=JSON.parse(rest);preview=String(j.title||'');detail=String(j.code||rest);}catch{preview='';}}
+  else{preview=(rest.split(/\r?\n/,1)[0]||'').slice(0,200);}
+  if(tool==='ERROR')label='오류';
+  return {tool,label,preview,detail,isResult,failed};}
 
 export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void;onComputer?:()=>void}){
   const botId=bot.id;
@@ -36,6 +39,24 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
   const current=state.jobs.find(j=>j.key===selected);useEffect(()=>setAnswers([]),[current?.suspension?.toolCallId]);
   const shown=state.events.filter(e=>selected==='new'||e.jobKey===selected||e.jobId===current?.jobId);
   useEffect(()=>{const el=bodyRef.current;if(el)el.scrollTop=el.scrollHeight;},[shown.length,current?.status]);
+  // Consecutive step events collapse into Aside-style outline items (call row + expandable detail;
+  // a following "-> result" line folds into the preceding call's detail).
+  const bbNodes:ReactNode[]=[];
+  for(let i=0;i<shown.length;i++){const e=shown[i]!;
+    if(e.origin==='aside-mirror'&&e.kind==='step'){
+      const items:{key:string;tool:string;label:string;preview:string;detail:string;failed:boolean;result:string}[]=[];
+      while(i<shown.length&&shown[i]!.origin==='aside-mirror'&&shown[i]!.kind==='step'){const p=parseStep(shown[i]!.text);const last=items[items.length-1];
+        if(p.isResult&&last&&!last.result){last.result=p.detail;if(p.failed)last.failed=true;}
+        else items.push({key:shown[i]!.eventId,tool:p.tool,label:p.label,preview:p.preview,detail:p.detail,failed:p.failed,result:''});
+        i++;}
+      i--;
+      bbNodes.push(<div className="bb-outline" key={'st-'+(items[0]?.key??i)}>{items.map(it=><details className="bb-oi" key={it.key}><summary className="bb-oi__row"><span className={`bb-oi__icon ${it.failed?'failed':''}`}><Icon name={stepIcon(it.tool,it.failed)} size={14}/></span><span className="bb-oi__label">{it.label}</span>{it.preview?<span className="bb-oi__preview">{it.preview}</span>:null}<span className="bb-oi__chevron" aria-hidden="true"/></summary>{(it.detail||it.result)?<div className="bb-oi__detail"><pre>{[it.detail,it.result?('→ '+it.result):''].filter(Boolean).join('\n\n')}</pre></div>:null}</details>)}</div>);
+      continue;
+    }
+    if(e.origin==='aside-mirror'&&e.role==='user'){bbNodes.push(<div className="message-line user" key={e.eventId}><div className="message-stack">{selected==='new'?<small className="bb-sender">{who(requesterFor(e.jobId))}</small>:null}<div className="message-bubble"><MessageContent content={e.text??''}/></div></div></div>);continue;}
+    if(e.origin==='aside-mirror'){bbNodes.push(<div className="bb-answer" key={e.eventId}><MessageContent content={e.text??''}/></div>);continue;}
+    bbNodes.push(<div className={`bb-step ${KIND_CLASS[e.kind]??''}`} key={e.eventId}><span className="bb-step-dot" aria-hidden="true"/><span>{KIND_LABEL[e.kind]??e.kind}{KIND_SHOW_TEXT.has(e.kind)&&e.text?` · ${e.text}`:''}</span><span className="bb-time">{time(e.at)}</span></div>);
+  }
   const submit=async()=>{if(!task.trim()||sending)return;setSending(true);try{
     const p=pending.current?.task===task&&pending.current?.selected===selected?pending.current:{key:crypto.randomUUID(),task,selected};pending.current=p;
     if(current)await api(`${base}/commands`,{action:'followup',jobKey:current.key,requestKey:p.key,expectedInstanceId:state.service?.instanceId,task});
@@ -74,12 +95,7 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
 
       {shown.length===0
         ? <p className="bb-empty">아직 대화가 없습니다.<br/>아래에 웹 작업을 적어 보내 보세요.</p>
-        : <div className="bb-thread">{shown.map(e=>{
-            if(e.origin==='aside-mirror'&&e.kind==='step'){const p=parseStep(e.text);return <div className={`bb-act ${p.isResult?'result':''}`} key={e.eventId}><span className="bb-act-icon" aria-hidden="true">{p.icon}</span><span className="bb-act-text">{p.label}</span></div>;}
-            if(e.origin==='aside-mirror'&&e.role==='user')return <div className="message-line user" key={e.eventId}><div className="message-stack">{selected==='new'&&<small className="bb-sender">{who(requesterFor(e.jobId))}</small>}<div className="message-bubble"><MessageContent content={e.text??''}/></div></div></div>;
-            if(e.origin==='aside-mirror')return <div className="bb-answer" key={e.eventId}><MessageContent content={e.text??''}/></div>;
-            return <div className={`bb-step ${KIND_CLASS[e.kind]??''}`} key={e.eventId}><span className="bb-step-dot" aria-hidden="true"/><span>{KIND_LABEL[e.kind]??e.kind}{KIND_SHOW_TEXT.has(e.kind)&&e.text?` · ${e.text}`:''}</span><span className="bb-time">{time(e.at)}</span></div>;
-          })}</div>}
+        : <div className="bb-thread">{bbNodes}</div>}
 
       {current?.status==='waiting-approval'&&current.suspension&&<section className="bb-card" aria-label="사용자 확인">
         <b>{current.suspension.description}</b>
