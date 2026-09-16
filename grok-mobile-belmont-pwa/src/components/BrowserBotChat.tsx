@@ -4,7 +4,7 @@ import { BabyGrokAvatar } from './BabyGrokAvatar';
 import { Icon } from './Icon';
 import type { Bot } from '../types';
 
-type Job={key:string;jobId:string;requesterAgentId:string;status:string;error?:string;result?:string;asideSessionId?:string;suspension?:{kind:string;toolCallId:string;description:string;request?:{questions?:{header?:string;question:string;options?:unknown[]}[]}}};
+type Job={key:string;jobId:string;requesterAgentId:string;status:string;createdAt?:number;error?:string;result?:string;asideSessionId?:string;suspension?:{kind:string;toolCallId:string;description:string;request?:{questions?:{header?:string;question:string;options?:unknown[]}[]}}};
 type Event={seq:number;eventId:string;origin:string;kind:string;jobKey?:string;jobId:string;role?:string;text:string;at:number};
 type State={service?:{instanceId:string;observedAt:number};jobs:Job[];inbox:{key:string;jobId:string;state:string;error?:string}[];events:Event[];commands:{key:string;state:string;error?:string}[]};
 async function api(path:string,body?:unknown){const r=await fetch(path,{method:body===undefined?'GET':'POST',credentials:'same-origin',headers:body===undefined?undefined:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const v=await r.json();if(!r.ok)throw new Error(v.error?.message??v.error??v.message??`${r.status}`);return v;}
@@ -28,7 +28,7 @@ function parseStep(text:string){const s=String(text||'');const m=/^(\d{2}:\d{2}:
 
 export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void;onComputer?:()=>void}){
   const botId=bot.id;
-  const [state,setState]=useState<State>({jobs:[],inbox:[],events:[],commands:[]});const [error,setError]=useState('');const [selected,setSelected]=useState('new');const [task,setTask]=useState('');const [sending,setSending]=useState(false);const [answers,setAnswers]=useState<string[]>([]);const [names,setNames]=useState<Record<string,string>>({});
+  const [state,setState]=useState<State>({jobs:[],inbox:[],events:[],commands:[]});const [error,setError]=useState('');const [selected,setSelected]=useState('new');const [task,setTask]=useState('');const [sending,setSending]=useState(false);const [answers,setAnswers]=useState<string[]>([]);const [names,setNames]=useState<Record<string,string>>({});const [pickerOpen,setPickerOpen]=useState(false);
   const pending=useRef<{key:string;task:string;selected:string}|null>(null);const cursor=useRef(0);const seen=useRef(new Map<string,Event>());const base=`/api/bots/${encodeURIComponent(botId)}/browser`;
   const bodyRef=useRef<HTMLDivElement>(null);
   useEffect(()=>{let closed=false;let timer:ReturnType<typeof setTimeout>;cursor.current=0;seen.current.clear();const poll=async()=>{try{const data:State=await api(`${base}/state?after=${cursor.current}`);if(closed)return;for(const e of data.events){seen.current.set(e.eventId,e);cursor.current=Math.max(cursor.current,e.seq);}setState({...data,events:[...seen.current.values()].sort((a,b)=>(a.at||0)-(b.at||0)||a.seq-b.seq)});setError('');}catch(e){if(!closed)setError(String(e));}finally{if(!closed)timer=setTimeout(()=>void poll(),1500);}};void poll();return()=>{closed=true;clearTimeout(timer);};},[base]);
@@ -36,6 +36,8 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
   useEffect(()=>{let alive=true;api('/api/bots').then(r=>{if(!alive)return;const m:Record<string,string>={};for(const b of (r.bots??r??[]))if(b?.id)m[b.id]=b.name??b.id;setNames(m);}).catch(()=>{});return()=>{alive=false;};},[]);
   const who=(id?:string)=>!id?'':id==='user'?'직접':(names[id]??`${id.slice(0,8)}…`);
   const requesterFor=(jobId?:string)=>state.jobs.find(j=>j.jobId===jobId)?.requesterAgentId;
+  // A readable title for a job = its first instruction (mirrored user turn), falling back to the id.
+  const taskOf=(jobId?:string)=>state.events.find(e=>e.jobId===jobId&&e.origin==='aside-mirror'&&e.role==='user')?.text?.trim()||jobId||'';
   const current=state.jobs.find(j=>j.key===selected);useEffect(()=>setAnswers([]),[current?.suspension?.toolCallId]);
   const shown=state.events.filter(e=>selected==='new'||e.jobKey===selected||e.jobId===current?.jobId);
   useEffect(()=>{const el=bodyRef.current;if(el)el.scrollTop=el.scrollHeight;},[shown.length,current?.status]);
@@ -80,10 +82,25 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
 
     <div className="transcript" ref={bodyRef} aria-live="polite">
       <div className="bb-jobbar">
-        <select className="bb-select" value={selected} onChange={e=>setSelected(e.target.value)} aria-label="작업 선택">
-          <option value="new">새 작업 · 전체 대화</option>
-          {state.jobs.map(j=><option key={j.key} value={j.key}>{j.jobId} · {KIND_LABEL[j.status]??j.status} · {who(j.requesterAgentId)}</option>)}
-        </select>
+        <button className="bb-picker" type="button" aria-haspopup="listbox" aria-expanded={pickerOpen} onClick={()=>setPickerOpen(o=>!o)}>
+          <span className={`bb-jobrow__dot ${current?(KIND_CLASS[current.status]??''):'new'}`} aria-hidden="true"/>
+          <span className="bb-picker__label">{current?taskOf(current.jobId):'새 작업 · 전체 대화'}</span>
+          <span className="bb-picker__chev" aria-hidden="true"/>
+        </button>
+        {pickerOpen?<>
+          <div className="bb-picker__backdrop" onClick={()=>setPickerOpen(false)}/>
+          <div className="bb-picker__menu" role="listbox">
+            <button className={`bb-jobrow ${selected==='new'?'sel':''}`} type="button" role="option" aria-selected={selected==='new'} onClick={()=>{setSelected('new');setPickerOpen(false);}}>
+              <span className="bb-jobrow__dot new" aria-hidden="true"/>
+              <span className="bb-jobrow__body"><span className="bb-jobrow__name">새 작업</span><span className="bb-jobrow__sub">전체 대화 보기</span></span>
+            </button>
+            {state.jobs.map(j=><button key={j.key} className={`bb-jobrow ${selected===j.key?'sel':''}`} type="button" role="option" aria-selected={selected===j.key} onClick={()=>{setSelected(j.key);setPickerOpen(false);}}>
+              <span className={`bb-jobrow__dot ${KIND_CLASS[j.status]??''}`} aria-hidden="true"/>
+              <span className="bb-jobrow__body"><span className="bb-jobrow__name">{taskOf(j.jobId)}</span><span className="bb-jobrow__sub">{KIND_LABEL[j.status]??j.status} · {who(j.requesterAgentId)}</span></span>
+              <span className="bb-jobrow__time">{j.createdAt?time(j.createdAt):''}</span>
+            </button>)}
+          </div>
+        </>:null}
       </div>
       {current
         ? <p className="bb-note"><b>요청: {who(current.requesterAgentId)}</b> · 이 작업을 이어갑니다. 새 의뢰는 위에서 "새 작업"을 고르세요.</p>
