@@ -67,14 +67,11 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
 
       {shown.length===0
         ? <p className="bb-empty">아직 대화가 없습니다.<br/>아래에 웹 작업을 적어 보내 보세요.</p>
-        : shown.map(e=>e.origin==='aside-mirror'
-            ? <div className={`message-line ${e.role==='user'?'user':'assistant'}`} key={e.eventId}>
-                <div className="message-stack">{selected==='new'&&e.role==='user'&&<small className="bb-sender">{who(requesterFor(e.jobId))} · 지시</small>}<div className="message-bubble"><MessageContent content={e.text??''}/></div></div>
-              </div>
-            : <div className={`bb-status ${KIND_CLASS[e.kind]??''}`} key={e.eventId}>
-                <span>{KIND_LABEL[e.kind]??e.kind}{KIND_SHOW_TEXT.has(e.kind)&&e.text?` · ${e.text}`:''}</span>
-                <span className="bb-time">{time(e.at)}</span>
-              </div>)}
+        : <div className="bb-thread">{shown.map(e=>e.origin==='aside-mirror'
+            ? (e.role==='user'
+                ? <div className="message-line user" key={e.eventId}><div className="message-stack">{selected==='new'&&<small className="bb-sender">{who(requesterFor(e.jobId))}</small>}<div className="message-bubble"><MessageContent content={e.text??''}/></div></div></div>
+                : <div className="bb-answer" key={e.eventId}><MessageContent content={e.text??''}/></div>)
+            : <div className={`bb-step ${KIND_CLASS[e.kind]??''}`} key={e.eventId}><span className="bb-step-dot" aria-hidden="true"/><span>{KIND_LABEL[e.kind]??e.kind}{KIND_SHOW_TEXT.has(e.kind)&&e.text?` · ${e.text}`:''}</span><span className="bb-time">{time(e.at)}</span></div>)}</div>}
 
       {current?.status==='waiting-approval'&&current.suspension&&<section className="bb-card" aria-label="사용자 확인">
         <b>{current.suspension.description}</b>
@@ -97,6 +94,7 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
         {running&&current?.status!=='unknown'?<button aria-label="이 작업 중단" className="send-button cancel-send" disabled={sending} onClick={()=>void command('cancel')} type="button"><Icon name="close" size={16}/></button>:null}
         {canSend?<button aria-label={current?'추가 지시 보내기':'새 작업 보내기'} className="send-button" onClick={()=>void submit()} type="button"><Icon name="send" size={18}/></button>:null}
       </div>
+      <div className="bb-modebar"><span className="bb-modebar-dot" aria-hidden="true"/>Aside 914 · Guard · GPT-5.5</div>
     </footer>
   </main>;
 }
