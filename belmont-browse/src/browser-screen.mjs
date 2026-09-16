@@ -34,7 +34,11 @@ export async function createBrowserScreen({enabled,display,instanceId,botId,toke
   if(enabled){try{
     if(!/^:\d+(?:\.\d+)?$/.test(display))throw new Error('Screen requires an explicitly selected local X display');
     await availablePort(rfbPort);await availablePort(wsPort);
-    const start=(binary,args)=>{const p=spawn(binary,args,{stdio:['ignore','ignore','pipe']});p.on('error',e=>{ready=false;log(`[screen] ${e.message}`);closeSockets();});p.on('exit',()=>{ready=false;closeSockets();});p.stderr.on('data',b=>log(`[screen] ${String(b).slice(-1000).trim()}`));return p;};
+    // x11vnc must attach to the owned Xvfb X11 display, not the WSLg Wayland session. WSLg exports
+    // WAYLAND_DISPLAY, which makes x11vnc detect Wayland and exit before serving; strip it (and force
+    // DISPLAY to the target) so the screen binds the private Xvfb.
+    const screenEnv={...process.env,DISPLAY:display};delete screenEnv.WAYLAND_DISPLAY;delete screenEnv.WAYLAND_SOCKET;
+    const start=(binary,args)=>{const p=spawn(binary,args,{stdio:['ignore','ignore','pipe'],env:screenEnv});p.on('error',e=>{ready=false;log(`[screen] ${e.message}`);closeSockets();});p.on('exit',()=>{ready=false;closeSockets();});p.stderr.on('data',b=>log(`[screen] ${String(b).slice(-1000).trim()}`));return p;};
     vnc=start(process.env.BELMONT_X11VNC_BIN||'x11vnc',['-display',display,'-localhost','-rfbport',String(rfbPort),'-forever','-shared','-viewonly','-noclipboard','-nosetclipboard','-nopw']);
     for(let i=0;i<60;i++){if(vnc.exitCode!==null||vnc.signalCode!==null)throw new Error('x11vnc exited before readiness');if(await isListening(rfbPort))break;await sleep(100);}
     if(!(await isListening(rfbPort)))throw new Error('x11vnc readiness timeout');
