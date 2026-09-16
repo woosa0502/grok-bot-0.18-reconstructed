@@ -156,10 +156,11 @@ export function BrowserBotScreen({botId,onBack}:{botId:string;onBack?:()=>void})
       <div className="chat-actions"><span className="bb-screen-sub">읽기 전용 · {screen?.currentJobId?`작업 ${screen.currentJobId}`:'작업 없음'}</span></div>
     </header>
     <div className="bb-viewer">
-      {error&&<p className="bb-banner error" role="alert">{error}</p>}
       {screen?.available&&screen.viewerUrl
         ? <iframe key={screen.instanceId} title="Aside 브라우저 읽기 전용 화면" src={screen.viewerUrl} sandbox="allow-scripts allow-same-origin"/>
-        : <p className="bb-empty">화면 연결이 없습니다.<br/>작업이 실행될 때 브라우저 화면이 여기에 표시됩니다.</p>}
+        : error
+          ? <p className="bb-empty">브라우저 화면을 준비 중입니다…<br/>연결되면 자동으로 표시됩니다.</p>
+          : <p className="bb-empty">화면 연결이 없습니다.<br/>작업이 실행될 때 브라우저 화면이 여기에 표시됩니다.</p>}
     </div>
   </main>;
 }
