@@ -369,7 +369,10 @@ export function createBrowseSession(A, { accountId, cwd, title, permissionMode, 
     model,
     browserBinding: { profileId, windowId, ...(anchorTargetId ? { anchorTargetId } : {}) },
     incognito: false,
-    runtimeConfig: { workingDirs: [cwd], ...((canonicalMemoryRequested() || sitesDir) ? { memoryExtractionDisabled: true } : {}), ...(sitesDir ? { sitesDir } : {}) },
+    // A dedicated browser bot works inside the team's shared box-workspace (its own job folder,
+    // out/, policies), so those reads/writes must be in scope — otherwise guard mode prompts for
+    // approval on the bot's own files. BELMONT_BROWSE_WORKSPACE_DIRS (":"-separated) adds them.
+    runtimeConfig: { workingDirs: [cwd, ...(process.env.BELMONT_BROWSE_WORKSPACE_DIRS || "").split(":").map((d) => d.trim()).filter(Boolean)], ...((canonicalMemoryRequested() || sitesDir) ? { memoryExtractionDisabled: true } : {}), ...(sitesDir ? { sitesDir } : {}) },
   });
   return session;
 }

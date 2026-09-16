@@ -109,6 +109,7 @@ import { createAgentPromptSession } from "./extensions/inference/extension.js";
 import { getSandRootDir } from "./host-paths.js";
 import { SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
 import { getSandProfilePath, readSandProfileFile, writeSandProfileFile } from "./agents/agent-profile.js";
+import { browserConfig } from "../../shared/browser-bot/host-store.mjs";
 import { getSandSettingsPath, writeSandSettingsFile } from "./agents/settings-file.js";
 import { CONNECTOR_MANIFESTS } from "../shared/channels.js";
 import { parseStoredTrigger } from "./automations/automation-trigger.js";
@@ -1649,10 +1650,25 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           managedTeamSection: () => {
             const managerId = process.env.SAND_DEFAULT_AGENT_ID?.trim();
             if (managerId == null || managerId.length === 0 || managerId === session.id) return null;
-            return [
+            const lines = [
               "## Managed team",
               `This user runs their agents as a managed team: the agent with id ${managerId} is the manager (their single point of contact). When the manager delegates a job to you (its message starts with a [job:<id>] tag), treat the manager as the requester: do the work, then send the result BACK TO THE MANAGER with SendToAgent, starting your reply with the same [job:<id>] tag and including the requested evidence. Do not consider a delegated job done until that reply is sent. Talk to the user directly only when they message you here themselves.`,
-            ].join("\n");
+            ];
+            // Dedicated browser worker: when one is registered, every team member (including the
+            // manager) should route real web browsing to it instead of trying to browse itself.
+            // Delegation is a plain SendToAgent to that bot's id; it runs the task in a real browser
+            // and replies with the result. This is authorized team-internal delegation.
+            try {
+              const browserBotId = (browserConfig(getSandRootDir()) as { botId?: string } | null)?.botId;
+              if (typeof browserBotId === "string" && browserBotId.length > 0 && browserBotId !== session.id) {
+                const browserName = readSandProfileFile(getSandProfilePath(join(dirname(dirname(session.dbPath)), browserBotId)))?.name?.trim() || "Browser";
+                lines.push(
+                  "## Browser worker",
+                  `The agent with id ${browserBotId} ("${browserName}") is the team's dedicated web-browsing worker: it drives a real browser (opens pages, keeps logged-in sessions, clicks, reads live/JS-rendered content, takes screenshots). When a task needs actual browsing — visiting a site, checking a live page, verifying across pages, reading content a plain fetch/curl can't reliably get, or any on-page action — delegate that part to it with SendToAgent: send a plain message describing exactly what to open and what evidence to bring back (keep your own [job:<id>] tag so the reply threads back). Then stop and wait for its reply; when it comes, continue with the result. Do NOT claim a page was actually checked from a bare fetch or a text-only answer, and do not try to do real browsing yourself. Pure analysis and synthesis stay with you.`,
+                );
+              }
+            } catch { /* no dedicated browser bot registered */ }
+            return lines.join("\n");
           },
           isBoxScopedSubagent: () => false,
           requestContext: {
@@ -2889,7 +2905,11 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         subagentConfigs: [
           ...(multitaskEnabled ? [createSandExecutorSubagentConfig()] : []),
           ...(LOCAL_COMPUTER_USE_ENABLED ? [createSandComputerUseSubagentConfig({ browserUseOffered: false })] : []),
-          ...(ASIDE_BROWSE_ENABLED ? [createAsideBrowseSubagentConfig()] : []),
+          // When a dedicated Browser bot is registered, browsing goes through it (SendToAgent → job
+          // broker), and the broker rejects direct /sessions execution. Offering the legacy per-bot
+          // Task(aside-browse) alongside it is contradictory (bots would pick a path the service
+          // refuses), so hide it in dedicated mode; the team prompt routes browsing to the Browser bot.
+          ...(ASIDE_BROWSE_ENABLED && (browserConfig(getSandRootDir()) as { botId?: string } | null)?.botId == null ? [createAsideBrowseSubagentConfig()] : []),
         ],
       };
       const staticModelId = process.env.SAND_AGENT_MODEL ?? DEFAULT_SAND_MODEL;

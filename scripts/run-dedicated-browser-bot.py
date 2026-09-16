@@ -38,7 +38,11 @@ def main():
             'BELMONT_MEMORY_AUTHORITY':'belmont','BELMONT_BROWSE_SCREEN':'1',
             # Show only the browser viewport on the read-only screen (crop the Aside sidebar + Xvfb
             # background). Overridable; measured for the 1280x800 fork window on a 1440x900 Xvfb.
-            'BELMONT_SCREEN_CLIP':os.environ.get('BELMONT_SCREEN_CLIP','1026x790+238+0')})
+            'BELMONT_SCREEN_CLIP':os.environ.get('BELMONT_SCREEN_CLIP','1026x790+238+0'),
+            # The bot works inside the team's shared box-workspace (its own job folder, out/, policies);
+            # add it to the session's allowed working dirs so guard mode does not prompt for approval
+            # every time the bot reads/writes its own files.
+            'BELMONT_BROWSE_WORKSPACE_DIRS':os.environ.get('BELMONT_BROWSE_WORKSPACE_DIRS',str(root/'box-workspace'))})
         if env.get('BELMONT_BROWSE_ALLOW_UNVERIFIED_NATIVE')=='1':
             raise SystemExit('Refusing the unverified-native override in the dedicated launcher')
         try:
