@@ -47,11 +47,17 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
   for(let i=0;i<shown.length;i++){const e=shown[i]!;
     if(e.origin==='aside-mirror'&&e.kind==='step'){
       const items:{key:string;tool:string;label:string;preview:string;detail:string;failed:boolean;result:string}[]=[];
-      while(i<shown.length&&shown[i]!.origin==='aside-mirror'&&shown[i]!.kind==='step'){const p=parseStep(shown[i]!.text);const last=items[items.length-1];
+      while(i<shown.length&&shown[i]!.origin==='aside-mirror'&&shown[i]!.kind==='step'){const raw=shown[i]!.text||'';
+        // Hide the expected, benign policy rejection: the agent reflexively calls account-wide
+        // memory_search, which is disabled by design (only the task-scoped evidence packet is allowed).
+        // It recurs on every job and is not a task failure, so it is noise, not a step worth showing.
+        if(/(^|\s)memory_search\b/.test(raw)||/BELMONT_MEMORY_SCOPE_REQUIRED/.test(raw)){i++;continue;}
+        const p=parseStep(raw);const last=items[items.length-1];
         if(p.isResult&&last&&!last.result){last.result=p.detail;if(p.failed)last.failed=true;}
         else items.push({key:shown[i]!.eventId,tool:p.tool,label:p.label,preview:p.preview,detail:p.detail,failed:p.failed,result:''});
         i++;}
       i--;
+      if(items.length===0)continue;
       bbNodes.push(<div className="bb-outline" key={'st-'+(items[0]?.key??i)}>{items.map(it=><details className="bb-oi" key={it.key}><summary className="bb-oi__row"><span className={`bb-oi__icon ${it.failed?'failed':''}`}><Icon name={stepIcon(it.tool,it.failed)} size={14}/></span><span className="bb-oi__label">{it.label}</span>{it.preview?<span className="bb-oi__preview">{it.preview}</span>:null}<span className="bb-oi__chevron" aria-hidden="true"/></summary>{(it.detail||it.result)?<div className="bb-oi__detail"><pre>{[it.detail,it.result?('→ '+it.result):''].filter(Boolean).join('\n\n')}</pre></div>:null}</details>)}</div>);
       continue;
     }
