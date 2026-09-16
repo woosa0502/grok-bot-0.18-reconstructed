@@ -18,10 +18,14 @@ const time=(ms:number)=>new Date(ms).toLocaleTimeString('ko-KR',{hour:'2-digit',
 
 export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void;onComputer?:()=>void}){
   const botId=bot.id;
-  const [state,setState]=useState<State>({jobs:[],inbox:[],events:[],commands:[]});const [error,setError]=useState('');const [selected,setSelected]=useState('new');const [task,setTask]=useState('');const [sending,setSending]=useState(false);const [answers,setAnswers]=useState<string[]>([]);
+  const [state,setState]=useState<State>({jobs:[],inbox:[],events:[],commands:[]});const [error,setError]=useState('');const [selected,setSelected]=useState('new');const [task,setTask]=useState('');const [sending,setSending]=useState(false);const [answers,setAnswers]=useState<string[]>([]);const [names,setNames]=useState<Record<string,string>>({});
   const pending=useRef<{key:string;task:string;selected:string}|null>(null);const cursor=useRef(0);const seen=useRef(new Map<string,Event>());const base=`/api/bots/${encodeURIComponent(botId)}/browser`;
   const bodyRef=useRef<HTMLDivElement>(null);
   useEffect(()=>{let closed=false;let timer:ReturnType<typeof setTimeout>;cursor.current=0;seen.current.clear();const poll=async()=>{try{const data:State=await api(`${base}/state?after=${cursor.current}`);if(closed)return;for(const e of data.events){seen.current.set(e.eventId,e);cursor.current=Math.max(cursor.current,e.seq);}setState({...data,events:[...seen.current.values()].sort((a,b)=>a.seq-b.seq)});setError('');}catch(e){if(!closed)setError(String(e));}finally{if(!closed)timer=setTimeout(()=>void poll(),1500);}};void poll();return()=>{closed=true;clearTimeout(timer);};},[base]);
+  // Requester ids on jobs are raw agent ids; map them to bot names so it is clear which bot delegated.
+  useEffect(()=>{let alive=true;api('/api/bots').then(r=>{if(!alive)return;const m:Record<string,string>={};for(const b of (r.bots??r??[]))if(b?.id)m[b.id]=b.name??b.id;setNames(m);}).catch(()=>{});return()=>{alive=false;};},[]);
+  const who=(id?:string)=>!id?'':id==='user'?'직접':(names[id]??`${id.slice(0,8)}…`);
+  const requesterFor=(jobId?:string)=>state.jobs.find(j=>j.jobId===jobId)?.requesterAgentId;
   const current=state.jobs.find(j=>j.key===selected);useEffect(()=>setAnswers([]),[current?.suspension?.toolCallId]);
   const shown=state.events.filter(e=>selected==='new'||e.jobKey===selected||e.jobId===current?.jobId);
   useEffect(()=>{const el=bodyRef.current;if(el)el.scrollTop=el.scrollHeight;},[shown.length,current?.status]);
@@ -50,10 +54,12 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
       <div className="bb-jobbar">
         <select className="bb-select" value={selected} onChange={e=>setSelected(e.target.value)} aria-label="작업 선택">
           <option value="new">새 작업 · 전체 대화</option>
-          {state.jobs.map(j=><option key={j.key} value={j.key}>{j.jobId} · {KIND_LABEL[j.status]??j.status} · {j.requesterAgentId}</option>)}
+          {state.jobs.map(j=><option key={j.key} value={j.key}>{j.jobId} · {KIND_LABEL[j.status]??j.status} · {who(j.requesterAgentId)}</option>)}
         </select>
       </div>
-      <p className="bb-note">{current?'이 작업을 이어갑니다. 새 의뢰를 하려면 위에서 "새 작업"을 고르세요.':'새 의뢰는 새 Aside 대화로 실행됩니다. 다른 봇이 지시한 작업도 여기에 함께 뜹니다.'}</p>
+      {current
+        ? <p className="bb-note"><b>요청: {who(current.requesterAgentId)}</b> · 이 작업을 이어갑니다. 새 의뢰는 위에서 "새 작업"을 고르세요.</p>
+        : <p className="bb-note">새 의뢰는 새 Aside 대화로 실행됩니다. 다른 봇이 지시한 작업도 여기에 함께 뜹니다.</p>}
       {stale&&<p className="bb-banner warn">브라우저 서비스 상태 미확인 · 접수와 실제 실행은 별개입니다.</p>}
       {error&&<p className="bb-banner error" role="alert">{error}</p>}
       {pendingInbox.map(r=><p className="bb-banner warn" key={r.key}>{r.jobId}: {KIND_LABEL[r.state]??r.state}{r.error?` · ${r.error}`:''}</p>)}
@@ -63,7 +69,7 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
         ? <p className="bb-empty">아직 대화가 없습니다.<br/>아래에 웹 작업을 적어 보내 보세요.</p>
         : shown.map(e=>e.origin==='aside-mirror'
             ? <div className={`message-line ${e.role==='user'?'user':'assistant'}`} key={e.eventId}>
-                <div className="message-stack"><div className="message-bubble"><MessageContent content={e.text??''}/></div></div>
+                <div className="message-stack">{selected==='new'&&e.role==='user'&&<small className="bb-sender">{who(requesterFor(e.jobId))} · 지시</small>}<div className="message-bubble"><MessageContent content={e.text??''}/></div></div>
               </div>
             : <div className={`bb-status ${KIND_CLASS[e.kind]??''}`} key={e.eventId}>
                 <span>{KIND_LABEL[e.kind]??e.kind}{KIND_SHOW_TEXT.has(e.kind)&&e.text?` · ${e.text}`:''}</span>
