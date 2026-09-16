@@ -5,7 +5,7 @@ import { browserConfig, hostStore, enqueueBrowserJob, enqueueBrowserCommand } fr
 import { id, problem } from '../shared/browser-bot/store.mjs';
 
 /** All targets are operator-owned. Neither browser clients nor models supply upstream URLs. */
-export function browserBotApi({profileDir,authorized,skipPairing=false,readBody,json,gateway,now=Date.now}){
+export function browserBotApi({profileDir,authorized,skipPairing=false,trustProxy=false,readBody,json,gateway,now=Date.now}){
   const wss=new WebSocketServer({noServer:true,maxPayload:1_048_576});const peers=new Set();
   const config=()=>browserConfig(profileDir);
   async function scoped(botId){id(botId,'botId');const c=config();if(c?.botId!==botId)throw problem('NOT_BROWSER_BOT','Not the registered browser bot',404);const roster=await gateway.call('listAgents', {});const a=(Array.isArray(roster)?roster:Array.isArray(roster?.agents)?roster.agents:Array.isArray(roster?.result)?roster.result:Array.isArray(roster?.result?.agents)?roster.result.agents:[]).find(a=>a.id===botId&&!a.isGroup);if(!a)throw problem('BOT_GONE','Browser bot is not in the current roster',404);return c;}
@@ -29,10 +29,17 @@ export function browserBotApi({profileDir,authorized,skipPairing=false,readBody,
     },
     async upgrade(req,socket,head){let url;try{url=new URL(req.url,'http://127.0.0.1');}catch{return false;}const m=/^\/api\/bots\/([^/]+)\/browser\/ws$/.exec(url.pathname);if(!m)return false;
       try{guard(req);const botId=id(decodeURIComponent(m[1]));await scoped(botId);
-        // Cookie-authenticated WebSockets also require an exact same-origin browser Origin.
-        const expected=process.env.BELMONT_PWA_PUBLIC_ORIGIN;const origin=req.headers.origin;
-        const requestOrigin=expected||`${req.socket.encrypted?'https':'http'}://${req.headers.host}`;
-        if(!origin||new URL(origin).origin!==new URL(requestOrigin).origin)throw new Error('Wrong WebSocket origin');
+        // Cookie-authenticated WebSockets also require an exact same-origin browser Origin. Behind a
+        // TLS-terminating reverse proxy (e.g. Tailscale serve) the local socket is plain http, so the
+        // page's https origin would never match a socket-derived origin. Honour the same forwarded
+        // headers the rest of the server trusts (only when trustProxy), or a pinned public origin.
+        const origin=req.headers.origin;
+        const fwdProto=trustProxy?String(req.headers['x-forwarded-proto']||'').split(',')[0].trim():'';
+        const fwdHost=trustProxy?String(req.headers['x-forwarded-host']||'').split(',')[0].trim():'';
+        const proto=fwdProto||(req.socket.encrypted?'https':'http');
+        const host=fwdHost||req.headers.host;
+        const requestOrigin=process.env.BELMONT_PWA_PUBLIC_ORIGIN||`${proto}://${host}`;
+        if(!origin||new URL(origin).origin!==new URL(requestOrigin).origin){console.error(`[browser-screen] WS origin rejected: origin=${origin} expected=${requestOrigin} host=${req.headers.host} xf-host=${req.headers['x-forwarded-host']} xf-proto=${req.headers['x-forwarded-proto']}`);throw new Error('Wrong WebSocket origin');}
         const{s,h}=await health();if(!h.screen?.available||h.browserJobs?.botId!==botId||url.searchParams.get('instanceId')!==h.instanceId)throw new Error('Stale screen scope');
         const target=s.base.replace(/^http/,'ws')+`/browser-screen/ws?botId=${encodeURIComponent(botId)}&instanceId=${encodeURIComponent(h.instanceId)}`;
         wss.handleUpgrade(req,socket,head,client=>{const upstream=new WebSocket(target,{headers:{authorization:`Bearer ${s.token}`}}),queue=[];let size=0,closed=false;peers.add(client);peers.add(upstream);

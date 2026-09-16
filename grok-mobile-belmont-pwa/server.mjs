@@ -2034,7 +2034,7 @@ export function createMobileServer({
   server.on("listening", () => push.start());
   server.on("close", () => push.close());
   
-  const browserApi = browserBotApi({ profileDir, authorized, skipPairing, gateway,
+  const browserApi = browserBotApi({ profileDir, authorized, skipPairing, trustProxy, gateway,
     readBody: async (req) => { const chunks=[]; let size=0; for await (const b of req) { size += b.length; if (size > 262144) throw Object.assign(new Error('Body too large'), {statusCode:413}); chunks.push(b); } return JSON.parse(Buffer.concat(chunks).toString('utf8')); },
     json: (res,status,value) => { res.writeHead(status, {'content-type':'application/json; charset=utf-8','cache-control':'no-store'}); res.end(JSON.stringify(value)); },
   });
