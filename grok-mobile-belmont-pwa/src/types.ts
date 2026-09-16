@@ -178,6 +178,7 @@ export interface UsageStat {
   reasoningKnown: boolean;
   cost: number;
   costKnown: boolean;
+  costUnknownCalls: number;
   ok: number;
   error: number;
   aborted: number;

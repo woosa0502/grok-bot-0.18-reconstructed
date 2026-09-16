@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { createReadStream, promises as fs, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, promises as fs, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import { basename, extname, join, normalize, resolve, sep } from "node:path";
@@ -92,12 +92,23 @@ function contentTypeFor(name, fallback = "application/octet-stream") {
   return fallback;
 }
 
+// Types that a browser can execute as a same-origin document (SVG carries <script>, HTML/XML
+// likewise). Served inline they run in the PWA's authenticated origin, so force a download
+// instead of an inline render. Images/PDF/text stay inline.
+const RISKY_ACTIVE_EXT = new Set([".svg", ".svgz", ".html", ".htm", ".xhtml", ".xml", ".xht"]);
 function inlineAttachmentDisposition(name) {
   const filename = name.toWellFormed();
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/gu, "_");
   const encoded = encodeURIComponent(filename).replace(/['()*]/gu, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
-  return `inline; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+  const disposition = RISKY_ACTIVE_EXT.has(extname(filename).toLowerCase()) ? "attachment" : "inline";
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
+// Defense-in-depth for any served file bytes: never MIME-sniff, and sandbox the document so an
+// executable type that slips through still cannot run script in this origin.
+const ATTACHMENT_SAFETY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "content-security-policy": "default-src 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'unsafe-inline'; font-src 'self' data:; object-src 'none'; sandbox",
+};
 
 function windowsGatewayOrigin(value) {
   const parsed = new URL(text(value, "http://127.0.0.1:4190"));
@@ -730,18 +741,37 @@ function computerView(status, botId, computerTargets, requestedWindowIndex = nul
 // which the ingested-attachment RPCs can't read. Resolve such paths directly to the
 // box workspace on disk, strictly bounded to prevent path traversal. Returns null for
 // anything outside the box workspace (those fall back to the gateway attachment store).
-function resolveWorkspaceFile(profileDir, rawPath) {
+function isWithin(root, abs) {
+  return abs === root || abs.startsWith(`${root}${sep}`);
+}
+// Preview/content is allowed ONLY in two subtrees, never the rest of sand-data (which holds
+// manager.json, credentials, memory): box-workspace files, and ingested agent attachments at
+// sand-data/agents/<id>/attachments/... . Anything else is rejected.
+export function attachmentPathAllowed(profileDir, abs) {
+  const boxRoot = resolve(profileDir, "box-workspace");
+  if (isWithin(boxRoot, abs)) return true;
+  const agentsRoot = resolve(profileDir, "agents");
+  if (isWithin(agentsRoot, abs)) {
+    const rel = abs.slice(agentsRoot.length + 1).split(sep);   // [<id>, "attachments", ...]
+    return rel.length >= 3 && rel[1] === "attachments";
+  }
+  return false;
+}
+export function resolveWorkspaceFile(profileDir, rawPath) {
   if (typeof rawPath !== "string" || rawPath.length === 0) return null;
   let p = rawPath;
   if (p.startsWith("file://")) { try { p = fileURLToPath(p); } catch { return null; } }
   p = p.replace(/\\/gu, "/");
-  const sandRoot = resolve(profileDir);                 // sand-data root
   const boxRoot = resolve(profileDir, "box-workspace");
   const workspaceMatch = /^\/?workspace\/(.+)$/u.exec(p);
   const abs = workspaceMatch ? resolve(boxRoot, workspaceMatch[1]) : (p.startsWith("/") ? resolve(p) : resolve(boxRoot, p));
-  // Allow anything inside sand-data: box-workspace files (file:///workspace/...) AND
-  // ingested agent attachments (file:///.../sand-data/agents/<id>/attachments/<hash>.md).
-  return abs === sandRoot || abs.startsWith(`${sandRoot}${sep}`) ? abs : null;
+  if (!attachmentPathAllowed(profileDir, abs)) return null;
+  // Re-check after resolving symlinks: a symlink inside an allowed subtree must not point out
+  // of it (string bounding alone follows the link). realpath needs the file to exist, which
+  // previews do; a missing/broken path is rejected rather than read.
+  let real;
+  try { real = realpathSync(abs); } catch { return null; }
+  return attachmentPathAllowed(profileDir, real) ? real : null;
 }
 
 async function readAttachmentBytes(gateway, { path, agentId }) {
@@ -858,8 +888,11 @@ const USAGE_PRICES = {
 };
 function usagePriceFor(model) {
   if (!model) return null;
-  for (const [key, price] of Object.entries(USAGE_PRICES)) if (String(model).includes(key)) return price;
-  return null;
+  // Exact model-id match only (drop any "provider/" prefix). A substring match would misprice
+  // variants like "gpt-6-astra-custom" as the base model, and depend on registration order;
+  // an unregistered model stays null (counted as unpriced, never charged a wrong rate).
+  const id = String(model).split("/").pop();
+  return USAGE_PRICES[id] ?? null;
 }
 function usageApiCost(model, uncached, cacheRead, cacheWrite, output) {
   const p = usagePriceFor(model);
@@ -878,7 +911,7 @@ async function readJsonlRows(path) {
   return rows;
 }
 function blankUsageStat(label) {
-  return { label, calls: 0, uncachedInput: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, reasoningKnown: false, cost: 0, costKnown: true, ok: 0, error: 0, aborted: 0 };
+  return { label, calls: 0, uncachedInput: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, reasoningKnown: false, cost: 0, costKnown: true, costUnknownCalls: 0, ok: 0, error: 0, aborted: 0 };
 }
 function addUsageStat(acc, e) {
   acc.calls += 1;
@@ -891,7 +924,9 @@ function addUsageStat(acc, e) {
   if (e.reasoningTokens != null) { acc.reasoning += Number(e.reasoningTokens); acc.reasoningKnown = true; }
   if (status === "ok") {
     const c = usageApiCost(e.resolvedModel, Number(e.inputTokens || 0), Number(e.cacheReadTokens || 0), Number(e.cacheWriteTokens || 0), Number(e.outputTokens || 0));
-    if (c == null) acc.costKnown = false; else acc.cost += c;
+    // An unpriced ok-call (unknown model) must not silently vanish from the total: keep the
+    // confirmed cost as a subtotal and count the unverified calls so the UI can say "+N미확인".
+    if (c == null) { acc.costKnown = false; acc.costUnknownCalls += 1; } else acc.cost += c;
   }
 }
 function loadJobBindingMap(rows) {
@@ -1443,11 +1478,13 @@ export function createMobileServer({
       if (!stat.isFile()) throw fileSystemError("파일이 아닙니다.", 400);
       const name = basename(resolved.target);
       const fallbackName = name.replace(/[^\x20-\x7e]|[\\";\r\n]/gu, "_") || "file";
+      void fallbackName;
       response.writeHead(200, {
         "content-type": contentTypeFor(name),
         "content-length": String(stat.size),
-        "content-disposition": `inline; filename="${fallbackName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+        "content-disposition": inlineAttachmentDisposition(name),
         "cache-control": "private, no-store",
+        ...ATTACHMENT_SAFETY_HEADERS,
       });
       const stream = createReadStream(resolved.target);
       stream.on("error", () => response.destroy());
@@ -1713,7 +1750,7 @@ export function createMobileServer({
       if (wsFile != null) {
         try {
           const buf = await fs.readFile(wsFile);
-          response.writeHead(200, { "content-type": contentTypeFor(name), "content-length": String(buf.length), "content-disposition": inlineAttachmentDisposition(name), "cache-control": "private, no-store" });
+          response.writeHead(200, { "content-type": contentTypeFor(name), "content-length": String(buf.length), "content-disposition": inlineAttachmentDisposition(name), "cache-control": "private, no-store", ...ATTACHMENT_SAFETY_HEADERS });
           response.end(buf);
           return;
         } catch { /* fall through to gateway attachment store */ }
@@ -1724,7 +1761,7 @@ export function createMobileServer({
         error.status = 404;
         throw error;
       }
-      response.writeHead(200, { "content-type": contentTypeFor(name, result.mime || undefined), "content-length": String(result.bytes.length), "content-disposition": inlineAttachmentDisposition(name), "cache-control": "private, no-store" });
+      response.writeHead(200, { "content-type": contentTypeFor(name, result.mime || undefined), "content-length": String(result.bytes.length), "content-disposition": inlineAttachmentDisposition(name), "cache-control": "private, no-store", ...ATTACHMENT_SAFETY_HEADERS });
       response.end(result.bytes);
       return;
     }

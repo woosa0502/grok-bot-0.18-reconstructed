@@ -366,9 +366,10 @@ function planLabel(planType: string | null): string {
   return `Codex ${planType.charAt(0).toUpperCase()}${planType.slice(1)}`;
 }
 
-function usdLabel(cost: number, costKnown: boolean): string {
-  const value = cost >= 1 ? `$${cost.toFixed(2)}` : `$${cost.toFixed(4)}`;
-  return costKnown ? value : `${value}+?`;
+function usdLabel(stat: { cost: number; costKnown: boolean; costUnknownCalls: number }): string {
+  const value = stat.cost >= 1 ? `$${stat.cost.toFixed(2)}` : `$${stat.cost.toFixed(4)}`;
+  // Confirmed subtotal only; unpriced calls (unknown model) are counted, not folded in silently.
+  return stat.costKnown ? value : `${value} (미확인 ${stat.costUnknownCalls}건 제외)`;
 }
 
 /** The weekly window is what the user watches; put it first, then any shorter windows. */
@@ -389,7 +390,7 @@ function TokenBars({ rows, title, detail }: { rows: UsageStat[]; title: string; 
     <Section detail={detail} title={title}>
       {rows.map((row) => (
         <div className="token-row" key={row.label}>
-          <div className="token-row-head"><strong>{row.label}</strong><span>{usdLabel(row.cost, row.costKnown)}</span></div>
+          <div className="token-row-head"><strong>{row.label}</strong><span>{usdLabel(row)}</span></div>
           <span className="token-bar" role="presentation"><i style={{ width: `${Math.min(100, Math.round((row.cost / max) * 100))}%` }} /></span>
           <small>{statLine(row)}</small>
         </div>
@@ -429,7 +430,7 @@ export function UsageScreen({ back }: SurfaceScreenProps) {
           <Section detail="우리 시스템이 직접 잰 오늘 사용량입니다. API 단가 환산이며 Codex 구독 차감액과는 별개입니다." title="토큰 활동">
             <div className="usage-cards"><div className="usage-hero">
               <small>오늘 · API 환산 비용</small>
-              <strong>{usdLabel(ledger.total.cost, ledger.total.costKnown)}</strong>
+              <strong>{usdLabel(ledger.total)}</strong>
               <small>{statLine(ledger.total)}</small>
             </div></div>
           </Section>
