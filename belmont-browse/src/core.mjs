@@ -142,7 +142,12 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
   }
   log(`[engine] Aside ${ENGINES[engine].version} ready; account ${account.id}; window ${ext.windowId}; profile ${profileId}${ext.real ? " (real extension)" : ""}`);
   const controller = createSessionController({ A, account, profileId, ext, model: selectedModel, maxConcurrent,
-    cwd: path.join(stateDir, "work"), log,
+    // A dedicated browser bot works inside the team's shared box-workspace so it can write its result
+    // files straight into the job's out/ folder (and return only a short pointer instead of the whole
+    // body — cheaper on tokens). The daemon's REPL filesystem allows writes only under cwd/account/
+    // session roots (not workingDirs), so cwd must be that workspace. Falls back to a private scratch
+    // dir when no workspace is configured.
+    cwd: (process.env.BELMONT_BROWSE_WORKSPACE_DIRS || "").split(":").map((d) => d.trim()).filter(Boolean)[0] || path.join(stateDir, "work"), log,
     memoryAuthority: canonicalMemoryRequested() ? "belmont" : "aside-legacy",
     memoryEnvironment: `aside:${ENGINES[engine].version}:profile:${profileId}`,
     onTurnEnd: () => syncCodexCredential(home.credentialsPath),
