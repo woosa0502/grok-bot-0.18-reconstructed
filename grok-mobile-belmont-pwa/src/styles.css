@@ -541,3 +541,40 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .trackpad-layer { position: absolute; inset: 0; touch-action: none; background: transparent; }
 .trackpad-layer::after { content: "트랙패드"; position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 9px; background: rgba(20,20,20,.75); color: #9fd; font-size: 10px; letter-spacing: .02em; pointer-events: none; }
+
+/* ── 브라우저 봇 전용 화면 (BrowserBotChat / BrowserBotScreen) ────────────── */
+.bb-screen { display: grid; height: 100dvh; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; background: var(--bg); }
+.bb-top { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: max(9px, env(safe-area-inset-top)) 14px 8px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(20px); }
+.bb-top .bb-title { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.bb-top .bb-title strong { font-size: 16px; }
+.bb-top .bb-title small { color: var(--muted); font-size: 11px; }
+.bb-icon { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 50%; background: var(--surface-soft); color: var(--text); font-size: 22px; line-height: 1; }
+.bb-screen-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border-radius: 999px; background: var(--surface-soft); color: var(--text); font-size: 13px; font-weight: 600; }
+.bb-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 6px; overflow-y: auto; }
+.bb-note { margin: 0 2px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.bb-select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); font-size: 14px; }
+.bb-banner { margin: 0; padding: 10px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.45; }
+.bb-banner.warn { background: color-mix(in srgb, var(--waiting) 16%, transparent); color: color-mix(in srgb, var(--waiting) 42%, var(--text)); }
+.bb-banner.error { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--danger); }
+.bb-status { display: inline-flex; align-self: center; max-width: 92%; align-items: baseline; gap: 7px; margin: 2px 0; padding: 5px 12px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 12px; }
+.bb-status .bb-time { color: var(--faint); font-size: 10px; }
+.bb-status.done { background: color-mix(in srgb, var(--success) 15%, transparent); color: color-mix(in srgb, var(--success) 50%, var(--text)); }
+.bb-status.error { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.bb-status.running, .bb-status.waiting { background: color-mix(in srgb, var(--waiting) 17%, transparent); color: color-mix(in srgb, var(--waiting) 42%, var(--text)); }
+.bb-empty { margin: 44px 0; color: var(--faint); font-size: 13px; line-height: 1.6; text-align: center; }
+.bb-card { display: grid; gap: 10px; padding: 14px; border-radius: 16px; background: var(--surface-soft); }
+.bb-card > b { font-size: 14px; }
+.bb-card label { display: grid; gap: 5px; color: var(--muted); font-size: 13px; }
+.bb-card input { min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); font-size: 15px; }
+.bb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bb-actions button { min-height: 44px; padding: 0 16px; border-radius: 13px; background: var(--accent); color: var(--accent-text); font-size: 14px; font-weight: 600; }
+.bb-actions button.ghost { border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+.bb-actions button.danger { background: color-mix(in srgb, var(--danger) 90%, #000); color: #fff; }
+.bb-actions button:disabled { opacity: .45; }
+.bb-compose { padding: 8px 16px calc(14px + env(safe-area-inset-bottom, 0px)); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(20px); }
+.bb-compose .composer-inner { display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 24px; background: var(--surface-soft); }
+.bb-compose textarea { min-width: 0; max-height: 120px; flex: 1; align-self: center; padding: 9px 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 16px; line-height: 1.3; resize: none; }
+.bb-send { display: grid; width: 42px; height: 42px; flex: none; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 18px; }
+.bb-send:disabled { opacity: .4; }
+.bb-viewer { display: flex; flex-direction: column; min-height: 0; padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
+.bb-viewer iframe { flex: 1; width: 100%; min-height: 320px; border: 0; border-radius: 16px; background: #111; }
