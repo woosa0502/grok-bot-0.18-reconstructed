@@ -584,3 +584,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .bb-step .bb-time { margin-left: auto; color: var(--faint); font-size: 10px; }
 .bb-modebar { display: flex; align-items: center; gap: 7px; margin: 7px 6px 0; color: var(--faint); font-size: 11px; letter-spacing: .01em; }
 .bb-modebar-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+/* Aside 스텝 활동 줄 (도구 호출·REPL·결과) */
+.bb-act { display: flex; align-items: baseline; gap: 8px; margin: 1px 4px; padding: 3px 0; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.bb-act-icon { flex: none; font-size: 12px; }
+.bb-act-text { min-width: 0; overflow-wrap: anywhere; }
+.bb-act.result { color: var(--faint); padding-left: 20px; }

@@ -15,13 +15,20 @@ const KIND_LABEL:Record<string,string>={accepted:'접수 · 대기',running:'실
 const KIND_CLASS:Record<string,string>={done:'done',error:'error',expired:'error',unknown:'error',stopped:'error',running:'running','waiting-approval':'waiting'};
 const KIND_SHOW_TEXT=new Set(['error','expired','unknown','stopped']); // show the reason inline; results live in the mirror bubble
 const time=(ms:number)=>new Date(ms).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+// Aside step trail line: "HH:MM:SS <tool> <args|-> result>". Turn it into a readable activity row.
+function parseStep(text:string){const s=String(text||'');const m=/^(\d{2}:\d{2}:\d{2})\s+([A-Za-z_]+)\s*([\s\S]*)$/.exec(s);const tool=m?.[2]||'';let rest=(m?.[3]||'').trim();const isResult=rest.startsWith('->');if(isResult)rest=rest.slice(2).trim();let label=tool,icon='•';
+  if(tool==='repl'){icon='🔧';if(!isResult){try{label=JSON.parse(rest).title||'브라우저 실행';}catch{label='브라우저 실행';}}else{label=rest.replace(/\s+/g,' ');}}
+  else if(tool==='memory_search'){icon='🔍';label='메모리 검색';}
+  else if(tool==='ERROR'){icon='⚠';label=rest||'오류';}
+  else{label=(rest||tool).replace(/\s+/g,' ');}
+  return {icon,label:label.slice(0,220),isResult};}
 
 export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void;onComputer?:()=>void}){
   const botId=bot.id;
   const [state,setState]=useState<State>({jobs:[],inbox:[],events:[],commands:[]});const [error,setError]=useState('');const [selected,setSelected]=useState('new');const [task,setTask]=useState('');const [sending,setSending]=useState(false);const [answers,setAnswers]=useState<string[]>([]);const [names,setNames]=useState<Record<string,string>>({});
   const pending=useRef<{key:string;task:string;selected:string}|null>(null);const cursor=useRef(0);const seen=useRef(new Map<string,Event>());const base=`/api/bots/${encodeURIComponent(botId)}/browser`;
   const bodyRef=useRef<HTMLDivElement>(null);
-  useEffect(()=>{let closed=false;let timer:ReturnType<typeof setTimeout>;cursor.current=0;seen.current.clear();const poll=async()=>{try{const data:State=await api(`${base}/state?after=${cursor.current}`);if(closed)return;for(const e of data.events){seen.current.set(e.eventId,e);cursor.current=Math.max(cursor.current,e.seq);}setState({...data,events:[...seen.current.values()].sort((a,b)=>a.seq-b.seq)});setError('');}catch(e){if(!closed)setError(String(e));}finally{if(!closed)timer=setTimeout(()=>void poll(),1500);}};void poll();return()=>{closed=true;clearTimeout(timer);};},[base]);
+  useEffect(()=>{let closed=false;let timer:ReturnType<typeof setTimeout>;cursor.current=0;seen.current.clear();const poll=async()=>{try{const data:State=await api(`${base}/state?after=${cursor.current}`);if(closed)return;for(const e of data.events){seen.current.set(e.eventId,e);cursor.current=Math.max(cursor.current,e.seq);}setState({...data,events:[...seen.current.values()].sort((a,b)=>(a.at||0)-(b.at||0)||a.seq-b.seq)});setError('');}catch(e){if(!closed)setError(String(e));}finally{if(!closed)timer=setTimeout(()=>void poll(),1500);}};void poll();return()=>{closed=true;clearTimeout(timer);};},[base]);
   // Requester ids on jobs are raw agent ids; map them to bot names so it is clear which bot delegated.
   useEffect(()=>{let alive=true;api('/api/bots').then(r=>{if(!alive)return;const m:Record<string,string>={};for(const b of (r.bots??r??[]))if(b?.id)m[b.id]=b.name??b.id;setNames(m);}).catch(()=>{});return()=>{alive=false;};},[]);
   const who=(id?:string)=>!id?'':id==='user'?'직접':(names[id]??`${id.slice(0,8)}…`);
@@ -67,11 +74,12 @@ export function BrowserBotChat({bot,onBack,onComputer}:{bot:Bot;onBack?:()=>void
 
       {shown.length===0
         ? <p className="bb-empty">아직 대화가 없습니다.<br/>아래에 웹 작업을 적어 보내 보세요.</p>
-        : <div className="bb-thread">{shown.map(e=>e.origin==='aside-mirror'
-            ? (e.role==='user'
-                ? <div className="message-line user" key={e.eventId}><div className="message-stack">{selected==='new'&&<small className="bb-sender">{who(requesterFor(e.jobId))}</small>}<div className="message-bubble"><MessageContent content={e.text??''}/></div></div></div>
-                : <div className="bb-answer" key={e.eventId}><MessageContent content={e.text??''}/></div>)
-            : <div className={`bb-step ${KIND_CLASS[e.kind]??''}`} key={e.eventId}><span className="bb-step-dot" aria-hidden="true"/><span>{KIND_LABEL[e.kind]??e.kind}{KIND_SHOW_TEXT.has(e.kind)&&e.text?` · ${e.text}`:''}</span><span className="bb-time">{time(e.at)}</span></div>)}</div>}
+        : <div className="bb-thread">{shown.map(e=>{
+            if(e.origin==='aside-mirror'&&e.kind==='step'){const p=parseStep(e.text);return <div className={`bb-act ${p.isResult?'result':''}`} key={e.eventId}><span className="bb-act-icon" aria-hidden="true">{p.icon}</span><span className="bb-act-text">{p.label}</span></div>;}
+            if(e.origin==='aside-mirror'&&e.role==='user')return <div className="message-line user" key={e.eventId}><div className="message-stack">{selected==='new'&&<small className="bb-sender">{who(requesterFor(e.jobId))}</small>}<div className="message-bubble"><MessageContent content={e.text??''}/></div></div></div>;
+            if(e.origin==='aside-mirror')return <div className="bb-answer" key={e.eventId}><MessageContent content={e.text??''}/></div>;
+            return <div className={`bb-step ${KIND_CLASS[e.kind]??''}`} key={e.eventId}><span className="bb-step-dot" aria-hidden="true"/><span>{KIND_LABEL[e.kind]??e.kind}{KIND_SHOW_TEXT.has(e.kind)&&e.text?` · ${e.text}`:''}</span><span className="bb-time">{time(e.at)}</span></div>;
+          })}</div>}
 
       {current?.status==='waiting-approval'&&current.suspension&&<section className="bb-card" aria-label="사용자 확인">
         <b>{current.suspension.description}</b>

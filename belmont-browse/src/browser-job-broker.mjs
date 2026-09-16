@@ -119,10 +119,22 @@ export class BrowserJobBroker {
       if(prior!==j.status) this.emit(j,j.status,j.result??j.error??`[${j.jobId}] ${j.status}`,{suspension:j.suspension,observation:v.memoryObservation??null,memoryContext:v.memoryContext??null});
     });
   }
-  async mirror(j) {
+  async mirror(j,v) {
     if(!j.asideSessionId || (!TERMINAL.has(j.status) && j.status!=='waiting-approval')) return;
     const rows=await this.engine.asideMessages(j.asideSessionId,0);
-    this.store.transaction(()=>{for(const m of rows){
+    // The Aside session's step trail (tool calls, REPL navigations, results) is what makes the agent's
+    // work legible — surface it as ordered 'step' events alongside the chat so the bot's panel shows
+    // what the browser actually did, not just accepted/done. Each line is append-only and stable, so
+    // its index is a stable dedup key; the leading HH:MM:SS gives a real timestamp for ordering.
+    const activity=Array.isArray(v?.activity)?v.activity:[];
+    this.store.transaction(()=>{
+      activity.forEach((line,i)=>{
+        const s=String(line);const t=/^(\d{2}):(\d{2}):(\d{2}) /.exec(s);
+        let at=j.createdAt+i;if(t){const d=new Date(j.createdAt);at=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),+t[1],+t[2],+t[3])+(i%1000);}
+        const stepId=digest([j.originInstanceId,j.asideSessionId,'step',i]);
+        this.store.event(stepId,j.botId,{eventId:stepId,origin:'aside-mirror',kind:'step',jobKey:j.key,jobId:j.jobId,instanceId:j.originInstanceId,asideSessionId:j.asideSessionId,seqIndex:i,text:s.slice(0,4000),at});
+      });
+      for(const m of rows){
       // 914 (and other engines) persist messages with role/content/timestamp but no native id, so
       // requiring one dropped every mirrored message. Fall back to the same stable fingerprint the
       // linked-bot mirror uses (role+timestamp+text hash): stable across re-fetches, so the mirror
@@ -150,7 +162,7 @@ export class BrowserJobBroker {
             this.store.put('operation',command.opKey,{...(this.store.get('operation',command.opKey)??{}),state:'acknowledged',kind:command.kind});
           } catch(error) {current.status='unknown';current.error=String(error.message);this.store.transaction(()=>this.emit(current,'unknown','Native command outcome needs reconciliation'));return;}
         }
-        this.observe(current,h.toJSON());await this.mirror(current);
+        {const v=h.toJSON();this.observe(current,v);await this.mirror(current,v);}
         if(current.status==='running' && current.runningMs>=current.executionBudgetMs) {
           current.command={kind:'stop',opKey:digest([current.key,'execution-budget'])};this.store.put('job',current.key,current);return;
         }
