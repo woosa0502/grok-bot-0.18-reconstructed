@@ -1,0 +1,22 @@
+{
+  "case": "context-authority",
+  "at": "2026-09-12T21:01:10.893Z",
+  "serve": {
+    "port": 9360,
+    "engine": "1.26.909.1820",
+    "instanceId": "53443f29-f8d0-46a9-840d-7be9474e0916"
+  },
+  "authorityMode": "aside-legacy",
+  "singleDomainStatus": 409,
+  "singleDomain": {
+    "error": "Browse process uses legacy memory authority",
+    "code": "MEMORY_AUTHORITY_MISMATCH"
+  },
+  "multiDomainStatus": 409,
+  "multiDomain": {
+    "error": "Browse process uses legacy memory authority",
+    "code": "MEMORY_AUTHORITY_MISMATCH"
+  },
+  "verdict_pass": true,
+  "note": "legacy authority (aside-legacy): /memory/context must refuse with MEMORY_AUTHORITY_MISMATCH; re-run against a BELMONT_MEMORY_AUTHORITY=belmont serve for the positive context path"
+}

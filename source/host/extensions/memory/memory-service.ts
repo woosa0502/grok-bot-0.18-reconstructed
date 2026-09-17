@@ -5,6 +5,9 @@ import type { DebouncePolicy } from "../../../internal/scheduling.js";
 import { MEMORY_PROFILE_PROMPT_LIMIT, formatMemoryDate, memoryDedupeKey, normalizeMemoryContent } from "../../runner/sand-memory.js";
 import { WatchedDirectory } from "../../watched-directory.js";
 import type { AgentProjectMembership } from "./project-membership.js";
+import { BelmontMemoryLearningRuntime, type AuthenticatedMemoryTurn, type MemoryTurnContext } from "./memory-learning-runtime.js";
+import { assertLegacyMemoryWritable, readMemoryRolloutState } from "./memory-migration.js";
+import { routeMemoryStore, writeCanonicalMemory } from "./memory-store-adapter.js";
 
 export const MEMORY_DIRNAME = "memory";
 export const PROFILE_FILENAME = "profile.md";
@@ -88,6 +91,7 @@ export class FileMemoryStore {
   listMemories(limit = 100): MemoryRecord[] { return this.facts().sort((a, b) => Number(b.kind === "profile") - Number(a.kind === "profile") || this.byRecent(a, b)).slice(0, Math.max(0, Math.floor(limit))).map((fact) => this.record(fact)); }
   countMemories(): number { return this.facts().length; }
   addMemory(content: string, createdAt: number, kind: MemoryKind, origin: "explicit" | "legacy" = this.dreaming?.isEnabled() ? "explicit" : "legacy"): MemoryRecord | null {
+    assertLegacyMemoryWritable(this.memoryDir);
     const normalized = normalizeMemoryContent(content); if (!normalized) return null;
     const existing = this.facts().find((fact) => memoryDedupeKey(fact.content) === memoryDedupeKey(normalized));
     if (existing != null) { if (origin === "explicit") { this.clearTombstone(existing.content); this.clearOrigins(existing.content); this.markOrigin(existing.content, "explicit"); } return null; }
@@ -97,11 +101,13 @@ export class FileMemoryStore {
     return { id: memoryIdFor(normalized), content: normalized, createdAt, kind };
   }
   removeMemoryByContent(content: string, options: { preserveExplicit?: boolean } = {}): boolean {
+    assertLegacyMemoryWritable(this.memoryDir);
     const normalized = normalizeMemoryContent(content);
     if (!normalized || options.preserveExplicit && this.memoryOrigin(normalized) === "explicit") return false;
     return this.removeMemory(memoryIdFor(normalized));
   }
   removeMemory(id: string): boolean {
+    assertLegacyMemoryWritable(this.memoryDir);
     for (const fact of this.facts()) {
       if (fact.id !== id) continue; const raw = this.read(fact.path), lines = raw.split("\n"); lines.splice(fact.line, 1); this.dir.writeFileAtomic(fact.path, lines.join("\n"));
       if (this.dreaming?.isEnabled() || fact.origin !== "legacy") { this.clearOrigins(fact.content); this.markTombstone(fact.content); }
@@ -115,6 +121,7 @@ export class FileMemoryStore {
     return { fingerprint: state.fingerprint, memories };
   }
   applySynthesis(snapshot: SynthesisSnapshot, changes: readonly SynthesisChange[], now: number): "committed" | "stale" | "invalid" {
+    assertLegacyMemoryWritable(this.memoryDir);
     const state = this.readSynthesisState(); if (state.fingerprint !== snapshot.fingerprint) return "stale";
     const allowed = new Set(snapshot.memories.map((memory) => memory.id)), byId = new Map(state.facts.map((fact) => [fact.id, fact])), changed = new Set<string>();
     // Validate the whole batch before writing anything: a mid-batch "invalid"
@@ -150,8 +157,8 @@ export class FileMemoryStore {
   private addSynthesized(content: string, createdAt: number, kind: MemoryKind): void { if (this.facts().some((fact) => memoryDedupeKey(fact.content) === memoryDedupeKey(content))) return; const path = kind === "profile" ? this.profileFile : this.logFileForDate(createdAt), raw = this.read(path), base = raw || (kind === "profile" ? PROFILE_HEADER : LOG_HEADER); this.dir.writeFileAtomic(path, `${base}${base.endsWith("\n") ? "" : "\n"}${serializeFactLine(content, createdAt)}\n`); this.clearOrigins(content); this.markOrigin(content, "synthesis"); }
   hasMemories(): boolean { return this.countMemories() > 0; }
   isTemporalReviewDue(now: number): boolean { const next = Number.parseInt(this.read(this.refreshFile).trim(), 10); return !Number.isFinite(next) || next <= now; }
-  markTemporalReview(now: number): void { this.dir.writeFileAtomic(this.refreshFile, `${now + MEMORY_SYNTHESIS_REFRESH_INTERVAL_MS}\n`); }
-  clearMemories(): void { const facts = this.facts(); if (!facts.length) return; for (const fact of facts) if (this.dreaming?.isEnabled() || fact.origin !== "legacy") { this.clearOrigins(fact.content); this.markTombstone(fact.content); } rmSync(this.logDir, { recursive: true, force: true }); this.dir.writeFileAtomic(this.profileFile, PROFILE_HEADER); }
+  markTemporalReview(now: number): void { assertLegacyMemoryWritable(this.memoryDir); this.dir.writeFileAtomic(this.refreshFile, `${now + MEMORY_SYNTHESIS_REFRESH_INTERVAL_MS}\n`); }
+  clearMemories(): void { assertLegacyMemoryWritable(this.memoryDir); const facts = this.facts(); if (!facts.length) return; for (const fact of facts) if (this.dreaming?.isEnabled() || fact.origin !== "legacy") { this.clearOrigins(fact.content); this.markTombstone(fact.content); } rmSync(this.logDir, { recursive: true, force: true }); this.dir.writeFileAtomic(this.profileFile, PROFILE_HEADER); }
   private readSynthesisState(): { fingerprint: string; facts: MemoryFact[] } { const files = [{ path: this.profileFile, raw: this.read(this.profileFile), kind: "profile" as const }, ...this.logFiles().map((path) => ({ path, raw: this.read(path), kind: "log" as const }))], hash = createHash("sha256"), facts: MemoryFact[] = []; for (const file of files) { hash.update(file.path).update("\0").update(file.raw).update("\0"); facts.push(...parseFacts(file.raw, file.kind, file.path, facts.length).map((fact) => ({ ...fact, origin: this.memoryOrigin(fact.content) }))); } return { fingerprint: hash.digest("hex"), facts }; }
 }
 
@@ -198,21 +205,74 @@ export class MemoryService {
   private activeAgentId: string | null = null;
   private readonly listeners = new Set<() => void>();
   private synthesis: { start(): void; dispose(): void; recordTurn?(agentId: string, exchange: unknown): void } | null = null;
-  constructor(readonly options: { sandRoot?: string; agentsRootDir: string; debounce: DebouncePolicy }) {}
-  createAgentStore(agentDir: string): FileMemoryStore { return new FileMemoryStore(getAgentMemoryDir(agentDir), this.options.debounce, { isEnabled: () => this.synthesis != null, record: (evidence) => { const id = basename(agentDir); this.synthesis?.recordTurn?.(id, evidence); } }); }
-  agentHasContent(agentDir: string): boolean { return agentMemoryHasContent(agentDir); }
-  enableMemorySynthesis(service: { start(): void; dispose(): void; recordTurn?(agentId: string, exchange: unknown): void }): void { this.synthesis?.dispose(); this.synthesis = service; service.start(); }
+  readonly learning: BelmontMemoryLearningRuntime | undefined;
+  constructor(readonly options: { sandRoot?: string; agentsRootDir: string; debounce: DebouncePolicy; getPrincipalId?: () => string | null; report?: (message: string) => void }) {
+    if (options.sandRoot) this.learning = new BelmontMemoryLearningRuntime({
+      sandRoot: options.sandRoot, agentsRootDir: options.agentsRootDir,
+      getPrincipalId: options.getPrincipalId ?? (() => null), onChange: () => this.emit(),
+      report: options.report ?? ((message) => console.warn(message)),
+    });
+  }
+  private legacyWritable(): boolean { return !this.options.sandRoot || readMemoryRolloutState(this.options.sandRoot).stage === "legacy"; }
+  isCanonical(): boolean { return this.learning?.isCanonical() === true; }
+  createShardStore(memoryDir: string, agentId: string): FileMemoryStore {
+    const legacy = new FileMemoryStore(memoryDir, this.options.debounce, { isEnabled: () => this.legacyWritable() && this.synthesis != null, record: (evidence) => { if (this.legacyWritable()) this.synthesis?.recordTurn?.(agentId, evidence); } });
+    return this.learning ? routeMemoryStore(legacy, this.learning, agentId) : legacy;
+  }
+  createAgentStore(agentDir: string): FileMemoryStore { return this.createShardStore(getAgentMemoryDir(agentDir), basename(agentDir)); }
+  agentHasContent(agentDir: string): boolean { return this.isCanonical() ? this.createAgentStore(agentDir).hasMemories() : agentMemoryHasContent(agentDir); }
+  enableMemorySynthesis(service: { start(): void; dispose(): void; recordTurn?(agentId: string, exchange: unknown): void }): void { this.synthesis?.dispose(); this.synthesis = null; if (!this.legacyWritable()) return; this.synthesis = service; service.start(); }
   list({ agentId }: { agentId: string }): MemoryRecord[] { return this.storeForAgent(agentId).listMemories(); }
   /** Writes one fact for an agent from outside a turn (the phone's autofill / form). Returns null when the content is empty or a duplicate. */
-  add({ agentId, content, kind }: { agentId: string; content: string; kind: MemoryKind }): MemoryRecord | null { const record = this.storeForAgent(agentId).addMemory(content, Date.now(), kind, "explicit"); if (record != null) this.emit(); return record; }
+  add({ agentId, content, kind }: { agentId: string; content: string; kind: MemoryKind }): MemoryRecord | null {
+    const record = this.isCanonical() && this.learning
+      ? writeCanonicalMemory(this.learning, this.learning.agentMemoryDir(agentId), { content, createdAt: Date.now(), kind, confirmedByUser: true })
+      : this.storeForAgent(agentId).addMemory(content, Date.now(), kind, "explicit");
+    if (record != null) this.emit(); return record;
+  }
   // Callers name the key both ways (the transcript manager sends memoryId); accept either so a delete from the UI or the phone actually removes the line.
-  remove({ agentId, id, memoryId }: { agentId: string; id?: string; memoryId?: string }): boolean { const key = id ?? memoryId; if (key === undefined) return false; const removed = this.storeForAgent(agentId).removeMemory(key); if (removed) this.emit(); return removed; }
-  clear({ agentId }: { agentId: string }): void { this.storeForAgent(agentId).clearMemories(); this.emit(); }
+  remove({ agentId, id, memoryId }: { agentId: string; id?: string; memoryId?: string }): boolean {
+    const key = id ?? memoryId; if (key === undefined) return false;
+    if (this.isCanonical() && this.learning) {
+      this.learning.assertWritable();
+      const { scope, session } = this.learning.session(this.learning.agentMemoryDir(agentId), "user");
+      const ids = session.read(scope, key) ? [key] : this.learning.migration().resolveLegacyIds(scope, key);
+      let removed = false;
+      for (const canonicalId of ids) if (session.read(scope, canonicalId)) { session.forget(scope, canonicalId); removed = true; }
+      if (removed) { this.learning.discardAgentPending(agentId); this.learning.changed(scope); }
+      return removed;
+    }
+    const removed = this.storeForAgent(agentId).removeMemory(key); if (removed) this.emit(); return removed;
+  }
+  clear({ agentId }: { agentId: string }): void {
+    if (this.isCanonical() && this.learning) {
+      this.learning.assertWritable();
+      const { scope, session } = this.learning.session(this.learning.agentMemoryDir(agentId), "user");
+      session.clear(scope); this.learning.discardAgentPending(agentId); this.learning.changed(scope);
+    } else this.storeForAgent(agentId).clearMemories();
+    this.emit();
+  }
   setActiveAgent(agentId: string | null): void { if (this.activeAgentId === agentId) return; this.activeAgentId = agentId; this.emit(); }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
-  dispose(): void { this.synthesis?.dispose(); this.synthesis = null; this.listeners.clear(); }
-  synthesisTargetForAgent(agentId: string): FileMemoryStore | null { const dir = join(this.options.agentsRootDir, agentId); return existsSync(dir) ? this.createAgentStore(dir) : null; }
+  async dispose(): Promise<void> { this.synthesis?.dispose(); this.synthesis = null; await this.learning?.dispose(); this.listeners.clear(); }
+  synthesisTargetForAgent(agentId: string): FileMemoryStore | null { if (!this.legacyWritable()) return null; const dir = join(this.options.agentsRootDir, agentId); return existsSync(dir) ? this.createAgentStore(dir) : null; }
   listSynthesisTargets(): Array<{ agentId: string; store: FileMemoryStore }> { let ids: string[] = []; try { ids = readdirSync(this.options.agentsRootDir); } catch {} return ids.flatMap((agentId) => { const store = this.synthesisTargetForAgent(agentId); return store == null ? [] : [{ agentId, store }]; }); }
   storeForAgent(agentId: string): FileMemoryStore { return this.createAgentStore(join(this.options.agentsRootDir, agentId)); }
+  setTranscriptReader(reader: (agentId: string) => readonly unknown[]): void { this.learning?.setTranscriptReader(reader); }
+  onAuthenticatedUserTurn(input: AuthenticatedMemoryTurn): void { this.learning?.onAuthenticatedUserTurn(input); }
+  onConversationLifecycle(input: Parameters<BelmontMemoryLearningRuntime["onConversationLifecycle"]>[0]): void { this.learning?.onConversationLifecycle(input); }
+  prepareMemoryTurn(input: MemoryTurnContext): Promise<void> { return this.learning?.prepareMemoryTurn(input) ?? Promise.resolve(); }
+  getMemoryContext(input: Parameters<BelmontMemoryLearningRuntime["getMemoryContext"]>[0]): string { return this.learning?.getMemoryContext(input) ?? ""; }
+  memoryContextKey(agentId: string): string { return this.learning?.memoryContextKey(agentId) ?? "memory:legacy"; }
+  beforeToolAction(input: Parameters<BelmontMemoryLearningRuntime["beforeToolAction"]>[0]): Promise<Record<string, unknown>> { return this.learning?.beforeToolAction(input) ?? Promise.resolve(input.arguments); }
+  afterToolAction(input: Parameters<BelmontMemoryLearningRuntime["afterToolAction"]>[0]): void { this.learning?.afterToolAction(input); }
+  prepareAsideTask(input: Parameters<BelmontMemoryLearningRuntime["prepareAsideTask"]>[0]) { return this.learning?.prepareAsideTask(input) ?? Promise.resolve({ task: input.task }); }
+  validateAsideTask(context: Record<string, unknown>): void { this.learning?.validateAsideTask(context); }
+  queryKnowledge(input: Parameters<BelmontMemoryLearningRuntime["queryKnowledge"]>[0]): Promise<string | null> { return this.learning?.queryKnowledge(input) ?? Promise.resolve(null); }
+  evaluateProcedureCandidate(input: Parameters<BelmontMemoryLearningRuntime["evaluateProcedureCandidate"]>[0]): unknown { if (!this.learning) throw new Error("Memory runtime unavailable"); return this.learning.evaluateProcedureCandidate(input); }
+  ingestAsideOutcome(input: Parameters<BelmontMemoryLearningRuntime["ingestAsideOutcome"]>[0]): unknown { return this.learning?.ingestAsideOutcome(input); }
+  captureAsideObservation(input: Parameters<BelmontMemoryLearningRuntime["captureAsideObservation"]>[0]): void { this.learning?.captureAsideObservation(input); }
+  /** Host-only administrative surface; deliberately absent from renderer/tool RPC registrations. */
+  migration() { if (!this.learning) throw new Error("Memory runtime requires sandRoot"); return this.learning.migration(); }
   private emit(): void { for (const listener of [...this.listeners]) listener(); }
 }

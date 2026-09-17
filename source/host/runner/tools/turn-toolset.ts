@@ -1,5 +1,5 @@
 import { createKnowledgeSearchTool } from "./knowledge-search-tool.js";
-import type { KnowledgeIndexLike } from "../knowledge-store.js";
+import type { CanonicalKnowledgeQuery, KnowledgeIndexLike } from "../knowledge-store.js";
 import {
   SAND_HIDDEN_PROMPT_MARKER,
   SAND_TRUSTED_AUTOMATION_PROMPT_MARKER,
@@ -179,6 +179,7 @@ import {
   createSandMultitaskTodoTool,
 } from "../../sand-multitask.js";
 import { LOCAL_BROWSER_USE_ENABLED } from "../../box/local-browser-use.js";
+import { withMemoryToolAction, type MemoryToolHooks } from "../memory-runtime-hooks.js";
 
 export const SAND_EXTERNAL_MACHINE = resolveSandExternalMachine()!;
 
@@ -282,6 +283,7 @@ type StreamingTurnTool = TurnTool & {
 export type TurnToolsetBuildProps = ProductionTurnToolInputs;
 
 export interface TurnToolsetTurnInput {
+  readonly memoryToolHooks?: MemoryToolHooks;
   /** The exact owner-scoped update relay installed for this prepared turn. */
   readonly emitUpdate?: (update: ForwardedUpdate) => void;
   readonly remoteBoxResourceAccessor?: ProductionTurnToolInputs["resourceAccessor"];
@@ -757,6 +759,7 @@ export interface TurnStateToolFactoryInput {
 export interface TurnKnowledgeSearchToolFactoryInput {
   readonly index: KnowledgeIndexLike;
   readonly readPage: (path: string) => string | null;
+  readonly canonicalQuery?: CanonicalKnowledgeQuery;
 }
 
 export interface TurnSubagentManagementToolFactoryInput {
@@ -1227,7 +1230,11 @@ export function createTurnStateToolFactory(
 export function createTurnKnowledgeSearchToolFactory(
   input: TurnKnowledgeSearchToolFactoryInput,
 ): () => TurnTool {
-  return () => asTurnTool(createKnowledgeSearchTool({ index: input.index, readPage: input.readPage }));
+  return () => asTurnTool(createKnowledgeSearchTool({
+    index: input.index,
+    readPage: input.readPage,
+    ...(input.canonicalQuery == null ? {} : { canonicalQuery: input.canonicalQuery }),
+  }));
 }
 
 export function createTurnSubagentManagementToolFactory(
@@ -1816,9 +1823,10 @@ export function buildTurnTools(
     ? roomFiltered
     : roomFiltered.filter((tool) => tool.name === "SendMessage" || !denyPolicy.has(tool.name));
 
+  const memoryBound = offered.map((tool) => withMemoryToolAction(tool, turn.memoryToolHooks));
   const placed = dynamicToolsEnabled
-    ? offered.map(withDynamicToolPlacement)
-    : offered;
+    ? memoryBound.map(withDynamicToolPlacement)
+    : memoryBound;
   const guarded = placed.map((tool) => {
     if (
       dynamicInvocationRegistry !== undefined

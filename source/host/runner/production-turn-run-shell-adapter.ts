@@ -29,6 +29,7 @@ import type {
 } from "./prompt-collector-glue.js";
 import type { TurnAgentMcpTurnProvider } from "./turn-agent-composition.js";
 import type { ForwardedUpdate } from "./agent-adapters.js";
+import { appendJobBindingObserved } from "../extensions/inference/usage-ledger.js";
 
 export interface ProductionTurnRunShellPreparedTurn extends PreparedTurn {
   readonly baseState: ConversationStateStructureMessage;
@@ -329,6 +330,20 @@ export function createProductionTurnRunShellAdapter(
         });
         if (context.signal.aborted || !ownsRun()) {
           throw new SandTurnInterruptedBeforeDispatchError();
+        }
+        // Belmont v4 job-id: bind this turn (its meter turnRunId) to the [job:] tags
+        // fixed upstream from the original message. Best-effort; never blocks the turn.
+        {
+          const identity = owner.runContext.meterIdentity;
+          const attribution = options.jobAttribution ?? { kind: "untagged" as const, jobIds: [], reason: null };
+          appendJobBindingObserved({
+            actorId: identity.actorId,
+            turnRunId: identity.turnRunId,
+            hostRequestId: identity.hostRequestId,
+            kind: attribution.kind,
+            jobIds: attribution.jobIds,
+            reason: attribution.reason,
+          });
         }
         const productionInput = await input.createRunInput({
           owner,

@@ -1,3 +1,5 @@
+import { isDedicatedBrowserBot, parseBrowserRequest, enqueueBrowserJob, deliveryIdentity, acceptDelivery } from '../../../../shared/browser-bot/host-store.mjs';
+import { getSandRootDir as browserJobSandRoot } from '../../host-paths.js';
 import { randomUUID } from "node:crypto";
 
 import {
@@ -5,6 +7,7 @@ import {
   clampAgentMessage,
 } from "../../agents/agent-messaging.js";
 import { sandErrorDetail } from "../../ports/telemetry.js";
+import { parseLeadingJobHeader } from "../inference/usage-ledger.js";
 import { entryRaisesUserActivitySignal } from "../../../shared/transcript.js";
 import { describeAgentRunError } from "./agent-run-error.js";
 import { loadAgentInboundImages } from "./send-message-shaping.js";
@@ -65,6 +68,9 @@ export class AgentToAgentMessaging {
     images: readonly { url: string; alt?: string }[] = [],
     priority = false,
   ): Promise<string> {
+    const browserDelivery = deliveryIdentity(browserJobSandRoot(), fromAgentId, toAgentId, text);
+    if (browserDelivery?.accepted) return 'Sent to ' + toAgentId + ' (event already accepted)';
+
     const wasStopped = this.tm.captureAgentStopGuard?.(toAgentId) as (() => boolean) | undefined;
     const isStopped = (): boolean => wasStopped?.() === true || this.tm.isAgentUserStopped?.(toAgentId) === true;
     if (isStopped()) return "That agent was stopped by the user; the message was not accepted.";
@@ -115,7 +121,7 @@ export class AgentToAgentMessaging {
       images,
     );
     const inbound: AgentInboundMessage = {
-      id: randomUUID(),
+      id: browserDelivery?.id ?? (randomUUID()),
       from: { id: fromAgentId, name: sender?.name ?? "An agent" },
       text: message,
       timestampMs: Date.now(),
@@ -129,7 +135,20 @@ export class AgentToAgentMessaging {
     // delivery re-arms it at the next start (at-least-once). A persistence
     // failure must not masquerade as a durable send (external review r3 #1):
     // the sender's ack says so, and telemetry records it.
+    if (isDedicatedBrowserBot(browserJobSandRoot(), toAgentId)) {
+      if (process.env.SAND_ASIDE_BROWSE !== '1') throw new Error('Dedicated browser runtime is disabled');
+      const admitted = enqueueBrowserJob(browserJobSandRoot(), {
+        ...parseBrowserRequest(inbound.text, { requestId: inbound.id }),
+        botId: toAgentId, requesterAgentId: fromAgentId, replyTarget: fromAgentId, receivedAt: inbound.timestampMs,
+      });
+      return 'Sent to ' + toAgentId + ': browser job ' + admitted.payload.jobId + ' accepted / queued (execution result will be delivered separately).';
+    }
     const persisted = this.persistInboundMarker(toAgentId, inbound);
+    if (browserDelivery) {
+      if (!persisted) throw new Error('Browser event was not durably queued');
+      acceptDelivery(browserJobSandRoot(), browserDelivery);
+    }
+
     if (!persisted) {
       this.tm.telemetry.reportPendingWake({
         conversationId: toAgentId,
@@ -298,6 +317,10 @@ export class AgentToAgentMessaging {
               {
                 hidden: true,
                 isSilenceAllowed: true,
+                // Belmont v4 job-id: parse [job:] tags from the ORIGINAL sender text,
+                // before buildAgentInboundWakePrompt wraps it with the [agent] header.
+                jobAttribution: parseLeadingJobHeader(message.text),
+                browserInbound: { fromAgentId: message.from.id, requestId: message.id, text: message.text, receivedAt: message.timestampMs },
                 ...(selectedImages.length === 0 ? {} : { selectedImages }),
               },
               () => wasStopped?.() !== true,

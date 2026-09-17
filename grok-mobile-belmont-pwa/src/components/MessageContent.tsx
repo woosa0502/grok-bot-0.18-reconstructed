@@ -68,6 +68,33 @@ export function MessageContent({ content }: { content: string }) {
       blocks.push(<ol key={`ordered-${index}`}>{items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}>{inlineContent(item, `ordered-${index}-${itemIndex}`)}</li>)}</ol>);
       continue;
     }
+    // GFM table: a header row with "|" followed by a |---|---| delimiter row.
+    const delimiter = lines[index + 1] ?? "";
+    const isDelimiter = delimiter.trim().length > 0 && /^[|\s:-]+$/u.test(delimiter.trim()) && delimiter.includes("-") && delimiter.includes("|");
+    if (line.includes("|") && isDelimiter) {
+      const splitRow = (row: string): string[] => {
+        let trimmed = row.trim();
+        if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+        if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+        return trimmed.split("|").map((cell) => cell.trim());
+      };
+      const headerCells = splitRow(line);
+      index += 2;
+      const bodyRows: string[][] = [];
+      while (index < lines.length && (lines[index] ?? "").includes("|") && (lines[index] ?? "").trim().length > 0) {
+        bodyRows.push(splitRow(lines[index] ?? ""));
+        index += 1;
+      }
+      blocks.push(
+        <div className="table-scroll" key={`table-${index}`}>
+          <table className="rendered-table">
+            <thead><tr>{headerCells.map((cell, cellIndex) => <th key={`th-${cellIndex}`}>{inlineContent(cell, `th-${index}-${cellIndex}`)}</th>)}</tr></thead>
+            <tbody>{bodyRows.map((row, rowIndex) => <tr key={`tr-${rowIndex}`}>{row.map((cell, cellIndex) => <td key={`td-${rowIndex}-${cellIndex}`}>{inlineContent(cell, `td-${index}-${rowIndex}-${cellIndex}`)}</td>)}</tr>)}</tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
     const paragraphLines: string[] = [];
     while (index < lines.length
       && (lines[index] ?? "").trim().length > 0

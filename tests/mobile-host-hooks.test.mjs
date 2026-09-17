@@ -70,7 +70,8 @@ test("wiring: gateway methods, prompt section, request context, and memory add a
   assert.match(manager, /async addAgentMemory\(agentId: string, content: string, tier: unknown\)/);
   const memory = read("source/host/extensions/memory/memory-service.ts");
   // deleteAgentMemory sent { memoryId } to a remove() that read { id }: no memory was ever deleted (found 2026-09-05 through the phone).
-  assert.match(memory, /remove\(\{ agentId, id, memoryId \}: \{ agentId: string; id\?: string; memoryId\?: string \}\): boolean \{ const key = id \?\? memoryId;/);
+  // Whitespace/newline-insensitive: the contract is that remove() accepts both id and memoryId and keys on `id ?? memoryId` — not the exact one-line formatting.
+  assert.match(memory, /remove\(\{ agentId, id, memoryId \}:\s*\{ agentId: string; id\?: string; memoryId\?: string \}\): boolean \{\s*const key = id \?\? memoryId;/);
   assert.match(manager, /this\.memory\.remove\(\{ agentId, id: memoryId, memoryId \}\)/);
   assert.match(memory, /add\(\{ agentId, content, kind \}: \{ agentId: string; content: string; kind: MemoryKind \}\): MemoryRecord \| null/);
 });

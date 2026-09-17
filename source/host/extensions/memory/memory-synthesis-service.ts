@@ -18,6 +18,10 @@ export const MEMORY_SYNTHESIS_RETRY_MAX_MS = 30_000;
 export const MAX_PENDING_AGENTS = 64;
 export const MAX_PENDING_EVIDENCE_PER_AGENT = 12;
 export const MAX_TEMPORAL_TARGETS_PER_SWEEP = 4;
+// A transport/deadline failure (registry SAND-E0413, retryable:true) keeps its evidence pending so a later
+// turn or the periodic poll retries it. Bound the number of retry passes so a set that keeps failing cannot
+// re-run the 2-call synthesis cycle — and re-bill — forever; after the budget it is consumed like a reject.
+export const MAX_SYNTHESIS_RETRYABLE_PASSES = 5;
 const MAX_EVIDENCE_SIDE_CHARS = 8_000;
 
 export interface MemoryEvidence { id: string; occurredAt: number; user: string; assistant: string }
@@ -119,7 +123,7 @@ export function parseMemorySynthesisChanges(raw: unknown): MemoryChange[] | null
   return parsed;
 }
 
-interface PendingAgent { evidence: MemoryEvidence[]; temporal: boolean }
+interface PendingAgent { evidence: MemoryEvidence[]; temporal: boolean; retries?: number }
 interface SynthesisReport { outcome: SynthesisOutcome | "dropped"; agentId?: string; evidenceCount: number; inputMemoryCount: number; changeCount: number; durationMs: number }
 export interface MemorySynthesisOptions {
   now?: () => number;
@@ -231,9 +235,17 @@ export class MemorySynthesisService {
   private async runAgent(agentId: string): Promise<SynthesisOutcome> {
     const pending = this.pending.get(agentId); if (pending == null) return "no-work";
     if (this.options.run != null && this.options.getTarget == null) {
-      const evidence = [...pending.evidence], started = this.now(); this.pending.delete(agentId);
-      try { await this.options.run(agentId, evidence); this.report("committed", agentId, evidence.length, 0, 0, started); return "committed"; }
-      catch { if (!this.disposed) this.report("failed", agentId, evidence.length, 0, 0, started); return this.disposed ? "no-work" : "failed"; }
+      const evidence = [...pending.evidence], temporal = pending.temporal, started = this.now();
+      try { await this.options.run(agentId, evidence); this.finish(agentId, evidence, temporal); this.report("committed", agentId, evidence.length, 0, 0, started); return "committed"; }
+      catch {
+        if (this.disposed) return "no-work";
+        // Opaque failure: keep the evidence for a later pass instead of dropping it before the try the way
+        // the original did; bound the retry passes so a persistently-failing run cannot loop forever.
+        const held = this.pending.get(agentId);
+        if (held != null) { held.retries = (held.retries ?? 0) + 1; if (held.retries >= MAX_SYNTHESIS_RETRYABLE_PASSES) this.finish(agentId, evidence, temporal); }
+        this.report("failed", agentId, evidence.length, 0, 0, started);
+        return "failed";
+      }
     }
     const target = this.options.getTarget?.(agentId) ?? null;
     if (target == null) { this.pending.delete(agentId); return "no-work"; }
@@ -288,13 +300,32 @@ export class MemorySynthesisService {
       this.report(outcome, agentId, evidence.length, snapshot.memories.length, proposal.length, started); return outcome;
     } catch (error) {
       if (this.disposed) return "no-work";
-      const attempt = error instanceof MemorySynthesisAttemptError ? error : null; if (temporal) target.markTemporalReview(started); this.finish(agentId, evidence, temporal);
-      const outcome = attempt?.outcome ?? "failed"; this.report(outcome, agentId, evidence.length, snapshot.memories.length, attempt?.proposedCount ?? 0, started); return outcome;
+      const attempt = error instanceof MemorySynthesisAttemptError ? error : null;
+      if (temporal) target.markTemporalReview(started);
+      // Keep-vs-consume mirrors the error registry's `retryable` flag. A semantic verdict
+      // (invalid-output / rejected, retryable:false) is consumed: re-proposing the same evidence only
+      // reproduces it. A transport/deadline failure (the generic "failed", retryable:true) is KEPT pending
+      // so a later turn or the hourly poll retries it — the defect the external review flagged was that this
+      // path also dropped the evidence, so a transient failure permanently lost the consolidation.
+      if (attempt != null) {
+        this.finish(agentId, evidence, temporal);
+        this.report(attempt.outcome, agentId, evidence.length, snapshot.memories.length, attempt.proposedCount, started);
+        return attempt.outcome;
+      }
+      const held = this.pending.get(agentId);
+      if (held != null) {
+        held.retries = (held.retries ?? 0) + 1;
+        if (temporal) held.temporal = false; // the temporal review was marked above; don't re-queue that sweep
+        if (held.retries >= MAX_SYNTHESIS_RETRYABLE_PASSES) this.finish(agentId, evidence, temporal); // budget spent: consume
+      }
+      this.report("failed", agentId, evidence.length, snapshot.memories.length, 0, started);
+      return "failed";
     }
   }
   private finish(agentId: string, evidence: readonly MemoryEvidence[], temporal: boolean): void {
     const pending = this.pending.get(agentId); if (pending == null) return;
     const consumed = new Set(evidence.map((item) => item.id)); pending.evidence = pending.evidence.filter((item) => !consumed.has(item.id)); if (temporal) pending.temporal = false;
+    pending.retries = 0; // this batch is resolved (committed or given up); any fresh evidence starts a new budget
     if (pending.evidence.length === 0 && !pending.temporal) this.pending.delete(agentId);
   }
   private report(outcome: SynthesisReport["outcome"], agentId: string, evidenceCount: number, inputMemoryCount: number, changeCount: number, startedAt: number): void {

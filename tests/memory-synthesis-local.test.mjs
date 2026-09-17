@@ -214,6 +214,44 @@ test("a rejected verification leaves the memory state untouched", async () => {
   }
 });
 
+test("a transient transport failure keeps the evidence pending and a later pass commits it", async () => {
+  const { MemorySynthesisService, FileMemoryStore, createRealDebouncePolicy } = await loadModules();
+  const dir = await mkdtemp(path.join(tmpdir(), "belmont-dreaming-retry-"));
+  try {
+    const store = new FileMemoryStore(dir, createRealDebouncePolicy({ name: "test", delayMs: 0 }));
+    let synthesisCalls = 0;
+    const executorFor = (stage) => ({
+      appendMessages() { return this; },
+      stream: () => ({
+        fullStream: (async function* () {
+          if (stage === "verification") { yield { type: "text-delta", textDelta: JSON.stringify({ approved: true }) }; return; }
+          synthesisCalls += 1;
+          // First attempt: a transport error (transient, SAND-E0413 retryable:true). Before the fix this
+          // dropped the evidence in the catch; now it must be kept for a later pass.
+          if (synthesisCalls === 1) { yield { type: "error", error: new Error("simulated transport failure") }; return; }
+          yield { type: "text-delta", textDelta: JSON.stringify({ changes: [{ action: "create", content: "User lives in Seoul", kind: "profile", sourceEvidenceIds: ["e1"] }] }) };
+        })(),
+      }),
+    });
+    const reports = [];
+    const service = new MemorySynthesisService({ getTarget: () => store, listTargets: () => [], createExecutor: executorFor, report: (event) => reports.push(event) });
+    service.start();
+    service.recordTurn("agent-1", { id: "e1", user: "서울에 삽니다", assistant: "기억할게요", occurredAt: 1_000 });
+    const first = await service.runNow();
+    assert.deepEqual(first, ["failed"], "a transport failure reports failed");
+    assert.equal(store.listMemories().length, 0, "nothing is committed on the failed pass");
+    // The defect: a transient failure permanently dropped the pending evidence. The kept evidence must
+    // retry and commit on the next pass instead of being lost.
+    const second = await service.runNow();
+    assert.deepEqual(second, ["committed"], "the retained evidence is retried and commits on a later pass");
+    service.dispose();
+    assert.deepEqual(store.listMemories().map((memory) => memory.content), ["User lives in Seoul"]);
+    assert.equal(reports.at(-1)?.outcome, "committed");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 // ---------- 5. the turn-end write path is actually wired ----------
 
 test("the settle scope receives the memory store, episode progress, and the memorable-exchange heuristic", () => {

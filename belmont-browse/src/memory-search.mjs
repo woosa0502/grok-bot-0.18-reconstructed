@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { memoryOverlayRoots } from "./memory-sites-overlay.mjs";
 
 const CJK_CLASS = "\\p{Script=Hangul}\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}";
 const CJK_RUNS = new RegExp(`[${CJK_CLASS}]+`, "gu");
@@ -112,7 +113,7 @@ export function chunkMemoryFile(file, text, { maxChunkChars = DEFAULT_CHUNK_CHAR
   return chunks;
 }
 
-function listMarkdown(memoryDir, allowedRoots, log) {
+function listMarkdown(walkRoots, allowedRoots, log, excludedRoots = []) {
   const out = [];
   const visited = new Set();
   const files = new Set();
@@ -121,7 +122,7 @@ function listMarkdown(memoryDir, allowedRoots, log) {
     let entries;
     try {
       canonical = realpathSync(dir);
-      if (!allowedRoots.some((root) => inside(root, canonical)) || visited.has(canonical)) return;
+      if (!allowedRoots.some((root) => inside(root, canonical)) || excludedRoots.some(root => inside(root, canonical)) || visited.has(canonical)) return;
       visited.add(canonical);
       entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, "en"));
     } catch { return; }
@@ -130,7 +131,7 @@ function listMarkdown(memoryDir, allowedRoots, log) {
       const file = path.join(dir, entry.name);
       try {
         const target = realpathSync(file);
-        if (!allowedRoots.some((root) => inside(root, target))) continue;
+        if (!allowedRoots.some((root) => inside(root, target)) || excludedRoots.some(root => inside(root, target))) continue;
         const stat = statSync(file);
         if (stat.isDirectory()) walk(file);
         else if (stat.isFile() && entry.name.endsWith(".md") && !files.has(target)) {
@@ -140,7 +141,7 @@ function listMarkdown(memoryDir, allowedRoots, log) {
       } catch { log("[memory-search] skipped an unreadable or concurrently removed entry"); }
     }
   }
-  walk(memoryDir);
+  for (const r of walkRoots) walk(r);
   return out;
 }
 
@@ -173,7 +174,7 @@ function resultFor(chunk, query, score, retrieval) {
   };
 }
 
-export function createMemorySearch({ log = () => {}, semanticAdapter = null, allowedRoots = [], maxChunkChars = DEFAULT_CHUNK_CHARS } = {}) {
+export function createMemorySearch({ log = () => {}, semanticAdapter = null, allowedRoots = [], maxChunkChars = DEFAULT_CHUNK_CHARS, _isolatedView = false, _shared = null } = {}) {
   const db = new DatabaseSync(":memory:");
   db.exec(`CREATE VIRTUAL TABLE mem USING fts5(root UNINDEXED, id UNINDEXED, path UNINDEXED, title, aliases, headings, body, ngrams, cjkchars, date UNINDEXED, context UNINDEXED, tokenize='unicode61 remove_diacritics 2')`);
   const roots = new Map();
@@ -181,7 +182,13 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
   const insert = db.prepare("INSERT INTO mem(root, id, path, title, aliases, headings, body, ngrams, cjkchars, date, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
   const remove = db.prepare("DELETE FROM mem WHERE root = ? AND path = ?");
   let closed = false;
-  let semanticError;
+  const shared = _shared ?? { semanticError: undefined };
+  const views = new Map();
+  function viewFor(accountRoot, sitesRoot) {
+    const key = JSON.stringify([rootPath(accountRoot), sitesRoot ? rootPath(sitesRoot) : null]);
+    if (!views.has(key)) views.set(key, createMemorySearch({ log, semanticAdapter, allowedRoots, maxChunkChars, _isolatedView: true, _shared: shared }));
+    return views.get(key);
+  }
 
   function rootPath(accountRoot) {
     if (typeof accountRoot !== "string" || !accountRoot.trim()) throw new TypeError("accountRoot is required");
@@ -189,57 +196,57 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
     try { return realpathSync(resolved); } catch { return resolved; }
   }
 
-  function refresh(accountRoot) {
+  function refresh(accountRoot, sitesRoot) {
     if (closed) throw new Error("memory search is closed");
+    if (!_isolatedView) return viewFor(accountRoot, sitesRoot).refresh(accountRoot, sitesRoot);
     const root = rootPath(accountRoot);
-    const memoryDir = path.join(root, "memory");
-    const allowed = [memoryDir, ...allowedRoots].map((dir) => {
-      try { return realpathSync(dir); } catch { return path.resolve(dir); }
-    });
-    const indexed = roots.get(root) ?? new Map();
-    roots.set(root, indexed);
-    const files = listMarkdown(memoryDir, allowed, log);
+    const { sites, allowed, walkRoots, excluded } = memoryOverlayRoots(root, sitesRoot, allowedRoots);
+    const key = sites ? `${root} ${sites}` : root;
+    const indexed = roots.get(key) ?? new Map();
+    roots.set(key, indexed);
+    const files = listMarkdown(walkRoots, allowed, log, excluded);
     const found = new Set(files.map(({ file }) => file));
-    for (const file of indexed.keys()) if (!found.has(file)) { remove.run(root, file); indexed.delete(file); }
+    for (const file of indexed.keys()) if (!found.has(file)) { remove.run(key, file); indexed.delete(file); }
     let changed = 0;
     for (const { file, target, stat } of files) {
       const fingerprint = [target, stat.mtimeMs, stat.ctimeMs, stat.size, stat.ino].join(":");
       if (indexed.get(file)?.fingerprint === fingerprint) continue;
       let chunks;
       try { chunks = chunkMemoryFile(file, readFileSync(file, "utf8"), { maxChunkChars }); }
-      catch { remove.run(root, file); indexed.delete(file); continue; }
-      remove.run(root, file);
+      catch { remove.run(key, file); indexed.delete(file); continue; }
+      remove.run(key, file);
       for (const chunk of chunks) {
         const grams = cjkBigrams(chunk.text).join(" ");
         const chars = (compactCjk(chunk.text).match(CJK_RUNS) ?? []).flatMap((run) => [...run]).join(" ");
         const context = isContextAwarenessMemoryPath(file) || isContextAwarenessMemoryPath(target) ? 1 : 0;
         chunk.context = Boolean(context);
-        insert.run(root, chunk.id, file, normalize(chunk.title), normalize(chunk.aliases), normalize(chunk.headings), normalize(chunk.body), grams, chars, chunk.date, context);
+        insert.run(key, chunk.id, file, normalize(chunk.title), normalize(chunk.aliases), normalize(chunk.headings), normalize(chunk.body), grams, chars, chunk.date, context);
       }
       indexed.set(file, { fingerprint, chunks });
       changed += 1;
     }
-    if (changed) log(`[memory-search] indexed ${changed} file(s), read-only chunk index`);
-    return root;
+    if (changed) log(`[memory-search] indexed ${changed} file(s)${sites ? " (session sites overlay)" : ""}, read-only chunk index`);
+    return key;
   }
 
   function capabilities() {
     const semantic = semanticAdapter?.capabilities?.() ?? { state: "disabled", engine: null, model: null, reason: "No semantic adapter configured; offline lexical retrieval only." };
     return {
-      mode: semantic.state === "available" && !semanticError ? "hybrid" : "lexical",
+      mode: semantic.state === "available" && !shared.semanticError ? "hybrid" : "lexical",
       lexical: { engine: "sqlite-fts5", chunks: true, cjk: true },
-      semantic: semanticError ? { ...semantic, state: "unavailable", reason: semanticError } : semantic,
+      semantic: shared.semanticError ? { ...semantic, state: "unavailable", reason: shared.semanticError } : semantic,
     };
   }
 
   /** Aside's maxResults is PER QUERY; separate chunks in one file are independent hits. */
-  async function runSearchMany({ accountRoot, queries, maxResults = 5, range, excludeContextAwareness = false }) {
+  async function runSearchMany({ accountRoot, sitesRoot, queries, maxResults = 5, range, excludeContextAwareness = false }) {
     if (!Array.isArray(queries) || queries.some((query) => typeof query !== "string")) throw new TypeError("queries must be an array of strings");
     if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 10) throw new RangeError("maxResults must be between 1 and 10 per query");
+    if (sitesRoot !== undefined && (typeof sitesRoot !== "string" || !sitesRoot.trim())) throw new TypeError("sitesRoot, when given, must be a non-empty string");
     const from = range?.from === undefined ? "" : day(range.from);
     const to = range?.to === undefined ? "" : day(range.to);
     if ((range?.from !== undefined && !from) || (range?.to !== undefined && !to) || (from && to && from > to)) throw new RangeError("range requires valid inclusive dates with from <= to");
-    const root = refresh(accountRoot);
+    const root = refresh(accountRoot, sitesRoot);
     const chunks = [...roots.get(root).values()].flatMap((entry) => entry.chunks).filter((chunk) =>
       (!excludeContextAwareness || !chunk.context) && (!chunk.date || ((!from || chunk.date >= from) && (!to || chunk.date <= to))));
     const byId = new Map(chunks.map((chunk) => [chunk.id, chunk]));
@@ -256,10 +263,10 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
           const rows = await semanticAdapter.rank({ accountRoot: root, query, chunks, maxResults: maxResults * 4 });
           if (!Array.isArray(rows)) throw new TypeError("semantic adapter returned invalid results");
           rankings.push({ name: "semantic", rows: rows.filter((row) => byId.has(row.id) && Number.isFinite(row.score)).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)) });
-          semanticError = undefined;
+          shared.semanticError = undefined;
         } catch {
           // Do not print backend error strings: they can contain credentials or query text.
-          semanticError = "Semantic backend failed; deterministic lexical fallback is active.";
+          shared.semanticError = "Semantic backend failed; deterministic lexical fallback is active.";
           log("[memory-search] semantic backend unavailable; using lexical fallback");
         }
       }
@@ -285,7 +292,7 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
 
   function searchMany(args) {
     if (closed) return Promise.reject(new Error("memory search is closed"));
-    const run = runSearchMany(args);
+    const run = _isolatedView ? runSearchMany(args) : Promise.resolve().then(() => viewFor(args.accountRoot, args.sitesRoot).searchMany(args));
     activeSearches.add(run);
     return run.finally(() => activeSearches.delete(run));
   }
@@ -294,10 +301,12 @@ export function createMemorySearch({ log = () => {}, semanticAdapter = null, all
     if (closed) return;
     closed = true;
     await Promise.allSettled([...activeSearches]);
+    await Promise.all([...views.values()].map(view => view.close()));
+    views.clear();
     db.close();
     roots.clear();
-    await semanticAdapter?.close?.();
+    if (!_shared) await semanticAdapter?.close?.();
   }
 
-  return { searchMany, refresh, capabilities, close, size: () => [...roots.values()].reduce((count, files) => count + files.size, 0) };
+  return { searchMany, refresh, capabilities, close, size: () => [...roots.values()].reduce((count, files) => count + files.size, 0) + [...views.values()].reduce((count, view) => count + view.size(), 0) };
 }

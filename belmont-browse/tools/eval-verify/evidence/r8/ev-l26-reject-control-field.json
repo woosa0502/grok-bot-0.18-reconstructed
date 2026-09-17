@@ -1,0 +1,18 @@
+{
+  "case": "reject-control-field",
+  "at": "2026-09-12T21:01:10.986Z",
+  "serve": {
+    "port": 9360,
+    "engine": "1.26.909.1820",
+    "instanceId": "53443f29-f8d0-46a9-840d-7be9474e0916"
+  },
+  "authorityMode": "aside-legacy",
+  "tag": "forbidden-control-field:authorityOverride",
+  "requestStatus": 500,
+  "error": "MEMORY_AUTHORITY_MISMATCH",
+  "expectedCode": "MEMORY_AUTHORITY_MISMATCH",
+  "sessionCountBefore": 1,
+  "sessionCountAfter": 1,
+  "verdict_pass": true,
+  "note": "legacy authority: authority-mismatch guard fired first; re-run against BELMONT_MEMORY_AUTHORITY=belmont for the specific code"
+}

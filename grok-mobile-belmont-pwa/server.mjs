@@ -1,5 +1,6 @@
+import { browserBotApi } from './browser-bot-api.mjs';
 import crypto from "node:crypto";
-import { createReadStream, promises as fs, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, promises as fs, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import { basename, extname, join, normalize, resolve, sep } from "node:path";
@@ -92,12 +93,23 @@ function contentTypeFor(name, fallback = "application/octet-stream") {
   return fallback;
 }
 
+// Types that a browser can execute as a same-origin document (SVG carries <script>, HTML/XML
+// likewise). Served inline they run in the PWA's authenticated origin, so force a download
+// instead of an inline render. Images/PDF/text stay inline.
+const RISKY_ACTIVE_EXT = new Set([".svg", ".svgz", ".html", ".htm", ".xhtml", ".xml", ".xht"]);
 function inlineAttachmentDisposition(name) {
   const filename = name.toWellFormed();
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/gu, "_");
   const encoded = encodeURIComponent(filename).replace(/['()*]/gu, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
-  return `inline; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+  const disposition = RISKY_ACTIVE_EXT.has(extname(filename).toLowerCase()) ? "attachment" : "inline";
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
+// Defense-in-depth for any served file bytes: never MIME-sniff, and sandbox the document so an
+// executable type that slips through still cannot run script in this origin.
+const ATTACHMENT_SAFETY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "content-security-policy": "default-src 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'unsafe-inline'; font-src 'self' data:; object-src 'none'; sandbox",
+};
 
 function windowsGatewayOrigin(value) {
   const parsed = new URL(text(value, "http://127.0.0.1:4190"));
@@ -726,6 +738,43 @@ function computerView(status, botId, computerTargets, requestedWindowIndex = nul
   };
 }
 
+// Bot-authored attachments usually point at a workspace file (file:///workspace/...),
+// which the ingested-attachment RPCs can't read. Resolve such paths directly to the
+// box workspace on disk, strictly bounded to prevent path traversal. Returns null for
+// anything outside the box workspace (those fall back to the gateway attachment store).
+function isWithin(root, abs) {
+  return abs === root || abs.startsWith(`${root}${sep}`);
+}
+// Preview/content is allowed ONLY in two subtrees, never the rest of sand-data (which holds
+// manager.json, credentials, memory): box-workspace files, and ingested agent attachments at
+// sand-data/agents/<id>/attachments/... . Anything else is rejected.
+export function attachmentPathAllowed(profileDir, abs) {
+  const boxRoot = resolve(profileDir, "box-workspace");
+  if (isWithin(boxRoot, abs)) return true;
+  const agentsRoot = resolve(profileDir, "agents");
+  if (isWithin(agentsRoot, abs)) {
+    const rel = abs.slice(agentsRoot.length + 1).split(sep);   // [<id>, "attachments", ...]
+    return rel.length >= 3 && rel[1] === "attachments";
+  }
+  return false;
+}
+export function resolveWorkspaceFile(profileDir, rawPath) {
+  if (typeof rawPath !== "string" || rawPath.length === 0) return null;
+  let p = rawPath;
+  if (p.startsWith("file://")) { try { p = fileURLToPath(p); } catch { return null; } }
+  p = p.replace(/\\/gu, "/");
+  const boxRoot = resolve(profileDir, "box-workspace");
+  const workspaceMatch = /^\/?workspace\/(.+)$/u.exec(p);
+  const abs = workspaceMatch ? resolve(boxRoot, workspaceMatch[1]) : (p.startsWith("/") ? resolve(p) : resolve(boxRoot, p));
+  if (!attachmentPathAllowed(profileDir, abs)) return null;
+  // Re-check after resolving symlinks: a symlink inside an allowed subtree must not point out
+  // of it (string bounding alone follows the link). realpath needs the file to exist, which
+  // previews do; a missing/broken path is rejected rather than read.
+  let real;
+  try { real = realpathSync(abs); } catch { return null; }
+  return attachmentPathAllowed(profileDir, real) ? real : null;
+}
+
 async function readAttachmentBytes(gateway, { path, agentId }) {
   const chunks = [];
   let offset = 0;
@@ -821,11 +870,116 @@ async function updateGatewaySetting(gateway, body) {
 
 /** Models the local Codex provider serves (the desktop's picker list), with the efforts each accepts. */
 export const AVAILABLE_MODELS = [
+  { id: "gpt-6-astra", label: "GPT-6 Astra", efforts: ["low", "medium", "high", "xhigh"] },
   { id: "gpt-5.5", label: "GPT-5.5", efforts: ["low", "medium", "high", "xhigh"] },
   { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", efforts: ["low", "medium", "high", "xhigh"] },
   { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", efforts: ["low", "medium", "high", "xhigh"] },
   { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", efforts: ["low", "medium", "high", "xhigh", "max"] },
 ];
+
+/* ---- Token-activity ledger (Belmont v4): read our own per-call metering ---- *
+ * Reads <profileDir>/usage-ledger.jsonl (per model call) + job-bindings.jsonl
+ * (turnRunId -> [job:id]) that the host writes, and aggregates per bot / model /
+ * job. API-equivalent cost only (local catalog prices), never the Codex plan draw. */
+const USAGE_PRICES = {
+  "gpt-5.6-luna": { in: 0.20, out: 1.20, cacheRead: 0.02, cacheWrite: 0.25 },
+  "gpt-5.6-sol": { in: 5.00, out: 30.0, cacheRead: 0.50, cacheWrite: 6.25 },
+  "gpt-5.6-terra": { in: 5.00, out: 30.0, cacheRead: 0.50, cacheWrite: 6.25 },
+  "gpt-6-astra": { in: 5.00, out: 30.0, cacheRead: 0.50, cacheWrite: 6.25 },
+};
+function usagePriceFor(model) {
+  if (!model) return null;
+  // Exact model-id match only (drop any "provider/" prefix). A substring match would misprice
+  // variants like "gpt-6-astra-custom" as the base model, and depend on registration order;
+  // an unregistered model stays null (counted as unpriced, never charged a wrong rate).
+  const id = String(model).split("/").pop();
+  return USAGE_PRICES[id] ?? null;
+}
+function usageApiCost(model, uncached, cacheRead, cacheWrite, output) {
+  const p = usagePriceFor(model);
+  if (!p) return null;
+  return (uncached * p.in + cacheRead * p.cacheRead + cacheWrite * p.cacheWrite + output * p.out) / 1_000_000;
+}
+async function readJsonlRows(path) {
+  let text;
+  try { text = await fs.readFile(path, "utf8"); } catch { return []; }
+  const rows = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try { rows.push(JSON.parse(trimmed)); } catch { /* skip malformed line */ }
+  }
+  return rows;
+}
+function blankUsageStat(label) {
+  return { label, calls: 0, uncachedInput: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, reasoningKnown: false, cost: 0, costKnown: true, costUnknownCalls: 0, ok: 0, error: 0, aborted: 0 };
+}
+function addUsageStat(acc, e) {
+  acc.calls += 1;
+  const status = e.status || "ok";
+  if (status === "ok") acc.ok += 1; else if (status === "error") acc.error += 1; else if (status === "aborted") acc.aborted += 1;
+  acc.uncachedInput += Number(e.inputTokens || 0);
+  acc.cacheRead += Number(e.cacheReadTokens || 0);
+  acc.cacheWrite += Number(e.cacheWriteTokens || 0);
+  acc.output += Number(e.outputTokens || 0);
+  if (e.reasoningTokens != null) { acc.reasoning += Number(e.reasoningTokens); acc.reasoningKnown = true; }
+  if (status === "ok") {
+    const c = usageApiCost(e.resolvedModel, Number(e.inputTokens || 0), Number(e.cacheReadTokens || 0), Number(e.cacheWriteTokens || 0), Number(e.outputTokens || 0));
+    // An unpriced ok-call (unknown model) must not silently vanish from the total: keep the
+    // confirmed cost as a subtotal and count the unverified calls so the UI can say "+N미확인".
+    if (c == null) { acc.costKnown = false; acc.costUnknownCalls += 1; } else acc.cost += c;
+  }
+}
+function loadJobBindingMap(rows) {
+  const binds = new Map();
+  for (const b of rows) {
+    if (!b || b.type !== "run-job-binding" || !b.turnRunId) continue;
+    const ids = Array.isArray(b.jobIds) ? b.jobIds : [];
+    const kind = b.kind || "untagged";
+    const cur = binds.get(b.turnRunId);
+    if (!cur) binds.set(b.turnRunId, { jobIds: ids, kind, conflict: false });
+    else if (JSON.stringify(cur.jobIds) !== JSON.stringify(ids) || cur.kind !== kind) cur.conflict = true;
+  }
+  return binds;
+}
+function usageJobBuckets(e, binds) {
+  const purpose = e.purpose || "agent";
+  if (purpose === "summary" || purpose === "auxiliary") return ["(공통:요약·보조)"];
+  const b = binds.get(e.turnRunId);
+  if (!b) return ["(미귀속)"];
+  if (b.conflict) return ["(충돌)"];
+  if (b.kind === "invalid") return ["(잘못된태그)"];
+  if (b.kind === "tagged" && b.jobIds.length) return b.jobIds.length === 1 ? [b.jobIds[0]] : [`(공유:${b.jobIds.join("+")})`];
+  return ["(태그없음)"];
+}
+async function aggregateUsageLedger({ profileDir, names, sinceTs }) {
+  const ledger = await readJsonlRows(join(profileDir, "usage-ledger.jsonl"));
+  const binds = loadJobBindingMap(await readJsonlRows(join(profileDir, "job-bindings.jsonl")));
+  const total = blankUsageStat("합계");
+  const byBot = new Map(), byModel = new Map(), byJob = new Map();
+  let firstTs = null, lastTs = null;
+  for (const e of ledger) {
+    if (e.schemaVersion !== 1) continue;
+    let ts = Number(e.ts || 0);
+    if (ts > 1e12) ts = ts / 1000;
+    if (sinceTs && ts < sinceTs) continue;
+    if (firstTs == null) firstTs = ts;
+    lastTs = ts;
+    addUsageStat(total, e);
+    const botName = e.actorId === "(auxiliary)" ? "(보조 호출)" : (names.get(e.actorId) || String(e.actorId || "?").slice(0, 8));
+    if (!byBot.has(botName)) byBot.set(botName, blankUsageStat(botName));
+    addUsageStat(byBot.get(botName), e);
+    const model = e.resolvedModel || "?";
+    if (!byModel.has(model)) byModel.set(model, blankUsageStat(model));
+    addUsageStat(byModel.get(model), e);
+    for (const job of usageJobBuckets(e, binds)) {
+      if (!byJob.has(job)) byJob.set(job, blankUsageStat(job));
+      addUsageStat(byJob.get(job), e);
+    }
+  }
+  const sortByCost = (m) => [...m.values()].sort((a, b) => b.cost - a.cost || (b.uncachedInput + b.output) - (a.uncachedInput + a.output));
+  return { since: "today", firstTs, lastTs, total, byBot: sortByCost(byBot), byModel: sortByCost(byModel), byJob: sortByCost(byJob) };
+}
 
 /** `{ modelId, effort?, maxMode? }` or a full selection → the host's `{ modelId, maxMode, parameters }`; null when the model or effort is unknown. */
 export function normalizeModelSelection(value) {
@@ -1325,11 +1479,13 @@ export function createMobileServer({
       if (!stat.isFile()) throw fileSystemError("파일이 아닙니다.", 400);
       const name = basename(resolved.target);
       const fallbackName = name.replace(/[^\x20-\x7e]|[\\";\r\n]/gu, "_") || "file";
+      void fallbackName;
       response.writeHead(200, {
         "content-type": contentTypeFor(name),
         "content-length": String(stat.size),
-        "content-disposition": `inline; filename="${fallbackName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+        "content-disposition": inlineAttachmentDisposition(name),
         "cache-control": "private, no-store",
+        ...ATTACHMENT_SAFETY_HEADERS,
       });
       const stream = createReadStream(resolved.target);
       stream.on("error", () => response.destroy());
@@ -1405,6 +1561,16 @@ export function createMobileServer({
     }
     if (request.method === "GET" && url.pathname === "/api/codex/usage") {
       json(response, 200, await codexUsage());
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/usage/ledger") {
+      const names = new Map();
+      try {
+        const ags = await gateway.call("listAgents", {});
+        if (Array.isArray(ags)) for (const a of ags) if (a && a.id) names.set(a.id, a.name || String(a.id).slice(0, 8));
+      } catch { /* names are best-effort; fall back to id prefix */ }
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      json(response, 200, await aggregateUsageLedger({ profileDir, names, sinceTs: start.getTime() / 1000 }));
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/settings") {
@@ -1536,6 +1702,26 @@ export function createMobileServer({
       const path = text(body.path);
       const name = text(body.name, "Attachment");
       const kind = attachmentKind(name, text(body.mime));
+      // Workspace files (bot-authored, file:///workspace/...): read straight off disk.
+      const wsFile = resolveWorkspaceFile(profileDir, path);
+      if (wsFile != null) {
+        try {
+          const buf = await fs.readFile(wsFile);
+          if (kind === "image") {
+            const imime = contentTypeFor(name, text(body.mime)) || "image/png";
+            json(response, 200, { kind: "image", bytes: buf.length, dataUrl: `data:${imime};base64,${buf.toString("base64")}`, width: null, height: null, mime: imime });
+            return;
+          }
+          if (["text", "markdown", "json"].includes(kind)) {
+            const LIMIT = 512 * 1024;
+            json(response, 200, { kind: "text", bytes: buf.length, text: buf.subarray(0, LIMIT).toString("utf8"), truncated: buf.length > LIMIT, mime: text(body.mime) || null });
+            return;
+          }
+          const contentUrl = `/api/attachments/content?agentId=${encodeURIComponent(agentId)}&path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`;
+          json(response, 200, { kind: kind === "pdf" ? "pdf" : ["video", "audio"].includes(kind) ? "media" : "binary", bytes: buf.length, contentUrl, mime: text(body.mime) || null });
+          return;
+        } catch { /* missing/unreadable → fall through to gateway attachment store */ }
+      }
       if (kind === "image") {
         const image = await gateway.call("readAttachmentImage", { path });
         if (!isRecord(image) || typeof image.dataUrl !== "string") {
@@ -1561,13 +1747,22 @@ export function createMobileServer({
       const path = text(url.searchParams.get("path"));
       const agentId = text(url.searchParams.get("agentId"));
       const name = text(url.searchParams.get("name"), "attachment.bin").replace(/[\r\n"]/gu, "_");
+      const wsFile = resolveWorkspaceFile(profileDir, path);
+      if (wsFile != null) {
+        try {
+          const buf = await fs.readFile(wsFile);
+          response.writeHead(200, { "content-type": contentTypeFor(name), "content-length": String(buf.length), "content-disposition": inlineAttachmentDisposition(name), "cache-control": "private, no-store", ...ATTACHMENT_SAFETY_HEADERS });
+          response.end(buf);
+          return;
+        } catch { /* fall through to gateway attachment store */ }
+      }
       const result = await readAttachmentBytes(gateway, { path, agentId });
       if (result == null) {
         const error = new Error("첨부 파일을 읽을 수 없습니다.");
         error.status = 404;
         throw error;
       }
-      response.writeHead(200, { "content-type": contentTypeFor(name, result.mime || undefined), "content-length": String(result.bytes.length), "content-disposition": inlineAttachmentDisposition(name), "cache-control": "private, no-store" });
+      response.writeHead(200, { "content-type": contentTypeFor(name, result.mime || undefined), "content-length": String(result.bytes.length), "content-disposition": inlineAttachmentDisposition(name), "cache-control": "private, no-store", ...ATTACHMENT_SAFETY_HEADERS });
       response.end(result.bytes);
       return;
     }
@@ -1838,7 +2033,29 @@ export function createMobileServer({
 
   server.on("listening", () => push.start());
   server.on("close", () => push.close());
-  return { server, pairingCode, sessions, computerTargets, push };
+  
+  const browserApi = browserBotApi({ profileDir, authorized, skipPairing, trustProxy, gateway,
+    readBody: async (req) => { const chunks=[]; let size=0; for await (const b of req) { size += b.length; if (size > 262144) throw Object.assign(new Error('Body too large'), {statusCode:413}); chunks.push(b); } return JSON.parse(Buffer.concat(chunks).toString('utf8')); },
+    json: (res,status,value) => { res.writeHead(status, {'content-type':'application/json; charset=utf-8','cache-control':'no-store'}); res.end(JSON.stringify(value)); },
+  });
+  const originalBrowserRequests = server.listeners('request');
+  server.removeAllListeners('request');
+  server.on('request', async (req,res) => {
+    const u = new URL(req.url, 'http://127.0.0.1');
+    if (/^\/api\/bots\/[^/]+\/browser(?:\/|$)/.test(u.pathname)) {
+      try { if (await browserApi.handle(req,res,u)) return; }
+      catch (e) { res.writeHead(e.statusCode ?? 500, {'content-type':'application/json','cache-control':'no-store'}); res.end(JSON.stringify({code:e.code ?? 'BROWSER_API_ERROR',error:e.message})); return; }
+    }
+    for (const fn of originalBrowserRequests) fn.call(server,req,res);
+  });
+  const originalBrowserUpgrades = server.listeners('upgrade');
+  server.removeAllListeners('upgrade');
+  server.on('upgrade', async (req,socket,head) => {
+    if (await browserApi.upgrade(req,socket,head)) return;
+    for (const fn of originalBrowserUpgrades) fn.call(server,req,socket,head);
+  });
+  server.on('close', () => browserApi.close());
+return { server, pairingCode, sessions, computerTargets, push };
 }
 
 async function main() {

@@ -1,0 +1,71 @@
+diff --git a/source/host/runner/knowledge-store.ts b/source/host/runner/knowledge-store.ts
+--- a/source/host/runner/knowledge-store.ts
++++ b/source/host/runner/knowledge-store.ts
+@@ -2,9 +2,10 @@
+ // Lives under <sand root>/knowledge (override with SAND_KNOWLEDGE_DIR). Searched offline with SQLite FTS5;
+ // Korean is handled by indexing CJK bigrams next to unicode61 tokens so two-syllable words still match.
+ import { DatabaseSync } from "node:sqlite";
+-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
++import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+ import { join, basename, sep } from "node:path";
+ import { getSandRootDir } from "../host-paths.js";
++import { listKnowledgeMarkdown } from "./knowledge-paths.js";
+ 
+ export const KNOWLEDGE_SUBDIRS = ["sites", "rules", "lessons"] as const;
+ export interface KnowledgeHit { readonly path: string; readonly line: number; readonly title: string; readonly date?: string; readonly excerpt: string }
+@@ -44,17 +45,6 @@
+   for (const line of m[1]!.split("\n")) { const kv = line.match(/^([a-zA-Z_]+):\s*(.*)$/); if (kv) meta[kv[1]!] = kv[2]!.trim().replace(/^\[|\]$/g, ""); }
+   return { meta, body: text.slice(m[0].length) };
+ }
+-function listMarkdown(dir: string, out: string[] = []): string[] {
+-  let entries: string[];
+-  try { entries = readdirSync(dir); } catch { return out; }
+-  for (const name of entries) {
+-    if (name.startsWith(".")) continue;
+-    const full = join(dir, name);
+-    let st; try { st = statSync(full); } catch { continue; }
+-    if (st.isDirectory()) listMarkdown(full, out); else if (st.isFile() && name.endsWith(".md")) out.push(full);
+-  }
+-  return out;
+-}
+ 
+ /** Incremental FTS5 index over the knowledge markdown files (rebuilt per file on mtime change). */
+ export class KnowledgeIndex implements KnowledgeIndexLike {
+@@ -64,7 +54,7 @@
+     this.#db.exec("CREATE VIRTUAL TABLE k USING fts5(path UNINDEXED, title, aliases, body, ngrams, date UNINDEXED, tokenize='unicode61 remove_diacritics 2')");
+   }
+   refresh(): void {
+-    const files = new Set(KNOWLEDGE_SUBDIRS.flatMap((sub) => listMarkdown(join(this.dir, sub))));
++    const files = new Set(KNOWLEDGE_SUBDIRS.flatMap((sub) => listKnowledgeMarkdown(join(this.dir, sub), this.dir)));
+     const remove = this.#db.prepare("DELETE FROM k WHERE path = ?");
+     for (const p of [...this.#indexed.keys()]) if (!files.has(p)) { remove.run(p); this.#indexed.delete(p); }
+     const insert = this.#db.prepare("INSERT INTO k(path, title, aliases, body, ngrams, date) VALUES (?, ?, ?, ?, ?, ?)");
+diff --git a/source/host/runner/knowledge-paths.ts b/source/host/runner/knowledge-paths.ts
+new file mode 100644
+--- /dev/null
++++ b/source/host/runner/knowledge-paths.ts
+@@ -0,0 +1,24 @@
++import { readdirSync, realpathSync, statSync } from "node:fs";
++import { join, sep } from "node:path";
++/** Enumerate only Markdown beneath the designated canonical root; stop symlink cycles. */
++export function listKnowledgeMarkdown(dir: string, allowedRoot: string, out: string[] = [], visited = new Set<string>()): string[] {
++  const within = (path: string, root: string) => path === root || path.startsWith(root + sep);
++  let root: string, current: string, entries: string[];
++  try {
++    root = realpathSync(allowedRoot); current = realpathSync(dir);
++    if (!within(current, root) || visited.has(current)) return out;
++    visited.add(current); entries = readdirSync(current).sort();
++  } catch { return out; }
++  for (const name of entries) {
++    if (name.startsWith(".")) continue;
++    const full = join(current, name);
++    try {
++      const target = realpathSync(full);
++      if (!within(target, root)) continue;
++      const stat = statSync(target);
++      if (stat.isDirectory()) listKnowledgeMarkdown(target, root, out, visited);
++      else if (stat.isFile() && target.endsWith(".md")) out.push(target);
++    } catch { /* A concurrently removed file is absent from this scan. */ }
++  }
++  return [...new Set(out)];
++}

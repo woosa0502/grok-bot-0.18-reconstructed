@@ -1,0 +1,70 @@
+{
+  "release": "Belmont Memory 2.0 incremental stage 2.1",
+  "date": "2026-09-11",
+  "node": "v22.16.0",
+  "typescript": "Version 5.8.3",
+  "os": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "tests": {
+    "total": 157,
+    "passed": 157,
+    "failed": 0,
+    "skipped": 0,
+    "original": 61,
+    "added": 96,
+    "originalTestFileHashes": {
+      "procedures.test.mjs": "0efed3a247f4e61c9340bf18f9b95da7236a9e5e0944acbecc72126553f236b5",
+      "migration-and-freeze.test.mjs": "055a886851e977106dcc620b7bf259ecd535d90a239fb5218f15431dca18f2bb",
+      "integration.test.mjs": "b894d87ab1f3422de083ae90c69165d484af97faf62d8e2846c26ae208544fc8",
+      "kernel.test.mjs": "ae61902ba358b52ac2b6a67b59477c2a55565153a8e09205bbec1aa6f7390788"
+    }
+  },
+  "executed": [
+    "TypeScript strict build",
+    "Original 61 regression tests",
+    "New learning/retrieval/action/experience tests",
+    "Real localhost HTTP embedding transport with explicitly geometric test-double vectors",
+    "Actual SQLite float32 vector storage/ranking, rebuild and outbox consumption",
+    "Real localhost Aside experience client/server round trip",
+    "Real localhost reference flight tool argument dispatch",
+    "Physical canonical DB reopen and next-session recall",
+    "Repository-derived corpus ablation",
+    "Authored multi-session/action ablation",
+    "Additive overlay installer and typecheck in a layout fixture",
+    "Python service syntax compilation only",
+    "Strict dense evaluation gate fails when model is missing",
+    "Upgrade patch applied to untouched 2.0 package, rebuilt, all 157 tests passed"
+  ],
+  "notExecuted": [
+    "Pretrained E5 weight download/inference",
+    "Actual multilingual dense quality measurement",
+    "Full Belmont host/runner/Electron integration",
+    "Actual Aside engine/browser/site executions",
+    "Belmont Node26.5.x full check/frontend build",
+    "Private personal production-memory replay",
+    "Target LLM tokenizer measurements",
+    "Cold model latency or production ANN/load benchmarks"
+  ],
+  "denseModel": {
+    "configured": false,
+    "measuredGain": null,
+    "reason": "No external DNS/network or cached weights in execution environment",
+    "testDoubleIsQualityEvidence": false
+  },
+  "githubWrites": false,
+  "asideRepositoryRead": false,
+  "fullHostCheckout": false,
+  "defaults": {
+    "planning": true,
+    "dense": false,
+    "hierarchy": false,
+    "graph": false
+  },
+  "interpretation": "Bounded reference closed loop is runnable; all P0 production acceptance gates are not complete.",
+  "cleanZipVerification": {
+    "passed": true,
+    "tests": 157,
+    "dependencyInstall": false,
+    "checksumFiles": 141,
+    "log": "Belmont_Memory_2_1_Package_Verification.txt (external)"
+  }
+}

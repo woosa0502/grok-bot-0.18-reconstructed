@@ -1,0 +1,13 @@
+{
+  "case": "l13-policy-ALLOW",
+  "at": "2026-09-12T15:18:47.442Z",
+  "token": "tok-ff8226e5a6",
+  "sessionId": "acd17212710e4c138c625",
+  "suspended": false,
+  "finalStatus": "done",
+  "formSubmits": 1,
+  "submittedDestSeat": {
+    "destination": "NYC",
+    "seat": "aisle"
+  }
+}

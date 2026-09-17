@@ -1,8 +1,8 @@
 // belmont-browse: reusable engine + session handles for the serve/MCP adapters (our code).
-import { browserAlive } from "./browser-lifecycle.mjs";
+import { browserAlive, isProcessAlive } from "./browser-lifecycle.mjs";
 import path from "node:path";
-import { createPrivateKey } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { createPrivateKey, randomUUID, createHash } from "node:crypto";
+import { writeFileSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { ensureChrome } from "./chrome.mjs";
 import { startPipedChrome } from "./cdp-relay.mjs";
 import { ensureInstallationKeys, startDaemonServer } from "./daemon-server.mjs";
@@ -12,6 +12,7 @@ import { syncCodexCredential } from "./credentials.mjs";
 import { installLinuxInstallation } from "./linux-installation.mjs";
 import { createNativeMemoryRuntime, installNativeMemoryTransport } from "./memory-native-runtime.mjs";
 import { createEngineCleanup } from "./engine-cleanup.mjs";
+import { canonicalMemoryRequested, createBelmontMemoryReader, validateBelmontMemoryContext, memorySystemMessage, createTaskObservation, validateOutcomeGrade, applyOutcomeGrade } from "./memory-belmont-runtime.mjs";
 import { DEFAULT_MODEL, ENGINES, KNOWLEDGE_DIR, resolveModelSelection, prepareAsideHome, loadDaemon, ensureLocalAccount, installDaemonHooks, initializeLocalLifecycle, createBrowseSession, describeSuspension, autoResponseFor } from "./session.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -80,8 +81,19 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
     if (errors.length) throw new AggregateError(errors, "Account memory cleanup failed");
   });
   const account = await ensureLocalAccount(A, log);
+  if (canonicalMemoryRequested()) {
+    const previousRoots = globalThis.__belmontCanonicalMemoryRoots;
+    const roots = [path.join(A.getAccountRoot(account.id), "memory"), KNOWLEDGE_DIR];
+    globalThis.__belmontCanonicalMemoryRoots = roots;
+    cleanup.add("canonical memory access roots", () => {
+      if (globalThis.__belmontCanonicalMemoryRoots === roots) {
+        if (previousRoots === undefined) delete globalThis.__belmontCanonicalMemoryRoots;
+        else globalThis.__belmontCanonicalMemoryRoots = previousRoots;
+      }
+    });
+  }
   const selectedModel = A.settings(account.id).get("defaultModel") ?? home.defaultModel ?? DEFAULT_MODEL;
-  const memory = createNativeMemoryRuntime({
+  const memory = canonicalMemoryRequested() ? createBelmontMemoryReader() : createNativeMemoryRuntime({
     accountId: account.id,
     accountRoot: A.getAccountRoot(account.id),
     memoryManager: A.MemoryManager.forAccount(account.id),
@@ -118,11 +130,11 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
     : await new FakeExtension({ bridge: A.globalExtensionBridge, cdp, accountId: account.id, profileId: PROFILE_ID, log: () => {} }).attach();
   cleanup.add("extension binding", () => ext.detach?.());
   const profileId = ext.profileId ?? PROFILE_ID;
-  await initializeLocalLifecycle(A, { accountId: account.id, startBackground: true, log });
+  await initializeLocalLifecycle(A, { accountId: account.id, startBackground: !process.env.BELMONT_BROWSER_BOT_ID, log });
   // Aside's semantic memory (Moss) loads its model and builds the account index on first use. The runtime's own
   // warm() performs that first use now, in the background, so readiness is observed at startup and the bot's
   // first memory_search is not the slow one. A failed warm-up only logs; every later search retries the original.
-  if (process.env.BELMONT_BROWSE_MEMORY_WARMUP !== "0") {
+  if (!canonicalMemoryRequested() && process.env.BELMONT_BROWSE_MEMORY_WARMUP !== "0") {
     void memory.warm().then((capability) => {
       const failure = capability.semantic?.failure?.kind;
       log(`[memory] semantic search ${capability.mode === "native" ? "ready" : `not ready (${capability.mode}${failure ? `: ${failure}` : ""})`}`);
@@ -130,7 +142,14 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
   }
   log(`[engine] Aside ${ENGINES[engine].version} ready; account ${account.id}; window ${ext.windowId}; profile ${profileId}${ext.real ? " (real extension)" : ""}`);
   const controller = createSessionController({ A, account, profileId, ext, model: selectedModel, maxConcurrent,
-    cwd: path.join(stateDir, "work"), log,
+    // A dedicated browser bot works inside the team's shared box-workspace so it can write its result
+    // files straight into the job's out/ folder (and return only a short pointer instead of the whole
+    // body — cheaper on tokens). The daemon's REPL filesystem allows writes only under cwd/account/
+    // session roots (not workingDirs), so cwd must be that workspace. Falls back to a private scratch
+    // dir when no workspace is configured.
+    cwd: (process.env.BELMONT_BROWSE_WORKSPACE_DIRS || "").split(":").map((d) => d.trim()).filter(Boolean)[0] || path.join(stateDir, "work"), log,
+    memoryAuthority: canonicalMemoryRequested() ? "belmont" : "aside-legacy",
+    memoryEnvironment: `aside:${ENGINES[engine].version}:profile:${profileId}`,
     onTurnEnd: () => syncCodexCredential(home.credentialsPath),
   });
   cleanup.add("browse sessions", () => controller.close());
@@ -176,12 +195,108 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
   cleanup.add("stage observation", () => { stage.stopDiscovery?.(); if (stage.timer) clearInterval(stage.timer); });
   engineReady = true;
   if (shutdownRequested) queueMicrotask(() => Promise.resolve(requestShutdown()).catch((error) => log(`[engine] shutdown failed: ${error.message}`)));
+
+  // Evaluation-overlay capability: a HOST-OWNED self-probe (not a model-chosen behavior, not an env flag) that
+  // proves this engine forwards a session's runtimeConfig.sitesDir into the agent memory_search AND that the
+  // overlay is scoped to the evaluation session only. The read_file/bash document-read path is NOT yet scoped
+  // per session, so readIsolation is WITHHELD and the overlay stays disabled (sitesOverlayHealth requires it);
+  // the probe still records G1 (session wiring / forwarding) and G2-search evidence in the engine log. Runs
+  // only when the operator is setting evaluation up (BELMONT_BROWSE_SITES_OVERLAY=1), so ordinary boots do not.
+  const daemonBundlePath = path.resolve(ROOT, "vendor", `aside-${engine}`, "apps", "daemon", "build", canonicalMemoryRequested() ? "daemon.memory-2.1.mjs" : "daemon.mjs");
+  let evalCaps = null;
+  async function runEvaluationProbe() {
+    const nonce = randomUUID().replace(/-/g, "").slice(0, 10);
+    const probeDomain = `eval-probe-${nonce}.test`, sentinel = `EVALOVERLAYSENTINEL${nonce}`;
+    const overlayParent = path.join(stateDir, "learn-eval", `selfprobe-${nonce}`), overlay = path.join(overlayParent, "sites");
+    mkdirSync(overlay, { recursive: true });
+    writeFileSync(path.join(overlay, `${probeDomain}.md`), `# ${probeDomain}\n\nThe site confirmation token is ${sentinel}.\n`);
+    const ask = `Call the memory_search tool once with the query ${sentinel}. If any result contains that exact token, reply with the token verbatim; otherwise reply exactly NOTFOUND. Use no other tool.`;
+    const probe = async (sitesDir) => {
+      const h = controller.startSession({ task: ask, mode: "guard", autoApprove: true, ...(sitesDir ? { sitesDir } : {}) });
+      for (let i = 0; i < 180 && !["done", "error", "stopped", "interrupted"].includes(h.status); i += 1) await new Promise((r) => setTimeout(r, 500));
+      return { status: h.status, found: typeof h.result === "string" && h.result.includes(sentinel), toolCalls: h.toolCalls, result: h.result };
+    };
+    // Document-read isolation (G2-document-read): prove that an eval session's bash + read_file read the
+    // candidate overlay but NEVER the operational site page — the two access paths Aside routes outside
+    // memory_search. This is SOUND because it inspects the actual tool-call outputs (h.memoryRun.trajectory),
+    // not the model's prose: an operational leak shows the operational token in a real tool result, and the
+    // operational reads must be attempted (so a skipped call cannot masquerade as isolation). The operational
+    // sentinel page is written under the (evaluation) knowledge/sites and removed afterward.
+    const readProbe = async () => {
+      const opSentinel = `EVALOPERATIONALSENTINEL${nonce}`;
+      const knowledgeSites = path.join(KNOWLEDGE_DIR, "sites");
+      const opAbs = path.join(knowledgeSites, `${probeDomain}.md`);
+      const overlayPage = path.join(overlay, `${probeDomain}.md`);
+      const opSymlink = path.join(A.getAccountRoot(account.id), "memory", "sites", `${probeDomain}.md`);
+      let wroteOp = false;
+      try {
+        mkdirSync(knowledgeSites, { recursive: true });
+        writeFileSync(opAbs, `# ${probeDomain}\n\nOPERATIONAL champion token ${opSentinel}.\n`); wroteOp = true;
+        // Host-side baseline: the operational page really exists and carries the token, so a later "not read"
+        // is isolation, not a missing file.
+        if (!readFileSync(opAbs, "utf8").includes(opSentinel)) return { readIsolation: false, reason: "operational baseline missing" };
+        const task = [
+          `Sandbox self-check. Use ONLY the bash and read_file tools. Make exactly these five calls in order, then reply DONE:`,
+          `1) bash: cat '${overlayPage}'`,
+          `2) bash: cat '${opAbs}'`,
+          `3) bash: cat '${opSymlink}'`,
+          `4) read_file with path '${overlayPage}'`,
+          `5) read_file with path '${opAbs}'`,
+        ].join("\n");
+        const h = controller.startSession({ task, mode: "guard", autoApprove: true, sitesDir: overlay });
+        for (let i = 0; i < 300 && !["done", "error", "stopped", "interrupted"].includes(h.status); i += 1) await new Promise((r) => setTimeout(r, 500));
+        const steps = (h.memoryRun?.trajectory ?? []).filter((s) => s.operation === "bash" || s.operation === "read_file");
+        const hit = (s, needle) => String(s.result ?? "").includes(needle);
+        const aims = (s, p) => String(s.target ?? "").includes(p) || String(s.arguments ?? "").includes(p);
+        const overlayBash = steps.some((s) => s.operation === "bash" && aims(s, overlayPage) && hit(s, sentinel));
+        const overlayRead = steps.some((s) => s.operation === "read_file" && aims(s, overlayPage) && hit(s, sentinel));
+        const opBashTried = steps.some((s) => s.operation === "bash" && (aims(s, opAbs) || aims(s, opSymlink)));
+        const opReadTried = steps.some((s) => s.operation === "read_file" && aims(s, opAbs));
+        const opLeak = steps.some((s) => hit(s, opSentinel)); // operational token in ANY real tool result = leak
+        const readIsolation = overlayBash && overlayRead && opBashTried && opReadTried && !opLeak;
+        return { readIsolation, overlayBash, overlayRead, opBashTried, opReadTried, opLeak, status: h.status, steps: steps.length };
+      } finally { if (wroteOp) try { rmSync(opAbs, { force: true }); } catch {} }
+    };
+    try {
+      const withOverlay = await probe(overlay), control = await probe(undefined);
+      const workerForwarding = withOverlay.found === true, searchIsolation = workerForwarding && control.found === false;
+      let bundleSha256 = "", forwardingInBundle = false, readIsolationInBundle = false;
+      try {
+        const buf = readFileSync(daemonBundlePath); const text = buf.toString("latin1");
+        bundleSha256 = createHash("sha256").update(buf).digest("hex");
+        forwardingInBundle = /sitesRoot:\w+\.session\?\.runtimeConfig\?\.sitesDir/.test(text);
+        // The document-read patch must be present in the bundle before any live read result is trusted.
+        readIsolationInBundle = /cwd:ti,isolate:Cn\.isolate,/.test(text) && text.includes("__belmontEvalIsolate") && text.includes("__belmontEvalPermission");
+      } catch {}
+      // Only run the (costlier) read probe once search isolation and the read patch are in place.
+      const read = searchIsolation && readIsolationInBundle ? await readProbe() : { readIsolation: false, reason: readIsolationInBundle ? "search isolation not proven" : "read patch absent" };
+      const readIsolation = read.readIsolation === true && readIsolationInBundle;
+      evalCaps = { proof: { contract: "session-sites-v1", engine: ENGINES[engine].version, bundleSha256,
+        workerForwarding: workerForwarding && forwardingInBundle, searchIsolation, readIsolation, extractionDisabled: true,
+        ...(readIsolation ? {} : { readIsolationReason: read.reason ?? "read_file/bash document read isolation not proven live" }) },
+        probe: { withOverlay, control, read }, at: Date.now() };
+      log(`[eval-probe] forwarding=${workerForwarding} bundleForwarding=${forwardingInBundle} searchIsolation=${searchIsolation} readIsolation=${readIsolation} | overlay{status:${withOverlay.status},found:${withOverlay.found},tools:${withOverlay.toolCalls},result:${JSON.stringify((withOverlay.result || "").slice(0, 100))}} control{status:${control.status},found:${control.found},result:${JSON.stringify((control.result || "").slice(0, 100))}} read{${JSON.stringify(read)}}`);
+    } catch (error) { log(`[eval-probe] error: ${error.message}`); }
+    finally { try { rmSync(overlayParent, { recursive: true, force: true }); } catch {} }
+  }
+  const evaluationProbe = process.env.BELMONT_BROWSE_SITES_OVERLAY === "1" ? runEvaluationProbe() : Promise.resolve();
+  const evaluationCapabilities = () => evalCaps?.proof ?? null;
+
   return {
     A, account, ext, cdp, home, chrome, engine, transport, lifecycle, hooks, model: selectedModel, version: ENGINES[engine].version,
+    evaluationCapabilities, evaluationProbe, daemonBundlePath,
     ...controller,
     // ready is the daemon *and* the owned browser: after the fork crashed (2026-09-09 16:51) health kept saying
     // ready while chromePid was gone, and Belmont's aside-browse bot would have queued work against a dead UI.
-    stats: () => ({ ...controller.stats(), ready: engineReady && browserAlive(chrome.child ?? null) !== false, browser: { pid: chrome.child?.pid ?? null, alive: browserAlive(chrome.child ?? null) }, memory: memory.capabilities(), bridge: ext.stats.commands, transport, ...(chrome.relay ? { relayClients: chrome.relay.clientCount(), cdpMessages: chrome.relay.stats.sent } : {}) }),
+    stats: () => {
+      // Chrome liveness for health: an OWNED chrome has a child handle (browserAlive); an ADOPTED chrome
+      // has no handle (child=null), so browserAlive would return null and mask its death — check the
+      // adopted pid via isProcessAlive instead so /health never reports a dead adopted browser as ready
+      // (L19.CHROME.HEALTH.DEAD).
+      const browserPid = chrome.child?.pid ?? chrome.pid ?? null;
+      const browserLive = chrome.child ? browserAlive(chrome.child) : (Number.isSafeInteger(chrome.pid) ? isProcessAlive(chrome.pid) : null);
+      return { ...controller.stats(), memoryAuthority: canonicalMemoryRequested() ? "belmont" : "aside-legacy", memoryProtocolVersion: canonicalMemoryRequested() ? 1 : 0, ready: engineReady && browserLive !== false, browser: { pid: browserPid, alive: browserLive }, memory: memory.capabilities(), bridge: ext.stats.commands, transport, ...(chrome.relay ? { relayClients: chrome.relay.clientCount(), cdpMessages: chrome.relay.stats.sent } : {}) };
+    },
     stop,
   };
   } catch (error) {
@@ -194,7 +309,9 @@ export async function createBrowseEngine({ engine = "907", transport = "pipe", c
 }
 
 /** Session scheduling separated from process/bootstrap I/O for isolated behavior tests. */
-export function createSessionController({ A, account, profileId, ext, model = DEFAULT_MODEL, maxConcurrent = 1, cwd, createRecord = createBrowseSession, onTurnEnd = () => {}, log = () => {}, suspensionIntervalMs = 300 }) {
+export function createSessionController({ A, account, profileId, ext, model = DEFAULT_MODEL, maxConcurrent = 1, cwd, createRecord = createBrowseSession, onTurnEnd = () => {}, log = () => {}, suspensionIntervalMs = 300, memoryAuthority = "aside-legacy", memoryEnvironment } = {}) {
+  if (process.env.BELMONT_BROWSER_BOT_ID && maxConcurrent !== 1) throw new Error('Dedicated browser mode requires maxConcurrent=1');
+
   const server = A.GlobalAgentSessionServer;
   if (!server || ["getAgent", "startRun", "waitForIdle", "getLoadedAgent", "steer", "abort"].some((name) => typeof server[name] !== "function")) {
     throw sessionError("ENGINE_CONTRACT_MISSING", "Aside bundle must expose the shared GlobalAgentSessionServer", 503);
@@ -214,6 +331,21 @@ export function createSessionController({ A, account, profileId, ext, model = DE
   const suspensionView = (s) => ({ kind: s.kind, toolCallId: s.toolCallId, request: s.request, description: describeSuspension(s) });
   const unresolved = (s) => s && !s.response && !s.error;
   const isStreaming = (id) => !!server.getLoadedAgent(account.id, id)?.agent?.state?.isStreaming;
+  const prepareMemory = (value) => {
+    const context = validateBelmontMemoryContext(value, memoryAuthority);
+    if (context && context.environment !== memoryEnvironment) throw sessionError("MEMORY_ENVIRONMENT_CHANGED", "Browse environment differs from the selected procedure context");
+    if (context?.procedure) {
+      let revisions = {};
+      try { revisions = JSON.parse(process.env.BELMONT_BROWSE_SITE_REVISIONS_JSON || "{}"); } catch { /* Fail closed below. */ }
+      if (!context.domain || typeof context.context?.siteRevision !== "string" || revisions?.[context.domain] !== context.context.siteRevision) throw sessionError("MEMORY_SITE_REVISION_CHANGED", "The configured site revision no longer matches the accepted procedure");
+    }
+    return context;
+  };
+  const persistMemoryBinding = (h) => {
+    if (!h.memoryContext) return;
+    const record = A.SessionStore.get(account.id, h.id);
+    if (record) A.SessionStore.update(account.id, h.id, { runtimeConfig: { ...record.runtimeConfig, memoryExtractionDisabled: true, belmontMemoryContext: h.memoryContext, belmontMemoryObservation: h.memoryObservation } });
+  };
 
   function pump() {
     if (closed) return;
@@ -244,11 +376,13 @@ export function createSessionController({ A, account, profileId, ext, model = DE
     if (adopt) h.executionStarted = true;
     h.status = "running";
     h.startedAt ??= Date.now();
+    const run = h.memoryRun ??= { eventId: `browse:${h.id}:${randomUUID()}`, task: promptText ?? h.task, startedAt: Date.now(), usage: { ...h.usage }, trajectory: [], pendingTools: new Map(), grade: null };
     let unsubscribe;
     let timer;
     try {
       const record = A.SessionStore.get(account.id, h.asideSessionId);
       if (!record) throw sessionError("SESSION_NOT_FOUND", "Aside session not found", 404);
+      h.memoryContext = prepareMemory(h.memoryContext);
       // The UI, tRPC and Belmont all use this one owner. Never create a parallel AgentSession.
       const bound = record.browserBinding;
       if (!adopt && (!bound?.profileId || bound.profileId !== profileId || bound.windowId !== ext.windowId)) {
@@ -273,10 +407,16 @@ export function createSessionController({ A, account, profileId, ext, model = DE
           current = "";
         } else if (ev.type === "tool_execution_start") {
           h.toolCalls += 1;
+          const target = typeof ev.args?.url === "string" ? ev.args.url : typeof ev.args?.ref === "string" ? ev.args.ref : typeof ev.args?.path === "string" ? ev.args.path : ev.toolName;
+          run.pendingTools.set(ev.toolCallId, { operation: String(ev.toolName), target: String(target).slice(0, 2000), arguments: JSON.stringify(ev.args ?? {}).slice(0, 2000) });
           pushActivity(h, `${ev.toolName} ${short(ev.args, 160)}`);
         } else if (ev.type === "tool_execution_end") {
           const content = ev.result?.content;
           const text = Array.isArray(content) ? content.filter((c) => c.type === "text").map((c) => c.text).join(" ") : String(content ?? "");
+          const step = { ...(run.pendingTools.get(ev.toolCallId) ?? { operation: String(ev.toolName), target: String(ev.toolName) }), result: text.slice(0, 2000), isError: ev.isError === true };
+          if (run.trajectory.length < 128 && JSON.stringify(run.trajectory).length + JSON.stringify(step).length < 48000) run.trajectory.push(step);
+          else run.trajectoryTruncated = true;
+          run.pendingTools.delete(ev.toolCallId);
           pushActivity(h, `${ev.isError ? "ERROR " : ""}${ev.toolName} -> ${short(text, 160)}`);
         }
       });
@@ -304,7 +444,7 @@ export function createSessionController({ A, account, profileId, ext, model = DE
       } else if (!adopt) {
         // Lifetime evidence latch: native start can execute work before rejecting. Never clear on retry/continue.
         h.executionStarted = true;
-        await server.startRun(account.id, record.id, (s) => h.status === "stopped" ? Promise.resolve() : s.prompt(userMessage(promptText)));
+        await server.startRun(account.id, record.id, (s) => h.status === "stopped" ? Promise.resolve() : s.prompt(h.memoryContext ? [memorySystemMessage(h.memoryContext), userMessage(promptText)] : userMessage(promptText)));
       }
       inspectSuspension();
       await server.waitForIdle(account.id, record.id);
@@ -334,19 +474,30 @@ export function createSessionController({ A, account, profileId, ext, model = DE
       try { unsubscribe?.(); } catch (error) { log(`[engine] unsubscribe: ${error.message}`); }
       h.agentSession = null;
       h.endedAt = Date.now();
-      try { await onTurnEnd(); } catch (error) { log(`[engine] turn cleanup: ${error.message}`); }
+      if (h.memoryContext && ["done", "error", "stopped", "interrupted"].includes(h.status)) {
+        h.memoryObservation = createTaskObservation(h, run);
+        h.memoryRun = null;
+        persistMemoryBinding(h);
+      }
+      try { await onTurnEnd(h); } catch (error) { log(`[engine] turn cleanup: ${error.message}`); }
       // The server retains the owner/REPL across turns and applies its own bounded idle eviction.
     }
   }
 
-  function startSession({ task, model: requestedModel, thinking, mode = "guard", autoApprove = false }) {
+  function startSession({ task, model: requestedModel, thinking, mode = "guard", autoApprove = false, memoryContext, sitesDir }) {
     if (closed) throw sessionError("ENGINE_CLOSED", "engine is closed", 503);
     const text = requireText(String(task ?? "").replace(BOUNDARY_RE, ""));
+    if (sitesDir !== undefined && (typeof sitesDir !== "string" || !sitesDir.trim())) throw sessionError("INVALID_SITES_DIR", "sitesDir, when given, must be a non-empty string", 400);
+    const memoryBinding = prepareMemory(memoryContext);
     const currentDefault = A.settings?.(account.id)?.get("defaultModel") ?? model;
     const requested = typeof requestedModel === "string" ? { modelId: requestedModel } : requestedModel;
     const selection = resolveModelSelection(currentDefault, { ...requested, ...(thinking !== undefined ? { thinkingLevel: thinking } : {}) });
-    const record = createRecord(A, { accountId: account.id, cwd, title: text.slice(0, 80), permissionMode: mode, model: selection, profileId, windowId: ext.windowId });
+    // A per-session sites overlay (used by the learn-measure evaluation harness) scopes this session's site
+    // knowledge to an isolated directory so the operational pages are neither read nor mutated while measuring.
+    const record = createRecord(A, { accountId: account.id, cwd, title: text.slice(0, 80), permissionMode: mode, model: selection, profileId, windowId: ext.windowId, sitesDir });
     const h = bareHandle({ id: record.id, task: text, mode, model: selection, autoApprove });
+    h.memoryContext = memoryBinding;
+    persistMemoryBinding(h);
     sessions.set(h.id, h);
     queue.push({ handle: h, promptText: text });
     pump();
@@ -359,7 +510,9 @@ export function createSessionController({ A, account, profileId, ext, model = DE
       model: selection, activity: [], toolCalls: 0, modelCalls: 0, usage: { input: 0, output: 0, cacheRead: 0 },
       result: null, error: null, errorCode: null, suspension: null, recovery: null, executionStarted: false,
       asideSessionId: id, agentSession: null, runPromise: null,
+      memoryContext: null, memoryObservation: null, memoryRun: null,
       async answer(response, expectedToolCallId) {
+        h.memoryContext = prepareMemory(h.memoryContext);
         if (h.status !== "suspended" || !h.suspension) throw sessionError("NO_PENDING_SUSPENSION", "no pending suspension");
         const pending = expectedSuspension(h, expectedToolCallId);
         if (!response || typeof response !== "object" || Array.isArray(response)) throw sessionError("INVALID_RESPONSE", "suspension response must be an object", 400);
@@ -393,13 +546,19 @@ export function createSessionController({ A, account, profileId, ext, model = DE
         }
         pushActivity(h, `STEER ${short(text, 120)}`);
       },
-      continue(value) {
+      continue(value, memoryContext) {
         const text = requireText(value);
         if (closed) throw sessionError("ENGINE_CLOSED", "engine is closed", 503);
         if (h.status === "suspended") throw sessionError("SESSION_SUSPENDED", "answer the pending suspension first");
         if (active.has(h) || h.status === "running" || h.status === "queued" || isStreaming(id)) throw sessionError("SESSION_BUSY", "session is still running; use steer");
         const pending = A.SessionStore.get(account.id, id)?.suspension;
         if (unresolved(pending)) throw sessionError("SESSION_SUSPENDED", "answer or stop the pending suspension first");
+        const binding = prepareMemory(memoryContext);
+        if (h.memoryContext && !binding) throw sessionError("MEMORY_CONTEXT_REQUIRED", "A Belmont-bound task requires refreshed context before continuation");
+        h.memoryContext = binding;
+        h.memoryObservation = null;
+        h.memoryRun = null;
+        persistMemoryBinding(h);
         h.status = "queued";
         h.endedAt = null;
         h.error = null;
@@ -429,9 +588,27 @@ export function createSessionController({ A, account, profileId, ext, model = DE
           throw sessionError("STOP_FAILED", error.message, 500);
         }
       },
+      reportOutcome(eventId, value) {
+        if (!h.memoryContext) throw sessionError("MEMORY_CONTEXT_REQUIRED", "Only a Belmont-bound execution accepts memory outcomes");
+        const expected = h.memoryRun?.eventId ?? h.memoryObservation?.eventId;
+        if (!expected || eventId !== expected) throw sessionError("STALE_OUTCOME", "Outcome does not identify the current execution");
+        const grade = validateOutcomeGrade(value);
+        if (grade.candidate && (grade.candidate.domain !== h.memoryContext.domain || grade.candidate.environment !== h.memoryContext.environment || grade.candidate.task !== (h.memoryContext.procedureTask ?? h.memoryRun?.task ?? h.memoryObservation?.task))) throw sessionError("CANDIDATE_CONTEXT_MISMATCH", "Procedure candidate does not match this execution's domain, task, and environment");
+        const prior = h.memoryRun?.grade ?? h.memoryObservation?.outcomeGrade;
+        if (prior) {
+          if (JSON.stringify(prior) !== JSON.stringify(grade)) throw sessionError("OUTCOME_ALREADY_GRADED", "The execution already has an immutable outcome grade");
+          return; // Identical retry leaves timestamp, grade and persistence unchanged.
+        }
+        if (h.memoryRun) h.memoryRun.grade = grade;
+        else {
+          if (!prior && h.memoryObservation.experience) throw sessionError("OUTCOME_ALREADY_GRADED", "The execution error was already captured as a failed attempt");
+          h.memoryObservation = applyOutcomeGrade(h, h.memoryObservation, grade);
+        }
+        persistMemoryBinding(h);
+      },
       toJSON() {
-        const { agentSession, runPromise, answer, steer, stop, toJSON, continue: continueFn, ...rest } = h;
-        return rest;
+        const { agentSession, runPromise, answer, steer, stop, toJSON, continue: continueFn, reportOutcome, memoryRun, ...rest } = h;
+        return { ...rest, memoryEventId: memoryRun?.eventId ?? rest.memoryObservation?.eventId ?? null };
       },
     };
     return h;
@@ -467,6 +644,8 @@ export function createSessionController({ A, account, profileId, ext, model = DE
     const record = A.SessionStore.get(account.id, id);
     if (!record) return null;
     const h = bareHandle({ id, task: record.title ?? "", mode: record.permissionMode, model: record.model ?? model });
+    h.memoryContext = record.runtimeConfig?.belmontMemoryContext ?? null;
+    h.memoryObservation = record.runtimeConfig?.belmontMemoryObservation ?? null;
     // Hydration cannot prove an old task never acted, even if its current record says idle/error.
     h.executionStarted = true;
     h.createdAt = +new Date(record.createdAt ?? h.createdAt);
@@ -507,6 +686,18 @@ export function createSessionController({ A, account, profileId, ext, model = DE
   }
 
   return {
+    memoryTaskContext(task) {
+      if (memoryAuthority !== "belmont") throw sessionError("MEMORY_AUTHORITY_MISMATCH", "Browse process uses legacy memory authority");
+      const domains = new Set();
+      for (const raw of String(task).match(/https?:\/\/[^\s<>"']+/g) ?? []) {
+        try { domains.add(new URL(raw).hostname); } catch { /* No invented domain from incomplete URLs. */ }
+      }
+      const domain = domains.size === 1 ? [...domains][0] : undefined;
+      let revisions = {};
+      try { revisions = JSON.parse(process.env.BELMONT_BROWSE_SITE_REVISIONS_JSON || "{}"); } catch { /* Missing revision keeps procedure selection closed. */ }
+      const revision = domain && typeof revisions?.[domain] === "string" ? revisions[domain] : undefined;
+      return { ...(domain ? { domain } : {}), environment: memoryEnvironment, context: revision ? { siteRevision: revision } : {}, conditions: [] };
+    },
     startSession, listAsideSessions, asideMessages,
     get: (id) => { const h = sessions.get(id) ?? hydrate(id); if (h && !active.has(h) && h.status !== "queued") reconcile(h); return h; },
     list: () => [...sessions.values()].map((h) => h.toJSON()),

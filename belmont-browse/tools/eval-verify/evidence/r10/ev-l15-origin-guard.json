@@ -1,0 +1,49 @@
+{
+  "case": "origin-guard",
+  "at": "2026-09-13T06:36:27.827Z",
+  "gateway": {
+    "port": 42611,
+    "jsonPath": "/home/hoon/_roots/labs/work/Belmont/.cache/belmont-wsl-profile/sand-data/gateway.json",
+    "tokenAdvertised": true
+  },
+  "expected": "every browser Origin -> 403 (Host gateway trusts NO browser origin, extension included); roster count unchanged",
+  "results": [
+    {
+      "name": "generic-web-origin",
+      "origin": "https://evil.test",
+      "status": 403,
+      "body": "{\"error\":\"browser-origin gateway requests are not allowed\"}",
+      "rejected403": true
+    },
+    {
+      "name": "pinned-aside-extension-origin",
+      "origin": "chrome-extension://fjdhphbdlfjogobdofoaagnlnkoibdge",
+      "status": 403,
+      "body": "{\"error\":\"browser-origin gateway requests are not allowed\"}",
+      "rejected403": true
+    },
+    {
+      "name": "localhost-web-origin",
+      "origin": "http://localhost:3000",
+      "status": 403,
+      "body": "{\"error\":\"browser-origin gateway requests are not allowed\"}",
+      "rejected403": true
+    }
+  ],
+  "rosterBefore": {
+    "ok": true,
+    "status": 200,
+    "count": 14,
+    "parsed": true
+  },
+  "rosterAfter": {
+    "ok": true,
+    "status": 200,
+    "count": 14,
+    "parsed": true
+  },
+  "rosterReadable": true,
+  "countUnchanged": true,
+  "result": "PASS",
+  "verdict_pass": true
+}

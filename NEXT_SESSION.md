@@ -9,6 +9,7 @@
 - Aside 규칙·스킬(모두 지식 저장소, git 밖): `knowledge/rules/aside-agents.md` v2(아는 길은 한 호출, 확인용 호출 금지, 클릭 이동, 접근 제한 정지), 쿠팡 스킬은 사용자 판단(방법은 스크립트가 아니라 메모리로 학습)으로 철회·삭제. 백업 `*.bak-20260911`.
 - **쿠팡 쿨다운**: 11:37부터 `사용권한이 없습니다` 제한이 걸림(직접 URL 이동 + 쿠키 지운 반복 접속 12회). 오늘은 쿠팡 작업 금지, 쿠키 지우는 측정 금지. 부검 `docs/aside-decision-count-2026-09-11.md`.
 - 미커밋: 위 문서·패치 스크립트·artifacts.json·LFS 사본 + 아침의 `SendMessage final` 변경.
+- 9/11 18:41 디스크 정리: `~/chromium-remediation-20260906`(66GB, 9/6 두 번째 크로미움 트리) 삭제. 소스 수준 변경은 `data/artifacts/chromium-remediation-20260906-source-archive/`(패치+미추적 파일, 2.8MB)에 보관. `/tmp`의 옛 Claude 세션 임시 폴더·`aside-ui-G*` 24GB 삭제. WSL 안 사용량 354→265GB. **vhdx 압축은 Windows에서 해야 C 드라이브가 돌아옴**(아래 절차).
 
 
 ## 지금 상태 요약 (2026-09-10 23:30 KST, 세션3 종료 직전 — compaction용)

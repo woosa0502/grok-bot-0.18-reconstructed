@@ -1,0 +1,377 @@
+# DEF-L19-CHROME-ORPHAN-001 — orphan Chrome processes leak on hard crash / restart
+
+- **Severity:** S2 / Major · **Priority:** P1 (blocks R5 recovery-batch sign-off)
+- **Found by:** GPT-6 Pro round-4 adversarial review, quantified in R4 (`orphan_chrome_leaked_on_crash: 36`)
+- **Scope:** `belmont-browse` eval/browse engine (the reconstruction + eval harness). The live legacy
+  bot runs from `source/` → `.build/belmont-wsl-runtime`, a **separate** launch path, so this defect
+  does not affect the running legacy bot. Fixed here in the eval path.
+
+## Root cause (confirmed in code)
+
+Two compounding causes:
+
+1. **Reuse path returns a noop stop.** `chrome.mjs` `ensureChrome()` — when CDP is already up on the
+   port it returns `{ baseUrl, child: null, stop: async () => {}, detach: async () => {} }`
+   (old line 44). A serve that *reuses* / adopts an existing Chrome takes **zero termination
+   ownership**: its `stop()` does nothing, so an adopted orphan is never reaped.
+2. **`detached: false` + no owner tracking.** Owned Chrome was spawned with `detached: false` and no
+   record of which serve owns it. On `SIGKILL` of serve, no in-process handler runs; Chrome and its
+   renderer/gpu/zygote children (the counted ~36) reparent to `init(1)` and survive. The next serve
+   sees CDP up and reuses it — via the noop stop above — so orphans **accumulate across restarts**.
+
+## Fix (this change)
+
+Boundaries #2 (unified ownership on the reuse path) and #3 (restart adopts the prior owner's tree):
+
+- Owned Chrome is now spawned **`detached: true`** → it leads its own process group, so the whole
+  renderer/gpu tree can be reaped with a single group signal.
+- On owned launch, an **owner file** `<profileDir>/.belmont-chrome-owner.json`
+  `{ servePid, chromePid, pgid, startedAt }` is written; cleared on graceful stop.
+- The **reuse branch** reads the owner file and decides:
+  - **adopt** — owner file names a live `chromePid` whose owning `servePid` is **dead** → this is an
+    orphan from a crashed owner. Return a **real adopted stop** that sends `Browser.close` (graceful)
+    then escalates `SIGTERM`→`SIGKILL` to the **process group** and verifies exit.
+  - **shared** — owning `servePid` is alive → a legitimately shared browser; keep a noop stop
+    (do not kill someone else's live browser).
+  - **foreign** — no/þmismatched owner file → unknown browser; keep a noop stop and log (never kill a
+    browser we did not launch).
+- Net: orphan accumulation is bounded to **≤1** (each restart adopts the single orphan and reaps it on
+  graceful exit) instead of unbounded growth, and graceful shutdown reaps the full tree via group kill.
+
+## Residual (boundary #1, documented, not in this change)
+
+In-process handlers cannot run on `SIGKILL`; to bound the orphan window to ~0 even between a crash and
+the next startup, run serve under an external supervisor / cgroup / systemd scope that reaps the scope
+on serve death. The owner-file reaper above closes the accumulation defect for the eval workflow (a new
+serve always starts for the next eval and adopts+reaps). Production hardening = a cgroup scope.
+
+## Round-5/6 corrections (GPT-6 Pro adversarial review)
+
+- **"36 orphan Chrome processes" is not 36 browser instances.** That count includes renderer/gpu/zygote/
+  utility children of the tree. And observing the *same* Chrome reused across restarts does not by itself
+  prove "each restart accumulated a new tree" — that causal claim is withdrawn. The accurate, measured
+  metric is the R6 host census: **exactly one root browser** (profile + no `--type=`) and a **tree that does
+  not grow** across crash→restart→adopt (`evidence/r6/ev-l19-nocleanup-r6.json`: root 1, tree 34→34).
+- **The first fix was incomplete.** GPT round-5 reproduced five real defects in it (B1–B5): the owner file
+  was deleted even on a shutdown *timeout* (live browser left unowned); the adopted stop waited only on the
+  root pid (a surviving child reported success and skipped SIGKILL); the CDP-verified pid was discarded and a
+  different owner pid was killed (mis-kill on PID reuse / endpoint swap); `pgid` was only integer-checked so
+  `kill(-1)`/`kill(0)` were reachable; and there was no atomicity/locking across create→adopt→delete.
+- **Re-hardened fix (this branch):** atomic owner file (temp→fsync→rename) with a **generation token** and
+  **process start-ticks**; `planReuseOwnership` returns adopt/shared/foreign/**unknown** (corrupt, malformed
+  servePid, or a reused pid ⇒ unknown ⇒ never touched); a per-profile **lock** guards read→plan→write (CAS)
+  so two serves cannot both adopt; a unified `createChromeTreeStop` reaps the **whole process group** (not
+  just the root), guards **pgid>1** before any group signal, re-verifies identity (generation + start-ticks +
+  CDP browser pid) right before killing, and clears the owner **only** on confirmed full-tree exit **and**
+  generation match (a stale stop cannot delete a newer owner). Owned launch records the owner immediately
+  after spawn (closing the spawn→ready gap).
+- **Accepted acceptance criterion** (GPT): not "adopt logged" but a **normal shutdown that reaps the entire
+  owned tree** while a control browser survives — verified live in `L19.CHROME.ADOPT.FINAL_REAP`
+  (`evidence/r6/ev-l19-chrome-finalreap-r6.json`: after normal stop, eval-profile census root=0/tree=0, owner
+  cleared, control browser alive).
+
+## Round-6/7 re-hardening (GPT-6 Pro round-6 reproduced A-1..A-6)
+
+Round-6 accepted B4 (the pgid>1 guard) but reproduced further defects; all fixed and regressed:
+
+- **A-1 lock not exclusive** → replaced the O_EXCL+PID lock (empty-file window + `Number("")===0` stale-steal +
+  no ownership check on delete) with a **link-based lock**: content ({pid,token}) is fsync'd to a temp then
+  `linkSync`-published (no empty window); release unlinks only when the lock still carries OUR token (no ABA
+  delete); a stale lock is stolen by an atomic rename-aside. Regression: a real second process holding the
+  lock blocks acquisition.
+- **A-2 CDP wrong-close** → the adopt graceful close now verifies the CDP browser pid and sends `Browser.close`
+  **on the same connection**; a lookup failure or pid mismatch throws without closing (OS tree-kill handles the
+  owned range). Verified-close and OS-kill are separated.
+- **A-3 wrong-PGID mis-kill** → a group signal is sent only after **proving the pgid is the owned root's actual
+  `pgrp`** while the root is alive (cached so survivors are still reaped after the root dies); otherwise only the
+  bare root pid is signalled — never a wrong group. Identity is re-verified before EACH escalation signal.
+  Regression: an owner file carrying a *control* group's pgid does not kill the control group.
+- **A-4 census UNKNOWN→EMPTY** → `processGroupMembers` returns `{status,members}`; a read error counts as
+  possibly-alive, so an observation failure is never mistaken for "tree gone". Regression covers it.
+- **A-5 CDP-down / publish-failure** → the owner write is under the lock, and a failed publish reaps the
+  just-spawned child and throws (no untracked browser returned as success).
+- **A-6 no total deadline** → the stop enforces an overall monotonic deadline across verify/CDP-close/TERM/KILL
+  (an unresolving `requestClose` can no longer hang the stop). Regression covers it.
+
+Live: `L19.CHROME.ADOPT.FINAL_REAP` still PASSes on the round-7 code (adopt → normal stop → eval-profile census
+root=0/tree=0, owner cleared, control browser survives). Regression suite: 14/14; lifecycle 11/11.
+
+## Round-7 residual (GPT-6 Pro): the pure-Node floor — remaining races need kernel primitives
+
+After the A-1..A-6 fixes, GPT's focused re-review found two residual **TOCTOU** races that pure-Node userspace
+cannot fully close (GPT flagged this class in round-6 too):
+
+- **A-1 lock — two-stealer window.** Two processes can read the same genuinely-dead lock; one steals+acquires,
+  the other's `renameSync` can still move the winner's fresh lock aside. Narrowed this round (never steal a
+  *live* holder on age; after stealing, restore if the removed record's token ≠ the one judged stale), but the
+  microsecond rename window remains. The robust fix is a kernel `flock(2)` on a fixed lock file — Node exposes
+  no native flock without an addon/helper binary.
+- **A-3 signal binding — PID/PGID reuse window.** Between `reverify()` and the actual `kill`, if the owned
+  group fully dies AND the kernel reuses the same pid/pgid, a group signal could reach the new group. Narrowed
+  (ownership proven on the live root, re-verified before each signal), but a check→signal gap is inherent in
+  userspace. The robust fix is `pidfd_open(2)` + `pidfd_send_signal(2)` to bind the signal to a specific
+  process *instance* — again not exposed by Node without native code.
+
+**Assessment (proportionality).** The *core* defect this record was opened for — unbounded orphan accumulation
+across restarts — is fixed and proven (census stays root=1/tree-stable across crash→restart→adopt;
+`FINAL_REAP` reaps the whole owned tree on normal stop with a control browser surviving). The residuals are
+narrow races that (a) require the eval harness to hit a sub-millisecond PID-reuse window or two concurrent
+serves stealing the same dead lock on one profile, and (b) are only fully closable with kernel primitives
+(`flock`/`pidfd`) or an external **cgroup/systemd-scope supervisor** — the architecture GPT identified as the
+correct end state and a *separate task* from the in-process reaper. Recorded here as known limitations; the
+in-process reaper is at its pure-Node floor.
+
+## Kernel-primitive closure (external pidfd supervisor) — closes the A-1/A-3 floor
+
+The residual TOCTOU races above are closed at the architecture level by an **external supervisor**, since the
+in-process reaper cannot. In this environment cgroup v2 needs root and systemd-run has no user bus, but
+**`pidfd` is available without root** — a pidfd binds to a specific process INSTANCE, so a signal through it
+can never reach a reused PID.
+
+`belmont-browse/tools/chrome-supervisor.py` launches the eval serve as its child, learns the owned Chrome's
+`(pid, startTicks)` from the owner file, opens a **pidfd bound to that exact instance**, waits for serve to
+exit (any cause, including SIGKILL — the supervisor is serve's parent, so it always regains control), and if
+the instance is still alive reaps it through the pidfd (SIGTERM→SIGKILL). This closes the two windows the
+in-process reaper cannot: the **SIGKILL-orphan window** (boundary #1) and the **PID-reuse mis-kill** (A-3) —
+it never signals by raw pid/pgid, so it cannot mis-kill a number-inheriting process.
+
+Verified: `belmont-browse/tools/test-chrome-supervisor.py` — a self-crashing fake serve (SIGKILL) orphans a
+detached fake chrome; the supervisor reaps that exact instance via pidfd (PASS). Plus pidfd instance-binding
+safety: a dead instance's pidfd raises `ProcessLookupError`, so a reused pid is never signaled (PASS).
+
+To run the eval serve under the supervisor: `python3 belmont-browse/tools/chrome-supervisor.py <profileDir>
+-- <NODE> belmont-browse/src/serve.mjs <serve args...>`. The in-process reaper remains the fast path; the
+supervisor is the kernel-backed backstop.
+
+### Round-8 (GPT-6 Pro focused review of the supervisor) — mis-kill closed; residual documented
+
+GPT reproduced real holes in the first supervisor cut. Fixed (test-chrome-supervisor.py now covers them):
+- **Ownership mis-kill (reproduced: it SIGTERM'd another serve's control process)** → the supervisor now pins
+  only a chrome whose owner record names OUR serve child (`owner.servePid == serve_pid`) and carries a
+  start-ticks identity; a foreign serve's chrome is never pinned or killed. Regression: `test_ownership_no_miskill`.
+- **verify→open TOCTOU (pid reused between the start-ticks check and `pidfd_open`)** → after `pidfd_open` we
+  RE-READ the pid's start-ticks and confirm they still match; a wrong initial binding is closed and the fd
+  dropped.
+- **early-death orphan (chrome recorded then serve died before the next poll → orphan alive, exit 0)** → a
+  final sweep after serve exit re-attempts the identity-verified pin+reap.
+
+Still open (documented, not closed by this cut):
+- **whole-tree stragglers**: the supervisor signals the root instance via its pidfd; a child that left the
+  root's group (setsid) is not guaranteed reaped by the pidfd alone.
+- **supervisor's own death**: if the supervisor is SIGKILLed, its cleanup does not run (no PR_SET_PDEATHSIG /
+  scope tying the tree's lifetime to it). A cgroup/systemd scope (needs root/user-bus here) is the real fix.
+- **A-1 lock**: the supervisor does not serialize the in-process owner lock; that still needs a kernel
+  `flock` on a fixed file shared by all ownership paths.
+- The in-process `createChromeTreeStop` raw pid/pgid path still has its own (narrowed) TOCTOU independent of
+  the supervisor.
+
+### Round-9 (GPT-6 Pro closeout) — a regression I introduced, then fixed
+
+GPT reproduced two more holes caused by my round-8 cut overloading `serve_pid` with `None` on serve exit:
+- **null/missing `servePid` mis-kill**: `None != None` was false, so an owner record with no servePid passed
+  the ownership check and a foreign process was reaped.
+- **valid-owner early-death miss**: after serve exit, the final sweep compared `owner.servePid != None` and
+  rejected a legitimate owner (orphan alive, exit 0).
+Fix: the forked `child_pid` is now IMMUTABLE, exit is tracked by a separate flag, and ownership requires
+`owner.servePid` to be a valid integer equal to `child_pid`. Regressions added: `test_null_servepid_no_miskill`
+(+ the existing wrong-integer `test_ownership_no_miskill`); supervisor tests 4/4. With these closed, the
+remaining scope is again just **whole-tree stragglers / the supervisor's own SIGKILL / A-1 flock** (needs
+root/cgroup) — a genuine external-architecture task.
+
+Net: the **dangerous mis-kill** (killing an unrelated/foreign process) is closed at both layers; the core
+accumulation defect stays fixed+proven; the remaining items are narrow reap-completeness/liveness gaps whose
+full closure needs `flock` + a cgroup/systemd scope (root), tracked as the external-supervisor architecture task.
+
+## Regression
+
+`belmont-browse/test/chrome-orphan-ownership.test.mjs` — spawns a real detached sleeper as a stand-in
+Chrome (no real Chrome/CDP needed), and asserts:
+1. owner file with a **dead** servePid → decision `adopt`; the adopted stop actually terminates the
+   process group (process is gone afterward).
+2. owner file with a **live** servePid → decision `shared`; stop is a noop (process survives).
+3. no owner file → decision `foreign`; stop is a noop (process survives).
+
+## Round-10 (GPT-6 Pro) — re-pin miss fixed; flock claim corrected
+
+GPT confirmed round-9's two supervisor defects are closed, and reproduced one more + a factual correction:
+- **Chrome re-pin miss (fixed)**: the supervisor pinned Chrome A, then the SAME serve killed A and restarted
+  as B (owner updated atomically to B); the supervisor kept the stale A-fd, saw A dead, and exited 0 leaving
+  B alive. Fix: at serve-exit the AUTHORITATIVE reap target is the CURRENT owner file — discard the poll-time
+  fd and re-pin from the current owner, looping to drain a chain of owned live chromes. Regression:
+  `test_repin_reaps_current_chrome` (A→B same-serve restart → B reaped). Supervisor tests 5/5.
+- **flock ≠ root (correction)**: my earlier notes said A-1 "needs root/cgroup". That is WRONG for the lock:
+  `flock(2)` is **unprivileged**. Correcting the residual split:
+  - **A-1 (owner lock)**: closable with **unprivileged `flock`** on a fixed shared lock file — no root. The
+    current link-based lock is a valid unprivileged userspace lock whose only residual is a microsecond
+    two-stealer window reachable solely by two serves starting concurrently on the SAME profile (not the
+    eval workflow, which runs one serve at a time). `flock` is the clean strict upgrade; Node has no native
+    flock binding, so it needs a small helper (flock CLI holder / addon) — still unprivileged.
+  - **Only** the whole-tree-straggler reaping and the supervisor's own SIGKILL benefit from a **cgroup/
+    systemd scope** (which does need root/user-bus here); those remain the genuine root-requiring items.
+
+## Round-11 (GPT-6 Pro) — poll-fd leak fixed; wording corrected (no overclaims)
+
+- **poll-fd leak (fixed)**: round-10's fix discarded the poll-time fd; GPT showed that if the owner file is
+  DELETED between pin and serve-exit, re-pin fails and the pinned chrome A is orphaned (exit 0, A alive). Fix:
+  reap the poll-pinned instance FIRST (it was verified ours; owner deletion must not orphan it), THEN reap the
+  current owner + restart chain. Regression `test_polled_chrome_reaped_after_owner_deleted`. Supervisor 6/6.
+- **wording corrected** (my overclaims, per GPT):
+  - The link-lock residual is a two-concurrent-stealer race whose window is **NOT time-bounded** ("microsecond
+    only" was wrong — scheduling can delay execution between stale-check and steal). Single-serve operation
+    **avoids** the race but is **not a proof** of the lock's exclusivity.
+  - **cgroup is not inherently root**: a *delegated* cgroup v2 subtree is usable unprivileged; only THIS
+    environment's undelegated root requires root. And a cgroup does not auto-clean on supervisor SIGKILL —
+    that still needs a **live external manager**.
+
+## Agreed remaining scope (accurate, non-overclaiming)
+
+Closed + regressed: the accumulation defect, and every supervisor misdirection/leak path found through
+round-11 (mis-kill on foreign/null servePid, verify→open reuse, early-death, A→B re-pin, owner-deleted poll-fd).
+Genuinely open (acknowledged, not disputes):
+1. **A-1 owner lock**: fully closed by **unprivileged `flock`** on one shared lock file (all participants).
+   Node has no native flock binding, so it needs a small helper; not yet implemented. The link-lock is the
+   current valid unprivileged interim (residual: concurrent same-profile stealers, outside the eval workflow).
+2. **whole-tree stragglers + the supervisor's own SIGKILL**: need a **live external manager** (a cgroup —
+   delegated=unprivileged, else root — plus a survivor that reaps the scope). Not closable by the in-process
+   reaper or a self-terminating supervisor alone.
+
+## Round-12 (GPT-6 Pro) — pin-once → continuous tracking (closes the restart-then-delete class)
+
+GPT reproduced a single-serve leak the pin-once design could not cover: `pin A → serve restarts A→B (owner
+updated) → owner DELETED → serve SIGKILL` left B alive (poll-fd was A/dead; owner gone so B undiscoverable).
+Fix: the supervisor now **continuously tracks every owned Chrome instance for the serve's whole life** — each
+poll pins the current owner (adding a pidfd for any NEW instance) and prunes tracked instances that have died;
+at serve-exit it reaps every still-live tracked instance. This is robust to arbitrary restart chains and owner
+deletion, since a pidfd for B is held from the moment the owner named it, independent of the owner file's later
+state. Regression `test_repin_then_owner_deleted_reaps_current` (the exact round-12 sequence). Supervisor 7/7.
+
+## Whole-project review (GPT-6 Pro, continuous GitHub thread) — poll-gap, then C-1/C-2/A-1 closed
+
+GPT reviewed the ENTIRE project from GitHub (not snippets) and judged NOT-COMPLETE with a precise roadmap. The
+concrete code items and their closures:
+
+- **Poll-gap (fixed earlier this thread)**: owner-file *polling* cannot do first-discovery — a chrome
+  spawned+owned+owner-deleted inside one 0.5s poll window was never seen. Fix: **push-registration at spawn** —
+  the serve appends `{pid,pgid,startTicks,servePid}` to an append-only log the supervisor TAILS, so every owned
+  chrome is discovered the instant it exists. Regression `test_poll_gap_registered_chrome_reaped`.
+- **C-1 — supervisor disabled registration silently (fixed)**: the supervisor opened the reg log WITHOUT first
+  creating the profile dir; on a missing dir it set `reg_path=None` and fell back to polling-only (re-opening
+  the very poll-gap above) with no signal. Fix: **fail-closed** — `os.makedirs(profile)` then create+fsync the
+  reg log BEFORE `exec`; if the reg channel can't be established the supervised start **exits non-zero (3) and
+  never runs serve**. Regressions `test_profile_missing_created_and_registers` (dir created, reg channel live,
+  chrome reaped with NO owner file) + `test_reg_channel_unavailable_fails_closed` (profile path is a file →
+  makedirs raises → exit 3, serve never exec'd).
+- **C-2 — adopt path did not register (fixed)**: only the fresh-SPAWN branch appended a registration; the
+  orphan-**ADOPT** branch (`chrome.mjs`) did not, so an adopted chrome leaked if its owner file was deleted
+  before the next poll. Fix: a single `registerChromeInstance(pid,pgid,startTicks)` helper called in **BOTH**
+  the spawn and adopt branches. Regression `test_adopt_path_registration_reaped` (adopted-then-owner-deleted
+  chrome still reaped via the registration tail).
+- **A-1 — owner lock now unprivileged flock (closed)**: the residual same-profile two-stealer race is closed
+  by an **exclusive `fcntl.flock`** the supervisor takes on a per-profile lock file (CLOEXEC, so the lock's
+  lifetime is exactly the supervisor's) BEFORE fork; a second supervised serve on the same profile is rejected
+  (exit 4) and never runs. Unprivileged, kernel-auto-released on death — no root/cgroup. Regression
+  `test_profile_lock_rejects_second_run`. **Supervisor tests now 12/12.**
+
+Harness fail-closed (same review, non-chrome):
+- **L19.PENDING self-test (fixed)**: the self-test RE-DECLARED the verdict inline, proving nothing about the
+  shipped code. Extracted the observation formula + verdict + a **precondition gate** into a shared module
+  (`l19-pending-lib.mjs`) imported by BOTH the live verifier and the self-test. The grade is now **INVALID
+  (UNKNOWN)** when the pending/cancel path wasn't actually exercised (A not running+marked, or B never queued)
+  — never a vacuous PASS. `test-pending-formula.mjs` PASSES against the real module.
+- **L15 gateway/daemon harness (3 false-PASSes fixed)**: (1) a no-Origin **comm-failure** counted as
+  "not 403" → now both requests must reach the daemon (numeric status) or the case is UNKNOWN; (2) two
+  **malformed rosters** both `count:null` read as "unchanged" (null===null) → roster must be a real integer on
+  both sides (`parsed`) or UNKNOWN; (3) auth-ON with only a **wrong-token→401** check (no correct-token→200) →
+  UNKNOWN unless BOTH bad→401 AND good→200 are proven. Graders extracted to `gateway-origin-auth-lib.mjs`;
+  `test-gateway-origin-auth.mjs` proves each defect grades UNKNOWN/FAIL and only genuine guards PASS.
+
+Explicitly-agreed NON-guarantees (GPT concurred these are honest boundaries, not "closed"): the
+spawn→register crash microgap; whole-tree stragglers beyond the owned group root; and the supervisor's own
+SIGKILL (a self-terminating supervisor cannot reap after it is itself killed — that needs a delegated cgroup +
+a survivor, which needs root/user-bus unavailable here).
+
+## Whole-project review round 2 (GPT-6 Pro @ df3414c) — R1/R2/R3
+
+GPT confirmed C-1, C-2, the L19 shared-module + A/B precondition gate, and the three named L15 false-PASSes are
+CLOSED (verified against real producer code). Three new defects, each reproduced, now fixed:
+
+- **R1 — supervisor truncated the shared reg log BEFORE taking the flock (fixed)**: a rejected second supervised
+  serve did `open(reg,"w")` (wiping the winner's registrations) before the flock check turned it away. Fix:
+  reorder to makedirs → **flock** → (winner only) truncate+fsync the reg log; a loser returns at the lock having
+  touched nothing shared. Regression `test_rejected_second_run_preserves_registration` (rival exit 4 AND the
+  winner's reg line preserved across the rival AND target still reaped). Supervisor tests now 13/13.
+- **R2 — registration WRITE failure was swallowed (fixed)**: `registerChromeInstance` caught the append error and
+  the spawn/adopt branches reported success, returning an untracked browser. Fix: the helper returns success
+  (true when unsupervised — nothing to register; true/false on the append when supervised). Under supervision a
+  failure fails-closed: **spawn** reaps the just-spawned tree (group SIGKILL) and throws; **adopt** throws
+  without killing the pre-existing browser and leaves our owner record so the next serve re-adopts+re-registers.
+  Regression `testAdoptRegistrationFailClosed` in test-chrome-adopt-registration.mjs (real ensureChrome() adopt
+  with a fault-injected reg path: throws, browser stays alive, owner left re-adoptable).
+- **R3 — L19 measured B only BEFORE C, and the pre-cancel read wasn't gated (fixed)**: a cancelled B that
+  executed LATE (while the harness waited on C) was missed, and a pre-read failure (-1) still PASSed. Fix: the
+  verifier now RE-MEASURES B after C completes + a stabilization window and grades on that FINAL count; the
+  shared gate now requires bPreReadOk (pre-cancel read ok) and bFinalReadOk (final read ok) — a read failure
+  grades INVALID/UNKNOWN, never PASS/FAIL; and the verdict's read-success check moved into the gate. The
+  self-test adds late-execution→FAIL, pre/final-read-failure→INVALID, and a load-bearing pair proving a dropped
+  re-measure would regress to a false-PASS.
+
+Producer-vs-consumer test coverage (GPT's note): the Python supervisor tests exercise the CONSUMER; the real
+`chrome.mjs` PRODUCER adopt call + its R2 fail-closed are pinned by test-chrome-adopt-registration.mjs, which
+drives the actual ensureChrome() adopt branch (removing chrome.mjs's adopt registerChromeInstance call, or its
+fail-closed throw, fails that test). Supported-launch-path alignment (verify-eval-isolation.sh under the
+supervisor) landed in af4dd36 (after the df3414c GPT reviewed).
+
+## Whole-project review round 3 (GPT-6 Pro @ 20eff65) — R2 integration + L19 driver regression
+
+GPT confirmed R1, R3 (current behavior), the Chrome adopt-producer regression, and the eval-verify launcher are
+CLOSED. Two code-integration defects remained; both fixed:
+
+- **R2 (round-2) — adopt preservation defeated by the supervisor's owner-fallback (fixed)**: the producer wrote
+  its owner record (servePid=us) BEFORE attempting registration, so on failure it threw but left an owner naming
+  us → the supervisor's owner-fallback (`pin_owned_chrome`, servePid==child) pinned+reaped the very browser we
+  meant to preserve. Fix: in `chrome.mjs` REGISTER BEFORE claiming ownership — only writeChromeOwner on
+  registration success; on failure leave the orphan's ORIGINAL (dead-serve) owner untouched and throw. Now the
+  supervisor's owner-fallback can't match it (names a non-current serve), no reg line exists, and the next serve
+  re-adopts. This ordering also dodges the restore-after-pin race GPT flagged (we never write a kill-authorized
+  owner we'd have to undo). Regressions: test-chrome-adopt-registration.mjs asserts the owner is left as the
+  original dead serve on failure; and `test_adopt_registration_failure_preserves_browser_under_supervisor`
+  (test-chrome-supervisor.py) runs the REAL ensureChrome() adopt with a fault-injected reg UNDER the real
+  supervisor and asserts the pre-existing browser survives the supervisor's exit. Supervisor tests now 14/14
+  (the R2-integration test SKIPs if node is absent).
+- **L19 driver re-measure not locked by a regression (fixed)**: the pure-formula self-test could not catch a
+  driver that dropped the post-C re-measure (it never ran the driver). Fix: the flow moved to a shared,
+  injectable module `l19-pending-driver.mjs` (`runPendingVerification`) that both the CLI verifier and a new
+  driver regression call. `test-l19-driver-late-exec.mjs` runs the REAL flow against a fake session API where
+  the cancelled B executes LATE during C; the late run is visible only in the FINAL post-C read, so the run
+  grades FAIL — and a mutation that reuses the pre-C count instead yields PASS, breaking the test (verified).
+  Read-failure gating (pre/final → INVALID) is exercised through the same driver.
+
+All wired into verify-eval-isolation.sh (supervisor tests, real adopt-producer test, L19 formula + driver
+regressions, L15 grader test). Remaining is live/product verification (recovery (pid,startTicks)+termination
+traces, bot autonomous createAgent trace, L26 canonical positive path, L13 approval flow, L15 matrix, map-row
+disposition) — a maintenance-window scope, independent of the code phase.
+
+## FINAL VERDICT — code/regression phase COMPLETE at dbb96fb (GPT-6 Pro, whole-project review)
+
+After four iterative rounds of whole-project GitHub review + fixes, GPT-6 Pro judged the CODE/REGRESSION phase
+COMPLETE at `dbb96fbd6f0549f97f32037522d9f3eab8ef339c`. It re-verified R2 (register-before-ownership + the
+supervisor-integration regression genuinely locks it) and L19 (independently ran the driver AND two mutations —
+dropping the post-C re-measure, and feeding the pre-C value to the verdict — both make the late-execution
+scenario a wrong PASS and FAIL the regression with exit 1). No new code counterexamples. Verdict quote:
+"dbb96fb를 이번 코드·회귀시험 단계의 종결 기준점으로 확정해도 됩니다. 다음 단계는 이미 정리된 라이브·제품 검증입니다."
+
+Closed (code phase): C-1, C-2, A-1(flock), R1, R2, R3, L19 (shared module + A/B + required-observation gate +
+driver regression), L15 (three graders), the real adopt-producer regression, and the supported-launcher
+alignment. Explicit non-guarantees unchanged: spawn→register crash window, whole-tree stragglers, supervisor
+self-SIGKILL.
+
+STILL OPEN — live/product verification (needs a maintenance window on the live 909 stack; NOT part of this
+code phase): recovery re-verify with per-stage (pid,startTicks)+termination traces (HEALTH.DEAD, DOUBLE_CRASH);
+a bot AUTONOMOUSLY calling createAgent with the tool-call trace; L26 canonical-mode POSITIVE paths (needs a
+serve patched with patch-daemon-canonical-memory); L13 full approval flow with external effects; the L15
+auth/Origin matrix; and disposition (verify OR explicit scope-out) of map rows L41, L12/L27, L02, L16, L37,
+L38, L42, L10, L46–50.
+
+Process note: rounds 1–4 ran in one GPT thread (per the user's method); that thread's context grew heavy enough
+to stall generation, so this FINAL verdict was obtained in a fresh GPT thread carrying a compact self-contained
+state summary + the same whole-project GitHub-review method (user-approved switch).

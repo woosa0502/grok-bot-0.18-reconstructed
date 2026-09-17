@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { basename } from "node:path";
 import {
@@ -66,6 +67,7 @@ export function buildComposedOfflineNote(composedAtMs: number): string {
     : "";
 }
 export interface UserMessageOptions {
+  memoryLearningSource?: "user" | "system";
   composedAtMs?: number;
   richText?: string;
   replyTo?: string;
@@ -86,6 +88,8 @@ export function createUserMessage(
     kind: "message",
     id,
     role: "user",
+    // Host-generated identity survives transcript IDs being reused after clear.
+    memoryTurnId: randomUUID(),
     content,
     richText:
       options.richText != null && options.richText.length > 0
@@ -100,6 +104,7 @@ export function createUserMessage(
       ? { clientNonce: options.clientNonce }
       : {}),
     ...(composedAtMs == null ? {} : { sentWhileOfflineAtMs: composedAtMs }),
+    ...(options.memoryLearningSource == null ? {} : { memoryLearningSource: options.memoryLearningSource }),
   };
 }
 export function createSendMessageEntry(

@@ -1,6 +1,26 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getSandRootDir } from "../../host-paths.js";
+import type { ExperienceEnvelope } from "../memory/kernel/index.js";
+
+export interface BrowseMemoryContext {
+  authority: "belmont";
+  version: 1;
+  agentId: string;
+  conversationId: string;
+  expectedEpoch?: number;
+  domain?: string;
+  environment?: string;
+  procedure?: { id: string; version: number; steps: unknown[] };
+  [key: string]: unknown;
+}
+
+export interface BrowseClientMemoryHooks {
+  isCanonical(): boolean;
+  prepare(task: string, metadata: { domain?: string; environment?: string; context?: Record<string, string>; conditions?: string[] }): Promise<BrowseMemoryContext>;
+  validate(context: BrowseMemoryContext): Promise<void>;
+  observe(view: BrowseSessionView): Promise<void>;
+}
 
 export interface BrowseSessionView {
   readonly id: string;
@@ -13,6 +33,11 @@ export interface BrowseSessionView {
   readonly activity: readonly string[];
   readonly toolCalls: number;
   readonly modelCalls: number;
+  readonly usage?: { input: number; output: number; cacheRead: number };
+  readonly startedAt?: number | null;
+  readonly endedAt?: number | null;
+  readonly memoryContext?: BrowseMemoryContext | null;
+  readonly memoryObservation?: { eventId: string; at: number; status: string; trajectory: unknown[]; experience?: ExperienceEnvelope; [key: string]: unknown } | null;
   readonly suspension: { readonly kind: string; readonly toolCallId: string; readonly description: string; readonly request?: unknown } | null;
 }
 
@@ -64,19 +89,19 @@ export interface AsideMessage {
 
 /** Thin HTTP client for belmont-browse's serve.mjs (local, bearer token from its serve.json). */
 export class BrowseClient {
-  constructor(readonly baseUrl: string, readonly token: string) {}
+  constructor(readonly baseUrl: string, readonly token: string, readonly memory?: BrowseClientMemoryHooks) {}
 
   /** Resolves the service from SAND_ASIDE_BROWSE_URL/TOKEN or belmont-browse/.state/serve.json next to the repo. */
-  static fromEnvironment(): BrowseClient | null {
+  static fromEnvironment(memory?: BrowseClientMemoryHooks): BrowseClient | null {
     const url = process.env.SAND_ASIDE_BROWSE_URL?.trim();
     const token = process.env.SAND_ASIDE_BROWSE_TOKEN?.trim();
-    if (url && token) return new BrowseClient(url, token);
+    if (url && token) return new BrowseClient(url, token, memory);
     const stateFile = process.env.SAND_ASIDE_BROWSE_STATE?.trim() || resolve(getSandRootDir(), "../../../belmont-browse/.state/serve.json");
     if (!existsSync(stateFile)) return null;
     try {
       const state = JSON.parse(readFileSync(stateFile, "utf8")) as { port?: number; token?: string };
       if (typeof state.port !== "number" || typeof state.token !== "string") return null;
-      return new BrowseClient(`http://127.0.0.1:${state.port}`, state.token);
+      return new BrowseClient(`http://127.0.0.1:${state.port}`, state.token, memory);
     } catch {
       return null;
     }
@@ -105,17 +130,51 @@ export class BrowseClient {
       } catch { /* Plain errors from older services retain their HTTP status without invented codes. */ }
       throw new BrowseServiceError(`browse service ${method} ${path} -> ${response.status}: ${detail.slice(0, 200)}`, response.status, code);
     }
-    return JSON.parse(text) as T;
+    const result = JSON.parse(text) as T;
+    if (path.startsWith("/sessions/") || path === "/sessions") {
+      const view = result as unknown as BrowseSessionView;
+      if (typeof view?.id === "string") await this.memory?.observe(view);
+    }
+    return result;
   }
 
-  health(): Promise<{ ok: boolean; engine: string }> { return this.#request("GET", "/health"); }
-  create(body: { task: string; model?: string; thinking?: string; mode?: string }): Promise<BrowseSessionView> { return this.#request("POST", "/sessions", body); }
+  jobHealth(): Promise<any> { return this.#request('GET', '/health'); }
+  jobMemoryMetadata(task: string): Promise<any> { return this.#request('POST', '/memory/context', { task }); }
+  submitJob(body: unknown): Promise<any> { return this.#request('POST', '/browser-jobs', body); }
+  jobReceipt(requester: string, key: string): Promise<any> { return this.#request('GET', '/browser-jobs/receipt?requester=' + encodeURIComponent(requester) + '&key=' + encodeURIComponent(key)); }
+  jobs(): Promise<any> { return this.#request('GET', '/browser-jobs'); }
+  jobEvents(after: number): Promise<any> { return this.#request('GET', '/browser-jobs/events?after=' + after); }
+  jobCommand(job: string, command: string, body: unknown): Promise<any> { return this.#request('POST', '/browser-jobs/' + encodeURIComponent(job) + '/' + command, body); }
+
+  health(): Promise<{ ok: boolean; engine: string; memoryAuthority?: string; memoryProtocolVersion?: number }> { return this.#request("GET", "/health"); }
+  async #prepareMemory(task: string): Promise<BrowseMemoryContext | undefined> {
+    if (!this.memory?.isCanonical()) return undefined;
+    const service = await this.health();
+    if (service.memoryAuthority !== "belmont" || service.memoryProtocolVersion !== 1) throw new BrowseServiceError("The browse service has not enabled Belmont canonical memory authority; apply its daemon guard and restart through the service owner's workflow.", 409, "MEMORY_AUTHORITY_MISMATCH");
+    const metadata = await this.#request<{ domain?: string; environment?: string; context?: Record<string, string>; conditions?: string[] }>("POST", "/memory/context", { task });
+    return this.memory.prepare(task, metadata);
+  }
+  async create(body: { task: string; model?: string; thinking?: string; mode?: string }): Promise<BrowseSessionView> {
+    const memoryContext = await this.#prepareMemory(body.task);
+    return this.#request("POST", "/sessions", { ...body, ...(memoryContext ? { memoryContext } : {}) });
+  }
   get(id: string): Promise<BrowseSessionView> { return this.#request("GET", `/sessions/${id}`); }
-  answer(id: string, response: unknown, expectedToolCallId: string): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/answer`, { response, expectedToolCallId }); }
-  steer(id: string, text: string): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/steer`, { text }); }
+  async #validateSessionMemory(id: string): Promise<void> {
+    if (!this.memory?.isCanonical()) return;
+    const view = await this.get(id);
+    if (!view.memoryContext) throw new BrowseServiceError("This existing Aside execution has no Belmont memory binding; start a newly bound task.", 409, "MEMORY_CONTEXT_REQUIRED");
+    await this.memory.validate(view.memoryContext);
+  }
+  async answer(id: string, response: unknown, expectedToolCallId: string): Promise<BrowseSessionView> { await this.#validateSessionMemory(id); return this.#request("POST", `/sessions/${id}/answer`, { response, expectedToolCallId }); }
+  async steer(id: string, text: string): Promise<BrowseSessionView> { await this.#validateSessionMemory(id); return this.#request("POST", `/sessions/${id}/steer`, { text }); }
   /** Sends a follow-up user message into a finished session (same Aside conversation, full context kept). */
-  continue(id: string, text: string): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/continue`, { text }); }
+  async continue(id: string, text: string): Promise<BrowseSessionView> {
+    const memoryContext = await this.#prepareMemory(text);
+    return this.#request("POST", `/sessions/${id}/continue`, { text, ...(memoryContext ? { memoryContext } : {}) });
+  }
   stop(id: string): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/stop`, {}); }
+  /** A real outcome producer supplies a grade; the service owns usage/timing. */
+  reportOutcome(id: string, eventId: string, outcome: { success: boolean; criticalFailure: boolean; condition?: string; siteKnowledge?: string[]; candidate?: ExperienceEnvelope["candidate"] }): Promise<BrowseSessionView> { return this.#request("POST", `/sessions/${id}/outcome`, { eventId, outcome }); }
   /** Sessions the Aside UI in the fork lists as recent chats (newest first). */
   asideSessions(limit = 20): Promise<AsideSessionSummary[]> { return this.#request("GET", `/aside/sessions?limit=${limit}`); }
   /** User/assistant messages of an Aside session newer than `since` (ms), oldest first. */

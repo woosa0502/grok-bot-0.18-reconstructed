@@ -1,0 +1,14 @@
+{
+  "case": "l19-chrome-health-dead",
+  "at": "2026-09-13T05:39:20+09:00",
+  "gate": "/health must not report a dead chrome as ready — for BOTH owned and adopted paths",
+  "owned": { "note": "already correct: browserAlive(child) -> ready:false, browser.alive:false when the child exits" },
+  "finding": "ADOPTED path had chrome.child=null -> browserAlive(null)=null -> ready stayed true and browser.alive was null even when the adopted chrome was dead (L19.CHROME.HEALTH.DEAD gap)",
+  "fix": "core.mjs stats(): when chrome.child is null (adopted), use isProcessAlive(chrome.pid) for browser.alive and ready",
+  "live_evidence": {
+    "adopted_chrome_pid": 1693427,
+    "health_while_alive": { "ready": true, "browser": { "alive": true } },
+    "health_after_kill":  { "ready": false, "browser": { "alive": false } }
+  },
+  "verdict_pass": true
+}

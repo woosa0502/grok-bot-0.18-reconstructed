@@ -1,0 +1,22 @@
+{
+  "case": "daemon-for-chrome",
+  "at": "2026-09-13T06:36:27.969Z",
+  "gateway": {
+    "port": 42611,
+    "jsonPath": "/home/hoon/_roots/labs/work/Belmont/.cache/belmont-wsl-profile/sand-data/gateway.json",
+    "tokenAdvertised": true
+  },
+  "expected": "web-origin mutation on /session/for-chrome/* -> 403 FORBIDDEN; no-Origin request not blocked by the guard (bogus subpath => no mutation either way)",
+  "evilOrigin": {
+    "status": 403,
+    "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Browser-side session changes are accepted only from the Aside extension or the browser itself.\"}}"
+  },
+  "noOrigin": {
+    "status": 404,
+    "body": "{\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"API not found\"}}"
+  },
+  "bothReached": true,
+  "result": "PASS",
+  "verdict_pass": true,
+  "note": "touches singleton daemon 21420 but sends only a rejected / bogus-path request; nothing is mutated"
+}

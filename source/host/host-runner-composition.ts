@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { createSandExecutorSubagentConfig, SAND_SUBAGENT_BOUNDARY_PROMPT } from "./sand-multitask.js";
-import { getKnowledgeIndex, readKnowledgePage } from "./runner/knowledge-store.js";
+import { getKnowledgeIndex, readKnowledgePage, type CanonicalKnowledgeQuery, type KnowledgeIndexLike } from "./runner/knowledge-store.js";
 import { ASIDE_BROWSE_ENABLED, createAsideBrowseSubagentConfig, isAsideBrowseSubagentType } from "./extensions/browse-runtime/subagent-config.js";
 import { createSandComputerUseSubagentConfig } from "./runner/tools/sand-computer-use-subagent.js";
 import { LOCAL_COMPUTER_USE_ENABLED, localComputerDisplayNumber } from "./box/local-computer-use.js";
@@ -109,6 +109,7 @@ import { createAgentPromptSession } from "./extensions/inference/extension.js";
 import { getSandRootDir } from "./host-paths.js";
 import { SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
 import { getSandProfilePath, readSandProfileFile, writeSandProfileFile } from "./agents/agent-profile.js";
+import { browserConfig } from "../../shared/browser-bot/host-store.mjs";
 import { getSandSettingsPath, writeSandSettingsFile } from "./agents/settings-file.js";
 import { CONNECTOR_MANIFESTS } from "../shared/channels.js";
 import { parseStoredTrigger } from "./automations/automation-trigger.js";
@@ -198,6 +199,7 @@ import type {
 } from "./runner/tools/turn-toolset.js";
 import type { TurnCheckpoint, TurnSettleHost } from "./runner/turn-settle.js";
 import type { TextExecutor } from "./runner/sand-memory.js";
+import type { MemoryToolHooks } from "./runner/memory-runtime-hooks.js";
 import type { RunnerPromptGlueOwner } from "./runner/runner-prompt-glue.js";
 import type { TransferBox } from "./box/box-transfer.js";
 import type { CapableBox } from "./box/box-capabilities.js";
@@ -1648,10 +1650,26 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           managedTeamSection: () => {
             const managerId = process.env.SAND_DEFAULT_AGENT_ID?.trim();
             if (managerId == null || managerId.length === 0 || managerId === session.id) return null;
-            return [
+            const lines = [
               "## Managed team",
               `This user runs their agents as a managed team: the agent with id ${managerId} is the manager (their single point of contact). When the manager delegates a job to you (its message starts with a [job:<id>] tag), treat the manager as the requester: do the work, then send the result BACK TO THE MANAGER with SendToAgent, starting your reply with the same [job:<id>] tag and including the requested evidence. Do not consider a delegated job done until that reply is sent. Talk to the user directly only when they message you here themselves.`,
-            ].join("\n");
+            ];
+            // Dedicated browser worker: when one is registered, every team member (including the
+            // manager) should route real web browsing to it instead of trying to browse itself.
+            // Delegation is a plain SendToAgent to that bot's id; it runs the task in a real browser
+            // and replies with the result. This is authorized team-internal delegation.
+            try {
+              const browserBotId = (browserConfig(getSandRootDir()) as { botId?: string } | null)?.botId;
+              if (typeof browserBotId === "string" && browserBotId.length > 0 && browserBotId !== session.id) {
+                const browserName = readSandProfileFile(getSandProfilePath(join(dirname(dirname(session.dbPath)), browserBotId)))?.name?.trim() || "Browser";
+                lines.push(
+                  "## Browser worker",
+                  `The agent with id ${browserBotId} ("${browserName}") is the team's dedicated web-browsing worker: it drives a real browser (opens pages, keeps logged-in sessions, clicks, reads live/JS-rendered content, takes screenshots). When a task needs actual browsing — visiting a site, checking a live page, verifying across pages, reading content a plain fetch/curl can't reliably get, or any on-page action — delegate that part to it with SendToAgent: send a plain message describing exactly what to open and what evidence to bring back (keep your own [job:<id>] tag so the reply threads back). Then stop and wait for its reply; when it comes, continue with the result. Do NOT claim a page was actually checked from a bare fetch or a text-only answer, and do not try to do real browsing yourself. Pure analysis and synthesis stay with you.`,
+                  `When you delegate to it, tell it to follow the team's output convention so its results land in the job folder and stay cheap on tokens: save the write-up to jobs/<id>/out/result.md, sources/URLs to out/sources.json, an artifact list to out/files.json, and any screenshots to out/artifacts/ (registered in files.json) — NEVER leave screenshots in the browser's session tmp, where the team and the phone app cannot see them. Its reply to you should be only the conclusion plus those out/ pointers, not the whole body. (Its full role is in belmont-work/roles/browser.md.)`,
+                );
+              }
+            } catch { /* no dedicated browser bot registered */ }
+            return lines.join("\n");
           },
           isBoxScopedSubagent: () => false,
           requestContext: {
@@ -1799,6 +1817,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     );
     const productionResourceAccessor = async (
       context: unknown,
+      accessorOpts?: { readonly isSubagentTurn?: boolean },
     ): Promise<ProductionResourceAccessor> => {
       const owner = asRemoteBoxResourceOwner(remoteBox);
       const runner = builtRunner as {
@@ -1835,6 +1854,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         remoteBoxHasDesktop: true,
         resolveBoxId: () => session.id,
         getConversationId: () => session.id,
+        isSubagentTurn: () => accessorOpts?.isSubagentTurn === true,
         setRemoteBoxTerminalsFolder: folder => runner.setRemoteBoxTerminalsFolder?.(folder),
         autoReviewGate: remoteAutoReviewGate,
         auditShellCommand: (_agentId, kind, command, _target, attribution) =>
@@ -1895,7 +1915,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       return createProductionTurnAgentOwner({
         ...input,
         createResourceAccessor: localProductionResourceAccessor,
-        createRemoteBoxResourceAccessor: productionResourceAccessor,
+        createRemoteBoxResourceAccessor: (accessorContext: unknown) =>
+          productionResourceAccessor(accessorContext, {
+            isSubagentTurn: (input as { isSubagentRunner?: boolean }).isSubagentRunner === true,
+          }),
         blobStore: getAgentBlobStore(
           session.agentStore as Parameters<typeof getAgentBlobStore>[0],
         ),
@@ -2386,8 +2409,20 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         dependencies: { listAgents: agentDirectoryProvider, listGroups: agentGroupsProvider },
       }),
       createKnowledgeSearchToolInputs: () => {
-        const index = getKnowledgeIndex();
-        return index === undefined ? undefined : { index, readPage: (path: string) => readKnowledgePage(index.dir, path) };
+        const queryKnowledge = method(memory, "queryKnowledge");
+        if (queryKnowledge == null && getKnowledgeIndex() == null) return undefined;
+        return {
+          // Legacy materialization is lazy: only canonicalQuery's explicit
+          // null result reaches either of these compatibility readers.
+          index: { search: (input: Parameters<KnowledgeIndexLike["search"]>[0]) => getKnowledgeIndex()?.search(input) ?? [] },
+          readPage: (path: string) => {
+            const index = getKnowledgeIndex();
+            return index == null ? null : readKnowledgePage(index.dir, path);
+          },
+          ...(queryKnowledge == null ? {} : {
+            canonicalQuery: async (input: Parameters<CanonicalKnowledgeQuery>[0]): Promise<string | null> => queryKnowledge({ agentId: session.id, ...input }),
+          }),
+        };
       },
       createBoxAwaitToolInputs: (turn, _props): TurnAwaitToolFactoryInput => ({
         resourceAccessor: (() => {
@@ -2871,7 +2906,11 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         subagentConfigs: [
           ...(multitaskEnabled ? [createSandExecutorSubagentConfig()] : []),
           ...(LOCAL_COMPUTER_USE_ENABLED ? [createSandComputerUseSubagentConfig({ browserUseOffered: false })] : []),
-          ...(ASIDE_BROWSE_ENABLED ? [createAsideBrowseSubagentConfig()] : []),
+          // When a dedicated Browser bot is registered, browsing goes through it (SendToAgent → job
+          // broker), and the broker rejects direct /sessions execution. Offering the legacy per-bot
+          // Task(aside-browse) alongside it is contradictory (bots would pick a path the service
+          // refuses), so hide it in dedicated mode; the team prompt routes browsing to the Browser bot.
+          ...(ASIDE_BROWSE_ENABLED && (browserConfig(getSandRootDir()) as { botId?: string } | null)?.botId == null ? [createAsideBrowseSubagentConfig()] : []),
         ],
       };
       const staticModelId = process.env.SAND_AGENT_MODEL ?? DEFAULT_SAND_MODEL;
@@ -3023,8 +3062,21 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                       }),
                 }
               : undefined;
+          const beforeMemoryAction = method(memory, "beforeToolAction");
+          const afterMemoryAction = method(memory, "afterToolAction");
+          const memoryIdentity = {
+            agentId: session.id,
+            conversationId: turnConversationId,
+            requestId,
+          };
+          const memoryToolHooks: MemoryToolHooks | undefined =
+            isSharedRoomTurn || beforeMemoryAction == null ? undefined : {
+              beforeToolAction: async (input) => beforeMemoryAction({ ...memoryIdentity, ...input }),
+              afterToolAction: (input) => { afterMemoryAction?.({ ...memoryIdentity, ...input }); },
+            };
           const turn: TurnToolsetTurnInput = {
             ...baseTurn,
+            ...(memoryToolHooks == null ? {} : { memoryToolHooks }),
             emitUpdate,
             cancelThisRun,
             ...(runOptions.ackToken === undefined
@@ -3090,7 +3142,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               runner?.interrupt?.(reason.reason);
             },
             createResourceAccessor: localProductionResourceAccessor,
-            createRemoteBoxResourceAccessor: productionResourceAccessor,
+            createRemoteBoxResourceAccessor: (accessorContext: unknown) =>
+              productionResourceAccessor(accessorContext, { isSubagentTurn }),
             createTurnLocalResourceProjectionInput: (baseAccessor, remoteBoxAccessor) => {
               const runner = builtRunner;
               if (runner === undefined) {
@@ -3112,7 +3165,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   // belmont-browse: this child's brain is an Aside session behind the local browse service.
                   const createBrowseSession = method(extensions.api("browse-runtime"), "createSubagentSession");
                   if (createBrowseSession === undefined) throw new TypeError("browse-runtime extension is not bound");
-                  const browseSession = createBrowseSession(agentId) as SubagentSession;
+                  const browseSession = createBrowseSession(agentId, {
+                    memoryAgentId: session.id,
+                    conversationId: agentId,
+                  }) as SubagentSession;
                   subagentTypeByConversationId.set(agentId, args.subagentType);
                   let disposal: Promise<void> | undefined;
                   // Delegate method by method: the session is a class instance, so a spread would
@@ -3329,7 +3385,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               isSubagentRunner: isSubagentTurn,
               isSharedRoomRunner: isSharedRoomTurn,
               sandSendMessageDeliveryOwed: method(experiments, "isSendMessageDeliveryOwedEnabled")?.() ?? false,
-              systemPromptGenerator: () => productionSystemPromptAssembly?.getSystemPrompt() ?? DEFAULT_SAND_SYSTEM_PROMPT,
+              systemPromptGenerator: () => productionSystemPromptAssembly?.getSystemPrompt(undefined, {
+                conversationId: turnConversationId,
+                requestId,
+              }) ?? DEFAULT_SAND_SYSTEM_PROMPT,
             },
             emitUpdate,
             interactionObservers: {},

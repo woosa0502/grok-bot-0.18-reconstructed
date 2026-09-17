@@ -9,6 +9,11 @@ export interface SandAgentProfile {
   title: string;
   avatarShape: string;
   avatarColor: string;
+  // Opt-in fields the gateway never sets but the runtime reads (e.g. the dedicated browser bot's
+  // `runtime: "aside-browse"` binding). They must survive a name/description edit, so the profile
+  // reader/writer round-trip them instead of dropping every key outside the five canonical ones.
+  runtime?: string;
+  browserJobProtocol?: number;
 }
 
 export function getSandProfilePath(agentDir: string): string { return join(agentDir, SAND_PROFILE_FILENAME); }
@@ -28,7 +33,9 @@ export function readSandProfileFile(path: string): SandAgentProfile | null {
     description: typeof parsed.description === "string" ? parsed.description : "",
     title: typeof parsed.title === "string" ? parsed.title.trim() : "",
     avatarShape: typeof parsed.avatarShape === "string" ? parsed.avatarShape.trim() : "",
-    avatarColor: typeof parsed.avatarColor === "string" ? parsed.avatarColor.trim() : ""
+    avatarColor: typeof parsed.avatarColor === "string" ? parsed.avatarColor.trim() : "",
+    ...(typeof parsed.runtime === "string" && parsed.runtime.length > 0 ? { runtime: parsed.runtime } : {}),
+    ...(typeof parsed.browserJobProtocol === "number" ? { browserJobProtocol: parsed.browserJobProtocol } : {})
   };
 }
 

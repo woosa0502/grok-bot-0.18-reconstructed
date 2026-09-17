@@ -1,0 +1,11 @@
+{
+  "case": "l19-nocleanup",
+  "at": "2026-09-12T22:29:49.931958",
+  "restart_unattended": true,
+  "box1337_selfFreedOnCrash": true,
+  "orphan_chrome_leaked_on_crash": 36,
+  "recovered_status": "interrupted (see log/snapshot)",
+  "auto_re_exec_after_unattended_restart": true,
+  "finding": "unattended restart succeeds (box self-frees, reconciled 1) BUT crash leaks orphan chrome procs (resource leak; not auto-cleaned)",
+  "verdict": "recovery=PASS(unattended, no re-exec); cleanliness=FINDING(chrome orphans leak on crash)"
+}

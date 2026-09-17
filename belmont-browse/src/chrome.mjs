@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fetchJson, MiniCdp } from "./cdp-mini.mjs";
-import { createOwnedChromeStop, observeChild } from "./browser-lifecycle.mjs";
+import { observeChild, readChromeOwner, writeChromeOwner, planReuseOwnership, createChromeTreeStop, withOwnerLock, processStartTicks, processGroupMembers, isProcessAlive, procStat } from "./browser-lifecycle.mjs";
 
 const CHROME_CANDIDATES = ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
 
@@ -34,14 +34,92 @@ export async function isCdpUp(baseUrl) {
   }
 }
 
+/** Push-register an owned chrome instance to an external supervisor's append-only log, synchronously. BOTH the
+ * fresh-spawn and the orphan-ADOPT paths call this so the supervisor discovers EVERY owned instance without
+ * depending on owner-file polling (closes C-1/C-2).
+ *
+ * Returns true on success. When NOT supervised ($BELMONT_CHROME_REG unset) there is nothing to register, so it
+ * returns true (a direct, non-supervised launch is unaffected). When supervised, registration is REQUIRED: an
+ * append failure returns FALSE so the caller can fail-closed rather than return a launch the supervisor cannot
+ * track (whole-project review R2 — the old code swallowed the error and reported success). */
+function registerChromeInstance({ pid, pgid, startTicks }) {
+  const reg = process.env.BELMONT_CHROME_REG;
+  if (!reg) return true;                              // not supervised: nothing to register
+  if (!Number.isSafeInteger(pid)) return false;      // cannot register an invalid pid under supervision
+  try {
+    appendFileSync(reg, JSON.stringify({ pid, pgid, startTicks, servePid: process.pid, ts: Date.now() }) + "\n");
+    return true;
+  } catch {
+    return false;                                     // supervised registration FAILED -> caller must fail-closed
+  }
+}
+
+/** Best-effort kill of a just-spawned detached chrome and its whole group (it leads its own group; pid==pgid).
+ * Used only on a fail-closed abort before the normal stop() is wired, so a rejected launch leaves no orphan. */
+function killSpawnedTree(child) {
+  if (Number.isSafeInteger(child?.pid) && child.pid > 1) { try { process.kill(-child.pid, "SIGKILL"); } catch {} }
+  try { child?.kill?.("SIGKILL"); } catch {}
+}
+
 export async function ensureChrome({ port = 9333, display = ":99", profileDir, windowSize = "1280,800", startUrl = "about:blank", log = console.error, chromeBinary, nativeComponentVersion, asideHome, startupTimeoutMs = 20000, shutdownTimeoutMs = 10000, pollIntervalMs = 250 }) {
   const baseUrl = `http://127.0.0.1:${port}`;
   if (await isCdpUp(baseUrl)) {
     if (nativeComponentVersion) {
       await verifyReusableNativeChrome({ baseUrl, profileDir, nativeComponentVersion, asideHome });
     }
-    log(`[chrome] reusing CDP at ${baseUrl}`);
-    return { baseUrl, child: null, stop: async () => {}, detach: async () => {} };
+    // DEF-L19-CHROME-ORPHAN-001 (hardened per GPT-6 Pro round-5). Never reuse with a noop stop. Decide
+    // ownership under an exclusive lock (CAS) so two serves cannot both adopt the same orphan (B5); only
+    // adopt when the owner serve is provably dead and the pid identity checks out; otherwise leave the
+    // browser untouched (shared/foreign/unknown => noop). The adopted stop re-verifies identity right
+    // before killing and reaps the whole group (B2/B3/B4).
+    const adopted = withOwnerLock(profileDir, () => {
+      const owner = readChromeOwner(profileDir);
+      const plan = planReuseOwnership(owner);
+      if (plan.mode !== "adopt") return { plan, owner };
+      // A-3: the AUTHORITATIVE process group is the live root's actual pgrp, not whatever the owner file
+      // claims. Prefer the live pgrp so a stale/wrong owner.pgid can never point group signals elsewhere.
+      const pgid = procStat(owner.chromePid)?.pgrp ?? (Number.isSafeInteger(owner.pgid) && owner.pgid > 1 ? owner.pgid : null);
+      const startTicks = Number.isSafeInteger(owner.startTicks) ? owner.startTicks : processStartTicks(owner.chromePid);
+      // R2 (whole-project review round-2): REGISTER BEFORE claiming kill-authorized ownership. The supervisor's
+      // owner-fallback pins (and reaps on exit) any owner record naming THIS serve — so if we wrote our owner
+      // record first and registration then failed, the supervisor would reap the very browser we meant to
+      // preserve. By registering first and only writing our owner record on success, a registration failure
+      // leaves the orphan's ORIGINAL owner untouched: the supervisor's owner-fallback won't pin it (it names a
+      // different, dead serve), no reg line exists, and the next serve can re-adopt+re-register. This makes the
+      // "browser preserved on registration failure" policy hold end-to-end (producer + supervisor), not just in
+      // the producer function.
+      if (!registerChromeInstance({ pid: owner.chromePid, pgid, startTicks })) {
+        return { plan, owner, registerFailed: true };
+      }
+      const rec = writeChromeOwner(profileDir, { servePid: process.pid, chromePid: owner.chromePid, pgid, startTicks, startedAt: owner.startedAt, adoptedFrom: owner.servePid });
+      return { plan, owner, pgid, startTicks, generation: rec?.generation };
+    });
+    if (adopted?.registerFailed) {
+      throw new Error("failed to register adopted chrome with the supervisor; aborted adoption BEFORE claiming ownership (original owner left intact; browser preserved for re-adoption)");
+    }
+    if (adopted && adopted.plan?.mode === "adopt" && adopted.generation) {
+      const { owner, pgid, startTicks, generation } = adopted;
+      log(`[chrome] adopting orphaned CDP at ${baseUrl} (owner serve pid=${owner.servePid} dead; chrome pid=${owner.chromePid}, pgid=${pgid}); registered + took termination ownership`);
+      // Re-verify ownership right before we terminate: our generation still stands, the pid was not
+      // reused, and the live CDP endpoint is actually our owned browser process (B3).
+      const verifyIdentity = async () => {
+        const cur = readChromeOwner(profileDir);
+        if (!cur || cur.__corrupt || cur.generation !== generation) throw new Error("adopt aborted: owner record changed since adoption");
+        if (!isProcessAlive(cur.chromePid)) return; // already gone; the tree stop will just finish
+        if (Number.isSafeInteger(cur.startTicks) && processStartTicks(cur.chromePid) !== cur.startTicks) throw new Error("adopt aborted: chrome pid was reused (start ticks differ)");
+      };
+      const stop = createChromeTreeStop({ browserPid: owner.chromePid, pgid, startTicks, profileDir, generation, timeoutMs: shutdownTimeoutMs, log,
+        verifyIdentity,
+        // A-2: verify identity and send Browser.close on the SAME CDP connection; on lookup failure or a
+        // pid mismatch, do NOT close (the OS tree-kill handles the owned range independently).
+        requestClose: ({ signal, timeoutMs }) => verifiedCloseViaCdp({ baseUrl, expectedPid: owner.chromePid, pgid, signal, timeoutMs: Math.min(timeoutMs ?? shutdownTimeoutMs, 2000) }) });
+      const detach = async () => { /* keep the adopted browser alive; leave the owner file for the next serve */ };
+      return { baseUrl, child: null, adopted: true, pid: owner.chromePid, stop, detach };
+    }
+    const plan = adopted?.plan ?? { mode: "unknown", reason: "owner lock unavailable" };
+    const owner = adopted?.owner;
+    log(`[chrome] reusing CDP at ${baseUrl} (${plan.mode}: ${plan.reason})`);
+    return { baseUrl, child: null, pid: plan.mode === "shared" && owner ? owner.chromePid : null, stop: async () => {}, detach: async () => {} };
   }
   mkdirSync(profileDir, { recursive: true });
   const bin = chromeBinary ?? findChromeBinary();
@@ -72,11 +150,38 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
   const child = spawn(bin, args, {
     env: { ...process.env, DISPLAY: display, ...(asideHome ? { ASIDE_HOME: path.resolve(asideHome) } : {}) },
     stdio: ["ignore", "ignore", "pipe"],
-    detached: false,
+    // DEF-L19-CHROME-ORPHAN-001: lead a process group so the whole renderer/gpu tree is reapable with
+    // one group signal, and so a SIGKILL-orphaned tree can be adopted+reaped by the next serve.
+    detached: true,
   });
   const observed = observeChild(child);
-  const stop = createOwnedChromeStop({ child, observed, profileDir, timeoutMs: shutdownTimeoutMs, log,
-    requestClose: ({ signal }) => closeOwnedCdpBrowser({ child, baseUrl, signal, timeoutMs: Math.min(shutdownTimeoutMs, 2000) }),
+  const startTicks = processStartTicks(child.pid);
+  // PUSH registration for an external supervisor (closes the owner-file poll-gap: an append-only log the
+  // supervisor tails sees EVERY owned chrome the instant it exists, even if the owner file is later
+  // replaced/deleted). Written synchronously right after spawn, before any await — the residual spawn->append
+  // microgap is far tighter than owner-file polling. The SAME helper runs on the adopt path (C-2), so the
+  // supervisor discovers cross-serve-adopted chrome too.
+  // R2: under supervision, registration is REQUIRED. If it fails, reap the just-spawned tree and abort rather
+  // than returning an untracked browser the supervisor can never reap.
+  if (!registerChromeInstance({ pid: child.pid, pgid: child.pid, startTicks })) {
+    killSpawnedTree(child);
+    throw new Error("failed to register spawned chrome with the supervisor; aborted launch to avoid an untracked browser");
+  }
+  // Record ownership immediately after spawn — before CDP is up — so a crash during startup still leaves
+  // an adoptable/reap-able record (closes the spawn->ready->write gap, B5). child.pid is the pgid
+  // (spawned detached). The generation scopes deletion so a stale stop cannot delete a newer owner (B1/B5).
+  const ownerRec = withOwnerLock(profileDir, () => writeChromeOwner(profileDir, { servePid: process.pid, chromePid: child.pid, pgid: child.pid, startTicks }));
+  // A-5: a failed owner publish must NOT return a successful launch with no ownership tracking. Reap the
+  // just-spawned child and fail, rather than leaking an untracked browser.
+  if (!ownerRec?.generation) { try { child.kill("SIGKILL"); } catch {} throw new Error("failed to publish chrome ownership record; aborted launch to avoid an untracked browser"); }
+  const generation = ownerRec.generation;
+  // Unified hardened termination: verified graceful Browser.close (ownsProcess on the same connection), then
+  // group SIGTERM->SIGKILL bound to the owned group, reaping the WHOLE tree (not just the root) and clearing
+  // the owner only on confirmed exit AND generation match. On timeout it throws with the record preserved.
+  const verifyIdentity = () => { if (Number.isSafeInteger(startTicks) && processStartTicks(child.pid) !== startTicks) throw new Error("owned stop aborted: chrome pid was reused (start ticks differ)"); };
+  const stop = createChromeTreeStop({ browserPid: child.pid, pgid: child.pid, startTicks, profileDir, generation, timeoutMs: shutdownTimeoutMs, log,
+    verifyIdentity,
+    requestClose: ({ signal, timeoutMs }) => closeOwnedCdpBrowser({ child, baseUrl, signal, timeoutMs: Math.min(timeoutMs ?? shutdownTimeoutMs, 2000) }),
   });
   let stderrTail = "";
   const chromeLog = process.env.BELMONT_BROWSE_CHROME_LOG;
@@ -92,6 +197,7 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
       if (await isCdpUp(baseUrl)) {
         if (observed.exited) throw new Error(`Chrome exited while opening its CDP endpoint: ${stderrTail}`);
         log(`[chrome] started ${path.basename(bin)} pid=${child.pid} display=${display} cdp=${baseUrl}`);
+        const pid = child.pid;
         const detach = async () => {
           // Explicit --keep-chrome releases only parent event-loop ownership. CDP,
           // process and profile stay intact; the CLI can finish without killing Chrome.
@@ -99,7 +205,7 @@ export async function ensureChrome({ port = 9333, display = ":99", profileDir, w
           child.unref();
           child.stderr?.unref?.();
         };
-        return { baseUrl, child, stop, detach };
+        return { baseUrl, child, pid, stop, detach };
       }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
@@ -161,6 +267,38 @@ function ownsProcess(childPid, browserPid) {
     } catch { return false; }
   }
   return false;
+}
+
+/** The browser process pid behind a CDP endpoint (via SystemInfo.getProcessInfo), or null. Used by the
+ * adopt path to bind the CDP endpoint to the owner record before terminating (B3). */
+export async function cdpBrowserPid(baseUrl, timeoutMs = 2000) {
+  const cdp = new MiniCdp(baseUrl, { connectTimeoutMs: timeoutMs, closeTimeoutMs: 500 });
+  try {
+    const { processInfo } = await cdp.send("SystemInfo.getProcessInfo", {}, undefined, { timeoutMs });
+    const pid = processInfo?.find((entry) => entry.type === "browser")?.id;
+    return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
+  } catch { return null; }
+  finally { await cdp.close(); }
+}
+
+/** Graceful Browser.close for an ADOPTED endpoint, with identity bound to the close (A-2): verify the CDP
+ * endpoint's browser pid is our owned pid (or in its group) and send Browser.close ON THE SAME connection.
+ * On a lookup failure or a pid mismatch, THROW without closing — the OS tree-kill reaps the owned range
+ * independently, and we never Browser.close a browser that swapped onto the port. */
+async function verifiedCloseViaCdp({ baseUrl, expectedPid, pgid, signal, timeoutMs }) {
+  const cdp = new MiniCdp(baseUrl, { connectTimeoutMs: timeoutMs, closeTimeoutMs: 500 });
+  const abort = () => { void cdp.close(); };
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    const { processInfo } = await cdp.send("SystemInfo.getProcessInfo", {}, undefined, { timeoutMs });
+    const browserPid = processInfo?.find((entry) => entry.type === "browser")?.id;
+    if (!Number.isSafeInteger(browserPid)) throw new Error("CDP identity lookup failed; refusing Browser.close");
+    if (browserPid !== expectedPid && !processGroupMembers(pgid).members.includes(browserPid)) {
+      throw new Error(`CDP browser pid ${browserPid} is not the owned pid ${expectedPid}; refusing Browser.close`);
+    }
+    await cdp.send("Browser.close", {}, undefined, { timeoutMs }); // same connection whose identity we just verified
+  } catch (error) { if (!signal.aborted && !/socket closed|CDP.*closed/i.test(error.message)) throw error; }
+  finally { signal.removeEventListener("abort", abort); await cdp.close(); }
 }
 
 async function closeOwnedCdpBrowser({ child, baseUrl, signal, timeoutMs }) {

@@ -1,0 +1,8 @@
+src -> /mnt/data/overlay-check/source/host/extensions/memory/kernel
+integration/source/host/extensions/memory/memory-learning-runtime.ts -> /mnt/data/overlay-check/source/host/extensions/memory/memory-learning-runtime.ts
+Dry run only. Existing MemoryService/runner/Aside remain unchanged.
+src -> /mnt/data/overlay-check/source/host/extensions/memory/kernel
+integration/source/host/extensions/memory/memory-learning-runtime.ts -> /mnt/data/overlay-check/source/host/extensions/memory/memory-learning-runtime.ts
+Additive files installed. Wire hooks at authenticated turn, closed episode, pre-tool action, and measured outcome boundaries; run Belmont full checks.
+
+Layout fixture typecheck passed. This is NOT full Belmont compilation.

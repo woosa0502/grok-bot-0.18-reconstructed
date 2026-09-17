@@ -60,6 +60,8 @@ export interface SendPromptOptions {
   readonly directAddressedAcceptance?: boolean;
   readonly composedAtMs?: number;
   readonly enterEpochMs?: number;
+  /** Internal synthetic sends are transcript events, not user assertions. */
+  readonly memoryLearningSource?: "user" | "system";
 }
 
 export interface EchoEntry {
@@ -287,6 +289,7 @@ export class SendPipeline {
       };
       const echoes: EchoEntry[] = [];
       let userMessageId: string | undefined;
+      let memoryTurnId: string | undefined;
       const sizes = await statAttachedFileSizes(attachmentPaths);
       try {
         for (const [index, path] of attachmentPaths.entries()) {
@@ -340,11 +343,17 @@ export class SendPipeline {
                   ...(options.composedAtMs == null
                     ? {}
                     : { composedAtMs: options.composedAtMs }),
+                  ...(options.memoryLearningSource == null
+                    ? {}
+                    : { memoryLearningSource: options.memoryLearningSource }),
                 },
               ),
             { onPersistOutcome: observePersistOutcome },
           );
           userMessageId = echo.entry.id;
+          memoryTurnId = typeof echo.entry.memoryTurnId === "string"
+            ? echo.entry.memoryTurnId
+            : undefined;
           echoes.push(echo);
         }
       } catch (error) {
@@ -369,6 +378,29 @@ export class SendPipeline {
           echoEntryId: userMessageId ?? echoes[0]?.entry.id ?? null,
         });
       const acceptedAtMs = Date.now();
+      // Learn only from the accepted local human entry, before workflow and
+      // group prompts expand it. The memory authority resolves the principal.
+      if (
+        acceptedDurably
+        && options.memoryLearningSource !== "system"
+        && userMessageId != null
+        && memoryTurnId != null
+        && !this.tm.groupChat.isRemoteRoomSession(session)
+        && !this.tm.groupChat.isGroupSession(session)
+      ) {
+        try {
+          this.tm.memory.onAuthenticatedUserTurn?.({
+            agentId: session.id,
+            conversationId: session.id,
+            requestId: memoryTurnId,
+            memoryTurnId,
+            entryId: userMessageId,
+            user: trimmedPrompt,
+            occurredAt: echoes.find(({ entry }) => entry.id === userMessageId)?.entry.timestampMs ?? acceptedAtMs,
+            acceptedDurably,
+          });
+        } catch {}
+      }
       const owesAck =
         !this.tm.groupChat.isRemoteRoomSession(session) &&
         !this.tm.groupChat.isGroupSession(session);
@@ -459,6 +491,9 @@ export class SendPipeline {
         tm: this.tm,
         session,
         trimmedPrompt,
+        ...(options.memoryLearningSource == null
+          ? {}
+          : { memoryLearningSource: options.memoryLearningSource }),
         ...(options.richText == null ? {} : { richText: options.richText }),
         ...(options.composedAtMs == null
           ? {}

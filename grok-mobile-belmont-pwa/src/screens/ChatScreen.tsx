@@ -1,3 +1,5 @@
+import { useEffect as useBrowserEffect, useState as useBrowserState } from 'react';
+import { BrowserBotChat } from '../components/BrowserBotChat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, fileToAttachment } from "../api";
 import { useSendIntent } from "../use-send-intent";
@@ -68,7 +70,7 @@ export function transcriptRows(entries: MobileMessage[]): TranscriptRow[] {
   return rows;
 }
 
-export function ChatScreen({ bot, eventRevision, members = [], onBack, onComputer, onBotChanged, onOpen }: {
+function OriginalChatScreen({ bot, eventRevision, members = [], onBack, onComputer, onBotChanged, onOpen }: {
   bot: Bot;
   eventRevision: number;
   /** Group members, so @mentions can pick a specific Bot; empty for a one-to-one chat. */
@@ -356,4 +358,13 @@ export function ChatScreen({ bot, eventRevision, members = [], onBack, onCompute
       </footer>
     </main>
   );
+}
+
+export function ChatScreen(props: Parameters<typeof OriginalChatScreen>[0]) {
+  const nav = props as unknown as { bot?: Bot; onBack?: () => void; onComputer?: () => void };
+  const [enabled,setEnabled] = useBrowserState<boolean | null>(null);
+  useBrowserEffect(() => { let alive=true; if (!nav.bot?.id) { setEnabled(false); return; } setEnabled(null); fetch('/api/bots/' + encodeURIComponent(nav.bot.id) + '/browser/runtime', {credentials:'same-origin'}).then(r=>r.ok?r.json():{enabled:false}).then(v=>{if(alive)setEnabled(v.enabled===true);}).catch(()=>{if(alive)setEnabled(false);}); return()=>{alive=false;}; }, [nav.bot?.id]);
+  if (enabled === null && nav.bot?.id) return <p role="status">브라우저 종류 확인 중…</p>;
+  if (enabled && nav.bot?.id) return <BrowserBotChat bot={nav.bot} onBack={nav.onBack} onComputer={nav.onComputer} />;
+  return <OriginalChatScreen {...props} />;
 }

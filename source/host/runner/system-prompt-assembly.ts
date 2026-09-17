@@ -8,7 +8,7 @@ import {
 } from "./sand-agent-profile-prompt.js";
 import { SAND_EXTERNAL_SHELL_TOOL_NAME } from "../sand-activity.js";
 import { toModelVisiblePath } from "../host-paths.js";
-import { renderKnowledgeStorePrompt } from "./knowledge-store.js";
+import { renderCanonicalKnowledgePrompt, renderKnowledgeStorePrompt } from "./knowledge-store.js";
 import {
   isMemoryFreezeEnabled,
   projectMemoryHasFacts,
@@ -37,6 +37,7 @@ import { renderChannelsSystemPrompt, type ChannelConnectionSummary } from "../..
 import { renderAgentDirectorySystemPrompt, type AgentAddress, type AgentGroupAddress } from "../agents/agent-messaging.js";
 import { spotlightPromptSection } from "../../shared/sand-spotlight.js";
 import type { ConnectorManifest } from "../../shared/channels.js";
+import type { MemoryContextRequest, MemoryRuntimeStore } from "./memory-runtime-hooks.js";
 
 export function modelVisibleLocation(location: string | null | undefined): string | null {
   return location == null ? null : toModelVisiblePath(location);
@@ -54,7 +55,7 @@ export interface MemorySnapshotStore {
   getMemoryPromptSnapshot(): FrozenMemorySnapshot | undefined;
   setMemoryPromptSnapshot(snapshot: FrozenMemorySnapshot): void;
 }
-export interface MemoryPromptStore {
+export interface MemoryPromptStore extends MemoryRuntimeStore {
   recall(limit: number): MemoryRecall;
   getLocation(): string | null;
 }
@@ -169,6 +170,9 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
   function getMemorySection(): string | null {
     const store = deps.memoryStore();
     if (store == null) return null;
+    // Canonical facts enter only through the request-specific evidence packet.
+    // Legacy recall and its persisted snapshots remain the shadow-read view.
+    if (store.isCanonicalMemory?.() === true) return renderCanonicalKnowledgePrompt() || null;
     const renderLive = () => {
       const recall = store.recall(30);
       const parts: string[] = [];
@@ -268,7 +272,7 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     return rendered.length > 0 ? rendered : null;
   }
 
-  function getSystemPrompt(snapshot?: AgentProfilePromptSnapshot): string {
+  function getSystemPrompt(snapshot?: AgentProfilePromptSnapshot, memoryContext?: MemoryContextRequest): string {
     const cloudDisabled = deps.isCloudAgentsDisabledByTeam?.() === true;
     const base = deps.isSystemPromptOverridden
       ? deps.basePrompt
@@ -289,7 +293,11 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     if (deps.isSystemPromptOverridden && !deps.isSubagentRunner && cloudDisabled) add(SAND_CLOUD_AGENTS_DISABLED_PROMPT_SECTION);
     if (!deps.isSubagentRunner && deps.mcpManagement() != null && deps.isMcpMultiAccountEnabled?.() === true) add(SAND_MCP_MULTI_ACCOUNT_PROMPT_SECTION);
     add(getTimeZoneSection());
-    add(getMemorySection()); add(getAutomationsSection()); add(getWorkflowsSection()); add(getChannelsSection()); add(getAgentDirectorySection());
+    add(getMemorySection());
+    // Per-task evidence packets stay outside the frozen profile view and are
+    // retrieved/revalidated by their captured conversation/request identity.
+    add(deps.memoryStore()?.getMemoryContext?.(memoryContext));
+    add(getAutomationsSection()); add(getWorkflowsSection()); add(getChannelsSection()); add(getAgentDirectorySection());
     if (!deps.isSubagentRunner) add(deps.managedTeamSection?.() ?? null);
     add(deps.mcpCustomInstructionsSection()); add(deps.mcpDiscoveryStatusSection()); add(deps.remoteBoxSection()); add(deps.computerSection());
     return sections.join("\n\n");

@@ -1,0 +1,24 @@
+{
+  "name": "belmont-memory-kernel-reference",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "bench": "npm run build && npm run bench:prebuilt",
+    "check": "npm run test && npm run bench",
+    "test:prebuilt": "node --test tests/*.test.mjs",
+    "bench:prebuilt": "node bench/ablation.mjs && node bench/closed-loop.mjs",
+    "demo": "node examples/demo.mjs",
+    "bench:legacy": "node bench/retrieval.mjs",
+    "demo:loop": "node examples/closed-loop.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "25.1.0",
+    "typescript": "5.8.3"
+  }
+}

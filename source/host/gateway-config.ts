@@ -46,9 +46,17 @@ export function resolveGatewayServerConfig(
   const port = readPort(env.SAND_HOST_PORT);
   const tls = resolveTls(env);
   const pinnedToken = env.SAND_GATEWAY_TOKEN?.trim();
-  const requireAuth = !isLoopbackHost(host) || isTruthyEnv(env.SAND_GATEWAY_REQUIRE_AUTH) || (pinnedToken != null && pinnedToken.length > 0);
+  const requireAuth = isGatewayAuthenticationRequired(env);
   const authToken = requireAuth ? (pinnedToken != null && pinnedToken.length > 0 ? pinnedToken : generateToken()) : undefined;
   return { host, ...(port === undefined ? {} : { port }), ...(authToken === undefined ? {} : { authToken }), ...(tls === undefined ? {} : { tls }) };
+}
+
+/** The same authorization requirement used by the actual gateway listener. */
+export function isGatewayAuthenticationRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  const host = env.SAND_GATEWAY_BIND_HOST?.trim() || "127.0.0.1";
+  return !isLoopbackHost(host)
+    || isTruthyEnv(env.SAND_GATEWAY_REQUIRE_AUTH)
+    || (env.SAND_GATEWAY_TOKEN?.trim().length ?? 0) > 0;
 }
 
 export function gatewayScheme(config: GatewayServerConfig): "http" | "https" { return config.tls == null ? "http" : "https"; }

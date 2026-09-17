@@ -107,6 +107,13 @@ export class AgentLifecycle {
       origin,
       options.purpose,
     );
+    try {
+      this.tm.memory.onConversationLifecycle?.({
+        agentId: session.id,
+        conversationId: session.id,
+        reason: "open",
+      });
+    } catch {}
     options.configureAgentDir?.(this.tm.sessionStore.getAgentDir(session.id));
     if (options.isIntroductionSuppressed !== true)
       session.db.setIntroductionPending(true);
@@ -323,6 +330,13 @@ export class AgentLifecycle {
     let session: any;
     try {
       session = await this.tm.sessionStore.openSession(newId);
+      try {
+        this.tm.memory.onConversationLifecycle?.({
+          agentId: session.id,
+          conversationId: session.id,
+          reason: "open",
+        });
+      } catch {}
       const entries = await this.tm.sessionStore.getTranscriptEntries(session);
       const agent = await this.tm.sessionStore.summarizeOpenSession(session);
       if (agent == null)
@@ -378,6 +392,15 @@ export class AgentLifecycle {
     const active = await this.tm.sessions.tryEnsureSession();
     const deletingActive = active != null && ids.has(active.id);
     for (const id of ids) await this.interruptAgentForDeletion(id);
+    for (const id of ids) {
+      try {
+        this.tm.memory.onConversationLifecycle?.({
+          agentId: id,
+          conversationId: id,
+          reason: "clear",
+        });
+      } catch {}
+    }
     for (const id of ids) this.tm.trayErrors.clearForAgent(id);
     for (const id of ids) {
       if (id === active?.id) continue;

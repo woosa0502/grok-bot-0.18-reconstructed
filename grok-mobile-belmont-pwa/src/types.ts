@@ -167,6 +167,33 @@ export interface CodexUsage {
   fetchedAt: number;
 }
 
+export interface UsageStat {
+  label: string;
+  calls: number;
+  uncachedInput: number;
+  cacheRead: number;
+  cacheWrite: number;
+  output: number;
+  reasoning: number;
+  reasoningKnown: boolean;
+  cost: number;
+  costKnown: boolean;
+  costUnknownCalls: number;
+  ok: number;
+  error: number;
+  aborted: number;
+}
+
+export interface UsageLedger {
+  since: string;
+  firstTs: number | null;
+  lastTs: number | null;
+  total: UsageStat;
+  byBot: UsageStat[];
+  byModel: UsageStat[];
+  byJob: UsageStat[];
+}
+
 export interface ComputerState {
   state: string;
   ready: boolean;

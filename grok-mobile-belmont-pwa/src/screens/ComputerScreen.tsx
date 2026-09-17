@@ -1,3 +1,5 @@
+import { useEffect as useBrowserEffect, useState as useBrowserState } from 'react';
+import { BrowserBotScreen } from '../components/BrowserBotChat';
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { api } from "../api";
@@ -130,7 +132,7 @@ function TrackpadLayer({ frame, sensitivity = 1.4 }: { frame: React.RefObject<HT
 
 const LINK_LABEL: Record<LinkState, string> = { loading: "불러오는 중", connecting: "연결 중", connected: "연결됨", disconnected: "연결 끊김" };
 
-export function ComputerScreen({ bot, onBack, onOpen, windowIndex }: { bot: Bot; onBack: () => void; onOpen: (name: SurfaceId, route?: Omit<AppRoute, "name">) => void; /** Desktop window picked in the 화면 전환 sheet; the default is the bot's main window. */ windowIndex?: number }) {
+function OriginalComputerScreen({ bot, onBack, onOpen, windowIndex }: { bot: Bot; onBack: () => void; onOpen: (name: SurfaceId, route?: Omit<AppRoute, "name">) => void; /** Desktop window picked in the 화면 전환 sheet; the default is the bot's main window. */ windowIndex?: number }) {
   const [computer, setComputer] = useState<ComputerState | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -304,4 +306,13 @@ export function ComputerScreen({ bot, onBack, onOpen, windowIndex }: { bot: Bot;
       </footer>
     </main>
   );
+}
+
+export function ComputerScreen(props: Parameters<typeof OriginalComputerScreen>[0]) {
+  const nav = props as unknown as { bot?: { id: string }; onBack?: () => void; onComputer?: () => void };
+  const [enabled,setEnabled] = useBrowserState<boolean | null>(null);
+  useBrowserEffect(() => { let alive=true; if (!nav.bot?.id) { setEnabled(false); return; } setEnabled(null); fetch('/api/bots/' + encodeURIComponent(nav.bot.id) + '/browser/runtime', {credentials:'same-origin'}).then(r=>r.ok?r.json():{enabled:false}).then(v=>{if(alive)setEnabled(v.enabled===true);}).catch(()=>{if(alive)setEnabled(false);}); return()=>{alive=false;}; }, [nav.bot?.id]);
+  if (enabled === null && nav.bot?.id) return <p role="status">브라우저 종류 확인 중…</p>;
+  if (enabled && nav.bot?.id) return <BrowserBotScreen botId={nav.bot.id} onBack={nav.onBack} />;
+  return <OriginalComputerScreen {...props} />;
 }

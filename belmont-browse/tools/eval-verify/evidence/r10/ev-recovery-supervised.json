@@ -1,0 +1,89 @@
+{
+  "case": "recovery-supervised-crash",
+  "at": "2026-09-13T11:36:30.566Z",
+  "node": "/home/hoon/.nvm/versions/node/v26.8.1/bin/node",
+  "stages": [
+    {
+      "stage": "control-started",
+      "t": "2026-09-13T11:36:30.723Z",
+      "controlPid": 2299160,
+      "controlTicks": 29155455,
+      "alive": true
+    },
+    {
+      "stage": "serve-ready",
+      "t": "2026-09-13T11:36:35.340Z",
+      "ready": true,
+      "servePid": 2299187,
+      "serveTicks": 29155472,
+      "serveJsonPidNow": 2299187,
+      "health": {
+        "status": 200,
+        "ready": true,
+        "alive": null,
+        "chromePid": 2299233
+      },
+      "owner": {
+        "servePid": 2299187,
+        "chromePid": 2299233,
+        "startTicks": 29155629,
+        "generation": "0fb5342a-9b46-4152-b0bd-915e1d0bf523"
+      },
+      "chromeAlive": true,
+      "chromeTicksLive": 29155629
+    },
+    {
+      "stage": "pre-crash",
+      "t": "2026-09-13T11:36:35.341Z",
+      "servePid": 2299187,
+      "serveTicks": 29155472,
+      "chromePid": 2299233,
+      "chromeTicks": 29155629,
+      "chromeAlive": true,
+      "chromeTicksMatch": true
+    },
+    {
+      "stage": "serve-crash-signal",
+      "t": "2026-09-13T11:36:35.367Z",
+      "code": 0,
+      "signalled": true
+    },
+    {
+      "stage": "post-crash",
+      "t": "2026-09-13T11:36:36.372Z",
+      "supExit": {
+        "code": 0,
+        "sig": null
+      },
+      "supWaitedMs": 500,
+      "chromeAlive": false,
+      "chromeTicksNow": null,
+      "chromeReaped": true,
+      "controlAlive": true,
+      "controlUntouched": true,
+      "supMentionsReap": true
+    },
+    {
+      "stage": "serve-exit-status",
+      "t": "2026-09-13T11:36:36.372Z",
+      "serveExit": {
+        "signalled": true,
+        "termsig": 9,
+        "runId": "28d1f446-5cd9-49d7-a7cd-eca75c864349",
+        "pid": 2299187,
+        "ts": 1789299395.7529075
+      },
+      "serveCrashBySigkill": true
+    }
+  ],
+  "verdict": {
+    "identityValidForThisRun": true,
+    "serveCrashSignalled": true,
+    "serveCrashBySigkill": true,
+    "chromeReaped": true,
+    "controlUntouched": true,
+    "supExitClean": true
+  },
+  "result": "PASS",
+  "supervisorLog": "[supervisor] pinned chrome pid=2299233 startTicks=29155629 via pidfd (registration)\n11:36:33 [chrome] started chrome pid=2299233 display=:0 cdp=http://127.0.0.1:9333\n11:36:33 [creds] in sync\n11:36:33 [hooks] memory_search={\"mode\":\"native-pending\",\"accountId\":0,\"semantic\":{\"state\":\"configured\",\"engine\":\"aside-memory-manager\",\"model\":\"original-aside-moss-model\",\"lastSuccessfulSearchAt\":null},\"lexical\":{\"engine\":\"sqlite-fts5\",\"role\":\"degraded-fallback\",\"cjk\":true},\"scope\":{\"native\":\"Original regular Markdown traversal under account memory; symlinks are not indexed.\",\"lexical\":\"Account memory plus explicitly allowed roots reached through its links.\",\"allowedRoots\":[\"/home/hoon/_roots/labs/work/Belmont/.cache/eval-verify-909/knowledge\"]},\"nativeRanking\":\"Original searchMany results, unchanged\",\"nativeIdleRelease\":\"Original MemoryManager idle behavior is retained\"} sandbox=bubblewrap\n11:36:33 [lifecycle] reconciled 1 persisted executions; 0 handed to the original suspension recovery\n11:36:33 [daemon-server] Aside daemon API listening at http://127.0.0.1:21420\n11:36:34 [engine] real extension registered: connection 0cd78cfd-3566-4523-ab1f-60302e7d457d, profile belmont-ui, native profile fbf033f4-840e-4826-8120-7d67fa5e3586\n11:36:34 [engine] Aside 1.26.909.1820 ready; account 0; window 965834898; profile belmont-ui (real extension)\n11:36:34 [serve] listening on http://127.0.0.1:9360 (token in /home/hoon/_roots/labs/work/Belmont/belmont-browse/.state/serve.json)\n[prompt][timing] buildSystemPrompt { skillsList: \u001b[33m54\u001b[39m, accountFiles: \u001b[33m1\u001b[39m, total: \u001b[33m55\u001b[39m }\n[agent-session][timing] resolveExecution { resolveSessionModelMs: \u001b[33m13\u001b[39m, resolveMs: \u001b[33m4\u001b[39m }\n[agent-session][timing] create {\n  systemPrompt: \u001b[33m57\u001b[39m,\n  listMessages: \u001b[33m1\u001b[39m,\n  contextMessages: \u001b[33m0\u001b[39m,\n  resolveExecution: \u001b[33m20\u001b[39m,\n  agentInit: \u001b[33m4\u001b[39m,\n  total: \u001b[33m82\u001b[39m\n}\n11:36:35 [memory] semantic search ready\n[supervisor] serve exited; reaping tracked owned chrome instances\n[supervisor] reaping owned chrome instance pid=2299233 via pidfd\n[supervisor] chrome exited on SIGTERM\n"
+}

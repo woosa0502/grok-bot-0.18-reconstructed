@@ -4,6 +4,8 @@ import { HostExtensions } from "../extension-ids.generated.js";
 import { createHostAuthService } from "./auth-service.js";
 import { CREDENTIAL_RETRY_BASE_DELAY_MS, CREDENTIAL_RETRY_MAX_DELAY_MS } from "./credential-renewer.js";
 import { createSandUserFullNameResolver } from "./user-full-name-service.js";
+import { parseJwtPayload } from "../../../shared/node/cursor-token.js";
+import { resolveLocalMemoryPrincipal } from "./local-memory-principal.js";
 
 interface AuthHost { log(message: string): void; }
 export const authExtension = defineHostExtension({
@@ -23,6 +25,17 @@ export const authExtension = defineHostExtension({
     return {
       getAccessToken: (options: { readonly backendUrl?: string }) => service.getAccessToken(options),
       peekAccessToken: () => service.peekAccessToken(),
+      // Identity comes from the host credential owner, never from a caller's
+      // userId or a display name. The local fallback binds the Pi account or an
+      // explicit profile owner only when the gateway requires authentication.
+      getAuthenticatedPrincipalId: (): string | null => {
+        const token = service.peekAccessToken();
+        const payload = token == null ? null : parseJwtPayload(token);
+        const principal = payload?.exp != null && payload.exp * 1_000 <= Date.now()
+          ? null
+          : payload?.sub?.trim() || null;
+        return principal ?? resolveLocalMemoryPrincipal();
+      },
       getLastRenewalEvent: () => service.getLastRenewalEvent(),
       getMachineId: () => service.getMachineId(),
       subscribeToRenewal: (listener: Parameters<typeof service.subscribeToRenewal>[0]) => service.subscribeToRenewal(listener),

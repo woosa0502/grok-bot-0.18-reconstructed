@@ -1,3 +1,5 @@
+import { installBrowserBot } from './install-browser-bot.mjs';
+import { acquireBrowserServiceLease } from './browser-service-lease.mjs';
 // belmont-browse: local HTTP service exposing browse sessions to Belmont's browse-runtime extension (our code).
 import http from "node:http";
 import path from "node:path";
@@ -7,6 +9,7 @@ import { parseArgs } from "node:util";
 import { createBrowseEngine } from "./core.mjs";
 import { resolveModelSelection } from "./session.mjs";
 import { modelOverrides } from "./model-options.mjs";
+import { sitesOverlayHealth, validateSitesOverlayRequest } from "./sites-overlay-capability.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const { values: opt } = parseArgs({
@@ -41,6 +44,7 @@ process.on("SIGINT", requestShutdown);
 process.on("SIGTERM", requestShutdown);
 const startupModel = modelOverrides({ model: opt.model, provider: opt.provider, thinking: opt.thinking, fastMode: opt["fast-mode"] });
 const stateDir = path.resolve(opt["state-dir"]);
+const releaseBrowserServiceLease = acquireBrowserServiceLease(stateDir);
 const engine = await createBrowseEngine({ engine: opt.engine, stateDir, transport: opt.transport, cdpPort: Number(opt["cdp-port"]), relayPort: Number(opt["relay-port"]), model: startupModel, onShutdown: requestShutdown, log });
 const model = engine.model;
 const token = randomBytes(24).toString("hex");
@@ -60,7 +64,10 @@ const server = http.createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${token}`) return json(res, 401, { error: "unauthorized" });
     const url = new URL(req.url, "http://127.0.0.1");
     const parts = url.pathname.split("/").filter(Boolean);
-    if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, ...serviceIdentity, engine: engine.version, model: engine.A.settings(engine.account.id).get("defaultModel") ?? model, ...engine.stats() });
+    // The operator flag is only an off switch. A host-owned, engine-bound worker proof is required;
+    // without engine.evaluationCapabilities() this stays disabled, including on pre-patched 909 bundles.
+    if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, ...serviceIdentity, engine: engine.version, model: engine.A.settings(engine.account.id).get("defaultModel") ?? model, ...engine.stats(), ...sitesOverlayHealth(engine, serviceIdentity, process.env.BELMONT_BROWSE_SITES_OVERLAY === "1") });
+    if (req.method === "POST" && url.pathname === "/memory/context") return json(res, 200, engine.memoryTaskContext((await readBody(req)).task));
     // Aside-side view: what the fork's own chat UI shows (sessions of the daemon account), for the bot mirror.
     if (parts[0] === "aside") {
       if (req.method === "GET" && parts[1] === "sessions" && parts.length === 2) return json(res, 200, engine.listAsideSessions(Number(url.searchParams.get("limit") ?? 20)));
@@ -73,12 +80,15 @@ const server = http.createServer(async (req, res) => {
     if (parts[0] !== "sessions") return json(res, 404, { error: "not found" });
     if (req.method === "POST" && parts.length === 1) {
       const body = await readBody(req);
+      validateSitesOverlayRequest(body.sitesDir, stateDir, sitesOverlayHealth(engine, serviceIdentity, process.env.BELMONT_BROWSE_SITES_OVERLAY === "1"));
       const requestedModel = modelOverrides({ model: body.model, provider: body.provider, thinking: body.thinking, fastMode: body.fastMode });
       const h = engine.startSession({
         task: body.task,
         model: requestedModel === undefined ? undefined : resolveModelSelection(engine.A.settings(engine.account.id).get("defaultModel") ?? model, requestedModel),
         mode: body.mode ?? opt.mode,
         autoApprove: body.autoApprove ?? opt["auto-approve"],
+        memoryContext: body.memoryContext,
+        sitesDir: body.sitesDir,
       });
       log(`[session ${h.id}] start mode=${h.mode} model=${h.model.modelId}/${h.model.thinkingLevel}: ${h.task.slice(0, 100)}`);
       return json(res, 201, h.toJSON());
@@ -93,7 +103,10 @@ const server = http.createServer(async (req, res) => {
       log(`[session ${h.id}] answered`);
       return json(res, 200, h.toJSON());
     }
-    if (req.method === "POST" && parts[2] === "continue") { h.continue((await readBody(req)).text); log(`[session ${h.id}] continue`); return json(res, 200, h.toJSON()); }
+    if (req.method === "POST" && parts[2] === "continue") { const body = await readBody(req); h.continue(body.text, body.memoryContext); log(`[session ${h.id}] continue`); return json(res, 200, h.toJSON()); }
+    // Explicit outcome producers can attach observed grades/candidate material.
+    // Scope, authority, trial arrays and procedure acceptance never enter here.
+    if (req.method === "POST" && parts[2] === "outcome") { const body = await readBody(req); h.reportOutcome(body.eventId, body.outcome); return json(res, 200, h.toJSON()); }
     if (req.method === "POST" && parts[2] === "steer") { await h.steer((await readBody(req)).text); return json(res, 200, h.toJSON()); }
     if (req.method === "POST" && parts[2] === "stop") { await h.stop(); log(`[session ${h.id}] stopped`); return json(res, 200, h.toJSON()); }
     return json(res, 404, { error: "not found" });
@@ -102,12 +115,14 @@ const server = http.createServer(async (req, res) => {
     return json(res, e.statusCode ?? 500, { error: e.message, code: e.code ?? "INTERNAL_ERROR" });
   }
 });
+const dedicatedBrowser = await installBrowserBot({ server, engine, stateDir, token, serviceIdentity, display: process.env.BELMONT_BROWSE_DISPLAY || ':99' });
+
 await new Promise((resolve, reject) => {
   server.once("error", reject);
   server.listen(Number(opt.port), "127.0.0.1", () => {
     try {
       mkdirSync(path.dirname(stateFile), { recursive: true });
-      writeFileSync(stateFile, JSON.stringify({ port: Number(opt.port), token, ...serviceIdentity, engine: engine.version, model, mode: opt.mode, transport: engine.transport, chromePid: engine.chrome.child?.pid ?? null, cdpWsUrl: engine.chrome.wsUrl ?? null }, null, 2), { mode: 0o600 });
+      writeFileSync(stateFile, JSON.stringify({ port: Number(opt.port), token, ...serviceIdentity, engine: engine.version, model, mode: opt.mode, transport: engine.transport, chromePid: engine.chrome.child?.pid ?? engine.chrome.pid ?? null, cdpWsUrl: engine.chrome.wsUrl ?? null }, null, 2), { mode: 0o600 });
       log(`[serve] listening on http://127.0.0.1:${opt.port} (token in ${stateFile})`);
       resolve();
     } catch (error) { reject(error); }
@@ -125,6 +140,7 @@ function shutdown() {
     server.closeIdleConnections?.();
     const drainTimer = setTimeout(() => server.closeAllConnections?.(), 2000);
     drainTimer.unref?.();
+    await dedicatedBrowser.close();
     const results = await Promise.allSettled([serverClosed, engine.stop()]);
     clearTimeout(drainTimer);
     try {

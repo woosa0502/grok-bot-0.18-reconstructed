@@ -1,0 +1,18 @@
+{
+  "case": "reject-control-field",
+  "at": "2026-09-13T06:35:21.815Z",
+  "serve": {
+    "port": 9360,
+    "engine": "1.26.909.1820",
+    "instanceId": "560864d9-b1b5-4d97-92e4-607746ceef65"
+  },
+  "authorityMode": "belmont",
+  "tag": "forbidden-control-field:authorityOverride",
+  "requestStatus": 500,
+  "error": "UNTRUSTED_MEMORY_CONTROL_FIELD",
+  "expectedCode": "UNTRUSTED_MEMORY_CONTROL_FIELD",
+  "sessionCountBefore": 2,
+  "sessionCountAfter": 2,
+  "verdict_pass": true,
+  "note": "belmont authority: the specific validateBelmontMemoryContext guard was exercised and no session was created"
+}

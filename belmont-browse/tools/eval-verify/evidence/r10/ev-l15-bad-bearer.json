@@ -1,0 +1,15 @@
+{
+  "case": "bad-bearer",
+  "at": "2026-09-13T06:36:27.903Z",
+  "gateway": {
+    "port": 42611,
+    "jsonPath": "/home/hoon/_roots/labs/work/Belmont/.cache/belmont-wsl-profile/sand-data/gateway.json",
+    "tokenAdvertised": true
+  },
+  "authMode": "on",
+  "wrongBearerStatus": 401,
+  "rightBearerStatus": 200,
+  "result": "PASS",
+  "verdict_pass": true,
+  "note": "bad Bearer -> 401 AND correct Bearer -> 200 (both required)"
+}

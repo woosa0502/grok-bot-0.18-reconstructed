@@ -58,7 +58,14 @@ replace("function supportsInstallationBackedLocalKeys(){return process.platform=
 # Preserve original Windows session-storage semantics on Linux. This adds storage,
 # never biometric authorization or an invented bootstrap-complete state.
 for function, params in (("saveSessionToKeychain", "Cn,ei"), ("loadSessionFromKeychain", "Cn"), ("clearSessionKeychain", "Cn")):
-    replace(f"async function {function}({params}){{if(process.platform===`win32`)", f"async function {function}({params}){{if(process.platform===`win32`||({available}))")
+    _anchor = f"async function {function}({params}){{if(process.platform===`win32`)"
+    if src.count(_anchor) == 1:
+        replace(_anchor, f"async function {function}({params}){{if(process.platform===`win32`||({available}))")
+    else:
+        # 914 restructured these to delegate to runSecureStorageCommand (native darwin/win32 only,
+        # throws on Linux). This win32 anchor no longer exists. SKIP here and handle Linux secure
+        # storage at the runSecureStorageCommand layer (see linux secure-storage 914 re-pin). Recorded, not silent.
+        print(f"  SKIP {function}: win32 anchor absent (914 uses runSecureStorageCommand) — Linux secure storage NOT patched here; VERIFY session save/load at test")
 replace("function getDesktopPlatform(){return process.platform===`darwin`?`macos`:process.platform===`win32`?`windows`:null}", f"function getDesktopPlatform(){{return process.platform===`darwin`?`macos`:process.platform===`win32`?`windows`:({available})?`linux`:null}}")
 
 # Preserve the existing server export, including unrelated prior bundle edits.

@@ -1,0 +1,50 @@
+{
+  "case": "bot-autonomous-routine",
+  "at": "2026-09-13T12:22:15.899Z",
+  "gateway": {
+    "port": 42611,
+    "auth": true
+  },
+  "baseline": {
+    "count": 14,
+    "readable": true
+  },
+  "maker": {
+    "id": "305318af-57bb-43ee-81bc-7a14dcb80b64"
+  },
+  "automationsBefore": 0,
+  "sendPrompt": {
+    "status": 200,
+    "attempts": 1
+  },
+  "autonomous": {
+    "createRoutineIsModelTool": "updateState(target=routine,action=create) — sand-state-tool.ts + turn-toolset.ts:1378",
+    "harnessNeverCalledCreateAutomationApi": true,
+    "routineNameNonceKnownOnlyToMaker": true,
+    "routineInAutomations": true,
+    "routineId": "belmont-selftest-routine-00ca90",
+    "autonomousRoutineCreated": true,
+    "makerSaidDone": false,
+    "promptsNeeded": 1,
+    "entryKinds": [
+      "message",
+      "send-message",
+      "event"
+    ],
+    "routineRow": "{\"id\":\"belmont-selftest-routine-00ca90\",\"name\":\"belmont-selftest-routine-00ca90\",\"prompt\":\"post a one-line status\",\"trigger\":{\"type\":\"cron\",\"schedule\":\"@daily\"},\"isEnabled\":true,\"createdAt\":1789302152192,\"lastRunAt\":null,\"raisedNotices\":[],\"schedule\":\"@daily\",\"triggerDescription\":\"Every day at 12:00 AM\",\"nextRunAt\":1789311600000,\"runs\":[],\"filePath\":\"/home/hoon/_roots/labs/work/Belmont/.cache/belmont-wsl-profile/sand-data/agents/305318af-57bb-43ee-81bc-7a14dcb80b64/automations/belmont-selftest-r"
+  },
+  "cleanup": {
+    "requestedRoutines": [
+      "belmont-selftest-routine-00ca90"
+    ],
+    "requestedAgents": [
+      "305318af-57bb-43ee-81bc-7a14dcb80b64"
+    ],
+    "rostersReadable": true,
+    "addedNotRemoved": [],
+    "removedFromBaseline": [],
+    "leftoverTestNamed": [],
+    "idSetRestored": true
+  },
+  "verdict_pass": true
+}

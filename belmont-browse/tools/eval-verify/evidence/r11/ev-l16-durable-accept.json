@@ -1,0 +1,17 @@
+{
+  "case": "l16-durable-accept",
+  "at": "2026-09-13T21:36:33+09:00",
+  "method": "create an accepted session on the eval serve -> stop the serve (supervisor reaps chrome) -> start a fresh serve on the SAME state dir -> verify the session record survived and the restarted serve reconciled it",
+  "sessionId": "31baa60e65fa4d0abc7f3",
+  "observations": {
+    "beforeRestart": { "getSessionStatus": "running", "diskRecordPresent": true, "diskPath": "belmont-browse/.state/aside-home-909/u/0/sessions/2026-09-13_31baa60e65fa4d0abc7f3" },
+    "afterRestart": { "diskRecordPresent": true, "getSessionStatus": "done", "taskPreserved": true, "recoveryLog": "[lifecycle] reconciled 1 persisted executions; 0 handed to the original suspension recovery" }
+  },
+  "verdict": {
+    "recordPersistedAcrossRestart": true,
+    "restartedServeReconciledIt": true,
+    "queryableAfterRestart": true
+  },
+  "result": "PASS",
+  "notes": "durable-accept proven three ways: on-disk aside session record retained across the restart; the restarted serve's lifecycle reconciled 1 persisted execution; GET /sessions/:id returns the record with a resolved (done) status. (A separate listAsideSessions probe used a wrong route path and was inconclusive; the three proofs above stand.)"
+}

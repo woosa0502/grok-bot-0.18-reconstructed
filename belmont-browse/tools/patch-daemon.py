@@ -23,7 +23,7 @@ init_agent_session init_browser init_cdp init_extension_bridge init_accounts ini
 
 def patch_cdp_shutdown(src, version):
     """Terminal close must cancel a 907 discovery, retry, or WS handshake."""
-    if version not in ("907", "909", "1.26.907.1712", "1.26.909.1820"):
+    if version not in ("907", "909", "914", "1.26.907.1712", "1.26.909.1820", "1.26.914.1644"):
         return src
     start = src.index("CdpClient=class{")
     end = src.index("SessionManager,init_session_manager", start)

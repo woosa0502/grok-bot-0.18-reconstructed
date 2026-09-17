@@ -1,0 +1,11 @@
+[32m✔ renderer selection preserves pinned paths and isolates editable output and default profile [90m(0.727583ms)[39m[39m
+[32m✔ editable staging rejects missing, substituted, or artifact-mode renderer bytes [90m(8.087564ms)[39m[39m
+[32m✔ mobile input verification detects asset substitution, filesystem escape, and external source dependencies [90m(9.619465ms)[39m[39m
+[34mℹ tests 3[39m
+[34mℹ suites 0[39m
+[34mℹ pass 3[39m
+[34mℹ fail 0[39m
+[34mℹ cancelled 0[39m
+[34mℹ skipped 0[39m
+[34mℹ todo 0[39m
+[34mℹ duration_ms 62.099809[39m

@@ -1,0 +1,29 @@
+{
+  "case": "l19-done-r5",
+  "at": "2026-09-12T14:42:07.165Z",
+  "nonce": "0c74b2c9",
+  "preCrash": {
+    "status": "done",
+    "effect": 1
+  },
+  "restart": {
+    "servePid2": 1563203,
+    "serve2Pid": 1563203
+  },
+  "persisted": {
+    "statusAfter": "done",
+    "effectAfter": 1
+  },
+  "continue": {
+    "accepted": true,
+    "error": null,
+    "statusAfterContinue": "done",
+    "effectAfterContinue": 1
+  },
+  "verdict": {
+    "persisted_terminal": true,
+    "effect_survived_exactly_one": true,
+    "continue_no_dup": true
+  },
+  "verdict_pass": true
+}

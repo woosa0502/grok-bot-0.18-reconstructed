@@ -1,0 +1,16 @@
+{
+  "case": "l18-queued",
+  "at": "2026-09-12T13:28:00.066Z",
+  "evidence": {
+    "aId": "dd061146441842d0a9b76",
+    "bId": "60e067ba91ba4881897ed",
+    "cId": "d10206d6ff0d47708cfa1",
+    "aStartedMarker": false,
+    "bQueuedBeforeCancel": true,
+    "bStatusAfterCancel": "stopped",
+    "bStartedMarker_MUST_BE_FALSE": false,
+    "cStartedMarker": true,
+    "cFinal": "done"
+  },
+  "verdict_pass": false
+}

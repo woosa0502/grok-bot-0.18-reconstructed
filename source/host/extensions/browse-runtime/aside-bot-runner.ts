@@ -1,3 +1,6 @@
+import type { BrowserJobRuntime } from './browser-job-runtime.js';
+import { browserConfig } from '../../../../shared/browser-bot/host-store.mjs';
+import { getSandRootDir as browserJobSandRoot } from '../../host-paths.js';
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -123,6 +126,7 @@ interface RunnerLike {
   getActivitySnapshot(): readonly string[];
 }
 interface WrapDeps {
+  readonly jobRuntime?: BrowserJobRuntime;
   readonly client: () => BrowseClient;
   readonly emitUpdate: (update: RunnerUpdate) => void;
   readonly log: (message: string) => void;
@@ -223,6 +227,9 @@ function suspensionWidget(link: BotLink): Record<string, unknown> & { type: stri
 
 /** Wraps a bot's runner so that its user turns are served by an Aside browse session; everything else delegates. */
 export function wrapRunnerForAsideBot<T extends object>(runner: T, agentId: string, deps: WrapDeps): T {
+  if (deps.jobRuntime?.configured(agentId)) return deps.jobRuntime.wrapper(runner, agentId, deps.emitUpdate);
+  let browserProtocol; try { browserProtocol = JSON.parse(readFileSync(join(getSandAgentsRootDir(), agentId, 'profile.json'), 'utf8')).browserJobProtocol; } catch {}
+  if (browserProtocol === 1 || browserConfig(browserJobSandRoot())?.botId === agentId) throw new Error('Dedicated browser job runtime is not wired; legacy session reuse is forbidden');
   let generation = 0;
   let activity: readonly string[] = [];
   let toolCalls = 0;

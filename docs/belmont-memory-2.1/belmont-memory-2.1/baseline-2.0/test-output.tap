@@ -1,0 +1,384 @@
+TAP version 13
+# (node:1049) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: host bridge retries confirmedRemember safely after generation changes
+ok 1 - host bridge retries confirmedRemember safely after generation changes
+  ---
+  duration_ms: 15.958038
+  type: 'test'
+  ...
+# Subtest: knowledge enumerator rejects outside symlink and terminates cycles
+ok 2 - knowledge enumerator rejects outside symlink and terminates cycles
+  ---
+  duration_ms: 12.505564
+  type: 'test'
+  ...
+# Subtest: canonical knowledge root itself may be a symlink
+ok 3 - canonical knowledge root itself may be a symlink
+  ---
+  duration_ms: 1.83748
+  type: 'test'
+  ...
+# (node:1050) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: explicit memory persists with original evidence
+ok 4 - explicit memory persists with original evidence
+  ---
+  duration_ms: 20.725642
+  type: 'test'
+  ...
+# Subtest: source role cannot be spoofed by Aside
+ok 5 - source role cannot be spoofed by Aside
+  ---
+  duration_ms: 15.536971
+  type: 'test'
+  ...
+# Subtest: external page cannot alter personal preference even with authority field
+ok 6 - external page cannot alter personal preference even with authority field
+  ---
+  duration_ms: 8.545227
+  type: 'test'
+  ...
+# Subtest: agent personal inference requires review, not automatic commit
+ok 7 - agent personal inference requires review, not automatic commit
+  ---
+  duration_ms: 5.016496
+  type: 'test'
+  ...
+# Subtest: procedures cannot be promoted without measurement gate
+ok 8 - procedures cannot be promoted without measurement gate
+  ---
+  duration_ms: 4.20347
+  type: 'test'
+  ...
+# Subtest: agent cannot overwrite explicit memory
+ok 9 - agent cannot overwrite explicit memory
+  ---
+  duration_ms: 2.994974
+  type: 'test'
+  ...
+# Subtest: explicit user correction is versioned and retains evidence lineage
+ok 10 - explicit user correction is versioned and retains evidence lineage
+  ---
+  duration_ms: 4.261525
+  type: 'test'
+  ...
+# Subtest: scope is checked on read, search, capture and index operations
+ok 11 - scope is checked on read, search, capture and index operations
+  ---
+  duration_ms: 3.21833
+  type: 'test'
+  ...
+# Subtest: cross-scope evidence cannot be attached
+ok 12 - cross-scope evidence cannot be attached
+  ---
+  duration_ms: 1.862676
+  type: 'test'
+  ...
+# Subtest: capture retry is idempotent, source-ref content conflict fails closed
+ok 13 - capture retry is idempotent, source-ref content conflict fails closed
+  ---
+  duration_ms: 1.941896
+  type: 'test'
+  ...
+# Subtest: proposal retry has one item/revision/outbox entry
+ok 14 - proposal retry has one item/revision/outbox entry
+  ---
+  duration_ms: 2.55537
+  type: 'test'
+  ...
+# Subtest: same idempotency key with changed payload fails
+ok 15 - same idempotency key with changed payload fails
+  ---
+  duration_ms: 2.17135
+  type: 'test'
+  ...
+# Subtest: stale synthesis snapshot rejected after another writer
+ok 16 - stale synthesis snapshot rejected after another writer
+  ---
+  duration_ms: 2.716501
+  type: 'test'
+  ...
+# Subtest: per-item CAS rejects wrong version even with current scope snapshot
+ok 17 - per-item CAS rejects wrong version even with current scope snapshot
+  ---
+  duration_ms: 2.602169
+  type: 'test'
+  ...
+# Subtest: write failure rolls back item, revision, FTS, receipt and outbox
+ok 18 - write failure rolls back item, revision, FTS, receipt and outbox
+  ---
+  duration_ms: 3.461262
+  type: 'test'
+  ...
+# Subtest: batch with a review verdict rolls back earlier valid changes
+ok 19 - batch with a review verdict rolls back earlier valid changes
+  ---
+  duration_ms: 2.471804
+  type: 'test'
+  ...
+# Subtest: valid synthesis batch commits atomically
+ok 20 - valid synthesis batch commits atomically
+  ---
+  duration_ms: 2.671505
+  type: 'test'
+  ...
+# Subtest: forget erases payload, history, evidence, FTS and queues deletion
+ok 21 - forget erases payload, history, evidence, FTS and queues deletion
+  ---
+  duration_ms: 4.478511
+  type: 'test'
+  ...
+# Subtest: forget cascades to paraphrases derived from the same evidence
+ok 22 - forget cascades to paraphrases derived from the same evidence
+  ---
+  duration_ms: 4.194093
+  type: 'test'
+  ...
+# Subtest: deleted sourceRef cannot be replayed into fresh evidence
+ok 23 - deleted sourceRef cannot be replayed into fresh evidence
+  ---
+  duration_ms: 3.138877
+  type: 'test'
+  ...
+# Subtest: exact tombstone blocks content under a new source identity
+ok 24 - exact tombstone blocks content under a new source identity
+  ---
+  duration_ms: 3.524232
+  type: 'test'
+  ...
+# Subtest: forget rollback preserves active payload and evidence
+ok 25 - forget rollback preserves active payload and evidence
+  ---
+  duration_ms: 2.742614
+  type: 'test'
+  ...
+# Subtest: clear empty scope increments epoch and blocks queued capture
+ok 26 - clear empty scope increments epoch and blocks queued capture
+  ---
+  duration_ms: 2.421951
+  type: 'test'
+  ...
+# Subtest: clear revokes even evidence that never formed a memory
+ok 27 - clear revokes even evidence that never formed a memory
+  ---
+  duration_ms: 1.66617
+  type: 'test'
+  ...
+# Subtest: forgotten data is not reintroduced by index rebuild
+ok 28 - forgotten data is not reintroduced by index rebuild
+  ---
+  duration_ms: 2.934747
+  type: 'test'
+  ...
+# Subtest: Korean bigram retrieval finds suffix variants
+ok 29 - Korean bigram retrieval finds suffix variants
+  ---
+  duration_ms: 2.89731
+  type: 'test'
+  ...
+# Subtest: scope filtering occurs before LIMIT, not after top-k
+ok 30 - scope filtering occurs before LIMIT, not after top-k
+  ---
+  duration_ms: 19.015692
+  type: 'test'
+  ...
+# Subtest: temporal interval and memory-type filters apply
+ok 31 - temporal interval and memory-type filters apply
+  ---
+  duration_ms: 4.003584
+  type: 'test'
+  ...
+# Subtest: punctuation and compatibility normalization retain meaningful differences
+ok 32 - punctuation and compatibility normalization retain meaningful differences
+  ---
+  duration_ms: 0.186825
+  type: 'test'
+  ...
+# Subtest: untrusted FTS operators cannot bypass SQL scope
+ok 33 - untrusted FTS operators cannot bypass SQL scope
+  ---
+  duration_ms: 2.127408
+  type: 'test'
+  ...
+# Subtest: migration parser reports malformed lines and dates, not silently drops
+ok 34 - migration parser reports malformed lines and dates, not silently drops
+  ---
+  duration_ms: 0.918381
+  type: 'test'
+  ...
+# Subtest: legacy import does not fabricate explicit provenance
+ok 35 - legacy import does not fabricate explicit provenance
+  ---
+  duration_ms: 2.025686
+  type: 'test'
+  ...
+# Subtest: RRF deduplicates each channel and uses rank rather than raw scores
+ok 36 - RRF deduplicates each channel and uses rank rather than raw scores
+  ---
+  duration_ms: 0.436186
+  type: 'test'
+  ...
+# Subtest: dense stale version and cross-scope IDs are discarded
+ok 37 - dense stale version and cross-scope IDs are discarded
+  ---
+  duration_ms: 3.934614
+  type: 'test'
+  ...
+# Subtest: forget during asynchronous dense search is revalidated
+ok 38 - forget during asynchronous dense search is revalidated
+  ---
+  duration_ms: 3.180238
+  type: 'test'
+  ...
+# Subtest: dense timeout falls back to sparse
+ok 39 - dense timeout falls back to sparse
+  ---
+  duration_ms: 15.820769
+  type: 'test'
+  ...
+# Subtest: evidence packet uses caller tokenizer and never cuts evidence midway
+ok 40 - evidence packet uses caller tokenizer and never cuts evidence midway
+  ---
+  duration_ms: 2.767583
+  type: 'test'
+  ...
+# Subtest: wrong tombstone key cannot reopen database
+ok 41 - wrong tombstone key cannot reopen database
+  ---
+  duration_ms: 4.615138
+  type: 'test'
+  ...
+# Subtest: persistent data survives reopen with same key
+ok 42 - persistent data survives reopen with same key
+  ---
+  duration_ms: 6.231037
+  type: 'test'
+  ...
+# Subtest: corrupt database fails closed rather than resetting memory
+ok 43 - corrupt database fails closed rather than resetting memory
+  ---
+  duration_ms: 0.6302
+  type: 'test'
+  ...
+# Subtest: two connections enforce stale-snapshot CAS
+ok 44 - two connections enforce stale-snapshot CAS
+  ---
+  duration_ms: 3.812085
+  type: 'test'
+  ...
+# Subtest: process termination inside transaction leaves no partial memory
+ok 45 - process termination inside transaction leaves no partial memory
+  ---
+  duration_ms: 69.185588
+  type: 'test'
+  ...
+# Subtest: no forgotten plaintext remains in logical SQL payload tables
+ok 46 - no forgotten plaintext remains in logical SQL payload tables
+  ---
+  duration_ms: 4.276785
+  type: 'test'
+  ...
+# Subtest: parent lineage prevents browser-source laundering
+ok 47 - parent lineage prevents browser-source laundering
+  ---
+  duration_ms: 3.273183
+  type: 'test'
+  ...
+# Subtest: principal permissions are frozen at session construction
+ok 48 - principal permissions are frozen at session construction
+  ---
+  duration_ms: 1.139901
+  type: 'test'
+  ...
+# (node:1051) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: legacy SHA1 algorithm matches old whitespace, 500-char, lower-case rules
+ok 49 - legacy SHA1 algorithm matches old whitespace, 500-char, lower-case rules
+  ---
+  duration_ms: 1.547047
+  type: 'test'
+  ...
+# Subtest: legacy tombstones block recreation without pretending legacy explicit means consent
+ok 50 - legacy tombstones block recreation without pretending legacy explicit means consent
+  ---
+  duration_ms: 8.295117
+  type: 'test'
+  ...
+# Subtest: legacy barrier import is idempotent and remains after clear/reindex
+ok 51 - legacy barrier import is idempotent and remains after clear/reindex
+  ---
+  duration_ms: 5.602975
+  type: 'test'
+  ...
+# Subtest: legacy barrier import is privileged, validated and precedes fact import
+ok 52 - legacy barrier import is privileged, validated and precedes fact import
+  ---
+  duration_ms: 5.235891
+  type: 'test'
+  ...
+# Subtest: frozen prompt reuses unchanged view
+ok 53 - frozen prompt reuses unchanged view
+  ---
+  duration_ms: 2.095247
+  type: 'test'
+  ...
+# Subtest: deletion invalidates a frozen prompt without a compaction change
+ok 54 - deletion invalidates a frozen prompt without a compaction change
+  ---
+  duration_ms: 3.652721
+  type: 'test'
+  ...
+# Subtest: ACL, principal, membership and generation all invalidate memory views
+ok 55 - ACL, principal, membership and generation all invalidate memory views
+  ---
+  duration_ms: 2.276974
+  type: 'test'
+  ...
+# Subtest: old compaction-only persisted prompt is never accepted
+ok 56 - old compaction-only persisted prompt is never accepted
+  ---
+  duration_ms: 1.308638
+  type: 'test'
+  ...
+# (node:1082) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: procedure: 200 paired successes with material savings pass offline gate
+ok 57 - procedure: 200 paired successes with material savings pass offline gate
+  ---
+  duration_ms: 1.651649
+  type: 'test'
+  ...
+# Subtest: procedure: speed improvement never overrides critical failure
+ok 58 - procedure: speed improvement never overrides critical failure
+  ---
+  duration_ms: 0.386827
+  type: 'test'
+  ...
+# Subtest: procedure: 20 runs are only a smoke test, not statistical promotion
+ok 59 - procedure: 20 runs are only a smoke test, not statistical promotion
+  ---
+  duration_ms: 0.134715
+  type: 'test'
+  ...
+# Subtest: procedure: changed environment requires re-evaluation
+ok 60 - procedure: changed environment requires re-evaluation
+  ---
+  duration_ms: 0.238978
+  type: 'test'
+  ...
+# Subtest: procedure: Wilson lower bound exposes uncertainty in small success samples
+ok 61 - procedure: Wilson lower bound exposes uncertainty in small success samples
+  ---
+  duration_ms: 0.171473
+  type: 'test'
+  ...
+1..61
+# tests 61
+# suites 0
+# pass 61
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 777.053686
